@@ -1,0 +1,1133 @@
+
+> quoting-tool-nextjs@0.1.0 dev
+> next dev
+
+ ⚠ Warning: Found multiple lockfiles. Selecting /Users/kylepalmer/package-lock.json.
+   Consider removing the lockfiles at:
+   * /Users/kylepalmer/Desktop/GROK APP 2 (CLAUDE)/quoting-tool-nextjs/package-lock.json
+
+   ▲ Next.js 15.4.1
+   - Local:        http://localhost:3000
+   - Network:      http://10.10.4.109:3000
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 1250ms
+ ○ Compiling / ...
+ ✓ Compiled / in 2.5s (751 modules)
+ GET / 200 in 2806ms
+ ✓ Compiled /api/dashboard in 318ms (755 modules)
+ GET / 200 in 155ms
+ GET /api/dashboard 200 in 512ms
+ GET / 200 in 113ms
+ GET /api/dashboard 200 in 6ms
+ ✓ Compiled /api/projects in 128ms (743 modules)
+ GET /api/projects 200 in 170ms
+ GET /api/projects 200 in 17ms
+ GET /api/projects 200 in 13ms
+ GET / 200 in 137ms
+ ✓ Compiled /api/projects/[id] in 226ms (745 modules)
+ GET /api/dashboard 200 in 173ms
+ GET /api/projects/1 200 in 635ms
+ GET / 200 in 109ms
+ GET /api/dashboard 200 in 19ms
+ GET /api/projects 200 in 25ms
+ GET /api/projects 200 in 12ms
+ GET /api/projects/1 200 in 21ms
+ GET /api/projects/1 200 in 19ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 147ms (747 modules)
+ POST /api/openings/5/calculate-price 200 in 429ms
+ POST /api/openings/5/calculate-price 200 in 457ms
+ POST /api/openings/9/calculate-price 200 in 10ms
+ POST /api/openings/9/calculate-price 200 in 9ms
+ GET /api/projects/1 200 in 10ms
+ GET /api/projects/1 200 in 6ms
+ ✓ Compiled /api/component-instances/[id] in 293ms (755 modules)
+ GET / 200 in 106ms
+ GET /api/component-instances/19 200 in 786ms
+ ✓ Compiled /api/products/[id] in 117ms (743 modules)
+ GET /api/products/5 200 in 399ms
+ ✓ Compiled /api/projects/[id]/bom in 133ms (745 modules)
+ GET /api/projects/1/bom 200 in 425ms
+ ✓ Compiled in 575ms (734 modules)
+ GET / 200 in 122ms
+ GET / 200 in 95ms
+ ✓ Compiled /api/projects/[id] in 104ms (460 modules)
+ GET /api/projects/1 200 in 170ms
+ ✓ Compiled /api/projects/[id]/bom in 107ms (462 modules)
+ GET /api/projects/1/bom 200 in 151ms
+ ✓ Compiled /api/projects in 179ms (460 modules)
+ GET /api/projects 200 in 204ms
+ GET /api/projects 200 in 8ms
+ ✓ Compiled /api/projects/[id] in 88ms (462 modules)
+ GET /api/projects/1 200 in 109ms
+ GET /api/projects/1 200 in 5ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 59ms (464 modules)
+ POST /api/openings/5/calculate-price 200 in 82ms
+ POST /api/openings/5/calculate-price 200 in 90ms
+ POST /api/openings/9/calculate-price 200 in 8ms
+ POST /api/openings/9/calculate-price 200 in 11ms
+ GET /api/projects/1 200 in 12ms
+ GET /api/projects/1 200 in 8ms
+ GET /api/projects 200 in 21ms
+ GET /api/projects 200 in 10ms
+ GET /api/projects/1 200 in 16ms
+ GET /api/projects/1 200 in 21ms
+ POST /api/openings/5/calculate-price 200 in 34ms
+ POST /api/openings/5/calculate-price 200 in 18ms
+ POST /api/openings/9/calculate-price 200 in 13ms
+ POST /api/openings/9/calculate-price 200 in 12ms
+ GET /api/projects/1 200 in 8ms
+ GET /api/projects/1 200 in 6ms
+ ✓ Compiled /api/products/[id] in 155ms (466 modules)
+ GET /api/products/5 200 in 180ms
+ GET / 200 in 200ms
+ ✓ Compiled /api/dashboard in 94ms (468 modules)
+ GET /api/dashboard 200 in 116ms
+ GET /api/projects 200 in 26ms
+ GET /api/projects 200 in 10ms
+ GET /api/projects/1 200 in 22ms
+ GET /api/projects/1 200 in 24ms
+ POST /api/openings/5/calculate-price 200 in 32ms
+ POST /api/openings/5/calculate-price 200 in 17ms
+ POST /api/openings/9/calculate-price 200 in 18ms
+ POST /api/openings/9/calculate-price 200 in 12ms
+ GET /api/projects/1 200 in 7ms
+ GET /api/projects/1 200 in 6ms
+ ✓ Compiled in 240ms (734 modules)
+ GET / 200 in 109ms
+ ✓ Compiled /api/projects/[id] in 187ms (460 modules)
+ GET /api/projects/1 200 in 270ms
+ GET / 200 in 50ms
+ GET /api/projects/1 200 in 12ms
+ ✓ Compiled in 463ms (755 modules)
+ GET / 200 in 42ms
+ GET / 200 in 82ms
+ ✓ Compiled in 324ms (755 modules)
+ GET / 200 in 42ms
+ ✓ Compiled in 249ms (755 modules)
+ GET / 200 in 54ms
+ GET / 200 in 69ms
+ ✓ Compiled in 264ms (755 modules)
+ GET / 200 in 42ms
+ GET / 200 in 69ms
+ ✓ Compiled /api/dashboard in 275ms (462 modules)
+ GET /api/projects/1 200 in 51ms
+ GET /api/dashboard 200 in 337ms
+ ✓ Compiled /api/projects in 97ms (464 modules)
+ GET /api/projects 200 in 117ms
+ GET /api/projects 200 in 5ms
+ GET /api/projects/1 200 in 18ms
+ GET /api/projects/1 200 in 15ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 81ms (466 modules)
+ POST /api/openings/5/calculate-price 200 in 114ms
+ POST /api/openings/5/calculate-price 200 in 98ms
+ POST /api/openings/9/calculate-price 200 in 11ms
+ POST /api/openings/9/calculate-price 200 in 13ms
+ GET /api/projects/1 200 in 8ms
+ GET /api/projects/1 200 in 8ms
+ GET / 200 in 148ms
+ GET /api/dashboard 200 in 59ms
+ GET /api/projects 200 in 25ms
+ GET /api/projects 200 in 11ms
+ GET /api/projects/1 200 in 23ms
+ GET /api/projects/1 200 in 17ms
+ POST /api/openings/5/calculate-price 200 in 28ms
+ POST /api/openings/5/calculate-price 200 in 14ms
+ POST /api/openings/9/calculate-price 200 in 13ms
+ POST /api/openings/9/calculate-price 200 in 13ms
+ GET /api/projects/1 200 in 6ms
+ GET /api/projects/1 200 in 5ms
+ ✓ Compiled /api/component-instances/[id] in 190ms (468 modules)
+ GET /api/component-instances/19 200 in 223ms
+ ✓ Compiled /api/products/[id] in 74ms (470 modules)
+ GET /api/products/5 200 in 94ms
+ ✓ Compiled /api/master-parts in 339ms (767 modules)
+ GET /api/master-parts 200 in 391ms
+ GET / 200 in 74ms
+ GET /api/master-parts 200 in 40ms
+ ✓ Compiled /api/options in 299ms (759 modules)
+ GET /api/categories 200 in 325ms
+ GET /api/options 200 in 325ms
+ GET /api/products 200 in 327ms
+ GET /api/categories 200 in 11ms
+ GET /api/options 200 in 14ms
+ GET /api/products 200 in 17ms
+ GET /api/products/5 200 in 25ms
+ GET /api/products/5 200 in 9ms
+ ✓ Compiled /api/products/[id]/categories in 174ms (761 modules)
+ DELETE /api/products/5/categories?categoryId=1 200 in 527ms
+ GET /api/products/5 200 in 7ms
+ ✓ Compiled /api/categories/[id] in 221ms (777 modules)
+ GET / 200 in 26ms
+ DELETE /api/categories/1 400 in 522ms
+ GET /api/products/5 200 in 21ms
+ GET /api/products/5 200 in 10ms
+ GET /api/products/2 200 in 22ms
+ GET /api/products/2 200 in 9ms
+ GET /api/products/1 200 in 19ms
+ GET /api/products/1 200 in 8ms
+ DELETE /api/products/1/categories?categoryId=1 200 in 29ms
+ GET /api/products/1 200 in 11ms
+ GET /api/categories/1 200 in 74ms
+ GET /api/categories/1 200 in 7ms
+ GET /api/master-parts?optionsOnly=true 200 in 27ms
+ GET /api/master-parts?optionsOnly=true 200 in 8ms
+ ✓ Compiled /api/options/[id] in 339ms (763 modules)
+ GET / 200 in 66ms
+ DELETE /api/options/1 200 in 680ms
+ ✓ Compiled /api/categories in 82ms (470 modules)
+ GET /api/categories 200 in 180ms
+ GET /api/categories/1 200 in 180ms
+ GET /api/master-parts 200 in 26ms
+ GET /api/master-parts 200 in 10ms
+ POST /api/master-parts 200 in 26ms
+ GET /api/master-parts 200 in 8ms
+ POST /api/master-parts 200 in 19ms
+ GET /api/master-parts 200 in 12ms
+ ✓ Compiled /api/master-parts/[id] in 286ms (763 modules)
+ GET / 200 in 49ms
+ PUT /api/master-parts/37 200 in 778ms
+ GET /api/master-parts 200 in 15ms
+ ✓ Compiled /api/options in 155ms (470 modules)
+ ✓ Compiled (472 modules)
+ GET /api/categories 200 in 256ms
+ GET /api/options 200 in 257ms
+ GET /api/products 200 in 258ms
+ GET /api/categories 200 in 5ms
+ GET /api/options 200 in 9ms
+ GET /api/products 200 in 10ms
+ ✓ Compiled /api/products/[id] in 109ms (474 modules)
+ GET /api/products/5 200 in 134ms
+ GET /api/products/5 200 in 4ms
+ ✓ Compiled in 77ms (295 modules)
+ ✓ Compiled in 60ms (295 modules)
+ GET / 200 in 76ms
+ DELETE /api/categories/1 200 in 77ms
+ GET / 200 in 11ms
+ GET /api/categories 200 in 10ms
+ ✓ Compiled in 79ms (295 modules)
+ GET / 200 in 15ms
+ POST /api/categories 201 in 8ms
+ GET /api/categories 200 in 6ms
+ ✓ Compiled in 106ms (295 modules)
+ GET / 200 in 29ms
+ GET /api/categories/3 200 in 21ms
+ GET /api/master-parts?optionsOnly=true 200 in 25ms
+ GET /api/categories/3 200 in 25ms
+ GET /api/master-parts?optionsOnly=true 200 in 8ms
+ POST /api/options 201 in 30ms
+ GET /api/categories 200 in 15ms
+ GET /api/categories/3 200 in 21ms
+ GET /api/master-parts 200 in 14ms
+ GET /api/master-parts 200 in 11ms
+ PUT /api/master-parts/38 200 in 33ms
+ GET /api/master-parts 200 in 8ms
+ PUT /api/master-parts/37 200 in 20ms
+ GET /api/master-parts 200 in 7ms
+ GET /api/products 200 in 26ms
+ GET /api/categories 200 in 35ms
+ GET /api/options 200 in 39ms
+ GET /api/products 200 in 23ms
+ GET /api/categories 200 in 15ms
+ GET /api/options 200 in 20ms
+ GET /api/categories/2 200 in 20ms
+ GET /api/master-parts?optionsOnly=true 200 in 14ms
+ GET /api/categories/2 200 in 18ms
+ GET /api/master-parts?optionsOnly=true 200 in 9ms
+ GET /api/categories/3 200 in 15ms
+ GET /api/categories/3 200 in 16ms
+ GET /api/master-parts?optionsOnly=true 200 in 23ms
+ GET /api/master-parts?optionsOnly=true 200 in 8ms
+ GET / 200 in 124ms
+ ✓ Compiled /api/dashboard in 184ms (472 modules)
+ GET /api/dashboard 200 in 205ms
+ GET /api/master-parts 200 in 22ms
+ GET /api/master-parts 200 in 9ms
+ GET /api/products 200 in 24ms
+ GET /api/categories 200 in 38ms
+ GET /api/options 200 in 39ms
+ GET /api/products 200 in 12ms
+ GET /api/options 200 in 16ms
+ GET /api/categories 200 in 17ms
+ GET /api/categories/3 200 in 21ms
+ GET /api/categories/3 200 in 16ms
+ GET /api/master-parts?optionsOnly=true 200 in 16ms
+ GET /api/master-parts?optionsOnly=true 200 in 7ms
+ ✓ Compiled /api/options/[id] in 135ms (474 modules)
+ DELETE /api/options/4 200 in 162ms
+ GET /api/categories 200 in 30ms
+ GET /api/categories/3 200 in 35ms
+ ✓ Compiled /api/projects in 177ms (460 modules)
+ GET /api/projects 200 in 233ms
+ GET /api/projects 200 in 7ms
+ ✓ Compiled /api/dashboard in 88ms (462 modules)
+ GET /api/dashboard 200 in 109ms
+ GET /api/dashboard 200 in 3ms
+ GET /api/projects 200 in 32ms
+ GET /api/projects 200 in 11ms
+ ✓ Compiled /api/projects/[id] in 203ms (462 modules)
+ GET /api/projects/1 200 in 228ms
+ GET /api/projects/1 200 in 4ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 111ms (464 modules)
+ POST /api/openings/5/calculate-price 200 in 141ms
+ POST /api/openings/5/calculate-price 200 in 131ms
+ POST /api/openings/9/calculate-price 200 in 13ms
+ POST /api/openings/9/calculate-price 200 in 18ms
+ GET /api/projects/1 200 in 9ms
+ GET /api/projects/1 200 in 5ms
+ ✓ Compiled /api/categories in 103ms (466 modules)
+ ✓ Compiled (470 modules)
+ GET /api/options 200 in 237ms
+ GET /api/categories 200 in 238ms
+ GET /api/products 200 in 238ms
+ GET /api/options 200 in 5ms
+ GET /api/categories 200 in 8ms
+ GET /api/products 200 in 10ms
+ GET /api/projects/1 200 in 20ms
+ GET /api/projects/1 200 in 25ms
+ POST /api/openings/5/calculate-price 200 in 38ms
+ POST /api/openings/5/calculate-price 200 in 17ms
+ POST /api/openings/9/calculate-price 200 in 15ms
+ POST /api/openings/9/calculate-price 200 in 13ms
+ GET /api/projects/1 200 in 9ms
+ GET /api/projects/1 200 in 17ms
+ ✓ Compiled /api/dashboard in 160ms (472 modules)
+ GET /api/dashboard 200 in 180ms
+ GET /api/dashboard 200 in 5ms
+ GET /api/projects/1 200 in 22ms
+ GET /api/projects/1 200 in 24ms
+ POST /api/openings/5/calculate-price 200 in 30ms
+ POST /api/openings/5/calculate-price 200 in 20ms
+ POST /api/openings/9/calculate-price 200 in 12ms
+ POST /api/openings/9/calculate-price 200 in 15ms
+ GET /api/projects/1 200 in 12ms
+ GET /api/projects/1 200 in 7ms
+ GET /api/projects 200 in 19ms
+ GET /api/projects 200 in 11ms
+ POST /api/projects 201 in 17ms
+ GET /api/projects 200 in 12ms
+ ✓ Compiled /api/master-parts in 98ms (474 modules)
+ POST /api/master-parts 200 in 119ms
+ GET /api/master-parts?optionsOnly=true 200 in 9ms
+ POST /api/options 201 in 10ms
+ ✓ Compiled /api/master-parts/[id] in 92ms (476 modules)
+ PUT /api/master-parts/39 200 in 115ms
+ ✓ Compiled /api/options/[id] in 105ms (478 modules)
+ GET /api/options/5 200 in 131ms
+ ✓ Compiled in 121ms (295 modules)
+ ✓ Compiled in 147ms (295 modules)
+ GET / 200 in 145ms
+ ✓ Compiled in 78ms (295 modules)
+ GET / 200 in 71ms
+ GET / 200 in 11ms
+ GET / 200 in 8ms
+ ✓ Compiled /api/master-parts/[id]/sync-options in 168ms (765 modules)
+ GET / 200 in 55ms
+ POST /api/master-parts/39/sync-options 200 in 687ms
+ GET /api/options/5 200 in 14ms
+ ✓ Compiled in 608ms (761 modules)
+ GET / 200 in 60ms
+ ✓ Compiled in 433ms (759 modules)
+ GET / 200 in 39ms
+ ✓ Compiled in 391ms (759 modules)
+ GET / 200 in 41ms
+ GET / 200 in 69ms
+ ✓ Compiled /api/master-parts/[id] in 65ms (460 modules)
+ PUT /api/master-parts/39 200 in 102ms
+ ✓ Compiled /api/master-parts/[id]/sync-options in 75ms (462 modules)
+ POST /api/master-parts/39/sync-options 200 in 110ms
+ ✓ Compiled /api/options/[id] in 75ms (465 modules)
+ GET /api/options/5 200 in 94ms
+ ✓ Compiled in 83ms (296 modules)
+ ✓ Compiled in 93ms (296 modules)
+ GET / 200 in 87ms
+ GET / 200 in 10ms
+ DELETE /api/options/5 200 in 8ms
+ DELETE /api/master-parts/39 200 in 14ms
+ GET / 200 in 81ms
+ ✓ Compiled /api/dashboard in 185ms (467 modules)
+ GET /api/dashboard 200 in 209ms
+ ✓ Compiled /api/master-parts in 144ms (469 modules)
+ GET /api/master-parts 200 in 184ms
+ GET /api/master-parts 200 in 4ms
+ ✓ Compiled /api/options in 112ms (471 modules)
+ ✓ Compiled (475 modules)
+ GET /api/options 200 in 220ms
+ GET /api/categories 200 in 220ms
+ GET /api/products 200 in 222ms
+ GET /api/options 200 in 5ms
+ GET /api/categories 200 in 7ms
+ GET /api/products 200 in 9ms
+ ✓ Compiled /api/categories/[id] in 121ms (477 modules)
+ GET /api/categories/3 200 in 140ms
+ GET /api/categories/3 200 in 4ms
+ GET /api/master-parts?optionsOnly=true 200 in 8ms
+ GET /api/master-parts?optionsOnly=true 200 in 5ms
+ GET /api/master-parts 200 in 19ms
+ GET /api/master-parts 200 in 11ms
+ PUT /api/master-parts/38 200 in 35ms
+ GET /api/master-parts 200 in 6ms
+ GET / 200 in 105ms
+ GET /api/dashboard 200 in 13ms
+ GET /api/master-parts 200 in 16ms
+ GET /api/master-parts 200 in 9ms
+ POST /api/master-parts/35/sync-options 200 in 34ms
+ DELETE /api/master-parts/37 200 in 17ms
+ GET /api/master-parts 200 in 13ms
+ ✓ Compiled in 545ms (736 modules)
+ GET / 200 in 139ms
+ ✓ Compiled in 98ms (296 modules)
+ GET / 200 in 11ms
+ ✓ Compiled in 499ms (734 modules)
+ GET / 200 in 111ms
+ ✓ Compiled in 257ms (734 modules)
+ GET / 200 in 44ms
+ ✓ Compiled in 237ms (734 modules)
+ GET / 200 in 39ms
+ ✓ Compiled in 82ms (295 modules)
+ GET / 200 in 24ms
+ ✓ Compiled in 80ms (295 modules)
+ GET / 200 in 23ms
+ ✓ Compiled /api/master-parts in 169ms (459 modules)
+ POST /api/master-parts 200 in 255ms
+ ✓ Compiled /api/master-parts/[id] in 142ms (461 modules)
+ PUT /api/master-parts/40 200 in 183ms
+ GET / 200 in 86ms
+ ✓ Compiled /api/options in 82ms (464 modules)
+ POST /api/options 201 in 101ms
+ PUT /api/master-parts/40 200 in 17ms
+ ✓ Compiled /api/options/[id] in 67ms (466 modules)
+ GET /api/options/6 200 in 88ms
+ DELETE /api/options/6 200 in 5ms
+ DELETE /api/master-parts/40 200 in 8ms
+ ✓ Compiled in 105ms (295 modules)
+ GET / 200 in 92ms
+ GET / 200 in 145ms
+ ✓ Compiled /api/dashboard in 113ms (468 modules)
+ GET /api/dashboard 200 in 133ms
+ ✓ Compiled /api/categories in 109ms (470 modules)
+ ✓ Compiled (472 modules)
+ GET /api/categories 200 in 206ms
+ GET /api/products 200 in 207ms
+ GET /api/options 200 in 208ms
+ GET /api/categories 200 in 4ms
+ GET /api/options 200 in 6ms
+ GET /api/products 200 in 7ms
+ GET /api/master-parts 200 in 26ms
+ GET /api/master-parts 200 in 13ms
+ PUT /api/master-parts/38 200 in 29ms
+ GET /api/master-parts 200 in 6ms
+ PUT /api/master-parts/38 200 in 21ms
+ GET /api/master-parts 200 in 7ms
+ PUT /api/master-parts/38 200 in 20ms
+ GET /api/master-parts 200 in 7ms
+ PUT /api/master-parts/23 200 in 25ms
+ GET /api/master-parts 200 in 7ms
+ GET / 200 in 130ms
+ GET /api/dashboard 200 in 14ms
+ GET / 200 in 70ms
+ GET /api/dashboard 200 in 6ms
+ GET /api/master-parts 200 in 12ms
+ GET /api/master-parts 200 in 10ms
+ PUT /api/master-parts/38 200 in 27ms
+ GET /api/master-parts 200 in 7ms
+ ✓ Compiled in 89ms (295 modules)
+ GET / 200 in 52ms
+ ✓ Compiled in 456ms (734 modules)
+ GET / 200 in 112ms
+ ✓ Compiled /api/master-parts/[id] in 166ms (459 modules)
+ PUT /api/master-parts/23 200 in 269ms
+ ✓ Compiled /api/master-parts in 67ms (461 modules)
+ GET /api/master-parts 200 in 87ms
+ PUT /api/master-parts/7 200 in 40ms
+ GET /api/master-parts 200 in 8ms
+ ✓ Compiled /api/pricing-rules in 379ms (760 modules)
+ GET /api/pricing-rules?masterPartId=7 200 in 405ms
+ GET /api/stock-length-rules?masterPartId=7 200 in 407ms
+ GET / 200 in 69ms
+ POST /api/stock-length-rules 200 in 21ms
+ GET /api/stock-length-rules?masterPartId=7 200 in 10ms
+ ✓ Compiled in 127ms (295 modules)
+ GET /api/stock-length-rules?masterPartId=7 200 in 83ms
+ GET /api/pricing-rules?masterPartId=7 200 in 40ms
+ GET / 200 in 16ms
+ GET / 200 in 138ms
+ ✓ Compiled /api/dashboard in 130ms (468 modules)
+ GET /api/dashboard 200 in 151ms
+ GET /api/master-parts 200 in 27ms
+ GET /api/master-parts 200 in 10ms
+ POST /api/master-parts 200 in 9ms
+ PUT /api/master-parts/41 200 in 21ms
+ GET /api/master-parts 200 in 12ms
+ PUT /api/master-parts/41 200 in 11ms
+ DELETE /api/master-parts/41 200 in 6ms
+ GET / 200 in 123ms
+ GET /api/dashboard 200 in 10ms
+ GET /api/master-parts 200 in 13ms
+ GET /api/master-parts 200 in 12ms
+ PUT /api/master-parts/38 200 in 25ms
+ GET /api/master-parts 200 in 8ms
+ PUT /api/master-parts/35 200 in 26ms
+ GET /api/master-parts 200 in 8ms
+ ✓ Compiled /api/options in 195ms (466 modules)
+ ✓ Compiled (470 modules)
+ GET /api/categories 200 in 339ms
+ GET /api/options 200 in 339ms
+ GET /api/products 200 in 342ms
+ GET /api/categories 200 in 5ms
+ GET /api/products 200 in 9ms
+ GET /api/options 200 in 11ms
+ ✓ Compiled /api/projects in 157ms (472 modules)
+ GET /api/projects 200 in 174ms
+ GET /api/projects 200 in 6ms
+ ✓ Compiled in 98ms (295 modules)
+ GET / 200 in 51ms
+ ✓ Compiled /api/projects/[id] in 166ms (474 modules)
+ GET /api/projects/1 200 in 188ms
+ GET /api/projects/1 200 in 5ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 82ms (476 modules)
+ POST /api/openings/5/calculate-price 200 in 104ms
+ POST /api/openings/5/calculate-price 200 in 110ms
+ POST /api/openings/9/calculate-price 200 in 12ms
+ POST /api/openings/9/calculate-price 200 in 15ms
+ GET /api/projects/1 200 in 7ms
+ GET /api/projects/1 200 in 6ms
+ ✓ Compiled in 88ms (295 modules)
+ GET / 200 in 28ms
+ ✓ Compiled /api/component-instances/[id] in 173ms (478 modules)
+ GET /api/component-instances/19 200 in 197ms
+ ✓ Compiled /api/products/[id] in 95ms (480 modules)
+ GET /api/products/5 200 in 112ms
+ GET /api/component-instances/19 200 in 25ms
+ GET /api/products/5 200 in 13ms
+ GET /api/component-instances/19 200 in 18ms
+ GET /api/products/5 200 in 18ms
+ GET /api/component-instances/19 200 in 20ms
+ GET /api/products/5 200 in 19ms
+ ✓ Compiled /api/projects/[id]/bom in 117ms (468 modules)
+ GET /api/projects/1/bom 200 in 143ms
+ ✓ Compiled in 424ms (734 modules)
+ GET / 200 in 139ms
+ ✓ Compiled in 169ms (734 modules)
+ GET / 200 in 55ms
+ ✓ Compiled in 161ms (734 modules)
+ GET / 200 in 63ms
+ GET / 200 in 82ms
+ ✓ Compiled /api/component-instances/[id] in 144ms (460 modules)
+ GET /api/component-instances/19 200 in 237ms
+ ✓ Compiled /api/products/[id] in 109ms (462 modules)
+ GET /api/products/5 200 in 157ms
+ ✓ Compiled in 338ms (734 modules)
+ GET / 200 in 133ms
+ ✓ Compiled /api/projects/[id] in 140ms (460 modules)
+ GET /api/projects/1 200 in 219ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 113ms (462 modules)
+ POST /api/openings/5/calculate-price 200 in 153ms
+ POST /api/openings/9/calculate-price 200 in 8ms
+ GET /api/projects/1 200 in 7ms
+ ✓ Compiled in 173ms (757 modules)
+ GET / 200 in 58ms
+ ✓ Compiled in 167ms (757 modules)
+ GET / 200 in 53ms
+ ✓ Compiled in 225ms (757 modules)
+ GET / 200 in 58ms
+ ✓ Compiled in 236ms (757 modules)
+ GET / 200 in 43ms
+ ✓ Compiled in 194ms (757 modules)
+ GET / 200 in 43ms
+ ✓ Compiled in 76ms (295 modules)
+ GET / 200 in 11ms
+ GET / 200 in 99ms
+ GET /api/projects/1 200 in 19ms
+ ✓ Compiled /api/panels/[id] in 278ms (757 modules)
+ GET / 200 in 58ms
+ PATCH /api/panels/19 200 in 703ms
+ PATCH /api/panels/19 200 in 15ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 62ms (464 modules)
+ POST /api/openings/5/calculate-price 200 in 86ms
+ GET / 200 in 111ms
+ ✓ Compiled /api/dashboard in 121ms (466 modules)
+ GET /api/dashboard 200 in 164ms
+ ✓ Compiled /api/options in 103ms (468 modules)
+ ✓ Compiled (472 modules)
+ GET /api/categories 200 in 255ms
+ GET /api/options 200 in 256ms
+ GET /api/products 200 in 257ms
+ GET /api/categories 200 in 6ms
+ GET /api/options 200 in 10ms
+ GET /api/products 200 in 13ms
+ ✓ Compiled /api/projects in 149ms (474 modules)
+ GET /api/projects 200 in 169ms
+ GET /api/projects 200 in 4ms
+ GET /api/projects/2 200 in 20ms
+ GET /api/projects/2 200 in 9ms
+ GET /api/projects 200 in 15ms
+ GET /api/projects 200 in 17ms
+ GET /api/projects/1 200 in 16ms
+ GET /api/projects/1 200 in 25ms
+ POST /api/openings/5/calculate-price 200 in 32ms
+ POST /api/openings/5/calculate-price 200 in 17ms
+ POST /api/openings/9/calculate-price 200 in 11ms
+ POST /api/openings/9/calculate-price 200 in 14ms
+ GET /api/projects/1 200 in 7ms
+ GET /api/projects/1 200 in 7ms
+ ✓ Compiled /api/component-instances/[id] in 120ms (476 modules)
+ GET /api/component-instances/19 200 in 140ms
+ ✓ Compiled /api/products/[id] in 81ms (478 modules)
+ GET /api/products/5 200 in 102ms
+ GET /api/component-instances/19 200 in 22ms
+ GET /api/products/5 200 in 12ms
+ GET /api/component-instances/21 200 in 26ms
+ GET /api/products/2 200 in 14ms
+ PATCH /api/panels/21 200 in 31ms
+ ✓ Compiled /api/components/[id] in 240ms (775 modules)
+ GET / 200 in 88ms
+Error: Route "/api/components/[id]" used `params.id`. `params` should be awaited before using its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
+    at PATCH (src/app/api/components/[id]/route.ts:11:40)
+   9 | ) {
+  10 |   try {
+> 11 |     const componentId = parseInt(params.id)
+     |                                        ^
+  12 |     
+  13 |     if (isNaN(componentId)) {
+  14 |       return NextResponse.json(
+ PATCH /api/components/21 200 in 630ms
+ GET /api/projects/1 200 in 10ms
+ POST /api/openings/5/calculate-price 200 in 14ms
+ POST /api/openings/9/calculate-price 200 in 17ms
+ GET /api/projects/1 200 in 18ms
+ POST /api/openings/5/calculate-price 200 in 19ms
+ POST /api/openings/9/calculate-price 200 in 21ms
+ GET /api/projects/1 200 in 10ms
+ ✓ Compiled /api/master-parts in 140ms (482 modules)
+ GET /api/master-parts 200 in 161ms
+ GET /api/master-parts 200 in 4ms
+ GET /api/products 200 in 21ms
+ GET /api/categories 200 in 43ms
+ GET /api/options 200 in 44ms
+ GET /api/products 200 in 20ms
+ GET /api/categories 200 in 9ms
+ GET /api/options 200 in 13ms
+ GET /api/products/5 200 in 21ms
+ GET /api/products/5 200 in 9ms
+ ✓ Compiled /api/categories/[id] in 139ms (484 modules)
+ DELETE /api/categories/3 200 in 156ms
+ GET /api/categories 200 in 8ms
+ POST /api/categories 201 in 14ms
+ GET /api/categories 200 in 14ms
+ GET /api/categories/4 200 in 16ms
+ GET /api/categories/4 200 in 13ms
+ GET /api/master-parts?optionsOnly=true 200 in 26ms
+ GET /api/master-parts?optionsOnly=true 200 in 7ms
+ POST /api/options 201 in 17ms
+ GET /api/categories 200 in 14ms
+ GET /api/categories/4 200 in 24ms
+ GET /api/master-parts 200 in 12ms
+ GET /api/master-parts 200 in 12ms
+ POST /api/master-parts 200 in 32ms
+ GET /api/master-parts 200 in 7ms
+ GET /api/products 200 in 29ms
+ GET /api/options 200 in 41ms
+ GET /api/categories 200 in 43ms
+ GET /api/products 200 in 27ms
+ GET /api/options 200 in 18ms
+ GET /api/categories 200 in 20ms
+ GET /api/master-parts 200 in 15ms
+ GET /api/master-parts 200 in 12ms
+ GET /api/products 200 in 21ms
+ GET /api/categories 200 in 34ms
+ GET /api/options 200 in 35ms
+ GET /api/products 200 in 25ms
+ GET /api/categories 200 in 17ms
+ GET /api/options 200 in 19ms
+ ✓ Compiled in 266ms (295 modules)
+ GET / 200 in 90ms
+ GET /api/categories/4 200 in 84ms
+ GET /api/categories/4 200 in 7ms
+ GET /api/master-parts?optionsOnly=true 200 in 19ms
+ GET /api/master-parts?optionsOnly=true 200 in 5ms
+ POST /api/options 201 in 25ms
+ GET /api/categories 200 in 20ms
+ GET /api/categories/4 200 in 21ms
+ GET /api/master-parts 200 in 16ms
+ GET /api/master-parts 200 in 20ms
+ GET /api/projects/1 200 in 30ms
+ GET /api/projects/1 200 in 17ms
+ POST /api/openings/5/calculate-price 200 in 34ms
+ POST /api/openings/5/calculate-price 200 in 18ms
+ POST /api/openings/9/calculate-price 200 in 15ms
+ POST /api/openings/9/calculate-price 200 in 17ms
+ GET /api/projects/1 200 in 13ms
+ GET /api/projects/1 200 in 7ms
+ ✓ Compiled in 103ms (295 modules)
+ GET / 200 in 30ms
+ ✓ Compiled /api/projects/[id]/bom in 176ms (460 modules)
+ GET /api/projects/1/bom 200 in 234ms
+ ✓ Compiled /api/categories in 107ms (462 modules)
+ ✓ Compiled (466 modules)
+ GET /api/categories 200 in 203ms
+ GET /api/options 200 in 204ms
+ GET /api/products 200 in 205ms
+ GET /api/categories 200 in 4ms
+ GET /api/options 200 in 7ms
+ GET /api/products 200 in 7ms
+ ✓ Compiled /api/products/[id] in 97ms (468 modules)
+ PUT /api/products/5 200 in 128ms
+ GET /api/products 200 in 8ms
+ ✓ Compiled /api/master-parts in 155ms (470 modules)
+ GET /api/master-parts 200 in 183ms
+ GET /api/master-parts 200 in 5ms
+ ✓ Compiled /api/projects/[id] in 162ms (472 modules)
+ GET /api/projects/1 200 in 188ms
+ GET /api/projects/1 200 in 4ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 78ms (474 modules)
+ POST /api/openings/5/calculate-price 200 in 96ms
+ POST /api/openings/5/calculate-price 200 in 102ms
+ POST /api/openings/9/calculate-price 200 in 11ms
+ POST /api/openings/9/calculate-price 200 in 15ms
+ GET /api/projects/1 200 in 7ms
+ GET /api/projects/1 200 in 6ms
+ GET /api/projects/1/bom 200 in 31ms
+ ✓ Compiled /api/component-instances/[id] in 112ms (476 modules)
+ GET /api/component-instances/19 200 in 131ms
+ GET /api/products/5 200 in 9ms
+ GET /api/component-instances/19 200 in 14ms
+ GET /api/products/5 200 in 11ms
+ GET /api/products 200 in 18ms
+ GET /api/options 200 in 38ms
+ GET /api/categories 200 in 40ms
+ GET /api/products 200 in 33ms
+ GET /api/options 200 in 17ms
+ GET /api/categories 200 in 18ms
+ GET /api/master-parts 200 in 26ms
+ GET /api/master-parts 200 in 10ms
+ GET /api/products 200 in 13ms
+ GET /api/options 200 in 24ms
+ GET /api/categories 200 in 26ms
+ GET /api/products 200 in 29ms
+ GET /api/options 200 in 20ms
+ GET /api/categories 200 in 21ms
+ GET /api/products/5 200 in 20ms
+ GET /api/products/5 200 in 6ms
+ ✓ Compiled /api/products/[id]/categories in 121ms (478 modules)
+ POST /api/products/5/categories 201 in 142ms
+ GET /api/products/5 200 in 6ms
+ GET /api/projects/1 200 in 23ms
+ GET /api/projects/1 200 in 22ms
+ POST /api/openings/5/calculate-price 200 in 34ms
+ POST /api/openings/5/calculate-price 200 in 16ms
+ POST /api/openings/9/calculate-price 200 in 15ms
+ POST /api/openings/9/calculate-price 200 in 12ms
+ GET /api/projects/1 200 in 8ms
+ GET /api/projects/1 200 in 6ms
+ GET /api/component-instances/19 200 in 21ms
+ GET /api/products/5 200 in 12ms
+ ✓ Compiled /api/panels/[id] in 173ms (480 modules)
+ PATCH /api/panels/19 200 in 194ms
+ ✓ Compiled /api/components/[id] in 96ms (482 modules)
+Error: Route "/api/components/[id]" used `params.id`. `params` should be awaited before using its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
+    at PATCH (src/app/api/components/[id]/route.ts:11:40)
+   9 | ) {
+  10 |   try {
+> 11 |     const componentId = parseInt(params.id)
+     |                                        ^
+  12 |     
+  13 |     if (isNaN(componentId)) {
+  14 |       return NextResponse.json(
+ PATCH /api/components/19 200 in 156ms
+ GET /api/projects/1 200 in 8ms
+ POST /api/openings/5/calculate-price 200 in 15ms
+ POST /api/openings/9/calculate-price 200 in 22ms
+ GET /api/projects/1 200 in 10ms
+ POST /api/openings/5/calculate-price 200 in 27ms
+ POST /api/openings/9/calculate-price 200 in 18ms
+ GET /api/projects/1 200 in 15ms
+ GET /api/projects/1/bom 200 in 27ms
+ ✓ Compiled in 279ms (295 modules)
+ GET / 200 in 85ms
+ ✓ Compiled /api/projects in 194ms (460 modules)
+ GET /api/projects 200 in 277ms
+ GET /api/projects 200 in 4ms
+ ✓ Compiled /api/projects/[id] in 93ms (462 modules)
+ GET /api/projects/2 200 in 118ms
+ GET /api/projects/2 200 in 5ms
+ ✓ Compiled /api/openings in 277ms (759 modules)
+ POST /api/openings 201 in 313ms
+ GET / 200 in 76ms
+ GET /api/projects/2 200 in 46ms
+ ✓ Compiled /api/products in 102ms (466 modules)
+ GET /api/products 200 in 123ms
+ ✓ Compiled /api/panels in 179ms (763 modules)
+ POST /api/panels 201 in 199ms
+ GET / 200 in 45ms
+ ✓ Compiled /api/component-instances in 156ms (765 modules)
+ POST /api/component-instances 201 in 207ms
+ GET / 200 in 63ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 118ms (472 modules)
+ POST /api/openings/10/calculate-price 200 in 170ms
+ GET /api/projects/2 200 in 7ms
+ POST /api/openings/10/calculate-price 200 in 8ms
+ GET /api/projects/2 200 in 5ms
+ ✓ Compiled /api/projects/[id]/bom in 157ms (474 modules)
+ GET /api/projects/2/bom 200 in 182ms
+ GET / 200 in 127ms
+ ✓ Compiled /api/dashboard in 143ms (474 modules)
+ GET /api/dashboard 200 in 177ms
+ ✓ Compiled /api/master-parts in 199ms (476 modules)
+ GET /api/master-parts 200 in 228ms
+ GET /api/master-parts 200 in 4ms
+ GET /api/products 200 in 31ms
+ ✓ Compiled /api/categories in 186ms (478 modules)
+ ✓ Compiled (480 modules)
+ GET /api/options 200 in 312ms
+ GET /api/categories 200 in 313ms
+ GET /api/products 200 in 269ms
+ GET /api/options 200 in 4ms
+ GET /api/categories 200 in 5ms
+ GET /api/master-parts 200 in 24ms
+ GET /api/master-parts 200 in 8ms
+ ✓ Compiled /api/pricing-rules in 174ms (482 modules)
+ ✓ Compiled (484 modules)
+ GET /api/pricing-rules?masterPartId=12 200 in 294ms
+ GET /api/stock-length-rules?masterPartId=12 200 in 295ms
+ ✓ Compiled /api/stock-length-rules/[id] in 211ms (781 modules)
+ GET / 200 in 37ms
+ GET / 200 in 23ms
+ PUT /api/stock-length-rules/10 200 in 619ms
+ GET /api/stock-length-rules?masterPartId=12 200 in 10ms
+ GET / 200 in 100ms
+ GET /api/dashboard 200 in 30ms
+ ✓ Compiled /api/projects in 225ms (488 modules)
+ GET /api/projects 200 in 249ms
+ GET /api/projects 200 in 4ms
+ GET /api/master-parts 200 in 27ms
+ GET /api/master-parts 200 in 10ms
+ GET /api/stock-length-rules?masterPartId=12 200 in 37ms
+ GET /api/pricing-rules?masterPartId=12 200 in 40ms
+ PUT /api/stock-length-rules/10 200 in 37ms
+ GET /api/stock-length-rules?masterPartId=12 200 in 11ms
+ GET /api/projects 200 in 20ms
+ GET /api/projects 200 in 14ms
+ GET /api/projects/2 200 in 30ms
+ GET /api/projects/2 200 in 24ms
+ POST /api/openings/10/calculate-price 200 in 27ms
+ POST /api/openings/10/calculate-price 200 in 14ms
+ GET /api/projects/2 200 in 13ms
+ GET /api/projects/2 200 in 6ms
+ GET / 200 in 108ms
+ GET /api/dashboard 200 in 12ms
+ GET /api/projects 200 in 15ms
+ GET /api/projects 200 in 12ms
+ GET /api/projects/2 200 in 24ms
+ GET /api/projects/2 200 in 16ms
+ POST /api/openings/10/calculate-price 200 in 27ms
+ POST /api/openings/10/calculate-price 200 in 15ms
+ GET /api/projects/2 200 in 12ms
+ GET /api/projects/2 200 in 9ms
+ GET /api/projects/2/bom 200 in 27ms
+ GET /api/products 200 in 37ms
+ GET /api/categories 200 in 50ms
+ GET /api/options 200 in 51ms
+ GET /api/categories 200 in 8ms
+ GET /api/products 200 in 13ms
+ GET /api/options 200 in 14ms
+ ✓ Compiled /api/products/[id] in 244ms (484 modules)
+ GET /api/products/2 200 in 265ms
+ GET /api/products/2 200 in 4ms
+ GET /api/projects 200 in 23ms
+ GET /api/projects 200 in 10ms
+ GET /api/projects/2 200 in 29ms
+ GET /api/projects/2 200 in 20ms
+ POST /api/openings/10/calculate-price 200 in 26ms
+ POST /api/openings/10/calculate-price 200 in 12ms
+ GET /api/projects/2 200 in 9ms
+ GET /api/projects/2 200 in 7ms
+ GET /api/projects/2/bom 200 in 33ms
+ ✓ Compiled /api/projects/[id]/bom/csv in 316ms (773 modules)
+ GET / 200 in 89ms
+ GET /api/projects/2/bom/csv 200 in 746ms
+ GET /api/projects 200 in 64ms
+ GET /api/projects 200 in 5ms
+ GET /api/projects/2 200 in 40ms
+ GET /api/projects/2 200 in 10ms
+ POST /api/openings/10/calculate-price 200 in 26ms
+ POST /api/openings/10/calculate-price 200 in 12ms
+ GET /api/projects/2 200 in 8ms
+ GET /api/projects/2 200 in 9ms
+ ✓ Compiled in 159ms (295 modules)
+ GET / 200 in 18ms
+ GET /api/projects 200 in 19ms
+ GET /api/projects 200 in 10ms
+ GET /api/projects/1 200 in 24ms
+ GET /api/projects/1 200 in 14ms
+ POST /api/openings/5/calculate-price 200 in 25ms
+ POST /api/openings/5/calculate-price 200 in 17ms
+ POST /api/openings/9/calculate-price 200 in 15ms
+ POST /api/openings/9/calculate-price 200 in 16ms
+ GET /api/projects/1 200 in 11ms
+ GET /api/projects/1 200 in 8ms
+ ✓ Compiled in 269ms (295 modules)
+ ✓ Compiled in 178ms (295 modules)
+ GET / 200 in 175ms
+ GET / 200 in 10ms
+ ✓ Compiled /api/master-parts in 195ms (459 modules)
+ GET /api/master-parts 200 in 292ms
+ GET /api/master-parts 200 in 5ms
+ ✓ Compiled /api/categories in 104ms (462 modules)
+ ✓ Compiled (466 modules)
+ GET /api/options 200 in 186ms
+ GET /api/products 200 in 188ms
+ GET /api/categories 200 in 187ms
+ GET /api/options 200 in 6ms
+ GET /api/categories 200 in 10ms
+ GET /api/products 200 in 11ms
+ GET /api/master-parts 200 in 30ms
+ GET /api/master-parts 200 in 10ms
+ ✓ Compiled in 998ms (295 modules)
+ GET / 200 in 87ms
+ GET /api/products 200 in 35ms
+ GET /api/options 200 in 51ms
+ GET /api/categories 200 in 54ms
+ GET /api/products 200 in 28ms
+ GET /api/options 200 in 13ms
+ GET /api/categories 200 in 18ms
+ ✓ Compiled /api/projects/[id] in 112ms (468 modules)
+ GET /api/projects/1 200 in 135ms
+ GET /api/projects/1 200 in 6ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 300ms (470 modules)
+ POST /api/openings/5/calculate-price 200 in 315ms
+ POST /api/openings/5/calculate-price 200 in 334ms
+ POST /api/openings/9/calculate-price 200 in 10ms
+ POST /api/openings/9/calculate-price 200 in 14ms
+ GET /api/projects/1 200 in 11ms
+ GET /api/projects/1 200 in 5ms
+ GET /api/master-parts 200 in 29ms
+ GET /api/master-parts 200 in 10ms
+ ✓ Compiled in 1047ms (295 modules)
+ GET / 200 in 84ms
+ ✓ Compiled in 668ms (295 modules)
+ GET / 200 in 32ms
+ ✓ Compiled /api/dashboard in 227ms (460 modules)
+ GET /api/dashboard 200 in 292ms
+ GET /api/dashboard 200 in 4ms
+ ✓ Compiled /api/projects/[id] in 89ms (462 modules)
+ GET /api/projects/1 200 in 112ms
+ GET /api/projects/1 200 in 6ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 55ms (464 modules)
+ POST /api/openings/5/calculate-price 200 in 71ms
+ POST /api/openings/5/calculate-price 200 in 86ms
+ POST /api/openings/9/calculate-price 200 in 9ms
+ POST /api/openings/9/calculate-price 200 in 11ms
+ GET /api/projects/1 200 in 9ms
+ GET /api/projects/1 200 in 5ms
+ ✓ Compiled /api/projects in 98ms (466 modules)
+ GET /api/projects 200 in 115ms
+ GET /api/projects 200 in 3ms
+ GET /api/dashboard 200 in 18ms
+ GET /api/dashboard 200 in 11ms
+ GET /api/projects 200 in 16ms
+ GET /api/projects 200 in 11ms
+ GET /api/projects/2 200 in 25ms
+ GET /api/projects/2 200 in 22ms
+ POST /api/openings/10/calculate-price 200 in 27ms
+ POST /api/openings/10/calculate-price 200 in 15ms
+ GET /api/projects/2 200 in 13ms
+ GET /api/projects/2 200 in 10ms
+ GET /api/projects 200 in 12ms
+ GET /api/projects 200 in 12ms
+ ✓ Compiled /api/categories in 150ms (468 modules)
+ ✓ Compiled (472 modules)
+ GET /api/options 200 in 247ms
+ GET /api/categories 200 in 248ms
+ GET /api/products 200 in 249ms
+ GET /api/options 200 in 4ms
+ GET /api/categories 200 in 8ms
+ GET /api/products 200 in 10ms
+ GET / 200 in 634ms
+ GET /api/dashboard 200 in 72ms
+ GET /api/projects 200 in 35ms
+ GET /api/projects 200 in 13ms
+ GET /api/projects/2 200 in 45ms
+ GET /api/projects/2 200 in 14ms
+ POST /api/openings/10/calculate-price 200 in 36ms
+ POST /api/openings/10/calculate-price 200 in 11ms
+ GET /api/projects/2 200 in 8ms
+ GET /api/projects/2 200 in 10ms
+ ✓ Compiled /api/component-instances/[id] in 431ms (763 modules)
+ GET /api/component-instances/23 200 in 480ms
+ GET / 200 in 97ms
+ ✓ Compiled /api/products/[id] in 214ms (470 modules)
+ GET /api/products/2 200 in 242ms
+ ✓ Compiled in 583ms (734 modules)
+ GET / 200 in 190ms
+ GET / 200 in 116ms
+ ✓ Compiled /api/dashboard in 82ms (460 modules)
+ GET /api/dashboard 200 in 467ms
+ ✓ Compiled /api/projects in 59ms (462 modules)
+ GET /api/projects 200 in 84ms
+ GET /api/projects 200 in 5ms
+ ✓ Compiled in 229ms (757 modules)
+ GET / 200 in 65ms
+ ✓ Compiled /api/projects/[id] in 146ms (464 modules)
+ GET /api/projects/2 200 in 178ms
+ GET /api/projects/2 200 in 11ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 69ms (466 modules)
+ POST /api/openings/10/calculate-price 200 in 80ms
+ POST /api/openings/10/calculate-price 200 in 104ms
+ GET /api/projects/2 200 in 10ms
+ GET /api/projects/2 200 in 7ms
+ ✓ Compiled /api/products in 177ms (468 modules)
+ GET /api/products 200 in 202ms
+ GET / 200 in 107ms
+ GET /api/projects 200 in 16ms
+ GET /api/projects 200 in 7ms
+ GET /api/products 200 in 25ms
+ ✓ Compiled /api/categories in 222ms (468 modules)
+ ✓ Compiled (470 modules)
+ GET /api/options 200 in 394ms
+ GET /api/categories 200 in 396ms
+ GET /api/products 200 in 361ms
+ GET /api/options 200 in 9ms
+ GET /api/categories 200 in 14ms
+ ✓ Compiled /api/products/[id] in 149ms (468 modules)
+ GET /api/products/5 200 in 174ms
+ GET /api/products/5 200 in 4ms
+ ✓ Compiled in 602ms (734 modules)
+ GET / 200 in 162ms
+ ✓ Compiled in 248ms (734 modules)
+ GET / 200 in 53ms
+ GET / 200 in 95ms
+ ✓ Compiled in 365ms (734 modules)
+ GET / 200 in 102ms
+ GET / 200 in 181ms
+ ✓ Compiled /api/dashboard in 181ms (460 modules)
+ GET /api/dashboard 200 in 301ms
+ ✓ Compiled /api/options in 78ms (462 modules)
+ ✓ Compiled (466 modules)
+ GET /api/categories 200 in 269ms
+ GET /api/options 200 in 272ms
+ GET /api/products 200 in 273ms
+ GET /api/categories 200 in 7ms
+ GET /api/products 200 in 13ms
+ GET /api/options 200 in 15ms
+ ✓ Compiled /api/products/[id] in 100ms (468 modules)
+ GET /api/products/5 200 in 119ms
+ GET /api/products/5 200 in 4ms
+ ✓ Compiled /api/master-parts in 147ms (470 modules)
+ GET /api/master-parts?search=A 200 in 190ms
+ GET /api/master-parts?search=t 200 in 16ms
+ GET /api/master-parts?search=te 200 in 15ms
+ GET /api/master-parts?search=tet 200 in 15ms
+ GET /api/master-parts?search=te 200 in 17ms
+ GET /api/master-parts?search=tes 200 in 17ms
+ GET /api/master-parts?search=test 200 in 18ms
+ GET /api/master-parts?search=test%20 200 in 15ms
+ GET /api/master-parts?search=test%20v 200 in 17ms
+ GET /api/master-parts?search=test%20 200 in 14ms
+ GET /api/master-parts?search=test 200 in 16ms
+ GET /api/master-parts?search=tes 200 in 15ms
+ GET /api/master-parts?search=te 200 in 17ms
+ GET /api/master-parts?search=t 200 in 16ms
+ GET /api/master-parts?search=t 200 in 14ms
+ GET /api/master-parts?search=te 200 in 16ms
+ GET /api/master-parts?search=tes 200 in 20ms
+ GET /api/master-parts?search=test 200 in 16ms
+ ✓ Compiled /api/projects in 168ms (460 modules)
+ GET /api/projects 200 in 207ms
+ GET /api/projects 200 in 6ms
+ ✓ Compiled /api/projects/[id] in 125ms (462 modules)
+ GET /api/projects/1 200 in 163ms
+ GET /api/projects/1 200 in 9ms
+ ✓ Compiled /api/openings/[id]/calculate-price in 64ms (464 modules)
+ POST /api/openings/5/calculate-price 200 in 81ms
+ POST /api/openings/5/calculate-price 200 in 97ms
+ POST /api/openings/9/calculate-price 200 in 14ms
+ POST /api/openings/9/calculate-price 200 in 17ms
+ GET /api/projects/1 200 in 10ms
+ GET /api/projects/1 200 in 9ms
+ ✓ Compiled /api/products in 95ms (466 modules)
+ GET /api/products 200 in 117ms
+ GET /api/products 200 in 19ms
+ ✓ Compiled /api/categories in 149ms (468 modules)
+ ✓ Compiled (470 modules)
+ GET /api/categories 200 in 313ms
+ GET /api/options 200 in 314ms
+ GET /api/products 200 in 296ms
+ GET /api/categories 200 in 8ms
+ GET /api/options 200 in 8ms
+ ✓ Compiled in 238ms (295 modules)
+ GET / 200 in 167ms
+ ✓ Compiled in 190ms (295 modules)
+ GET / 200 in 19ms
+ ✓ Compiled in 163ms (295 modules)
+ GET / 200 in 78ms
+ ✓ Compiled in 85ms (295 modules)
+ GET / 200 in 15ms
+ ✓ Compiled in 233ms (734 modules)
+ GET / 200 in 159ms
+ ✓ Compiled in 95ms (295 modules)
+ GET / 200 in 12ms
+ ✓ Compiled in 602ms (734 modules)
+ GET / 200 in 59ms
+ ✓ Compiled in 184ms (734 modules)
+ GET / 200 in 70ms
+ ✓ Compiled in 148ms (734 modules)
+ GET / 200 in 40ms
+ ✓ Compiled in 149ms (734 modules)
+ GET / 200 in 38ms
+ ✓ Compiled in 208ms (734 modules)
+ GET / 200 in 38ms
+ ✓ Compiled in 214ms (734 modules)
+ GET / 200 in 58ms
+ ✓ Compiled in 220ms (734 modules)
+ GET / 200 in 125ms
+ ✓ Compiled in 178ms (734 modules)
+ GET / 200 in 35ms
+ ✓ Compiled in 193ms (734 modules)
+ GET / 200 in 57ms
+ ✓ Compiled in 188ms (734 modules)
+ GET / 200 in 34ms
+ ✓ Compiled in 304ms (734 modules)
+ GET / 200 in 43ms
+ ✓ Compiled /_not-found in 482ms (737 modules)
+ GET / 404 in 662ms
+ GET / 200 in 192ms
+ GET /_next/static/css/app/layout.css?v=1753543929903 404 in 69ms
+ GET /_next/static/chunks/main-app.js?v=1753543929903 404 in 84ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 83ms
+ GET /_next/static/chunks/app/error.js 404 in 84ms
+ GET /_next/static/chunks/app/not-found.js 404 in 84ms
+ GET / 200 in 50ms
+ GET /_next/static/css/app/layout.css?v=1753543933770 404 in 70ms
+ GET /_next/static/chunks/main-app.js?v=1753543933770 404 in 76ms
+ GET /_next/static/chunks/app/error.js 404 in 75ms
+ GET /_next/static/chunks/app/not-found.js 404 in 87ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 88ms
+ GET /_next/static/chunks/app/page.js 404 in 33ms
+ ✓ Compiled in 396ms (737 modules)
+ ✓ Compiled in 140ms (295 modules)
+ ✓ Compiled in 69ms (295 modules)
+ GET / 200 in 186ms
+ GET /_next/static/css/app/layout.css?v=1753544069392 404 in 103ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 108ms
+ GET /_next/static/chunks/app/error.js 404 in 107ms
+ GET /_next/static/chunks/app/not-found.js 404 in 106ms
+ GET /_next/static/chunks/main-app.js?v=1753544069392 404 in 113ms
+ ⨯ [Error: ENOENT: no such file or directory, open '/Users/kylepalmer/Desktop/GROK APP 2 (CLAUDE)/quoting-tool-nextjs/.next/routes-manifest.json'] {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/Users/kylepalmer/Desktop/GROK APP 2 (CLAUDE)/quoting-tool-nextjs/.next/routes-manifest.json',
+  page: '/'
+}
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 1148ms (1062 modules)
+ ⨯ [Error: ENOENT: no such file or directory, open '/Users/kylepalmer/Desktop/GROK APP 2 (CLAUDE)/quoting-tool-nextjs/.next/routes-manifest.json'] {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/Users/kylepalmer/Desktop/GROK APP 2 (CLAUDE)/quoting-tool-nextjs/.next/routes-manifest.json'
+}
+ GET / 500 in 3040ms
+[?25h

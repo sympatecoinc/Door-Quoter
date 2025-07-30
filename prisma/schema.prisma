@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id        Int       @id @default(autoincrement())
+  name      String
+  status    String    @default("Draft")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  dueDate   DateTime?
+  boms      BOM[]
+  openings  Opening[]
+
+  @@map("Projects")
+}
+
+model Opening {
+  id             Int      @id @default(autoincrement())
+  projectId      Int
+  name           String
+  roughWidth     Float?
+  roughHeight    Float?
+  finishedWidth  Float?
+  finishedHeight Float?
+  finishColor    String?  // Black, Clear, Other - used for extrusion part number suffixes
+  price          Float    @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  panels         Panel[]
+
+  @@map("Openings")
+}
+
+model Panel {
+  id                Int                @id @default(autoincrement())
+  openingId         Int
+  type              String
+  width             Float
+  height            Float
+  glassType         String
+  locking           String
+  swingDirection    String             @default("None")
+  slidingDirection  String             @default("Left")
+  isCorner          Boolean            @default(false)
+  cornerDirection   String             @default("Up")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  componentInstance ComponentInstance?
+  opening           Opening            @relation(fields: [openingId], references: [id], onDelete: Cascade)
+
+  @@map("Panels")
+}
+
+enum ProductType {
+  SWING_DOOR   @map("Swing Door")
+  SLIDING_DOOR @map("Sliding Door")
+  FIXED_PANEL  @map("Fixed Panel")
+  CORNER_90    @map("90 Degree Corner")
+}
+
+model Product {
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  description        String?
+  type               String              @default("Product")
+  productType        ProductType         @default(SWING_DOOR)
+  archived           Boolean             @default(false)
+  withTrim           String              @default("Without Trim")
+  glassWidthFormula  String?
+  glassHeightFormula String?
+  glassQuantityFormula String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  componentInstances ComponentInstance[]
+  productBOMs        ProductBOM[]
+  productSubOptions  ProductSubOption[]
+
+  @@map("Products")
+}
+
+model SubOptionCategory {
+  id                Int                @id @default(autoincrement())
+  name              String
+  description       String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  individualOptions IndividualOption[]
+  productSubOptions ProductSubOption[]
+
+  @@map("SubOptionCategories")
+}
+
+model IndividualOption {
+  id          Int               @id @default(autoincrement())
+  categoryId  Int
+  name        String
+  description String?
+  price       Float             @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  category    SubOptionCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@map("IndividualOptions")
+}
+
+model ProductSubOption {
+  id         Int               @id @default(autoincrement())
+  productId  Int
+  categoryId Int
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  category   SubOptionCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  product    Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, categoryId])
+  @@map("ProductSubOptions")
+}
+
+model BOM {
+  id           Int      @id @default(autoincrement())
+  projectId    Int
+  materialType String
+  partName     String
+  quantity     Float
+  unit         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("BOMs")
+}
+
+model ProductBOM {
+  id          Int      @id @default(autoincrement())
+  productId   Int
+  partType    String   @default("Hardware")
+  partName    String
+  description String?
+  formula     String?
+  variable    String?
+  unit        String?
+  quantity    Float?
+  stockLength Float?
+  partNumber  String?
+  cost        Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("ProductBOMs")
+}
+
+model ComponentInstance {
+  id                  Int      @id @default(autoincrement())
+  panelId             Int      @unique
+  productId           Int
+  subOptionSelections String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  product             Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  panel               Panel    @relation(fields: [panelId], references: [id], onDelete: Cascade)
+
+  @@map("ComponentInstances")
+}
+
+model MasterPart {
+  id               Int                @id @default(autoincrement())
+  partNumber       String             @unique
+  baseName         String
+  description      String?
+  unit             String?
+  cost             Float?
+  partType         String             @default("Hardware")
+  category         String?
+  orientation      String?            // "Vertical" or "Horizontal" for extrusions
+  isOption         Boolean            @default(false) // True if this hardware part can be used as a category option
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  stockLengthRules StockLengthRule[]
+  pricingRules     PricingRule[]
+
+  @@map("MasterParts")
+}
+
+model StockLengthRule {
+  id             Int        @id @default(autoincrement())
+  name           String
+  description    String?
+  minHeight      Float?
+  maxHeight      Float?
+  minWidth       Float?
+  maxWidth       Float?
+  stockLength    Float?     // For inch-based parts
+  piecesPerUnit  Float?     // For unit-based parts
+  maxLength      Float?     // Maximum length constraint
+  maxLengthAppliesTo String? @default("height") // "height" or "width" - what the max length constraint is based on
+  appliesTo      String     @default("height") // "height", "width", or "both"
+  partType       String     @default("Extrusion")
+  isActive       Boolean    @default(true)
+  // Pricing fields for extrusions (pricing based on stock length)
+  basePrice      Float?     // Base price for extrusions
+  formula        String?    // e.g., "basePrice * (stockLength / 96)" or "basePrice * quantity"
+  minQuantity    Float?
+  maxQuantity    Float?
+  masterPartId   Int        // Required - always tied to a master part
+  masterPart     MasterPart @relation(fields: [masterPartId], references: [id], onDelete: Cascade)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@map("StockLengthRules")
+}
+
+model PricingRule {
+  id           Int        @id @default(autoincrement())
+  name         String
+  description  String?
+  basePrice    Float?
+  formula      String?    // e.g., "basePrice * quantity" or "width * height * pricePerSqFt"
+  minQuantity  Float?
+  maxQuantity  Float?
+  partType     String     @default("Hardware")
+  category     String?
+  isActive     Boolean    @default(true)
+  masterPartId Int        // Required - always tied to a master part
+  masterPart   MasterPart @relation(fields: [masterPartId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@map("PricingRules")
+}
