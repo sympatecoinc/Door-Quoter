@@ -302,7 +302,7 @@ export async function POST(
 
       // Calculate BOM costs using proper pricing rules
       for (const bom of product.productBOMs) {
-        const { cost, breakdown } = await calculateBOMItemPrice(bom, panel.width, panel.height, opening.finishColor)
+        const { cost, breakdown } = await calculateBOMItemPrice(bom, panel.width, panel.height, opening.finishColor || '')
         componentBreakdown.bomCosts.push(breakdown)
         componentBreakdown.totalBOMCost += cost
         componentCost += cost
@@ -327,7 +327,7 @@ export async function POST(
 
             if (individualOption && individualOption.price > 0) {
               componentBreakdown.optionCosts.push({
-                categoryName: category.name,
+                categoryName: category?.name || '',
                 optionName: individualOption.name,
                 price: individualOption.price
               })

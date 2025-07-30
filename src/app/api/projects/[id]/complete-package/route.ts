@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { spawn } from 'child_process'
 import path from 'path'
+import fs from 'fs'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   console.log('Complete package API called')
@@ -91,7 +92,6 @@ async function generateCompletePackage(projectData: any): Promise<any> {
     console.log('Python script path:', pythonScript)
     
     // Check if Python script exists
-    const fs = require('fs')
     if (!fs.existsSync(pythonScript)) {
       resolve({
         success: false,
@@ -143,7 +143,7 @@ async function generateCompletePackage(projectData: any): Promise<any> {
         console.error('Raw output:', stdout)
         resolve({
           success: false,
-          error: `Failed to parse package generation response: ${parseError.message}`
+          error: `Failed to parse package generation response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`
         })
       }
     })

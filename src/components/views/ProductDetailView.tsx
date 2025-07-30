@@ -6,7 +6,7 @@ import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 
 // Debounce utility function
-function debounce(func: Function, wait: number) {
+function debounce(func: (...args: any[]) => void, wait: number) {
   let timeout: NodeJS.Timeout
   return function executedFunction(...args: any[]) {
     const later = () => {
