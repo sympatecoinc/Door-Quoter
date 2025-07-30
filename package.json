@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
-    "migrate-data": "tsx scripts/migrate-data.ts"
+    "migrate-data": "tsx scripts/migrate-data.ts",
+    "deploy:full": "node deploy.js --commit --message 'Automated deployment'",
+    "deploy:quick": "node deploy.js",
+    "deploy:check": "npm run build && npm run lint"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.4",
