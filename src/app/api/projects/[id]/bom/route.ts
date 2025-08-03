@@ -34,29 +34,48 @@ function getFinishSuffix(finishColor: string): string {
   }
 }
 
-// Helper function to apply finish code to part number
-function applyFinishCode(partNumber: string, finishColor: string): string {
-  if (!partNumber || !finishColor) return partNumber
-  
-  const finishSuffix = getFinishSuffix(finishColor)
-  if (!finishSuffix) return partNumber
-  
-  if (partNumber.endsWith(finishSuffix)) {
-    return partNumber
-  }
-  
-  const finishCodes = ['-BL', '-C2', '-AL']
-  for (const code of finishCodes) {
-    if (partNumber.endsWith(code)) {
-      return partNumber.slice(0, -code.length) + finishSuffix
+
+// Helper function to calculate required part length from formula
+function calculateRequiredPartLength(bom: any, variables: Record<string, number>): number {
+  if (bom.formula) {
+    try {
+      return evaluateFormula(bom.formula, variables)
+    } catch (error) {
+      console.error('Error evaluating part length formula:', error)
+      return 0
     }
   }
   
-  return partNumber + finishSuffix
+  // For extrusions without formulas, try to use a reasonable default based on component size
+  // This handles cases where extrusions don't have specific formulas but still need stock lengths
+  if (bom.partType === 'Extrusion') {
+    // Use the larger of width or height as a reasonable default for part length
+    return Math.max(variables.width || 0, variables.height || 0)
+  }
+  
+  return bom.quantity || 0
 }
 
-// Helper function to find stock length for extrusions
-async function findStockLength(partNumber: string, componentWidth: number, componentHeight: number): Promise<number | null> {
+// Helper function to find best stock length rule based on calculated part length
+function findBestStockLengthRule(rules: any[], requiredLength: number): any | null {
+  const applicableRules = rules.filter(rule => {
+    // Check if rule applies to the required part length
+    const matchesLength = (rule.minHeight === null || requiredLength >= rule.minHeight) && 
+                         (rule.maxHeight === null || requiredLength <= rule.maxHeight)
+    
+    return rule.isActive && matchesLength
+  })
+  
+  // Return the rule with the most restrictive constraints (most specific)
+  return applicableRules.sort((a, b) => {
+    const aSpecificity = (a.minHeight !== null ? 1 : 0) + (a.maxHeight !== null ? 1 : 0)
+    const bSpecificity = (b.minHeight !== null ? 1 : 0) + (b.maxHeight !== null ? 1 : 0)
+    return bSpecificity - aSpecificity
+  })[0] || null
+}
+
+// Helper function to find stock length for extrusions using the new formula-based approach
+async function findStockLength(partNumber: string, bom: any, variables: Record<string, number>): Promise<number | null> {
   try {
     const masterPart = await prisma.masterPart.findUnique({
       where: { partNumber },
@@ -65,25 +84,12 @@ async function findStockLength(partNumber: string, componentWidth: number, compo
       }
     })
 
-    if (masterPart && masterPart.stockLengthRules.length > 0) {
-      const applicableRules = masterPart.stockLengthRules.filter(rule => {
-        const matchesWidth = (rule.minWidth === null || componentWidth >= rule.minWidth) && 
-                            (rule.maxWidth === null || componentWidth <= rule.maxWidth)
-        const matchesHeight = (rule.minHeight === null || componentHeight >= rule.minHeight) && 
-                             (rule.maxHeight === null || componentHeight <= rule.maxHeight)
-        
-        return rule.isActive && matchesWidth && matchesHeight
-      })
+    if (masterPart && masterPart.partType === 'Extrusion' && masterPart.stockLengthRules.length > 0) {
+      // Calculate the required part length from the ProductBOM formula
+      const requiredLength = calculateRequiredPartLength(bom, variables)
       
-      if (applicableRules.length > 0) {
-        const bestRule = applicableRules.sort((a, b) => {
-          const aSpecificity = (a.minWidth !== null ? 1 : 0) + (a.maxWidth !== null ? 1 : 0) +
-                              (a.minHeight !== null ? 1 : 0) + (a.maxHeight !== null ? 1 : 0)
-          const bSpecificity = (b.minWidth !== null ? 1 : 0) + (b.maxWidth !== null ? 1 : 0) +
-                              (b.minHeight !== null ? 1 : 0) + (b.maxHeight !== null ? 1 : 0)
-          return bSpecificity - aSpecificity
-        })[0]
-        
+      const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
+      if (bestRule) {
         return bestRule.stockLength || null
       }
     }
@@ -156,6 +162,8 @@ export async function GET(
           const variables = {
             width: panel.width || 0,
             height: panel.height || 0,
+            Width: panel.width || 0,    // Support both uppercase and lowercase
+            Height: panel.height || 0,  // Support both uppercase and lowercase
             quantity: bom.quantity || 1
           }
 
@@ -165,21 +173,28 @@ export async function GET(
             cutLength = evaluateFormula(bom.formula, variables)
           }
 
-          // Generate part number with finish code for extrusions
+          // Generate part number with finish code and stock length for extrusions
           let fullPartNumber = bom.partNumber || ''
-          if (bom.partType === 'Extrusion' && fullPartNumber && opening.finishColor) {
-            fullPartNumber = applyFinishCode(fullPartNumber, opening.finishColor)
-          }
-
-          // Find stock length for extrusions
           let stockLength: number | null = null
-          if (bom.partType === 'Extrusion' && bom.partNumber) {
-            stockLength = await findStockLength(bom.partNumber, panel.width, panel.height)
-          }
-
-          // Add stock length to part number if available
-          if (stockLength && fullPartNumber) {
-            fullPartNumber = `${fullPartNumber}-${stockLength}`
+          
+          if (bom.partType === 'Extrusion' && fullPartNumber) {
+            // Find stock length for extrusions first
+            if (bom.partNumber) {
+              stockLength = await findStockLength(bom.partNumber, bom, variables)
+            }
+            
+            // Append finish color code if available
+            if (opening.finishColor) {
+              const finishSuffix = getFinishSuffix(opening.finishColor)
+              if (finishSuffix) {
+                fullPartNumber = `${fullPartNumber}${finishSuffix}`
+              }
+            }
+            
+            // Append stock length if available
+            if (stockLength) {
+              fullPartNumber = `${fullPartNumber}-${stockLength}`
+            }
           }
 
           bomItems.push({
