@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { partNumber, baseName, description, unit, cost, partType, orientation, isOption } = body
+    const { partNumber, baseName, description, unit, cost, partType, isOption } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({ 
@@ -110,6 +110,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ 
         error: 'Glass cannot be created as a master part as it is not a stocked item' 
       }, { status: 400 })
+    }
+
+    // Validate cost requirements: Hardware parts require cost, Extrusions don't
+    if (partType === 'Hardware') {
+      if (!cost || isNaN(parseFloat(cost.toString()))) {
+        return NextResponse.json({ 
+          error: 'Hardware parts require a valid cost' 
+        }, { status: 400 })
+      }
     }
 
     // Check if part number already exists
@@ -131,7 +140,6 @@ export async function POST(request: NextRequest) {
         unit: (partType === 'Extrusion') ? 'IN' : unit, // Always set unit to 'IN' for extrusions
         cost: (partType === 'Extrusion') ? null : (cost ? parseFloat(cost) : null),
         partType: partType || 'Hardware',
-        orientation: (partType === 'Extrusion') ? orientation : null,
         isOption: (partType === 'Hardware') ? (isOption || false) : false // Only hardware can be options
       }
     })

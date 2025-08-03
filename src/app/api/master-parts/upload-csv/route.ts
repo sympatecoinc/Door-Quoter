@@ -36,7 +36,6 @@ export async function POST(request: NextRequest) {
     // Parse data rows
     const dataRows = lines.slice(1)
     let imported = 0
-    let updated = 0
     const errors: string[] = []
     const skipped: string[] = []
 
@@ -72,6 +71,14 @@ export async function POST(request: NextRequest) {
         continue
       }
 
+      // Validate cost requirements: Hardware parts require cost, Extrusions don't
+      if (row.partType === 'Hardware') {
+        if (!row.cost || row.cost.trim() === '' || isNaN(parseFloat(row.cost))) {
+          errors.push(`Row ${i + 2}: Hardware parts require a valid cost (${row.partNumber})`)
+          continue
+        }
+      }
+
       try {
         // Check if part already exists
         const existingPart = await prisma.masterPart.findUnique({
@@ -79,21 +86,9 @@ export async function POST(request: NextRequest) {
         })
 
         if (existingPart) {
-          // Update existing part
-          await prisma.masterPart.update({
-            where: { partNumber: row.partNumber },
-            data: {
-              baseName: row.baseName,
-              description: row.description || null,
-              unit: (row.partType === 'Extrusion') ? 'IN' : (row.unit || null),
-              cost: (row.partType === 'Extrusion') ? null : (row.cost ? parseFloat(row.cost) : null),
-              partType: row.partType,
-              category: row.category || null,
-              orientation: (row.partType === 'Extrusion') ? (row.orientation || null) : null,
-              isOption: (row.partType === 'Hardware') ? (row.isOption === 'TRUE' || row.isOption === 'true') : false
-            }
-          })
-          updated++
+          // Skip existing part instead of updating
+          skipped.push(`Row ${i + 2}: Part number ${row.partNumber} already exists and was skipped`)
+          continue
         } else {
           // Create new part
           await prisma.masterPart.create({
@@ -104,8 +99,6 @@ export async function POST(request: NextRequest) {
               unit: (row.partType === 'Extrusion') ? 'IN' : (row.unit || null),
               cost: (row.partType === 'Extrusion') ? null : (row.cost ? parseFloat(row.cost) : null),
               partType: row.partType,
-              category: row.category || null,
-              orientation: (row.partType === 'Extrusion') ? (row.orientation || null) : null,
               isOption: (row.partType === 'Hardware') ? (row.isOption === 'TRUE' || row.isOption === 'true') : false
             }
           })
@@ -118,7 +111,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Return results
-    const response: any = { imported, updated }
+    const response: any = { imported }
     if (errors.length > 0) {
       response.errors = errors
     }

@@ -6,20 +6,13 @@
    Consider removing the lockfiles at:
    * /Users/kylepalmer/Desktop/GROK APP 2 (CLAUDE)/quoting-tool-nextjs/package-lock.json
 
+ ⚠ Port 3000 is in use by process 19589
+39198, using available port 3001 instead.
    ▲ Next.js 15.4.1
-   - Local:        http://localhost:3000
-   - Network:      http://192.168.0.186:3000
+   - Local:        http://localhost:3001
+   - Network:      http://10.10.4.109:3001
    - Environments: .env.local, .env
 
  ✓ Starting...
- ✓ Ready in 1274ms
- ○ Compiling / ...
- ✓ Compiled / in 1500ms (1105 modules)
- GET / 200 in 1843ms
- ✓ Compiled in 241ms (480 modules)
- ✓ Compiled /api/dashboard in 272ms (1113 modules)
- GET /api/dashboard 200 in 1243ms
- GET / 200 in 175ms
- ✓ Compiled /favicon.ico in 93ms (648 modules)
- GET /favicon.ico 200 in 120ms
- GET /api/dashboard 200 in 222ms
+ ✓ Ready in 1380ms
+[?25h

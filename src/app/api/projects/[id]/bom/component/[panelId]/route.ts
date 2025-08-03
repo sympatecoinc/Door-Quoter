@@ -270,7 +270,7 @@ export async function GET(
       'Part Name', 
       'Part Type',
       'Quantity',
-      'Cut Length/Glass Size',
+      'Cut Length',
       'Unit',
       'Color',
       'Description'

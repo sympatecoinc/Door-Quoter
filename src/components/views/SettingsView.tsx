@@ -74,13 +74,20 @@ ALU-003,1,width + 1`
   }
 
   const downloadMasterPartsTemplate = () => {
-    const csvContent = `partNumber,baseName,partType,description,unit,cost,category,orientation,isOption
-HW-001,Phillips Head Screws,Hardware,Stainless steel screws for general assembly,EA,0.25,Fasteners,,FALSE
-HW-002,Door Hinges,Hardware,Heavy duty hinges for door mounting,EA,12.50,Hardware,,TRUE
-HW-003,Lever Handle,Hardware,Premium lever handle for interior doors,EA,45.00,Hardware,,TRUE
-ALU-001,Head Jamb Extrusion,Extrusion,Top horizontal aluminum extrusion,IN,,Extrusions,Horizontal,FALSE
-ALU-002,Side Jamb Extrusion,Extrusion,Vertical side aluminum extrusion,IN,,Extrusions,Vertical,FALSE
-ALU-003,Sill Extrusion,Extrusion,Bottom horizontal aluminum extrusion,IN,,Extrusions,Horizontal,FALSE`
+    const csvContent = `partNumber,baseName,partType,description,unit,cost,isOption
+HW-001,Phillips Head Screws,Hardware,Stainless steel screws for general assembly,EA,0.25,FALSE
+HW-002,Door Hinges,Hardware,Heavy duty hinges for door mounting,EA,12.50,TRUE
+HW-003,Lever Handle,Hardware,Premium lever handle for interior doors,EA,45.00,TRUE
+ALU-001,Glass Stop Extrusion,Extrusion,Glazing bead extrusion for glass retention,IN,,FALSE
+ALU-002,Door Stile Extrusion,Extrusion,Vertical door frame extrusion,IN,,FALSE
+ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,FALSE
+
+# Notes:
+# - Cost is REQUIRED for Hardware parts and OPTIONAL for Extrusions
+# - Extrusions use Stock Length Rules for pricing instead of direct cost
+# - Unit should be 'IN' for Extrusions and varies for Hardware (EA, LF, SF, etc.)
+# - isOption: TRUE allows Hardware to be used in Product sub-option categories
+# - Duplicate part numbers will be SKIPPED (not updated) during import`
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')

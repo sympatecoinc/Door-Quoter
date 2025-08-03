@@ -65,68 +65,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 async function generateDrawing(type: string, openingData: any): Promise<any> {
-  return new Promise((resolve, reject) => {
-    // Check if we're in a serverless environment (like Vercel)
-    if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
-      resolve({
-        success: false,
-        error: 'Shop drawing generation requires Python runtime. This feature is available in development mode only. Contact support for production shop drawing generation.'
+  try {
+    // Use Vercel Python function for drawing generation
+    const baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : process.env.NODE_ENV === 'development' 
+        ? 'http://localhost:3000' 
+        : 'https://door-quoter-h3bnquaob-kylegoevert-sympatecoincs-projects.vercel.app'
+    
+    const response = await fetch(`${baseUrl}/api/drawings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: type,
+        data: openingData
       })
-      return
-    }
-
-    const pythonScript = path.join(process.cwd(), 'shop-drawings', 'drawing_generator.py')
-    const python = spawn('python3', [pythonScript])
-    
-    let stdout = ''
-    let stderr = ''
-    
-    python.stdout.on('data', (data) => {
-      stdout += data.toString()
     })
     
-    python.stderr.on('data', (data) => {
-      stderr += data.toString()
-    })
-    
-    python.on('close', (code) => {
-      if (code !== 0) {
-        console.error('Python script error:', stderr)
-        resolve({
-          success: false,
-          error: `Python script failed with code ${code}: ${stderr}`
-        })
-        return
-      }
-      
-      try {
-        const result = JSON.parse(stdout)
-        resolve(result)
-      } catch (parseError) {
-        console.error('Failed to parse Python output:', parseError)
-        resolve({
-          success: false,
-          error: 'Failed to parse drawing service response'
-        })
-      }
-    })
-    
-    // Send input data to Python script
-    const inputData = {
-      type: type,
-      data: openingData
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
     
-    python.stdin.write(JSON.stringify(inputData))
-    python.stdin.end()
+    return await response.json()
     
-    // Set timeout
-    setTimeout(() => {
-      python.kill()
-      resolve({
-        success: false,
-        error: 'Drawing generation timed out'
-      })
-    }, 30000) // 30 second timeout
-  })
+  } catch (error) {
+    console.error('Drawing generation error:', error)
+    return {
+      success: false,
+      error: `Failed to generate drawing: ${error instanceof Error ? error.message : 'Unknown error'}`
+    }
+  }
 }

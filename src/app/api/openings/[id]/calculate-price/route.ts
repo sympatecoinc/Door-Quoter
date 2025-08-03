@@ -28,26 +28,38 @@ function evaluateFormula(formula: string, variables: Record<string, number>): nu
   }
 }
 
-// Function to find the best stock length rule for extrusions based on component dimensions
-function findBestStockLengthRule(rules: any[], componentWidth: number, componentHeight: number): any | null {
+// Function to find the best stock length rule for extrusions based on calculated part length from ProductBOM formula
+function findBestStockLengthRule(rules: any[], requiredLength: number): any | null {
   const applicableRules = rules.filter(rule => {
-    // Check dimension constraints based on component size (panel dimensions)
-    const matchesWidth = (rule.minWidth === null || componentWidth >= rule.minWidth) && 
-                        (rule.maxWidth === null || componentWidth <= rule.maxWidth)
-    const matchesHeight = (rule.minHeight === null || componentHeight >= rule.minHeight) && 
-                         (rule.maxHeight === null || componentHeight <= rule.maxHeight)
+    // Check if rule applies to the required part length
+    // Note: StockLengthRules now work based on the calculated part length from ProductBOM formulas
+    const matchesLength = (rule.minHeight === null || requiredLength >= rule.minHeight) && 
+                         (rule.maxHeight === null || requiredLength <= rule.maxHeight)
     
-    return rule.isActive && matchesWidth && matchesHeight
+    return rule.isActive && matchesLength
   })
   
   // Return the rule with the most restrictive constraints (most specific)
   return applicableRules.sort((a, b) => {
-    const aSpecificity = (a.minWidth !== null ? 1 : 0) + (a.maxWidth !== null ? 1 : 0) +
-                        (a.minHeight !== null ? 1 : 0) + (a.maxHeight !== null ? 1 : 0)
-    const bSpecificity = (b.minWidth !== null ? 1 : 0) + (b.maxWidth !== null ? 1 : 0) +
-                        (b.minHeight !== null ? 1 : 0) + (b.maxHeight !== null ? 1 : 0)
+    const aSpecificity = (a.minHeight !== null ? 1 : 0) + (a.maxHeight !== null ? 1 : 0)
+    const bSpecificity = (b.minHeight !== null ? 1 : 0) + (b.maxHeight !== null ? 1 : 0)
     return bSpecificity - aSpecificity
   })[0] || null
+}
+
+function calculateRequiredPartLength(bom: any, variables: any): number {
+  // If there's a formula in the ProductBOM, use it to calculate the required part length
+  if (bom.formula) {
+    try {
+      return evaluateFormula(bom.formula, variables)
+    } catch (error) {
+      console.error('Error evaluating part length formula:', error)
+      return 0
+    }
+  }
+  
+  // Fallback: If no formula, use quantity as length (for backwards compatibility)
+  return bom.quantity || 0
 }
 
 // Helper function to get finish suffix for extrusion part numbers
@@ -156,24 +168,28 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
           return { cost, breakdown }
         }
 
-        // For Extrusions: Use StockLengthRules based on component dimensions
+        // For Extrusions: Use StockLengthRules based on calculated part length from ProductBOM formula
         if (masterPart.partType === 'Extrusion' && masterPart.stockLengthRules.length > 0) {
-          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, componentWidth, componentHeight)
+          // Calculate the required part length from the ProductBOM formula
+          const requiredLength = calculateRequiredPartLength(bom, variables)
+          
+          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
           if (bestRule) {
             if (bestRule.formula) {
               const extrusionVariables = {
                 ...variables,
                 basePrice: bestRule.basePrice || 0,
                 stockLength: bestRule.stockLength || 0,
-                piecesPerUnit: bestRule.piecesPerUnit || 1
+                piecesPerUnit: bestRule.piecesPerUnit || 1,
+                requiredLength: requiredLength
               }
               cost = evaluateFormula(bestRule.formula, extrusionVariables)
               breakdown.method = 'extrusion_rule_formula'
-              breakdown.details = `Extrusion rule for ${componentWidth}"W × ${componentHeight}"H: ${bestRule.formula} (basePrice: ${bestRule.basePrice}, stockLength: ${bestRule.stockLength}) = $${cost}`
+              breakdown.details = `Extrusion rule for ${requiredLength}" length: ${bestRule.formula} (basePrice: ${bestRule.basePrice}, stockLength: ${bestRule.stockLength}) = $${cost}`
             } else if (bestRule.basePrice) {
               cost = bestRule.basePrice * (bom.quantity || 1)
               breakdown.method = 'extrusion_rule_base'
-              breakdown.details = `Extrusion base price for ${componentWidth}"W × ${componentHeight}"H: $${bestRule.basePrice} × ${bom.quantity || 1}`
+              breakdown.details = `Extrusion base price for ${requiredLength}" length: $${bestRule.basePrice} × ${bom.quantity || 1}`
             }
             breakdown.unitCost = cost / (bom.quantity || 1)
             breakdown.totalCost = cost

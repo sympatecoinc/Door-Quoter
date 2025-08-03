@@ -97,6 +97,7 @@ export default function ProjectDetailView() {
   const { toasts, removeToast, showSuccess, showError } = useToast()
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
+  const [calculatingPrices, setCalculatingPrices] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [editName, setEditName] = useState('')
   const [editStatus, setEditStatus] = useState('')
@@ -150,32 +151,42 @@ export default function ProjectDetailView() {
         setEditName(projectData.name)
         setEditStatus(projectData.status)
         
-        // Calculate prices for all openings
-        await calculateAllOpeningPrices(projectData)
+        // Load project data immediately, calculate prices in background
+        setLoading(false)
+        
+        // Calculate prices for all openings asynchronously (don't block UI)
+        calculateAllOpeningPrices(projectData)
       }
     } catch (error) {
       console.error('Error fetching project:', error)
-    } finally {
       setLoading(false)
     }
   }
 
   async function calculateAllOpeningPrices(projectData: Project) {
-    // Calculate prices for all openings that have components
-    for (const opening of projectData.openings) {
-      if (opening.panels.some(panel => panel.componentInstance)) {
-        try {
-          await fetch(`/api/openings/${opening.id}/calculate-price`, {
-            method: 'POST'
-          })
-        } catch (error) {
-          console.error(`Error calculating price for opening ${opening.id}:`, error)
-        }
-      }
-    }
+    // Get all openings that need price calculation
+    const openingsToCalculate = projectData.openings.filter(opening => 
+      opening.panels.some(panel => panel.componentInstance)
+    )
     
-    // Refetch the project data to get updated prices
-    if (projectData.openings.some(opening => opening.panels.some(panel => panel.componentInstance))) {
+    if (openingsToCalculate.length === 0) return
+    
+    setCalculatingPrices(true)
+    
+    try {
+      // Calculate prices for all openings in parallel
+      const priceCalculations = openingsToCalculate.map(opening => 
+        fetch(`/api/openings/${opening.id}/calculate-price`, {
+          method: 'POST'
+        }).catch(error => {
+          console.error(`Error calculating price for opening ${opening.id}:`, error)
+        })
+      )
+      
+      // Wait for all price calculations to complete
+      await Promise.allSettled(priceCalculations)
+      
+      // Refetch the project data to get updated prices
       try {
         const response = await fetch(`/api/projects/${selectedProjectId}`)
         if (response.ok) {
@@ -185,6 +196,8 @@ export default function ProjectDetailView() {
       } catch (error) {
         console.error('Error refetching project after price calculation:', error)
       }
+    } finally {
+      setCalculatingPrices(false)
     }
   }
 
@@ -611,7 +624,15 @@ export default function ProjectDetailView() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
+            <div className="flex items-center">
+              <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
+              {calculatingPrices && (
+                <div className="ml-3 flex items-center text-sm text-blue-600">
+                  <div className="w-4 h-4 border border-blue-600 border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Calculating prices...
+                </div>
+              )}
+            </div>
             <div className="flex items-center mt-2">
               <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                 project.status === 'Draft' 
@@ -1486,7 +1507,7 @@ export default function ProjectDetailView() {
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Part Name</th>
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Type</th>
                                           <th className="border border-gray-200 px-3 py-2 text-center text-sm font-medium text-gray-900">Qty</th>
-                                          <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Cut Length / Glass Size</th>
+                                          <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Cut Length</th>
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Unit</th>
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Color</th>
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Description</th>

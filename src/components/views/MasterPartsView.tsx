@@ -13,8 +13,6 @@ interface MasterPart {
   unit?: string
   cost?: number
   partType: string
-  category?: string
-  orientation?: string
   isOption?: boolean
   createdAt: string
   updatedAt: string
@@ -67,7 +65,6 @@ interface PricingRule {
   minQuantity?: number
   maxQuantity?: number
   partType: string
-  category?: string
   isActive: boolean
   masterPartId?: number
   masterPart?: {
@@ -104,7 +101,6 @@ export default function MasterPartsView() {
   const [unit, setUnit] = useState('')
   const [cost, setCost] = useState('')
   const [partType, setPartType] = useState('')
-  const [orientation, setOrientation] = useState('')
   const [isOption, setIsOption] = useState(false)
 
   // Stock Rules State
@@ -116,16 +112,9 @@ export default function MasterPartsView() {
   
   // Stock Rule Form State
   const [ruleName, setRuleName] = useState('')
-  const [ruleDescription, setRuleDescription] = useState('')
   const [minHeight, setMinHeight] = useState('')
   const [maxHeight, setMaxHeight] = useState('')
-  const [minWidth, setMinWidth] = useState('')
-  const [maxWidth, setMaxWidth] = useState('')
   const [stockLength, setStockLength] = useState('')
-  const [piecesPerUnit, setPiecesPerUnit] = useState('')
-  const [maxLength, setMaxLength] = useState('')
-  const [maxLengthAppliesTo, setMaxLengthAppliesTo] = useState('height')
-  const [appliesTo, setAppliesTo] = useState('height')
   const [rulePartType, setRulePartType] = useState('Extrusion')
   const [isActive, setIsActive] = useState(true)
 
@@ -144,7 +133,6 @@ export default function MasterPartsView() {
   const [minQuantity, setMinQuantity] = useState('')
   const [maxQuantity, setMaxQuantity] = useState('')
   const [pricingPartType, setPricingPartType] = useState('Extrusion')
-  const [pricingCategory, setPricingCategory] = useState('')
   const [pricingIsActive, setPricingIsActive] = useState(true)
 
   // CSV Upload State
@@ -266,7 +254,6 @@ export default function MasterPartsView() {
     setUnit('')
     setCost('')
     setPartType('')
-    setOrientation('')
     setIsOption(false)
   }
 
@@ -274,11 +261,12 @@ export default function MasterPartsView() {
     e.preventDefault()
     if (!partNumber.trim() || !baseName.trim()) return
     
-    // Validate orientation for extrusions
-    if (partType === 'Extrusion' && !orientation) {
-      showError('Please select an orientation for extrusions')
+    // Validate cost for Hardware parts
+    if (partType === 'Hardware' && (!cost.trim() || isNaN(parseFloat(cost)))) {
+      showError('Hardware parts require a valid cost')
       return
     }
+    
 
     setCreating(true)
     try {
@@ -292,7 +280,6 @@ export default function MasterPartsView() {
           unit,
           cost: cost ? parseFloat(cost) : null,
           partType,
-          orientation: partType === 'Extrusion' ? orientation : null,
           isOption: partType === 'Hardware' ? isOption : false
         })
       })
@@ -318,11 +305,12 @@ export default function MasterPartsView() {
     e.preventDefault()
     if (!partNumber.trim() || !baseName.trim() || !editingPart) return
     
-    // Validate orientation for extrusions
-    if (partType === 'Extrusion' && !orientation) {
-      showError('Please select an orientation for extrusions')
+    // Validate cost for Hardware parts
+    if (partType === 'Hardware' && (!cost.trim() || isNaN(parseFloat(cost)))) {
+      showError('Hardware parts require a valid cost')
       return
     }
+    
 
     setUpdating(true)
     try {
@@ -336,7 +324,6 @@ export default function MasterPartsView() {
           unit,
           cost: cost ? parseFloat(cost) : null,
           partType,
-          orientation: partType === 'Extrusion' ? orientation : null,
           isOption: partType === 'Hardware' ? isOption : false
         })
       })
@@ -385,7 +372,6 @@ export default function MasterPartsView() {
     setUnit(part.unit || '')
     setCost(part.cost?.toString() || '')
     setPartType(part.partType)
-    setOrientation(part.orientation || '')
     setIsOption(part.isOption || false)
   }
 
@@ -395,13 +381,6 @@ export default function MasterPartsView() {
     setActiveTab('partRules')
     fetchStockRules(part.id)
     fetchPricingRules(part.id)
-    
-    // Auto-set appliesTo based on extrusion orientation
-    if (part.partType === 'Extrusion' && part.orientation) {
-      setAppliesTo(part.orientation === 'Vertical' ? 'height' : 'width')
-    } else {
-      setAppliesTo('height') // Default for non-oriented parts
-    }
   }
 
   async function handleCreateStockRule(e: React.FormEvent) {
@@ -423,10 +402,7 @@ export default function MasterPartsView() {
           name: ruleName,
           minHeight: minHeight ? parseFloat(minHeight) : null,
           maxHeight: maxHeight ? parseFloat(maxHeight) : null,
-          minWidth: minWidth ? parseFloat(minWidth) : null,
-          maxWidth: maxWidth ? parseFloat(maxWidth) : null,
           stockLength: stockLength ? parseFloat(stockLength) : null,
-          appliesTo,
           partType: rulePartType,
           isActive,
           basePrice: basePrice ? parseFloat(basePrice) : null,
@@ -470,10 +446,7 @@ export default function MasterPartsView() {
           name: ruleName,
           minHeight: minHeight ? parseFloat(minHeight) : null,
           maxHeight: maxHeight ? parseFloat(maxHeight) : null,
-          minWidth: minWidth ? parseFloat(minWidth) : null,
-          maxWidth: maxWidth ? parseFloat(maxWidth) : null,
           stockLength: stockLength ? parseFloat(stockLength) : null,
-          appliesTo,
           partType: rulePartType,
           isActive,
           basePrice: basePrice ? parseFloat(basePrice) : null,
@@ -519,16 +492,9 @@ export default function MasterPartsView() {
   function startEditStockRule(rule: StockLengthRule) {
     setEditingRule(rule.id)
     setRuleName(rule.name)
-    setRuleDescription(rule.description || '')
     setMinHeight(rule.minHeight?.toString() || '')
     setMaxHeight(rule.maxHeight?.toString() || '')
-    setMinWidth(rule.minWidth?.toString() || '')
-    setMaxWidth(rule.maxWidth?.toString() || '')
     setStockLength(rule.stockLength?.toString() || '')
-    setPiecesPerUnit(rule.piecesPerUnit?.toString() || '')
-    setMaxLength(rule.maxLength?.toString() || '')
-    setMaxLengthAppliesTo(rule.maxLengthAppliesTo || 'height')
-    setAppliesTo(rule.appliesTo)
     setRulePartType(rule.partType)
     setIsActive(rule.isActive)
     setBasePrice(rule.basePrice?.toString() || '')
@@ -541,16 +507,7 @@ export default function MasterPartsView() {
     setRuleName('')
     setMinHeight('')
     setMaxHeight('')
-    setMinWidth('')
-    setMaxWidth('')
     setStockLength('')
-    
-    // Auto-set appliesTo based on current master part's orientation
-    if (selectedMasterPart?.partType === 'Extrusion' && selectedMasterPart?.orientation) {
-      setAppliesTo(selectedMasterPart.orientation === 'Vertical' ? 'height' : 'width')
-    } else {
-      setAppliesTo('height') // Default
-    }
     
     setRulePartType('Extrusion')
     setIsActive(true)
@@ -577,7 +534,6 @@ export default function MasterPartsView() {
           minQuantity: minQuantity ? parseFloat(minQuantity) : null,
           maxQuantity: maxQuantity ? parseFloat(maxQuantity) : null,
           partType: pricingPartType,
-          category: pricingCategory,
           isActive: pricingIsActive,
           masterPartId: selectedMasterPartId
         })
@@ -616,7 +572,6 @@ export default function MasterPartsView() {
           minQuantity: minQuantity ? parseFloat(minQuantity) : null,
           maxQuantity: maxQuantity ? parseFloat(maxQuantity) : null,
           partType: pricingPartType,
-          category: pricingCategory,
           isActive: pricingIsActive
         })
       })
@@ -665,7 +620,6 @@ export default function MasterPartsView() {
     setMinQuantity(rule.minQuantity?.toString() || '')
     setMaxQuantity(rule.maxQuantity?.toString() || '')
     setPricingPartType(rule.partType)
-    setPricingCategory(rule.category || '')
     setPricingIsActive(rule.isActive)
   }
 
@@ -677,7 +631,6 @@ export default function MasterPartsView() {
     setMinQuantity('')
     setMaxQuantity('')
     setPricingPartType('Extrusion') // Default to Extrusion since Hardware parts don't use pricing rules
-    setPricingCategory('')
     setPricingIsActive(true)
   }
 
@@ -697,11 +650,17 @@ export default function MasterPartsView() {
       if (response.ok) {
         const result = await response.json()
         let message = `Successfully imported ${result.imported} new parts`
-        if (result.updated > 0) {
-          message += ` and updated ${result.updated} existing parts`
-        }
+        
         if (result.skipped && result.skipped.length > 0) {
-          message += `\n\nSkipped ${result.skipped.length} glass parts (not allowed as master parts)`
+          message += `\n\nSkipped ${result.skipped.length} parts:`
+          result.skipped.forEach((skip: string, index: number) => {
+            if (index < 10) { // Show first 10 skipped items
+              message += `\n• ${skip}`
+            }
+          })
+          if (result.skipped.length > 10) {
+            message += `\n... and ${result.skipped.length - 10} more skipped parts`
+          }
         }
         if (result.errors && result.errors.length > 0) {
           message += `\n\nErrors: ${result.errors.slice(0, 5).join('\n')}`
@@ -1016,15 +975,9 @@ export default function MasterPartsView() {
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-900">
                               <div className="space-y-1">
-                                <div>Applies to: <span className="font-medium">{rule.appliesTo}</span></div>
                                 {(rule.minHeight || rule.maxHeight) && (
-                                  <div className="text-xs text-gray-600">
-                                    Height: {rule.minHeight || '∞'}" - {rule.maxHeight || '∞'}"
-                                  </div>
-                                )}
-                                {(rule.minWidth || rule.maxWidth) && (
-                                  <div className="text-xs text-gray-600">
-                                    Width: {rule.minWidth || '∞'}" - {rule.maxWidth || '∞'}"
+                                  <div className="text-sm text-gray-600">
+                                    Part Length: {rule.minHeight || '0'}" - {rule.maxHeight || '∞'}"
                                   </div>
                                 )}
                               </div>
@@ -1210,11 +1163,9 @@ export default function MasterPartsView() {
                     // Auto-set unit to "IN" for extrusions and reset other fields
                     if (selectedType === 'Extrusion') {
                       setUnit('IN')
-                      setOrientation('') // Reset orientation when switching to extrusion
                       setIsOption(false) // Reset isOption for extrusions
                     } else {
                       setUnit('') // Reset unit for other types
-                      setOrientation('') // Reset orientation for non-extrusions
                       if (selectedType !== 'Hardware') {
                         setIsOption(false) // Reset isOption for non-hardware types
                       }
@@ -1256,35 +1207,6 @@ export default function MasterPartsView() {
                   </div>
 
                   {/* Show different fields based on part type */}
-                  {partType === 'Extrusion' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Orientation *</label>
-                      <div className="flex space-x-4">
-                        <label className="flex items-center text-gray-900">
-                          <input
-                            type="radio"
-                            name="orientation"
-                            value="Vertical"
-                            checked={orientation === 'Vertical'}
-                            onChange={(e) => setOrientation(e.target.value)}
-                            className="mr-2"
-                          />
-                          Vertical
-                        </label>
-                        <label className="flex items-center text-gray-900">
-                          <input
-                            type="radio"
-                            name="orientation"
-                            value="Horizontal"
-                            checked={orientation === 'Horizontal'}
-                            onChange={(e) => setOrientation(e.target.value)}
-                            className="mr-2"
-                          />
-                          Horizontal
-                        </label>
-                      </div>
-                    </div>
-                  )}
 
                   {partType === 'Hardware' && (
                     <>
@@ -1300,7 +1222,10 @@ export default function MasterPartsView() {
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Cost ($)</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Cost ($) *
+                            <span className="text-xs text-gray-500 ml-1">(Required for Hardware)</span>
+                          </label>
                           <input
                             type="number"
                             step="0.01"
@@ -1308,6 +1233,7 @@ export default function MasterPartsView() {
                             onChange={(e) => setCost(e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             placeholder="0.00"
+                            required
                           />
                         </div>
                       </div>
@@ -1396,24 +1322,18 @@ export default function MasterPartsView() {
 
               {/* Description field removed for extrusions - not needed */}
 
-              {/* Component Size automatically determined by extrusion orientation */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Component Size</label>
-                <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700">
-                  {selectedMasterPart?.orientation === 'Vertical' ? 'Component Height' : 
-                   selectedMasterPart?.orientation === 'Horizontal' ? 'Component Width' : 
-                   'Component Height (Default)'}
-                  <span className="text-sm text-gray-500 ml-2">
-                    (Auto-determined by {selectedMasterPart?.orientation || 'Default'} orientation)
-                  </span>
-                </div>
+              {/* Part Length Rule Info */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> Stock length rules now work with calculated part lengths from ProductBOM formulas, 
+                  not component dimensions. Set length ranges below based on the actual part lengths your formulas will calculate.
+                </p>
               </div>
 
-              {/* Show opening size bounds based on selected dimension */}
-              {appliesTo === 'height' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Min Component Height *</label>
+              {/* Part Length Range */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Min Part Length (inches)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1425,7 +1345,7 @@ export default function MasterPartsView() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Max Component Height *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Max Part Length (inches)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1437,36 +1357,6 @@ export default function MasterPartsView() {
                     />
                   </div>
                 </div>
-              )}
-
-              {appliesTo === 'width' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Min Component Width *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={minWidth}
-                      onChange={(e) => setMinWidth(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="e.g., 24"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Max Component Width *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={maxWidth}
-                      onChange={(e) => setMaxWidth(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="e.g., 48"
-                      required
-                    />
-                  </div>
-                </div>
-              )}
 
               {/* Stock Length field */}
               <div>
@@ -1616,16 +1506,6 @@ export default function MasterPartsView() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <input
-                  type="text"
-                  value={pricingCategory}
-                  onChange={(e) => setPricingCategory(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="e.g., Fasteners, Seals, etc."
-                />
-              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1723,7 +1603,7 @@ export default function MasterPartsView() {
                   Required columns: partNumber, baseName, partType
                 </p>
                 <p className="text-sm text-gray-500">
-                  Optional columns: description, unit, cost, category
+                  Optional columns: description, unit, cost
                 </p>
               </div>
 

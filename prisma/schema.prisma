@@ -178,8 +178,6 @@ model MasterPart {
   unit             String?
   cost             Float?
   partType         String             @default("Hardware")
-  category         String?
-  orientation      String?            // "Vertical" or "Horizontal" for extrusions
   isOption         Boolean            @default(false) // True if this hardware part can be used as a category option
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt

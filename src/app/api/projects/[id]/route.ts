@@ -26,16 +26,20 @@ export async function GET(
                 componentInstance: {
                   include: {
                     product: {
-                      include: {
-                        productSubOptions: {
-                          include: {
-                            category: {
-                              include: {
-                                individualOptions: true
-                              }
-                            }
-                          }
-                        }
+                      // Only include basic product info, not sub-options for faster loading
+                      select: {
+                        id: true,
+                        name: true,
+                        description: true,
+                        type: true,
+                        productType: true,
+                        archived: true,
+                        withTrim: true,
+                        glassWidthFormula: true,
+                        glassHeightFormula: true,
+                        glassQuantityFormula: true,
+                        createdAt: true,
+                        updatedAt: true
                       }
                     }
                   }

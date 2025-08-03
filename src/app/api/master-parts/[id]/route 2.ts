@@ -43,7 +43,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
     }
 
-    const { partNumber, baseName, description, unit, cost, partType, orientation, isOption } = body
+    const { partNumber, baseName, description, unit, cost, partType, isOption } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({ 
@@ -56,6 +56,15 @@ export async function PUT(
       return NextResponse.json({ 
         error: 'Glass cannot be created as a master part as it is not a stocked item' 
       }, { status: 400 })
+    }
+
+    // Validate cost requirements: Hardware parts require cost, Extrusions don't
+    if (partType === 'Hardware') {
+      if (!cost || isNaN(parseFloat(cost.toString()))) {
+        return NextResponse.json({ 
+          error: 'Hardware parts require a valid cost' 
+        }, { status: 400 })
+      }
     }
 
     // Check if part number already exists on another part
@@ -87,7 +96,6 @@ export async function PUT(
         unit: (partType === 'Extrusion') ? 'IN' : unit, // Always set unit to 'IN' for extrusions
         cost: (partType === 'Extrusion') ? null : (cost ? parseFloat(cost) : null),
         partType: partType || 'Hardware',
-        orientation: (partType === 'Extrusion') ? orientation : null,
         isOption: (partType === 'Hardware') ? (isOption || false) : false // Only hardware can be options
       }
     })
