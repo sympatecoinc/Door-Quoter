@@ -1,8 +1,3 @@
 {
-  "functions": {
-    "src/app/api/drawings/**": {
-      "maxDuration": 60
-    }
-  },
   "regions": ["iad1"]
 }
