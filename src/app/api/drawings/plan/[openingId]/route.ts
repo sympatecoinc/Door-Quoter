@@ -66,6 +66,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 async function generateDrawing(type: string, openingData: any): Promise<any> {
   return new Promise((resolve, reject) => {
+    // Check if we're in a serverless environment (like Vercel)
+    if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+      resolve({
+        success: false,
+        error: 'Shop drawing generation requires Python runtime. This feature is available in development mode only. Contact support for production shop drawing generation.'
+      })
+      return
+    }
+
     const pythonScript = path.join(process.cwd(), 'shop-drawings', 'drawing_generator.py')
     const python = spawn('python3', [pythonScript])
     
