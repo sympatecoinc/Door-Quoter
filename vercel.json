@@ -1,9 +1,6 @@
 {
   "functions": {
-    "src/app/api/drawings/elevation/[openingId]/route.ts": {
-      "maxDuration": 60
-    },
-    "src/app/api/drawings/plan/[openingId]/route.ts": {
+    "src/app/api/drawings/**": {
       "maxDuration": 60
     }
   },
