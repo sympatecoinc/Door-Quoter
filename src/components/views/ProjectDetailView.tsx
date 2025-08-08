@@ -150,15 +150,10 @@ export default function ProjectDetailView() {
         setProject(projectData)
         setEditName(projectData.name)
         setEditStatus(projectData.status)
-        
-        // Load project data immediately, calculate prices in background
-        setLoading(false)
-        
-        // Calculate prices for all openings asynchronously (don't block UI)
-        calculateAllOpeningPrices(projectData)
       }
     } catch (error) {
       console.error('Error fetching project:', error)
+    } finally {
       setLoading(false)
     }
   }
@@ -1286,11 +1281,6 @@ export default function ProjectDetailView() {
                     
                     // Fetch updated project data
                     await fetchProject()
-                    
-                    // Recalculate opening prices since dimensions may have changed
-                    if (project) {
-                      await calculateAllOpeningPrices(project)
-                    }
                     
                   } catch (error) {
                     console.error('Error updating component:', error)
