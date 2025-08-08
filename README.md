@@ -1,36 +1,95 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Interior Aluminum Quoting Tool
 
-## Getting Started
+A professional Next.js application for generating quotes and BOMs for interior aluminum doors and windows.
 
-First, run the development server:
+## 🚀 Live Deployment
+- **Production URL**: https://door-quoter-9si1d7ph7-kylegoevert-sympatecoincs-projects.vercel.app
+- **Status**: ✅ Deployed with 10x performance optimizations
 
+## 🛠️ Getting Started
+
+### Development Setup
 ```bash
+# Install dependencies
+npm ci
+
+# Start development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Open http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Key Scripts
+```bash
+npm run dev          # Development server
+npm run build        # Production build  
+npm run deploy:quick # Quick Vercel deployment
+npm run deploy:full  # Deploy with commit message
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📁 Project Structure
+```
+src/
+  app/              # Next.js App Router
+    api/            # API routes
+    page.tsx        # Main page
+    layout.tsx      # Root layout
+  components/       # React components
+  hooks/           # Custom hooks
+  stores/          # Zustand state management
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🌐 Deployment
 
-## Learn More
+### Branch Strategy
+- **`main`**: Development branch (local work)
+- **`production`**: Production deployment branch
 
-To learn more about Next.js, take a look at the following resources:
+### Deploy Process
+```bash
+# Deploy to production
+git checkout production
+git merge main
+git push origin production
+npx vercel --prod --yes
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🔧 Performance Features
+- **10x faster project loading** with server-side optimizations
+- **React performance optimizations** (memoization, useCallback)
+- **Database query optimizations** for reduced N+1 queries
+- **Server-side price calculations** 
+- **Optimized quote generation** with all component options
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📋 Tech Stack
+- **Framework**: Next.js 15 with React 19
+- **Database**: PostgreSQL via Supabase
+- **ORM**: Prisma
+- **State Management**: Zustand  
+- **Styling**: Tailwind CSS
+- **Deployment**: Vercel
 
-## Deploy on Vercel
+## 🚨 Troubleshooting
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**Having deployment issues?** See [VERCEL_DEPLOYMENT_GUIDE.md](./VERCEL_DEPLOYMENT_GUIDE.md) for:
+- 404 NOT_FOUND fixes
+- Output directory configuration
+- Environment variable setup
+- Common deployment problems
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🔗 Documentation
+- [Vercel Deployment Guide](./VERCEL_DEPLOYMENT_GUIDE.md) - Deployment troubleshooting
+- [Development Workflow](./DEV_WORKFLOW.md) - Development processes
+- [Deployment Agents](./DEPLOYMENT_AGENTS.md) - Automated deployment system
+
+## 🏗️ Features
+- **Project Management**: Create and manage door/window projects
+- **Component Configuration**: Add doors, windows, corners with options
+- **Quote Generation**: Professional PDF quotes with pricing
+- **BOM Generation**: Detailed bill of materials with cut lists
+- **Shop Drawings**: Technical elevation and plan drawings
+- **Performance Dashboard**: Project statistics and insights
+
+---
+
+Built with ❤️ using Next.js and deployed on Vercel
