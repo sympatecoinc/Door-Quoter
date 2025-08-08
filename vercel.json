@@ -1,12 +1,3 @@
 {
-  "version": 2,
-  "regions": ["iad1"],
-  "framework": "nextjs",
-  "buildCommand": "npm run build",
-  "outputDirectory": ".next",
-  "functions": {
-    "api/drawings.py": {
-      "runtime": "python3.9"
-    }
-  }
+  "regions": ["iad1"]
 }
