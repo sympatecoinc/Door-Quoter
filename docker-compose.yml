@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:DoorQuoter2024!@cloud-sql-proxy:5432/door_quoter?sslmode=require
+    depends_on:
+      - cloud-sql-proxy
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  cloud-sql-proxy:
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.2
+    command: [
+      "/cloud-sql-proxy",
+      "door-quoter:us-central1:door-quoter-db",
+      "--port=5432",
+      "--private-ip"
+    ]
+    ports:
+      - "5433:5432"
+    volumes:
+      - ~/.config/gcloud:/gcp/config:ro
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json

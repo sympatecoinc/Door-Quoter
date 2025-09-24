@@ -105,7 +105,7 @@ export default function ProjectDetailView() {
   const [showAddOpening, setShowAddOpening] = useState(false)
   const [addingOpening, setAddingOpening] = useState(false)
   const [newOpening, setNewOpening] = useState({
-    openingNumber: '',
+    name: '',
     quantity: '1',
     finishColor: ''
   })
@@ -249,7 +249,7 @@ export default function ProjectDetailView() {
   }
 
   async function handleAddOpening() {
-    if (!selectedProjectId || !newOpening.openingNumber.trim() || !newOpening.finishColor) {
+    if (!selectedProjectId || !newOpening.name.trim() || !newOpening.finishColor) {
       showError('Opening number and finish color are required')
       return
     }
@@ -263,7 +263,7 @@ export default function ProjectDetailView() {
         },
         body: JSON.stringify({
           projectId: selectedProjectId,
-          openingNumber: newOpening.openingNumber,
+          name: newOpening.name,
           quantity: parseInt(newOpening.quantity) || 1,
           finishColor: newOpening.finishColor
         })
@@ -272,7 +272,7 @@ export default function ProjectDetailView() {
       if (response.ok) {
         // Reset form and close modal first
         setNewOpening({
-          openingNumber: '',
+          name: '',
           quantity: '1',
           finishColor: ''
         })
@@ -321,9 +321,9 @@ export default function ProjectDetailView() {
     }
   }
 
-  function handleShowDrawings(openingId: number, openingNumber: string) {
+  function handleShowDrawings(openingId: number, name: string) {
     setSelectedDrawingOpeningId(openingId)
-    setSelectedDrawingOpeningNumber(openingNumber)
+    setSelectedDrawingOpeningNumber(name)
     setShowDrawingViewer(true)
   }
 
@@ -717,7 +717,7 @@ export default function ProjectDetailView() {
                         Add Component
                       </button>
                       <button
-                        onClick={() => handleShowDrawings(opening.id, opening.openingNumber)}
+                        onClick={() => handleShowDrawings(opening.id, opening.name)}
                         className="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center text-sm font-medium shadow-sm transition-colors"
                       >
                         <FileText className="w-4 h-4 mr-1" />
@@ -801,7 +801,7 @@ export default function ProjectDetailView() {
                                     Object.entries(selections).forEach(([categoryId, optionId]) => {
                                       if (optionId) {
                                         // Find the category and option
-                                        const productOption = product.productSubOptions?.find(pso => 
+                                        const productOption = (product as any).productSubOptions?.find(pso => 
                                           pso.category.id === parseInt(categoryId)
                                         )
                                         if (productOption) {
@@ -871,8 +871,8 @@ export default function ProjectDetailView() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Opening Number</label>
                 <input
                   type="text"
-                  value={newOpening.openingNumber}
-                  onChange={(e) => setNewOpening({...newOpening, openingNumber: e.target.value})}
+                  value={newOpening.name}
+                  onChange={(e) => setNewOpening({...newOpening, name: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                   placeholder="e.g., 001"
                   required
@@ -912,7 +912,7 @@ export default function ProjectDetailView() {
                   if (!addingOpening) {
                     setShowAddOpening(false)
                     setNewOpening({
-                      openingNumber: '',
+                      name: '',
                       quantity: '1',
                       finishColor: ''
                     })
@@ -925,7 +925,7 @@ export default function ProjectDetailView() {
               </button>
               <button
                 onClick={handleAddOpening}
-                disabled={addingOpening || !newOpening.openingNumber.trim() || !newOpening.finishColor}
+                disabled={addingOpening || !newOpening.name.trim() || !newOpening.finishColor}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {addingOpening && (

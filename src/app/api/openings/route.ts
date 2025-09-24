@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
           include: {
             componentInstance: {
               include: {
-                product: true
+                product: { include: { productSubOptions: { include: { category: { include: { individualOptions: true } } } } } }
               }
             }
           }
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
           include: {
             componentInstance: {
               include: {
-                product: true
+                product: { include: { productSubOptions: { include: { category: { include: { individualOptions: true } } } } } }
               }
             }
           }

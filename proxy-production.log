@@ -1,0 +1,4 @@
+2025/09/24 17:40:56 This is the Cloud SQL Proxy v1. It is no longer receiving active feature development. For the latest features and improvements, migrate to the v2 version of the Cloud SQL Proxy. For details, see: https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/main/migration-guide.md
+2025/09/24 17:40:56 current FDs rlimit set to 1048575, wanted limit is 8500. Nothing to do here.
+2025/09/24 17:40:59 errors parsing config:
+	googleapi: Error 404: The Cloud SQL instance does not exist., instanceDoesNotExist

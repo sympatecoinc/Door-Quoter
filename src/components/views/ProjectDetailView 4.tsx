@@ -679,13 +679,13 @@ export default function ProjectDetailView() {
                                       const optionLabels: string[] = []
                                       
                                       console.log('Selections:', selections)
-                                      console.log('Product sub options:', product.productSubOptions)
+                                      console.log('Product sub options:', (product as any).productSubOptions)
                                       
                                       Object.entries(selections).forEach(([categoryId, optionId]) => {
                                         console.log(`Processing category ${categoryId}, option ${optionId}`)
                                         if (optionId) {
                                           // Find the category and option
-                                          const productOption = product.productSubOptions?.find(pso => 
+                                          const productOption = (product as any).productSubOptions?.find(pso => 
                                             pso.category.id === parseInt(categoryId)
                                           )
                                           console.log('Found product option:', productOption)
