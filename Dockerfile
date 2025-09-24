@@ -1,25 +1,23 @@
-# Multi-stage Dockerfile for Next.js + Prisma on Cloud Run
-# Using Google Container Registry images to avoid Docker Hub rate limits
+# Multi-stage Dockerfile using only Google Container Registry images
+# This avoids Docker Hub rate limiting completely
 
-FROM gcr.io/distroless/nodejs18-debian11 AS runtime-base
-
-FROM node:18-bullseye-slim AS deps
+FROM gcr.io/google.com/cloudsdktool/cloud-sdk:slim AS deps
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y     libc6     && rm -rf /var/lib/apt/lists/*
+# Install Node.js 18
+RUN apt-get update &&     curl -fsSL https://deb.nodesource.com/setup_18.x | bash - &&     apt-get install -y nodejs &&     rm -rf /var/lib/apt/lists/*
 
-# Install dependencies based on the preferred package manager
+# Install dependencies
 COPY package*.json ./
 COPY prisma ./prisma/
 RUN npm ci --only=production && npm cache clean --force
 
 # Build stage
-FROM node:18-bullseye-slim AS builder
+FROM gcr.io/google.com/cloudsdktool/cloud-sdk:slim AS builder
 WORKDIR /app
 
-# Install system dependencies for building
-RUN apt-get update && apt-get install -y     libc6     && rm -rf /var/lib/apt/lists/*
+# Install Node.js 18
+RUN apt-get update &&     curl -fsSL https://deb.nodesource.com/setup_18.x | bash - &&     apt-get install -y nodejs &&     rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 COPY prisma ./prisma/
@@ -27,10 +25,8 @@ RUN npm ci
 
 COPY . .
 
-# Generate Prisma client
+# Generate Prisma client and build
 RUN npx prisma generate
-
-# Build Next.js app
 RUN npm run build
 
 # Production image
@@ -45,7 +41,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Copy Prisma schema and generated client
+# Copy Prisma files
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
