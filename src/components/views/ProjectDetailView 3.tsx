@@ -675,7 +675,7 @@ export default function ProjectDetailView() {
                                   const selectedOptions = Object.entries(selections)
                                     .filter(([_, value]) => value !== null && value !== undefined)
                                     .map(([subOptionId, value]) => {
-                                      const subOption = panel.componentInstance!.product.productSubOptions?.find(pso => 
+                                      const subOption = (panel.componentInstance!.product as any).productSubOptions?.find(pso => 
                                         pso.subOption.id === parseInt(subOptionId)
                                       )?.subOption
                                       return subOption ? `${subOption.name}: ${value}` : null
