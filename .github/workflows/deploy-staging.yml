@@ -3,8 +3,6 @@ name: Deploy to Staging
 on:
   push:
     branches: [ develop ]
-  pull_request:
-    branches: [ main ]
 
 env:
   PROJECT_ID: door-quoter
@@ -38,21 +36,21 @@ jobs:
 
       - name: Build and Push Container
         run: |-
-          docker build -t "us-central1-docker.pkg.dev/door-quoter/door-quoter-staging/door-quoter-staging:latest" ./
-          docker push "us-central1-docker.pkg.dev/door-quoter/door-quoter-staging/door-quoter-staging:latest"
+          docker build -t "us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:staging-latest" ./
+          docker push "us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:staging-latest"
 
-      - name: Deploy to Cloud Run
+      - name: Deploy to Staging Cloud Run
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}
-          image: us-central1-docker.pkg.dev/door-quoter/door-quoter-staging/door-quoter-staging:latest
+          image: us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:staging-latest
           env_vars: |
-            DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}
-            NEXTAUTH_URL=${{ secrets.STAGING_NEXTAUTH_URL }}
-            NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
+            DATABASE_URL=postgresql://postgres:StagingDB123@/postgres?host=/cloudsql/door-quoter:us-central1:door-app-staging
+            NEXTAUTH_URL=https://door-quoter-staging-259524707165.us-central1.run.app
+            NEXTAUTH_SECRET=staging-secret-key
             NODE_ENV=staging
 
-      - name: Show Output
+      - name: Show Staging URL
         run: echo ${{ steps.deploy.outputs.url }}

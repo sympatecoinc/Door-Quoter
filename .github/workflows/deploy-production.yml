@@ -22,13 +22,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-        continue-on-error: true
-
       - name: Google Auth
         id: auth
         uses: 'google-github-actions/auth@v2'
@@ -47,8 +40,8 @@ jobs:
 
       - name: Build and Push Container
         run: |-
-          docker build -t "us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:latest" ./
-          docker push "us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:latest"
+          docker build -t "us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:production-latest" ./
+          docker push "us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:production-latest"
 
       - name: Deploy to Cloud Run
         id: deploy
@@ -56,7 +49,7 @@ jobs:
         with:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}
-          image: us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:latest
+          image: us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:production-latest
           env_vars: |
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}
