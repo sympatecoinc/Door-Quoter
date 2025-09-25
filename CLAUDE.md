@@ -16,10 +16,10 @@ When presented with a development task:
 4. Output: List of files and their relationships
 
 ### STEP 2: PLANNING
-Create file `tasks/todo.md` with this exact structure:
+Create new file each time you plan under  `tasks/[TASK_NAME]-[MM-DD-YY]` and use this exact structure:
 ```
-# Task: [TASK_NAME]
-# Date: [YYYY-MM-DD]
+# Name:[TASK_NAME]
+# Date: [MM-DD-YY]
 
 ## Scope
 Files to modify:

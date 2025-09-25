@@ -58,3 +58,15 @@
 2025/09/25 16:30:17 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
 2025/09/25 16:30:18 Scheduling refresh of ephemeral certificate in 55m0s
 2025/09/25 16:32:22 New connection for "door-quoter:us-central1:door-app-staging"
+2025/09/25 17:25:18 ephemeral certificate for instance door-quoter:us-central1:door-app-staging will expire soon, refreshing now.
+2025/09/25 17:25:18 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
+2025/09/25 17:25:19 Scheduling refresh of ephemeral certificate in 54m59s
+2025/09/25 17:34:16 Client closed local connection on 127.0.0.1:5432
+2025/09/25 17:34:16 New connection for "door-quoter:us-central1:door-app-staging"
+2025/09/25 17:40:55 Client closed local connection on 127.0.0.1:5432
+2025/09/25 17:55:02 New connection for "door-quoter:us-central1:door-app-staging"
+2025/09/25 18:20:19 ephemeral certificate for instance door-quoter:us-central1:door-app-staging will expire soon, refreshing now.
+2025/09/25 18:20:19 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
+2025/09/25 18:20:20 Scheduling refresh of ephemeral certificate in 54m59s
+2025/09/25 18:22:34 Client closed local connection on 127.0.0.1:5432
+2025/09/25 18:22:34 New connection for "door-quoter:us-central1:door-app-staging"
