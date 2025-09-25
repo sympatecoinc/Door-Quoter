@@ -1,0 +1,6 @@
+2025/09/25 10:02:30 This is the Cloud SQL Proxy v1. It is no longer receiving active feature development. For the latest features and improvements, migrate to the v2 version of the Cloud SQL Proxy. For details, see: https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/main/migration-guide.md
+2025/09/25 10:02:30 current FDs rlimit set to 1048575, wanted limit is 8500. Nothing to do here.
+2025/09/25 10:02:32 Listening on 127.0.0.1:5434 for door-quoter:us-central1:door-app-db
+2025/09/25 10:02:32 Ready for new connections
+2025/09/25 10:02:32 Generated RSA key in 94.116721ms
+2025/09/25 10:06:22 Received TERM signal. Waiting up to 0s before terminating.
