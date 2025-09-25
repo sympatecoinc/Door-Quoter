@@ -5,12 +5,15 @@ FROM gcr.io/google.com/cloudsdktool/cloud-sdk:slim AS deps
 WORKDIR /app
 
 # Install Node.js 18
-RUN apt-get update &&     curl -fsSL https://deb.nodesource.com/setup_18.x | bash - &&     apt-get install -y nodejs &&     rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
 COPY package*.json ./
 COPY prisma ./prisma/
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci && npm cache clean --force
 
 # Build stage
 FROM gcr.io/google.com/cloudsdktool/cloud-sdk:slim AS builder
