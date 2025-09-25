@@ -32,7 +32,7 @@ export default function RootLayout({
             {children}
           </div>
           <footer className="bg-gray-100 border-t border-gray-200 py-2 px-4 text-center">
-            <p className="text-sm text-gray-600">Alpha version</p>
+            <p className="text-sm text-gray-600">Door Quoter • Alpha v1.0 • Built with Next.js</p>
           </footer>
         </div>
       </body>
