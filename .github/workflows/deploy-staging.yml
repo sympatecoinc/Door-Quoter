@@ -29,6 +29,8 @@ jobs:
 
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v2'
+        with:
+          project_id: ${{ env.PROJECT_ID }}
 
       - name: 'Docker auth'
         run: |-
@@ -47,7 +49,7 @@ jobs:
           region: ${{ env.REGION }}
           image: us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:staging-latest
           env_vars: |
-            DATABASE_URL=postgresql://postgres:StagingDB123@/postgres?host=/cloudsql/door-quoter:us-central1:door-app-staging
+            DATABASE_URL=postgresql://postgres:StagingDB123@localhost/postgres?host=/cloudsql/door-quoter:us-central1:door-app-staging
             NEXTAUTH_URL=https://door-quoter-staging-259524707165.us-central1.run.app
             NEXTAUTH_SECRET=staging-secret-key
             NODE_ENV=staging

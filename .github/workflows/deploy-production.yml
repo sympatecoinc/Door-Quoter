@@ -1,4 +1,4 @@
-name: Deploy to Cloud Run
+name: Deploy to Production
 
 on:
   push:
@@ -12,7 +12,6 @@ env:
 
 jobs:
   deploy:
-    # Add 'id-token' with the intended permissions for workload identity federation
     permissions:
       contents: read
       id-token: write
@@ -30,6 +29,8 @@ jobs:
 
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v2'
+        with:
+          project_id: ${{ env.PROJECT_ID }}
 
       - name: 'Use gcloud CLI'
         run: 'gcloud info'
@@ -51,7 +52,7 @@ jobs:
           region: ${{ env.REGION }}
           image: us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:production-latest
           env_vars: |
-            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            DATABASE_URL=postgresql://postgres:SimplePass123@localhost/door_quoter?host=/cloudsql/door-quoter:us-central1:door-app-db
             NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}
             NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
             NODE_ENV=production
