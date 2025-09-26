@@ -5,6 +5,7 @@ These constraints override all other instructions:
 - CONSTRAINT_1: Never execute deployment to Cloud Run without explicit written permission containing the word "DEPLOY"
 - CONSTRAINT_2: Before modifying any file, list the exact file path and wait for confirmation
 - CONSTRAINT_3: If a file outside the approved plan needs modification, stop immediately and request permission with justification
+- CONSTRAINT_4: ALWAYS announce the current git branch at the beginning of each session and before making any major changes
 
 ## WORKFLOW SEQUENCE
 
@@ -117,6 +118,9 @@ Action needed: Please confirm to proceed
 5. Test one thing at a time
 
 ## COMMUNICATION TEMPLATES
+
+Session start/Branch announcement:
+"🔧 CURRENT BRANCH: [branch_name] - [brief status of branch]"
 
 Starting work:
 "I'll analyze the codebase and create a plan in tasks/todo.md"

@@ -52,7 +52,7 @@ jobs:
         run: |-
           npx prisma migrate deploy
         env:
-          DATABASE_URL: postgresql://postgres:SimplePass123@localhost/door_quoter?host=/cloudsql/door-quoter:us-central1:door-app-db
+          DATABASE_URL: postgresql://postgres:SimplePass123@door-quoter:us-central1:door-app-db/door_quoter
 
       - name: Build and Push Container
         run: |-
