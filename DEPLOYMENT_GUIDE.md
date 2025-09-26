@@ -30,7 +30,38 @@ npm run dev  # Automatically starts Cloud SQL proxy + Next.js server
 - **Database**: Connected via Cloud SQL proxy to staging database
 - **Data**: Shared with staging environment
 
-### **Step 2: Deploy to Staging**
+### **Step 2: Safe Testing & Development**
+```bash
+# Use dev branch for safe testing, commits, rollback practice
+git checkout dev
+git add .
+git commit -m "Test changes"
+git push origin dev
+
+# To rollback to previous commit (hard reset - discards changes)
+git reset --hard HEAD~1
+
+# To rollback to previous commit (soft reset - keeps changes staged)
+git reset --soft HEAD~1
+
+# To rollback to a specific commit (hard reset - discards changes)
+git reset --hard <commit-hash>
+
+# To rollback to a specific commit (soft reset - keeps changes staged)
+git reset --soft <commit-hash>
+
+# View recent commits with messages
+git log --oneline -10
+
+# View commit history with details
+git log --graph --pretty=format:'%h -%d %s (%cr) <%an>' --abbrev-commit -10
+```
+- **Trigger**: No deployments triggered
+- **Purpose**: Safe branch for commits, rollback testing, and development work
+- **Result**: No infrastructure changes
+- **Rollback**: Use `git reset --hard HEAD~1` to restore from previous commit
+
+### **Step 3: Deploy to Staging**
 ```bash
 # Push to develop branch
 git checkout develop
@@ -43,7 +74,7 @@ git push origin develop
 - **Result**: Updates staging environment
 - **Test**: https://door-quoter-staging-259524707165.us-central1.run.app
 
-### **Step 3: Deploy to Production**
+### **Step 4: Deploy to Production**
 ```bash
 # Push to main branch
 git checkout main
