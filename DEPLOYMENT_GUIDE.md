@@ -63,13 +63,13 @@ git log --graph --pretty=format:'%h -%d %s (%cr) <%an>' --abbrev-commit -10
 
 ### **Step 3: Deploy to Staging**
 ```bash
-# Push to develop branch
-git checkout develop
+# Push to staging branch
+git checkout staging
 git add .
 git commit -m "Your changes"
-git push origin develop
+git push origin staging
 ```
-- **Trigger**: Push to `develop` branch
+- **Trigger**: Push to `staging` branch
 - **Deployment**: Automatic via GitHub Actions
 - **Result**: Updates staging environment
 - **Test**: https://door-quoter-staging-259524707165.us-central1.run.app
@@ -78,7 +78,7 @@ git push origin develop
 ```bash
 # Push to main branch
 git checkout main
-git merge develop  # or your feature branch
+git merge staging  # or your feature branch
 git push origin main
 ```
 - **Trigger**: Push to `main` branch
@@ -206,7 +206,7 @@ gcloud sql users set-password postgres --instance=door-app-db --password=SimpleP
 ### **Feature Development**
 1. Work locally on your feature
 2. Test locally against staging database
-3. Push to `develop` branch
+3. Push to `staging` branch
 4. Test on staging environment
 5. Merge to `main` for production deployment
 
@@ -233,7 +233,7 @@ gcloud sql users set-password postgres --instance=door-app-db --password=SimpleP
 
 ### **Important Commands to Remember**
 - **Start local dev**: `npm run dev`
-- **Deploy staging**: `git push origin develop` 
+- **Deploy staging**: `git push origin staging` 
 - **Deploy production**: `git push origin main`
 - **View logs**: Use GitHub Actions or `gcloud logging read`
 
