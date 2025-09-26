@@ -54,15 +54,6 @@ export default function DashboardView() {
 
   return (
     <div className="p-8">
-      {/* TEST BANNER - VISIBLE ROLLBACK TEST */}
-      <div className="mb-6 p-4 bg-yellow-400 border-2 border-yellow-500 rounded-lg">
-        <div className="flex items-center justify-center">
-          <div className="text-center">
-            <h2 className="text-xl font-bold text-yellow-900">🧪 TEST MODE ACTIVE</h2>
-            <p className="text-yellow-800 mt-1">This is a temporary banner for git rollback testing</p>
-          </div>
-        </div>
-      </div>
 
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
