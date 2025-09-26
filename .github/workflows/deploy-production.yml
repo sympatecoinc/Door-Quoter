@@ -39,6 +39,21 @@ jobs:
         run: |-
           gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Database Migrations
+        run: |-
+          npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:SimplePass123@localhost/door_quoter?host=/cloudsql/door-quoter:us-central1:door-app-db
+
       - name: Build and Push Container
         run: |-
           docker build -t "us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:production-latest" ./
