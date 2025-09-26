@@ -24,7 +24,7 @@ Staging DB → Staging DB → Production DB
 # Use dev branch for safe testing, commits, rollback practice
 git checkout dev
 git add .
-git commit -m "Test changes"
+git commit -m ""
 git push origin dev
 
 THEN:
