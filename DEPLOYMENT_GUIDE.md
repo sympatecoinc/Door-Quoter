@@ -61,6 +61,49 @@ git log --graph --pretty=format:'%h -%d %s (%cr) <%an>' --abbrev-commit -10
 - **Result**: No infrastructure changes
 - **Rollback**: Use `git reset --hard HEAD~1` to restore from previous commit
 
+### **⚠️ IMPORTANT: Preventing Branch Conflicts**
+
+**To avoid branch divergence and merge conflicts:**
+
+1. **Always pull before making changes:**
+```bash
+git pull origin <branch-name>
+```
+
+2. **Use this safe workflow for any branch:**
+```bash
+# Check current branch
+git branch
+
+# Switch branches cleanly
+git checkout <target-branch>
+git pull origin <target-branch>
+
+# Make your changes, then:
+git add .
+git commit -m "Your message"
+git push origin <target-branch>
+```
+
+3. **DO NOT work on multiple branches simultaneously in different terminals** - this causes branch divergence
+
+4. **If working from multiple terminals, always check status first:**
+```bash
+git status
+git pull origin <current-branch>
+```
+
+5. **Recommended development flow:**
+   - Make changes on `dev` branch
+   - Test them locally
+   - When ready: merge `dev` → `staging` → `main`
+   - Avoid direct commits to `main`
+
+6. **If you see "Your branch and origin/branch have diverged":**
+   - This means local and remote have different commit histories
+   - Contact team lead before force pushing
+   - Usually caused by working from multiple terminals without pulling first
+
 ### **Step 3: Deploy to Staging**
 ```bash
 # Push to staging branch
