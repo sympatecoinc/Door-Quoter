@@ -1,0 +1,22 @@
+# Name: fix-deployment-errors
+# Date: 09-26-25
+
+## Scope
+Files to modify:
+- .github/workflows/deploy-production.yml: Fix DATABASE_URL format for direct Cloud SQL connection
+- src/components/views/ProjectDetailView.tsx: Add type annotation for 'pso' parameter on line 804
+- src/components/views/ProjectDetailView 3.tsx: Add type annotation for 'pso' parameter on line 678
+- src/components/views/ProjectDetailView 4.tsx: Add type annotation for 'pso' parameter on line 688
+
+## Tasks
+- [ ] Task 1: Fix DATABASE_URL in production workflow to use proper Cloud SQL connection string
+- [ ] Task 2: Add TypeScript type annotations for 'pso' parameters in ProjectDetailView files
+- [ ] Task 3: Remove duplicate ProjectDetailView files (keep only the main one)
+- [ ] Task 4: Verify TypeScript compilation works locally (tsc --noEmit)
+
+## Success Criteria
+- GitHub Actions production deployment completes successfully
+- All TypeScript type errors resolved
+- CI workflow passes without type checking errors
+- No duplicate files remain in codebase
+- Database migration step works with proper Cloud SQL connection in production

@@ -801,7 +801,7 @@ export default function ProjectDetailView() {
                                     Object.entries(selections).forEach(([categoryId, optionId]) => {
                                       if (optionId) {
                                         // Find the category and option
-                                        const productOption = (product as any).productSubOptions?.find(pso => 
+                                        const productOption = (product as any).productSubOptions?.find((pso: any) =>
                                           pso.category.id === parseInt(categoryId)
                                         )
                                         if (productOption) {
