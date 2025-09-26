@@ -36,7 +36,7 @@ THEN:
 THEN:
 
   git checkout main
-  git merge dev
+  git merge staging
   git push origin main
 
 ```
