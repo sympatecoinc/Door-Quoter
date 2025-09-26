@@ -2,7 +2,9 @@ name: Deploy to Staging
 
 on:
   push:
-    branches: [ develop ]
+    branches: [ staging ]
+  pull_request:
+    branches: [ main ]
 
 env:
   PROJECT_ID: door-quoter
