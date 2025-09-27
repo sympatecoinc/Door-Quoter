@@ -40,7 +40,11 @@ const stages = [
   { key: 'Lost', label: 'Lost', color: 'bg-red-100 text-red-800' }
 ]
 
-export default function LeadPipeline() {
+interface LeadPipelineProps {
+  onAddLead?: (stage?: string) => void
+}
+
+export default function LeadPipeline({ onAddLead }: LeadPipelineProps) {
   const [leadsByStage, setLeadsByStage] = useState<Record<string, Lead[]>>({})
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<'pipeline' | 'list'>('pipeline')
@@ -160,7 +164,10 @@ export default function LeadPipeline() {
             ))}
 
             {/* Add Lead Button */}
-            <button className="w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 hover:border-blue-400 hover:text-blue-600 transition-colors">
+            <button
+              onClick={() => onAddLead?.(stage.key)}
+              className="w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 hover:border-blue-400 hover:text-blue-600 transition-colors"
+            >
               <Plus className="w-4 h-4 mx-auto" />
             </button>
           </div>
@@ -284,7 +291,10 @@ export default function LeadPipeline() {
             </button>
           </div>
 
-          <button className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+          <button
+            onClick={() => onAddLead?.()}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
             <Plus className="w-4 h-4 mr-2" />
             Add Lead
           </button>

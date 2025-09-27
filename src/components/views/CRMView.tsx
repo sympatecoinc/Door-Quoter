@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { Users, TrendingUp, DollarSign, Activity, Plus } from 'lucide-react'
 import CustomerList from '../crm/CustomerList'
 import LeadPipeline from '../crm/LeadPipeline'
+import CustomerForm from '../crm/CustomerForm'
+import LeadForm from '../crm/LeadForm'
 
 interface CRMStats {
   totalCustomers: number
@@ -27,6 +29,10 @@ export default function CRMView() {
   })
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'leads'>('overview')
+  const [showCustomerForm, setShowCustomerForm] = useState(false)
+  const [showLeadForm, setShowLeadForm] = useState(false)
+  const [leadFormStage, setLeadFormStage] = useState('New')
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     async function fetchCRMData() {
@@ -65,7 +71,39 @@ export default function CRMView() {
     }
 
     fetchCRMData()
-  }, [])
+  }, [refreshKey])
+
+  const handleCustomerSubmit = async (customerData: any) => {
+    const response = await fetch('/api/customers', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(customerData),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to create customer')
+    }
+
+    setRefreshKey(prev => prev + 1)
+  }
+
+  const handleLeadSubmit = async (leadData: any) => {
+    const response = await fetch('/api/leads', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(leadData),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to create lead')
+    }
+
+    setRefreshKey(prev => prev + 1)
+  }
 
   const tabs = [
     { key: 'overview', label: 'Overview' },
@@ -76,9 +114,12 @@ export default function CRMView() {
   const renderContent = () => {
     switch (activeTab) {
       case 'customers':
-        return <CustomerList />
+        return <CustomerList key={refreshKey} onAddCustomer={() => setShowCustomerForm(true)} />
       case 'leads':
-        return <LeadPipeline />
+        return <LeadPipeline key={refreshKey} onAddLead={(stage) => {
+          setLeadFormStage(stage || 'New')
+          setShowLeadForm(true)
+        }} />
       default:
         return (
           <div className="space-y-6">
@@ -139,11 +180,20 @@ export default function CRMView() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <button className="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                <button
+                  onClick={() => setShowCustomerForm(true)}
+                  className="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                >
                   <Plus className="w-5 h-5 text-gray-400 mr-2" />
                   <span className="text-gray-600">Add New Customer</span>
                 </button>
-                <button className="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-green-400 hover:bg-green-50 transition-colors">
+                <button
+                  onClick={() => {
+                    setLeadFormStage('New')
+                    setShowLeadForm(true)
+                  }}
+                  className="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-green-400 hover:bg-green-50 transition-colors"
+                >
                   <Plus className="w-5 h-5 text-gray-400 mr-2" />
                   <span className="text-gray-600">Create New Lead</span>
                 </button>
@@ -203,6 +253,19 @@ export default function CRMView() {
       ) : (
         renderContent()
       )}
+
+      {/* Modals */}
+      <CustomerForm
+        isOpen={showCustomerForm}
+        onClose={() => setShowCustomerForm(false)}
+        onSubmit={handleCustomerSubmit}
+      />
+      <LeadForm
+        isOpen={showLeadForm}
+        onClose={() => setShowLeadForm(false)}
+        onSubmit={handleLeadSubmit}
+        defaultStage={leadFormStage}
+      />
     </div>
   )
 }

@@ -31,7 +31,11 @@ interface CustomerListData {
   }
 }
 
-export default function CustomerList() {
+interface CustomerListProps {
+  onAddCustomer?: () => void
+}
+
+export default function CustomerList({ onAddCustomer }: CustomerListProps) {
   const [data, setData] = useState<CustomerListData>({
     customers: [],
     pagination: { page: 1, limit: 10, total: 0, pages: 0 }
@@ -120,7 +124,10 @@ export default function CustomerList() {
           </select>
         </div>
 
-        <button className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+        <button
+          onClick={onAddCustomer}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
           <Plus className="w-4 h-4 mr-2" />
           Add Customer
         </button>
