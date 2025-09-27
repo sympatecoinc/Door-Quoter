@@ -258,6 +258,7 @@ model Customer {
   leads       Lead[]
   projects    Project[]  @relation("CustomerProjects")
   activities  Activity[]
+  files       CustomerFile[]
 
   @@map("Customers")
 }
@@ -313,6 +314,20 @@ model Activity {
   customer    Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@map("Activities")
+}
+
+model CustomerFile {
+  id           Int      @id @default(autoincrement())
+  customerId   Int
+  filename     String   // Stored filename
+  originalName String   // Original upload filename
+  mimeType     String
+  size         Int      // File size in bytes
+  uploadedBy   String?  // User who uploaded the file
+  createdAt    DateTime @default(now())
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("CustomerFiles")
 }
 
 // Add customer relationship to existing Project model

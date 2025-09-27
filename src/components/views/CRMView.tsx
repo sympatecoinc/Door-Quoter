@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react'
 import { Users, TrendingUp, DollarSign, Activity, Plus } from 'lucide-react'
 import CustomerList from '../crm/CustomerList'
+import CustomerDetailView from './CustomerDetailView'
 import LeadPipeline from '../crm/LeadPipeline'
 import CustomerForm from '../crm/CustomerForm'
 import LeadForm from '../crm/LeadForm'
+import { useAppStore } from '@/stores/appStore'
 
 interface CRMStats {
   totalCustomers: number
@@ -19,6 +21,7 @@ interface CRMData {
 }
 
 export default function CRMView() {
+  const { selectedCustomerId, customerDetailView, setSelectedCustomerId, setCustomerDetailView } = useAppStore()
   const [data, setData] = useState<CRMData>({
     stats: {
       totalCustomers: 0,
@@ -137,6 +140,18 @@ export default function CRMView() {
     }
   }
 
+  const handleViewCustomer = (customer: any) => {
+    setSelectedCustomerId(customer.id)
+    setCustomerDetailView(true)
+  }
+
+  const handleBackToCustomers = () => {
+    setSelectedCustomerId(null)
+    setCustomerDetailView(false)
+    setActiveTab('customers')
+    setRefreshKey(prev => prev + 1)
+  }
+
   const handleAddCustomer = () => {
     setEditingCustomer(null)
     setCustomerFormMode('create')
@@ -166,6 +181,16 @@ export default function CRMView() {
   ]
 
   const renderContent = () => {
+    // Show customer detail view if selected
+    if (customerDetailView && selectedCustomerId) {
+      return (
+        <CustomerDetailView
+          customerId={selectedCustomerId}
+          onBack={handleBackToCustomers}
+        />
+      )
+    }
+
     switch (activeTab) {
       case 'customers':
         return (
@@ -174,6 +199,7 @@ export default function CRMView() {
             onAddCustomer={handleAddCustomer}
             onEditCustomer={handleEditCustomer}
             onDeleteCustomer={handleDeleteCustomer}
+            onViewCustomer={handleViewCustomer}
           />
         )
       case 'leads':

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Search, Plus, Edit, Trash2, Phone, Mail, MapPin } from 'lucide-react'
+import { Search, Plus, Edit, Trash2, Phone, Mail, MapPin, Eye } from 'lucide-react'
 
 interface Customer {
   id: number
@@ -35,9 +35,10 @@ interface CustomerListProps {
   onAddCustomer?: () => void
   onEditCustomer?: (customer: Customer) => void
   onDeleteCustomer?: (customerId: number) => void
+  onViewCustomer?: (customer: Customer) => void
 }
 
-export default function CustomerList({ onAddCustomer, onEditCustomer, onDeleteCustomer }: CustomerListProps) {
+export default function CustomerList({ onAddCustomer, onEditCustomer, onDeleteCustomer, onViewCustomer }: CustomerListProps) {
   const [data, setData] = useState<CustomerListData>({
     customers: [],
     pagination: { page: 1, limit: 10, total: 0, pages: 0 }
@@ -231,6 +232,13 @@ export default function CustomerList({ onAddCustomer, onEditCustomer, onDeleteCu
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex justify-end space-x-2">
+                          <button
+                            onClick={() => onViewCustomer?.(customer)}
+                            className="text-green-600 hover:text-green-900"
+                            title="View customer details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => onEditCustomer?.(customer)}
                             className="text-blue-600 hover:text-blue-900"
