@@ -97,4 +97,4 @@ export interface ComponentInstance {
   updatedAt: Date
 }
 
-export type MenuOption = 'dashboard' | 'projects' | 'products' | 'masterParts' | 'settings' | 'quote'
+export type MenuOption = 'dashboard' | 'projects' | 'crm' | 'products' | 'masterParts' | 'settings' | 'quote'

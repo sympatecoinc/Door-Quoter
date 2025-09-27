@@ -9,14 +9,16 @@ datasource db {
 }
 
 model Project {
-  id        Int       @id @default(autoincrement())
-  name      String
-  status    String    @default("Draft")
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  dueDate   DateTime?
-  boms      BOM[]
-  openings  Opening[]
+  id         Int       @id @default(autoincrement())
+  name       String
+  status     String    @default("Draft")
+  customerId Int?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  dueDate    DateTime?
+  boms       BOM[]
+  openings   Opening[]
+  customer   Customer? @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: SetNull)
 
   @@map("Projects")
 }
@@ -234,3 +236,83 @@ model PricingRule {
 
   @@map("PricingRules")
 }
+
+// CRM Models
+model Customer {
+  id          Int        @id @default(autoincrement())
+  companyName String
+  contactName String?
+  email       String?    @unique
+  phone       String?
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?
+  country     String?    @default("USA")
+  status      String     @default("Active") // Active, Inactive, Prospect
+  source      String?    // How they found us
+  notes       String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  contacts    Contact[]
+  leads       Lead[]
+  projects    Project[]  @relation("CustomerProjects")
+  activities  Activity[]
+
+  @@map("Customers")
+}
+
+model Contact {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  firstName  String
+  lastName   String
+  email      String?
+  phone      String?
+  title      String?
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("Contacts")
+}
+
+model Lead {
+  id          Int        @id @default(autoincrement())
+  customerId  Int?
+  title       String
+  description String?
+  value       Float?     // Estimated project value
+  probability Int        @default(50) // Percentage 0-100
+  stage       String     @default("New") // New, Qualified, Proposal, Negotiation, Won, Lost
+  source      String?    // Website, Referral, Cold Call, etc.
+  expectedCloseDate DateTime?
+  actualCloseDate   DateTime?
+  lostReason  String?    // If stage is Lost
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  customer    Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  activities  Activity[]
+
+  @@map("Leads")
+}
+
+model Activity {
+  id          Int      @id @default(autoincrement())
+  leadId      Int?
+  customerId  Int?
+  type        String   // Call, Email, Meeting, Note, Task
+  subject     String
+  description String?
+  dueDate     DateTime?
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("Activities")
+}
+
+// Add customer relationship to existing Project model
