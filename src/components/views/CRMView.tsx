@@ -307,33 +307,38 @@ export default function CRMView() {
 
   return (
     <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Customer Relationship Management</h1>
-        <p className="text-gray-600 mt-2">Manage your customers, leads, and sales pipeline</p>
-      </div>
+      {/* Show header and navigation only when not in customer detail view */}
+      {!customerDetailView && (
+        <>
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">Customer Relationship Management</h1>
+            <p className="text-gray-600 mt-2">Manage your customers, leads, and sales pipeline</p>
+          </div>
 
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200 mb-8">
-        <nav className="-mb-px flex space-x-8">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === tab.key
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
+          {/* Tab Navigation */}
+          <div className="border-b border-gray-200 mb-8">
+            <nav className="-mb-px flex space-x-8">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key as any)}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === tab.key
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </>
+      )}
 
       {/* Content */}
-      {loading ? (
+      {loading && !customerDetailView ? (
         <div className="flex justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>

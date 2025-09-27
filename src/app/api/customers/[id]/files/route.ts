@@ -6,10 +6,11 @@ import { v4 as uuidv4 } from 'uuid'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const customerId = parseInt(params.id)
+    const { id } = await params
+    const customerId = parseInt(id)
 
     if (isNaN(customerId)) {
       return NextResponse.json(
@@ -53,10 +54,11 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const customerId = parseInt(params.id)
+    const { id } = await params
+    const customerId = parseInt(id)
 
     if (isNaN(customerId)) {
       return NextResponse.json(

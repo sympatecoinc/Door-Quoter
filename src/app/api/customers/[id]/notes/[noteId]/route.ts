@@ -3,11 +3,12 @@ import { prisma } from '@/lib/prisma'
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string; noteId: string } }
+  { params }: { params: Promise<{ id: string; noteId: string }> }
 ) {
   try {
-    const customerId = parseInt(params.id)
-    const noteId = parseInt(params.noteId)
+    const { id, noteId: noteIdStr } = await params
+    const customerId = parseInt(id)
+    const noteId = parseInt(noteIdStr)
 
     if (isNaN(customerId) || isNaN(noteId)) {
       return NextResponse.json(
@@ -69,11 +70,12 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; noteId: string } }
+  { params }: { params: Promise<{ id: string; noteId: string }> }
 ) {
   try {
-    const customerId = parseInt(params.id)
-    const noteId = parseInt(params.noteId)
+    const { id, noteId: noteIdStr } = await params
+    const customerId = parseInt(id)
+    const noteId = parseInt(noteIdStr)
 
     if (isNaN(customerId) || isNaN(noteId)) {
       return NextResponse.json(

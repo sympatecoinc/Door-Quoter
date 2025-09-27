@@ -5,11 +5,12 @@ import { join } from 'path'
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; fileId: string } }
+  { params }: { params: Promise<{ id: string; fileId: string }> }
 ) {
   try {
-    const customerId = parseInt(params.id)
-    const fileId = parseInt(params.fileId)
+    const { id, fileId: fileIdStr } = await params
+    const customerId = parseInt(id)
+    const fileId = parseInt(fileIdStr)
 
     if (isNaN(customerId) || isNaN(fileId)) {
       return NextResponse.json(
