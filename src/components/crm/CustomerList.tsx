@@ -33,9 +33,11 @@ interface CustomerListData {
 
 interface CustomerListProps {
   onAddCustomer?: () => void
+  onEditCustomer?: (customer: Customer) => void
+  onDeleteCustomer?: (customerId: number) => void
 }
 
-export default function CustomerList({ onAddCustomer }: CustomerListProps) {
+export default function CustomerList({ onAddCustomer, onEditCustomer, onDeleteCustomer }: CustomerListProps) {
   const [data, setData] = useState<CustomerListData>({
     customers: [],
     pagination: { page: 1, limit: 10, total: 0, pages: 0 }
@@ -44,6 +46,7 @@ export default function CustomerList({ onAddCustomer }: CustomerListProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null)
 
   const fetchCustomers = async () => {
     setLoading(true)
@@ -84,6 +87,17 @@ export default function CustomerList({ onAddCustomer }: CustomerListProps) {
       'Prospect': 'bg-blue-100 text-blue-800'
     }
     return colors[status] || 'bg-gray-100 text-gray-800'
+  }
+
+  const handleDeleteClick = (customer: Customer) => {
+    setDeleteConfirm({ id: customer.id, name: customer.companyName })
+  }
+
+  const handleDeleteConfirm = () => {
+    if (deleteConfirm) {
+      onDeleteCustomer?.(deleteConfirm.id)
+      setDeleteConfirm(null)
+    }
   }
 
   return (
@@ -217,10 +231,18 @@ export default function CustomerList({ onAddCustomer }: CustomerListProps) {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex justify-end space-x-2">
-                          <button className="text-blue-600 hover:text-blue-900">
+                          <button
+                            onClick={() => onEditCustomer?.(customer)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Edit customer"
+                          >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button className="text-red-600 hover:text-red-900">
+                          <button
+                            onClick={() => handleDeleteClick(customer)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Delete customer"
+                          >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -264,6 +286,35 @@ export default function CustomerList({ onAddCustomer }: CustomerListProps) {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Delete Customer
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete <strong>{deleteConfirm.name}</strong>?
+              This action cannot be undone and will remove all associated data.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

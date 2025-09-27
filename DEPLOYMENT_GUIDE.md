@@ -1,5 +1,7 @@
 # Door Quoter Deployment Guide
 
+cd ~/projects/Door-Quoter
+
 ## 🏗️ Architecture Overview
 
 Your application uses a **3-tier deployment architecture**:

@@ -1,30 +1,56 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
+
+interface Customer {
+  id: number
+  companyName: string
+  contactName?: string
+  email?: string
+  phone?: string
+  address?: string
+  city?: string
+  state?: string
+  zipCode?: string
+  country?: string
+  status: string
+  source?: string
+  notes?: string
+}
 
 interface CustomerFormProps {
   isOpen: boolean
   onClose: () => void
   onSubmit: (customerData: any) => Promise<void>
+  customer?: Customer | null
+  mode?: 'create' | 'edit'
 }
 
-export default function CustomerForm({ isOpen, onClose, onSubmit }: CustomerFormProps) {
-  const [formData, setFormData] = useState({
-    companyName: '',
-    contactName: '',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    state: '',
-    zipCode: '',
-    country: 'USA',
-    status: 'Active',
-    source: '',
-    notes: ''
+export default function CustomerForm({ isOpen, onClose, onSubmit, customer, mode = 'create' }: CustomerFormProps) {
+  const getInitialFormData = () => ({
+    companyName: customer?.companyName || '',
+    contactName: customer?.contactName || '',
+    email: customer?.email || '',
+    phone: customer?.phone || '',
+    address: customer?.address || '',
+    city: customer?.city || '',
+    state: customer?.state || '',
+    zipCode: customer?.zipCode || '',
+    country: customer?.country || 'USA',
+    status: customer?.status || 'Active',
+    source: customer?.source || '',
+    notes: customer?.notes || ''
   })
+
+  const [formData, setFormData] = useState(getInitialFormData())
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(getInitialFormData())
+    }
+  }, [isOpen, customer])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -37,24 +63,14 @@ export default function CustomerForm({ isOpen, onClose, onSubmit }: CustomerForm
 
     setIsSubmitting(true)
     try {
-      await onSubmit(formData)
-      setFormData({
-        companyName: '',
-        contactName: '',
-        email: '',
-        phone: '',
-        address: '',
-        city: '',
-        state: '',
-        zipCode: '',
-        country: 'USA',
-        status: 'Active',
-        source: '',
-        notes: ''
-      })
+      if (mode === 'edit' && customer) {
+        await onSubmit({ ...formData, id: customer.id })
+      } else {
+        await onSubmit(formData)
+      }
       onClose()
     } catch (error) {
-      console.error('Error creating customer:', error)
+      console.error(`Error ${mode === 'edit' ? 'updating' : 'creating'} customer:`, error)
     } finally {
       setIsSubmitting(false)
     }
@@ -66,7 +82,9 @@ export default function CustomerForm({ isOpen, onClose, onSubmit }: CustomerForm
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">Add New Customer</h2>
+          <h2 className="text-xl font-semibold text-gray-900">
+            {mode === 'edit' ? 'Edit Customer' : 'Add New Customer'}
+          </h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
@@ -247,7 +265,10 @@ export default function CustomerForm({ isOpen, onClose, onSubmit }: CustomerForm
               disabled={isSubmitting || !formData.companyName.trim()}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Creating...' : 'Create Customer'}
+              {isSubmitting
+                ? (mode === 'edit' ? 'Updating...' : 'Creating...')
+                : (mode === 'edit' ? 'Update Customer' : 'Create Customer')
+              }
             </button>
           </div>
         </form>

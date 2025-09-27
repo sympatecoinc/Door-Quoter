@@ -33,20 +33,24 @@ export default function CRMView() {
   const [showLeadForm, setShowLeadForm] = useState(false)
   const [leadFormStage, setLeadFormStage] = useState('New')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [editingCustomer, setEditingCustomer] = useState(null)
+  const [customerFormMode, setCustomerFormMode] = useState('create')
 
   useEffect(() => {
     async function fetchCRMData() {
       try {
         // Fetch stats from multiple endpoints
-        const [customersRes, leadsRes] = await Promise.all([
+        const [customersRes, leadsRes, allLeadsRes] = await Promise.all([
           fetch('/api/customers?limit=1'),
-          fetch('/api/leads?limit=1')
+          fetch('/api/leads?limit=1'),
+          fetch('/api/leads') // Fetch all leads to calculate conversion rate
         ])
 
-        if (customersRes.ok && leadsRes.ok) {
-          const [customersData, leadsData] = await Promise.all([
+        if (customersRes.ok && leadsRes.ok && allLeadsRes.ok) {
+          const [customersData, leadsData, allLeadsData] = await Promise.all([
             customersRes.json(),
-            leadsRes.json()
+            leadsRes.json(),
+            allLeadsRes.json()
           ])
 
           // Calculate pipeline value from leads
@@ -54,12 +58,17 @@ export default function CRMView() {
             return sum + (lead.value || 0)
           }, 0) || 0
 
+          // Calculate conversion rate from all leads
+          const allLeads = allLeadsData.leads || []
+          const wonLeads = allLeads.filter((lead: any) => lead.stage === 'Won')
+          const conversionRate = allLeads.length > 0 ? Math.round((wonLeads.length / allLeads.length) * 100) : 0
+
           setData({
             stats: {
               totalCustomers: customersData.pagination?.total || 0,
               activeLeads: leadsData.pagination?.total || 0,
               pipelineValue,
-              conversionRate: 25 // Placeholder - would calculate from actual data
+              conversionRate
             }
           })
         }
@@ -74,19 +83,64 @@ export default function CRMView() {
   }, [refreshKey])
 
   const handleCustomerSubmit = async (customerData: any) => {
-    const response = await fetch('/api/customers', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(customerData),
-    })
+    if (customerFormMode === 'edit' && customerData.id) {
+      const response = await fetch(`/api/customers/${customerData.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(customerData),
+      })
 
-    if (!response.ok) {
-      throw new Error('Failed to create customer')
+      if (!response.ok) {
+        throw new Error('Failed to update customer')
+      }
+    } else {
+      const response = await fetch('/api/customers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(customerData),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to create customer')
+      }
     }
 
     setRefreshKey(prev => prev + 1)
+    setEditingCustomer(null)
+    setCustomerFormMode('create')
+  }
+
+  const handleEditCustomer = (customer: any) => {
+    setEditingCustomer(customer)
+    setCustomerFormMode('edit')
+    setShowCustomerForm(true)
+  }
+
+  const handleDeleteCustomer = async (customerId: number) => {
+    try {
+      const response = await fetch(`/api/customers/${customerId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete customer')
+      }
+
+      setRefreshKey(prev => prev + 1)
+    } catch (error) {
+      console.error('Error deleting customer:', error)
+      alert('Failed to delete customer. Please try again.')
+    }
+  }
+
+  const handleAddCustomer = () => {
+    setEditingCustomer(null)
+    setCustomerFormMode('create')
+    setShowCustomerForm(true)
   }
 
   const handleLeadSubmit = async (leadData: any) => {
@@ -114,7 +168,14 @@ export default function CRMView() {
   const renderContent = () => {
     switch (activeTab) {
       case 'customers':
-        return <CustomerList key={refreshKey} onAddCustomer={() => setShowCustomerForm(true)} />
+        return (
+          <CustomerList
+            key={refreshKey}
+            onAddCustomer={handleAddCustomer}
+            onEditCustomer={handleEditCustomer}
+            onDeleteCustomer={handleDeleteCustomer}
+          />
+        )
       case 'leads':
         return <LeadPipeline key={refreshKey} onAddLead={(stage) => {
           setLeadFormStage(stage || 'New')
@@ -181,7 +242,7 @@ export default function CRMView() {
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button
-                  onClick={() => setShowCustomerForm(true)}
+                  onClick={handleAddCustomer}
                   className="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors"
                 >
                   <Plus className="w-5 h-5 text-gray-400 mr-2" />
@@ -257,8 +318,14 @@ export default function CRMView() {
       {/* Modals */}
       <CustomerForm
         isOpen={showCustomerForm}
-        onClose={() => setShowCustomerForm(false)}
+        onClose={() => {
+          setShowCustomerForm(false)
+          setEditingCustomer(null)
+          setCustomerFormMode('create')
+        }}
         onSubmit={handleCustomerSubmit}
+        customer={editingCustomer}
+        mode={customerFormMode}
       />
       <LeadForm
         isOpen={showLeadForm}
