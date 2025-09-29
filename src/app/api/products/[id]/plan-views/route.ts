@@ -1,0 +1,63 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+
+// GET all plan views for a product
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params
+    const productId = parseInt(id)
+
+    const planViews = await prisma.productPlanView.findMany({
+      where: { productId },
+      orderBy: { displayOrder: 'asc' }
+    })
+
+    return NextResponse.json(planViews)
+  } catch (error) {
+    console.error('Error fetching plan views:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch plan views' },
+      { status: 500 }
+    )
+  }
+}
+
+// POST create a new plan view for a product
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params
+    const productId = parseInt(id)
+    const { name, imageData, fileName } = await request.json()
+
+    if (!name || !imageData) {
+      return NextResponse.json(
+        { error: 'Name and image data are required' },
+        { status: 400 }
+      )
+    }
+
+    // Get the current max display order for this product
+    const maxOrder = await prisma.productPlanView.aggregate({
+      where: { productId },
+      _max: { displayOrder: true }
+    })
+
+    const planView = await prisma.productPlanView.create({
+      data: {
+        productId,
+        name,
+        imageData,
+        fileName,
+        displayOrder: (maxOrder._max.displayOrder || 0) + 1
+      }
+    })
+
+    return NextResponse.json(planView, { status: 201 })
+  } catch (error) {
+    console.error('Error creating plan view:', error)
+    return NextResponse.json(
+      { error: 'Failed to create plan view' },
+      { status: 500 }
+    )
+  }
+}

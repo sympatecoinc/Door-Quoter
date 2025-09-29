@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, ArrowLeft, Tag, Wrench, Link, X, Edit2, Trash2, Save, Upload } from 'lucide-react'
+import { Plus, ArrowLeft, Tag, Wrench, Link, X, Edit2, Trash2, Save, Upload, Image as ImageIcon } from 'lucide-react'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 
@@ -406,6 +406,17 @@ interface ProductBOM {
   }
 }
 
+interface ProductPlanView {
+  id: number
+  productId: number
+  name: string
+  imageData: string
+  fileName?: string
+  displayOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
 export default function ProductDetailView({ 
   product, 
   categories, 
@@ -460,8 +471,16 @@ export default function ProductDetailView({
   const [masterPartFound, setMasterPartFound] = useState<any>(null)
   const [searchPerformed, setSearchPerformed] = useState(false)
   const [showGlassModal, setShowGlassModal] = useState(false)
+  const [planViews, setPlanViews] = useState<ProductPlanView[]>([])
+  const [showPlanViewForm, setShowPlanViewForm] = useState(false)
+  const [newPlanViewName, setNewPlanViewName] = useState('')
+  const [newPlanViewFile, setNewPlanViewFile] = useState<File | null>(null)
+  const [uploadingPlanView, setUploadingPlanView] = useState(false)
+  const [showElevationUpload, setShowElevationUpload] = useState(false)
+  const [elevationFile, setElevationFile] = useState<File | null>(null)
+  const [uploadingElevation, setUploadingElevation] = useState(false)
 
-  // Fetch detailed product data including linked categories
+  // Fetch detailed product data including linked categories and plan views
   useEffect(() => {
     async function fetchProductDetails() {
       try {
@@ -478,7 +497,21 @@ export default function ProductDetailView({
         setLoading(false)
       }
     }
+
+    async function fetchPlanViews() {
+      try {
+        const response = await fetch(`/api/products/${product.id}/plan-views`)
+        if (response.ok) {
+          const data = await response.json()
+          setPlanViews(data)
+        }
+      } catch (error) {
+        console.error('Error fetching plan views:', error)
+      }
+    }
+
     fetchProductDetails()
+    fetchPlanViews()
   }, [product.id])
 
   async function handleSaveProduct() {
@@ -641,6 +674,126 @@ export default function ProductDetailView({
     setNewPartNumber(masterPart.partNumber)
     setMasterPartFound(masterPart)
     setShowSuggestions(false)
+  }
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  async function handleUploadElevation() {
+    if (!elevationFile) {
+      alert('Please select an elevation image file')
+      return
+    }
+
+    setUploadingElevation(true)
+    try {
+      const elevationData = await fileToBase64(elevationFile)
+
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          elevationImageData: elevationData,
+          elevationFileName: elevationFile.name
+        })
+      })
+
+      if (response.ok) {
+        alert('Elevation image uploaded successfully!')
+        setShowElevationUpload(false)
+        setElevationFile(null)
+        onRefresh()
+        // Refresh product details
+        const detailsResponse = await fetch(`/api/products/${product.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setProductDetails(data)
+        }
+      } else {
+        alert('Failed to upload elevation image')
+      }
+    } catch (error) {
+      console.error('Error uploading elevation image:', error)
+      alert('Error uploading elevation image')
+    } finally {
+      setUploadingElevation(false)
+    }
+  }
+
+  async function handleAddPlanView(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newPlanViewName.trim() || !newPlanViewFile) {
+      alert('Please provide both a name and an image for the plan view')
+      return
+    }
+
+    setUploadingPlanView(true)
+    try {
+      const imageData = await fileToBase64(newPlanViewFile)
+
+      const response = await fetch(`/api/products/${product.id}/plan-views`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newPlanViewName,
+          imageData,
+          fileName: newPlanViewFile.name
+        })
+      })
+
+      if (response.ok) {
+        // Refresh plan views list
+        const planViewsResponse = await fetch(`/api/products/${product.id}/plan-views`)
+        if (planViewsResponse.ok) {
+          const data = await planViewsResponse.json()
+          setPlanViews(data)
+        }
+        setNewPlanViewName('')
+        setNewPlanViewFile(null)
+        setShowPlanViewForm(false)
+        alert('Plan view added successfully!')
+      } else {
+        alert('Failed to add plan view')
+      }
+    } catch (error) {
+      console.error('Error adding plan view:', error)
+      alert('Error adding plan view')
+    } finally {
+      setUploadingPlanView(false)
+    }
+  }
+
+  async function handleDeletePlanView(planViewId: number, planViewName: string) {
+    if (!confirm(`Are you sure you want to delete the plan view "${planViewName}"?`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/products/${product.id}/plan-views/${planViewId}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        // Refresh plan views list
+        const planViewsResponse = await fetch(`/api/products/${product.id}/plan-views`)
+        if (planViewsResponse.ok) {
+          const data = await planViewsResponse.json()
+          setPlanViews(data)
+        }
+        alert('Plan view deleted successfully!')
+      } else {
+        alert('Failed to delete plan view')
+      }
+    } catch (error) {
+      console.error('Error deleting plan view:', error)
+      alert('Error deleting plan view')
+    }
   }
 
   async function handleLinkCategory(e: React.FormEvent) {
@@ -1195,8 +1348,94 @@ export default function ProductDetailView({
                 Edit Glass Formulas
               </button>
             </div>
-            
+
             <GlassFormulasDisplay product={productDetails || product} />
+          </div>
+        </div>
+
+        {/* Elevation Image Section */}
+        <div className="col-span-full mt-6">
+          <div className="bg-gray-50 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Elevation View</h3>
+              <button
+                onClick={() => setShowElevationUpload(true)}
+                className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+              >
+                <Upload className="w-4 h-4 mr-1" />
+                Upload Elevation
+              </button>
+            </div>
+
+            {productDetails?.elevationImageData ? (
+              <div className="flex items-center space-x-4">
+                <img
+                  src={productDetails.elevationImageData}
+                  alt="Elevation view"
+                  className="w-48 h-48 object-contain border border-gray-300 rounded bg-white"
+                />
+                <div className="text-sm text-gray-600">
+                  <p><strong>File:</strong> {productDetails.elevationFileName || 'Unknown'}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="text-gray-500 text-sm italic">
+                No elevation image uploaded. Click "Upload Elevation" to add one.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Plan Views Section */}
+        <div className="col-span-full mt-6">
+          <div className="bg-gray-50 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Plan Views</h3>
+              <button
+                onClick={() => setShowPlanViewForm(true)}
+                className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Add Plan View
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              </div>
+            ) : planViews.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {planViews.map((planView) => (
+                  <div key={planView.id} className="bg-white rounded-lg border border-gray-200 p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <h4 className="font-medium text-gray-900">{planView.name}</h4>
+                      <button
+                        onClick={() => handleDeletePlanView(planView.id, planView.name)}
+                        className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                        title="Delete plan view"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <img
+                      src={planView.imageData}
+                      alt={planView.name}
+                      className="w-full h-48 object-contain border border-gray-300 rounded bg-gray-50"
+                    />
+                    {planView.fileName && (
+                      <p className="text-xs text-gray-500 mt-2">{planView.fileName}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <ImageIcon className="w-8 h-8 mx-auto mb-2" />
+                <p>No plan views defined for this product yet.</p>
+                <p className="text-sm mt-2">Plan views will be used as swing direction options (e.g., Right-In, Right-Out).</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1604,6 +1843,167 @@ export default function ProductDetailView({
         onClose={() => setShowGlassModal(false)}
         onRefresh={onRefresh}
       />
+
+      {/* Elevation Upload Modal */}
+      {showElevationUpload && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Upload Elevation View</h3>
+              <button
+                onClick={() => {
+                  setShowElevationUpload(false)
+                  setElevationFile(null)
+                }}
+                className="p-2 hover:bg-gray-100 rounded-full"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Elevation Image (SVG/PNG)
+                </label>
+                <input
+                  type="file"
+                  accept=".svg,image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) setElevationFile(file)
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                />
+                {elevationFile && (
+                  <p className="text-xs text-green-600 mt-1">✓ Selected: {elevationFile.name}</p>
+                )}
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowElevationUpload(false)
+                    setElevationFile(null)
+                  }}
+                  disabled={uploadingElevation}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUploadElevation}
+                  disabled={uploadingElevation || !elevationFile}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                >
+                  {uploadingElevation ? (
+                    <>
+                      <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Plan View Form Modal */}
+      {showPlanViewForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Add Plan View</h3>
+              <button
+                onClick={() => {
+                  setShowPlanViewForm(false)
+                  setNewPlanViewName('')
+                  setNewPlanViewFile(null)
+                }}
+                className="p-2 hover:bg-gray-100 rounded-full"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddPlanView} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Plan View Name *
+                </label>
+                <input
+                  type="text"
+                  value={newPlanViewName}
+                  onChange={(e) => setNewPlanViewName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  placeholder="e.g., Right-In, Right-Out, Left-In"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This name will appear as a swing direction option when adding the product to an opening.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Plan View Image (SVG/PNG) *
+                </label>
+                <input
+                  type="file"
+                  accept=".svg,image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) setNewPlanViewFile(file)
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  required
+                />
+                {newPlanViewFile && (
+                  <p className="text-xs text-green-600 mt-1">✓ Selected: {newPlanViewFile.name}</p>
+                )}
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPlanViewForm(false)
+                    setNewPlanViewName('')
+                    setNewPlanViewFile(null)
+                  }}
+                  disabled={uploadingPlanView}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploadingPlanView || !newPlanViewName.trim() || !newPlanViewFile}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                >
+                  {uploadingPlanView ? (
+                    <>
+                      <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Adding...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Plan View
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       </div> {/* End of main content container */}
     </div>
   )

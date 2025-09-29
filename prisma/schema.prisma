@@ -71,21 +71,24 @@ enum ProductType {
 }
 
 model Product {
-  id                 Int                 @id @default(autoincrement())
-  name               String
-  description        String?
-  type               String              @default("Product")
-  productType        ProductType         @default(SWING_DOOR)
-  archived           Boolean             @default(false)
-  withTrim           String              @default("Without Trim")
-  glassWidthFormula  String?
-  glassHeightFormula String?
+  id                   Int                 @id @default(autoincrement())
+  name                 String
+  description          String?
+  type                 String              @default("Product")
+  productType          ProductType         @default(SWING_DOOR)
+  archived             Boolean             @default(false)
+  withTrim             String              @default("Without Trim")
+  glassWidthFormula    String?
+  glassHeightFormula   String?
   glassQuantityFormula String?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  componentInstances ComponentInstance[]
-  productBOMs        ProductBOM[]
-  productSubOptions  ProductSubOption[]
+  elevationImageData   String?             // Base64 encoded elevation image
+  elevationFileName    String?             // Original elevation filename
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  componentInstances   ComponentInstance[]
+  productBOMs          ProductBOM[]
+  productSubOptions    ProductSubOption[]
+  planViews            ProductPlanView[]
 
   @@map("Products")
 }
@@ -350,6 +353,21 @@ model ComponentLibrary {
   panels               Panel[]  // Panels using this component
 
   @@map("ComponentLibrary")
+}
+
+// Product Plan Views - Multiple named plan views per product for swing directions
+model ProductPlanView {
+  id           Int      @id @default(autoincrement())
+  productId    Int
+  name         String   // e.g., "Right-In", "Right-Out", "Left-In", "Left-Out"
+  imageData    String   // Base64 encoded plan view image
+  fileName     String?  // Original filename
+  displayOrder Int      @default(0) // Order for display in UI
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("ProductPlanViews")
 }
 
 // Add customer relationship to existing Project model

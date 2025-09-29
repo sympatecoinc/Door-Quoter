@@ -56,9 +56,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       glassHeightFormula,
       glassQuantityFormula,
       elevationImageData,
-      planImageData,
-      elevationFileName,
-      planFileName
+      elevationFileName
     } = await request.json()
 
     // Prepare update data
@@ -91,6 +89,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (glassWidthFormula !== undefined) updateData.glassWidthFormula = glassWidthFormula
     if (glassHeightFormula !== undefined) updateData.glassHeightFormula = glassHeightFormula
     if (glassQuantityFormula !== undefined) updateData.glassQuantityFormula = glassQuantityFormula
+    if (elevationImageData !== undefined) updateData.elevationImageData = elevationImageData
+    if (elevationFileName !== undefined) updateData.elevationFileName = elevationFileName
 
     const product = await prisma.product.update({
       where: { id: productId },
@@ -115,8 +115,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     })
 
-    // Update or create corresponding ComponentLibrary entry if images are provided
-    if (elevationImageData !== undefined || planImageData !== undefined ||
+    // Update or create corresponding ComponentLibrary entry if elevation image is provided
+    if (elevationImageData !== undefined ||
         name !== undefined || description !== undefined || productType !== undefined || withTrim !== undefined) {
 
       const componentName = `${product.name} (${product.withTrim})`
@@ -143,10 +143,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         componentData.elevationImageData = elevationImageData
         componentData.elevationFileName = elevationFileName
       }
-      if (planImageData !== undefined) {
-        componentData.planImageData = planImageData
-        componentData.planFileName = planFileName
-      }
 
       if (existingComponent) {
         // Update existing component
@@ -154,8 +150,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           where: { id: existingComponent.id },
           data: componentData
         })
-      } else if (elevationImageData || planImageData) {
-        // Create new component only if images are provided
+      } else if (elevationImageData) {
+        // Create new component only if elevation image is provided
         await prisma.componentLibrary.create({
           data: {
             name: componentName,
@@ -164,9 +160,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             hasSwingDirection: product.productType === 'SWING_DOOR',
             hasSlidingDirection: product.productType === 'SLIDING_DOOR',
             elevationImageData,
-            planImageData,
             elevationFileName,
-            planFileName,
             isParametric: true
           }
         })
