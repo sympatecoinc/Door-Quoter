@@ -240,7 +240,7 @@ export default function ProductsView() {
     <div className="p-8">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Build Products</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Products</h1>
           <p className="text-gray-600 mt-2">Manage product catalog and configurations</p>
         </div>
       </div>
@@ -446,9 +446,8 @@ function ProductsTab({
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold text-gray-900">Product Templates</h2>
-        <button 
+      <div className="flex justify-end items-center mb-6">
+        <button
           onClick={() => setShowCreateForm(true)}
           className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
