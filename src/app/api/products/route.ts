@@ -39,12 +39,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { 
-      name, 
-      description, 
-      type = 'Product', 
-      productType = 'SWING_DOOR', 
-      withTrim = 'Without Trim' 
+    const {
+      name,
+      description,
+      type = 'Product',
+      productType = 'SWING_DOOR',
+      withTrim = 'Without Trim',
+      elevationImageData,
+      planImageData,
+      elevationFileName,
+      planFileName
     } = await request.json()
 
     if (!name) {
@@ -63,6 +67,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Create product
     const product = await prisma.product.create({
       data: {
         name,
@@ -72,6 +77,9 @@ export async function POST(request: NextRequest) {
         withTrim
       }
     })
+
+    // Only create ComponentLibrary entry if images are actually provided
+    // This allows products to be created without images initially
 
     return NextResponse.json(product, { status: 201 })
   } catch (error) {

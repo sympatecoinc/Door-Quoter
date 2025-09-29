@@ -234,6 +234,7 @@ export default function ProductsView() {
     { id: 'products', label: 'Products', icon: Package },
     { id: 'categories', label: 'Categories', icon: Tag },
     { id: 'options', label: 'Options', icon: Settings },
+    { id: 'images', label: 'Product Images', icon: Plus },
   ]
 
   return (
@@ -322,6 +323,7 @@ export default function ProductsView() {
               )
             )}
             {activeTab === 'options' && <OptionsTab options={options} categories={categories} onRefresh={fetchOptions} />}
+            {activeTab === 'images' && <ProductImagesTab products={products} onRefresh={fetchProducts} />}
           </>
         )}
       </div>
@@ -371,9 +373,9 @@ export default function ProductsView() {
   )
 }
 
-function ProductsTab({ 
-  products, 
-  onRefresh, 
+function ProductsTab({
+  products,
+  onRefresh,
   onSelectProduct,
   editingProduct,
   editProductName,
@@ -386,8 +388,8 @@ function ProductsTab({
   onDuplicateProduct,
   setEditProductName,
   setEditProductDescription
-}: { 
-  products: Product[], 
+}: {
+  products: Product[],
   onRefresh: () => void,
   onSelectProduct: (product: Product) => void,
   editingProduct: number | null,
@@ -1223,6 +1225,165 @@ function OptionsTab({ options, categories, onRefresh }: {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProductImagesTab({ products, onRefresh }: { products: Product[], onRefresh: () => void }) {
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [elevationFile, setElevationFile] = useState<File | null>(null)
+  const [planFile, setPlanFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  async function handleUploadImages() {
+    if (!selectedProduct || (!elevationFile && !planFile)) {
+      alert('Please select a product and at least one image')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const elevationData = elevationFile ? await fileToBase64(elevationFile) : undefined
+      const planData = planFile ? await fileToBase64(planFile) : undefined
+
+      const response = await fetch(`/api/products/${selectedProduct.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          elevationImageData: elevationData,
+          planImageData: planData,
+          elevationFileName: elevationFile?.name,
+          planFileName: planFile?.name
+        })
+      })
+
+      if (response.ok) {
+        alert('Images uploaded successfully!')
+        setSelectedProduct(null)
+        setElevationFile(null)
+        setPlanFile(null)
+        onRefresh()
+      } else {
+        alert('Failed to upload images')
+      }
+    } catch (error) {
+      console.error('Error uploading images:', error)
+      alert('Error uploading images')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Upload Product Images</h2>
+        <p className="text-sm text-gray-600">
+          Add elevation and plan view images to your products. These images will be used in the Component Library for drawing generation.
+        </p>
+      </div>
+
+      {!selectedProduct ? (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700 font-medium">Select a product to upload images:</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {products.map((product) => (
+              <button
+                key={product.id}
+                onClick={() => setSelectedProduct(product)}
+                className="border border-gray-200 rounded-lg p-4 hover:bg-blue-50 hover:border-blue-300 transition-colors text-left"
+              >
+                <h3 className="font-medium text-gray-900">{product.name}</h3>
+                <p className="text-sm text-gray-600 mt-1">{product.description || 'No description'}</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                    {product.productType.replace('_', ' ')}
+                  </span>
+                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
+                    {product.withTrim}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="border border-gray-200 rounded-lg p-6">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">{selectedProduct.name}</h3>
+              <p className="text-sm text-gray-600">{selectedProduct.description}</p>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedProduct(null)
+                setElevationFile(null)
+                setPlanFile(null)
+              }}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Elevation View (SVG/PNG)
+              </label>
+              <input
+                type="file"
+                accept=".svg,image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) setElevationFile(file)
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+              />
+              {elevationFile && (
+                <p className="text-xs text-green-600 mt-1">✓ Selected: {elevationFile.name}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Plan View (SVG/PNG)
+              </label>
+              <input
+                type="file"
+                accept=".svg,image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) setPlanFile(file)
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+              />
+              {planFile && (
+                <p className="text-xs text-green-600 mt-1">✓ Selected: {planFile.name}</p>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-4">
+              <button
+                onClick={handleUploadImages}
+                disabled={uploading || (!elevationFile && !planFile)}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {uploading ? 'Uploading...' : 'Upload Images'}
+              </button>
+            </div>
           </div>
         </div>
       )}

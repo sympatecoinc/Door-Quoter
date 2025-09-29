@@ -46,11 +46,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const productId = parseInt(id)
-    const { name, description, type, productType, glassWidthFormula, glassHeightFormula, glassQuantityFormula } = await request.json()
+    const {
+      name,
+      description,
+      type,
+      productType,
+      withTrim,
+      glassWidthFormula,
+      glassHeightFormula,
+      glassQuantityFormula,
+      elevationImageData,
+      planImageData,
+      elevationFileName,
+      planFileName
+    } = await request.json()
 
     // Prepare update data
     const updateData: any = {}
-    
+
     // Only update fields that are provided
     if (name !== undefined) {
       if (!name) {
@@ -63,12 +76,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     if (description !== undefined) updateData.description = description
     if (type !== undefined) updateData.type = type || 'Product'
+    if (withTrim !== undefined) updateData.withTrim = withTrim
     if (productType !== undefined) {
       // Validate productType
-      const validProductTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL']
+      const validProductTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL', 'CORNER_90']
       if (!validProductTypes.includes(productType)) {
         return NextResponse.json(
-          { error: 'Invalid product type. Must be one of: Swing Door, Sliding Door, Fixed Panel' },
+          { error: 'Invalid product type. Must be one of: Swing Door, Sliding Door, Fixed Panel, 90 Degree Corner' },
           { status: 400 }
         )
       }
@@ -100,6 +114,64 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
     })
+
+    // Update or create corresponding ComponentLibrary entry if images are provided
+    if (elevationImageData !== undefined || planImageData !== undefined ||
+        name !== undefined || description !== undefined || productType !== undefined || withTrim !== undefined) {
+
+      const componentName = `${product.name} (${product.withTrim})`
+
+      // Check if ComponentLibrary entry exists
+      const existingComponent = await prisma.componentLibrary.findFirst({
+        where: {
+          OR: [
+            { name: componentName },
+            { name: { contains: product.name } }
+          ]
+        }
+      })
+
+      const componentData: any = {}
+      if (name !== undefined || withTrim !== undefined) componentData.name = componentName
+      if (description !== undefined) componentData.description = description
+      if (productType !== undefined) {
+        componentData.productType = productType
+        componentData.hasSwingDirection = productType === 'SWING_DOOR'
+        componentData.hasSlidingDirection = productType === 'SLIDING_DOOR'
+      }
+      if (elevationImageData !== undefined) {
+        componentData.elevationImageData = elevationImageData
+        componentData.elevationFileName = elevationFileName
+      }
+      if (planImageData !== undefined) {
+        componentData.planImageData = planImageData
+        componentData.planFileName = planFileName
+      }
+
+      if (existingComponent) {
+        // Update existing component
+        await prisma.componentLibrary.update({
+          where: { id: existingComponent.id },
+          data: componentData
+        })
+      } else if (elevationImageData || planImageData) {
+        // Create new component only if images are provided
+        await prisma.componentLibrary.create({
+          data: {
+            name: componentName,
+            description: product.description,
+            productType: product.productType,
+            hasSwingDirection: product.productType === 'SWING_DOOR',
+            hasSlidingDirection: product.productType === 'SLIDING_DOOR',
+            elevationImageData,
+            planImageData,
+            elevationFileName,
+            planFileName,
+            isParametric: true
+          }
+        })
+      }
+    }
 
     return NextResponse.json(product)
   } catch (error) {

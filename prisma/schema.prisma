@@ -42,21 +42,23 @@ model Opening {
 }
 
 model Panel {
-  id                Int                @id @default(autoincrement())
-  openingId         Int
-  type              String
-  width             Float
-  height            Float
-  glassType         String
-  locking           String
-  swingDirection    String             @default("None")
-  slidingDirection  String             @default("Left")
-  isCorner          Boolean            @default(false)
-  cornerDirection   String             @default("Up")
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  componentInstance ComponentInstance?
-  opening           Opening            @relation(fields: [openingId], references: [id], onDelete: Cascade)
+  id                  Int                @id @default(autoincrement())
+  openingId           Int
+  type                String
+  width               Float
+  height              Float
+  glassType           String
+  locking             String
+  swingDirection      String             @default("None")
+  slidingDirection    String             @default("Left")
+  isCorner            Boolean            @default(false)
+  cornerDirection     String             @default("Up")
+  componentLibraryId  Int?               // Link to component library for parametric SVGs
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  componentInstance   ComponentInstance?
+  componentLibrary    ComponentLibrary?  @relation(fields: [componentLibraryId], references: [id], onDelete: SetNull)
+  opening             Opening            @relation(fields: [openingId], references: [id], onDelete: Cascade)
 
   @@map("Panels")
 }
@@ -328,6 +330,26 @@ model CustomerFile {
   customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@map("CustomerFiles")
+}
+
+// Component Library for SHOPGEN Integration
+model ComponentLibrary {
+  id                   Int      @id @default(autoincrement())
+  name                 String   @unique
+  description          String?
+  hasSwingDirection    Boolean  @default(false)
+  hasSlidingDirection  Boolean  @default(false)
+  elevationImageData   String?  // Base64 encoded SVG/PNG data
+  planImageData        String?  // Base64 encoded SVG/PNG data
+  elevationFileName    String?  // Original filename
+  planFileName         String?  // Original filename
+  isParametric         Boolean  @default(true) // Whether this component uses parametric scaling
+  productType          ProductType @default(SWING_DOOR)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  panels               Panel[]  // Panels using this component
+
+  @@map("ComponentLibrary")
 }
 
 // Add customer relationship to existing Project model
