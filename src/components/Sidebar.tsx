@@ -12,8 +12,7 @@ import {
   Plus,
   ChevronDown,
   ChevronRight,
-  Users,
-  Layers
+  Users
 } from 'lucide-react'
 
 const menuItems = [
@@ -21,7 +20,6 @@ const menuItems = [
   { id: 'projects' as MenuOption, label: 'Projects', icon: Folder },
   { id: 'crm' as MenuOption, label: 'CRM', icon: Users },
   { id: 'products' as MenuOption, label: 'Build Products', icon: Package },
-  { id: 'componentLibrary' as MenuOption, label: 'Component Library', icon: Layers },
   { id: 'masterParts' as MenuOption, label: 'Master Parts', icon: Database },
   { id: 'settings' as MenuOption, label: 'Settings', icon: Settings },
 ]
