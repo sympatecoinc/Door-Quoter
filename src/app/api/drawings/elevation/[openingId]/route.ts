@@ -7,7 +7,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { openingId } = await params
     const id = parseInt(openingId)
-    
+
     // Fetch opening data with all related panels and components
     const opening = await prisma.opening.findUnique({
       where: { id },
@@ -16,19 +16,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           include: {
             componentInstance: {
               include: {
-                product: {
-                  include: {
-                    productSubOptions: {
-                      include: {
-                        category: {
-                          include: {
-                            individualOptions: true
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
+                product: true
               }
             }
           }
@@ -43,22 +31,38 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       )
     }
 
-    // Call Python drawing service
-    const drawingResult = await generateDrawing('elevation', opening)
-    
-    if (!drawingResult.success) {
+    // Get elevation images from products
+    const elevationImages: Array<{ productName: string; imageData: string; fileName?: string }> = []
+
+    for (const panel of opening.panels) {
+      if (panel.componentInstance?.product?.elevationImageData) {
+        elevationImages.push({
+          productName: panel.componentInstance.product.name,
+          imageData: panel.componentInstance.product.elevationImageData,
+          fileName: panel.componentInstance.product.elevationFileName || undefined
+        })
+      }
+    }
+
+    if (elevationImages.length === 0) {
       return NextResponse.json(
-        { error: drawingResult.error },
-        { status: 500 }
+        {
+          success: false,
+          error: 'No elevation images found for products in this opening'
+        },
+        { status: 404 }
       )
     }
 
-    return NextResponse.json(drawingResult)
-    
+    return NextResponse.json({
+      success: true,
+      elevationImages: elevationImages
+    })
+
   } catch (error) {
-    console.error('Error generating elevation drawing:', error)
+    console.error('Error fetching elevation images:', error)
     return NextResponse.json(
-      { error: 'Failed to generate elevation drawing' },
+      { error: 'Failed to fetch elevation images' },
       { status: 500 }
     )
   }

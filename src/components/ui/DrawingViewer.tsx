@@ -6,6 +6,17 @@ import { X, Download, FileText, Eye } from 'lucide-react'
 interface DrawingData {
   elevation_image?: string
   plan_image?: string
+  elevationImages?: Array<{
+    productName: string
+    imageData: string
+    fileName?: string
+  }>
+  planViews?: Array<{
+    productName: string
+    planViewName: string
+    imageData: string
+    fileName?: string
+  }>
   door_schedule?: {
     headers: string[]
     rows: string[][]
@@ -27,6 +38,8 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
   const [error, setError] = useState<string | null>(null)
   const [drawingData, setDrawingData] = useState<DrawingData | null>(null)
   const [lastOpeningId, setLastOpeningId] = useState<number | null>(null)
+  const [selectedElevationIndex, setSelectedElevationIndex] = useState(0)
+  const [selectedPlanViewIndex, setSelectedPlanViewIndex] = useState(0)
 
   const generateElevationDrawing = async () => {
     setLoading(true)
@@ -77,9 +90,9 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
 
   const handleTabChange = (tab: 'elevation' | 'plan' | 'schedule') => {
     setActiveTab(tab)
-    if (tab === 'elevation' && !drawingData?.elevation_image) {
+    if (tab === 'elevation' && !drawingData?.elevation_image && !drawingData?.elevationImages) {
       generateElevationDrawing()
-    } else if (tab === 'plan' && !drawingData?.plan_image) {
+    } else if (tab === 'plan' && !drawingData?.plan_image && !drawingData?.planViews) {
       generatePlanDrawing()
     }
   }
@@ -90,11 +103,13 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
       setDrawingData(null)
       setLastOpeningId(openingId)
       setActiveTab('elevation')
+      setSelectedElevationIndex(0)
+      setSelectedPlanViewIndex(0)
       generateElevationDrawing()
-    } else if (isOpen && !drawingData?.elevation_image) {
+    } else if (isOpen && !drawingData?.elevation_image && !drawingData?.elevationImages) {
       generateElevationDrawing()
     }
-  }, [isOpen, openingId, lastOpeningId, drawingData?.elevation_image])
+  }, [isOpen, openingId, lastOpeningId, drawingData?.elevation_image, drawingData?.elevationImages])
 
   if (!isOpen) return null
 
@@ -183,58 +198,178 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
           {!loading && !error && (
             <>
               {/* Elevation Tab */}
-              {activeTab === 'elevation' && drawingData?.elevation_image && (
+              {activeTab === 'elevation' && (drawingData?.elevation_image || drawingData?.elevationImages) && (
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-medium">Elevation Drawing</h3>
-                    <button
-                      onClick={() => downloadImage(drawingData.elevation_image!, `opening-${openingNumber}-elevation.png`)}
-                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Download
-                    </button>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <img
-                      src={`data:image/png;base64,${drawingData.elevation_image}`}
-                      alt="Elevation Drawing"
-                      className="w-full h-auto max-h-96 object-contain"
-                    />
-                  </div>
-                  {drawingData.total_width && drawingData.height && (
-                    <div className="text-sm text-gray-600">
-                      Overall dimensions: {drawingData.total_width}" W × {drawingData.height}" H
-                    </div>
+                  {/* Product-based elevation images */}
+                  {drawingData.elevationImages && drawingData.elevationImages.length > 0 && (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <h3 className="text-lg font-medium">Elevation View</h3>
+                          <p className="text-sm text-gray-600">
+                            {drawingData.elevationImages.length} component{drawingData.elevationImages.length > 1 ? 's' : ''}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            // Download all images as a single combined view would require canvas manipulation
+                            // For now, download first image
+                            downloadImage(
+                              drawingData.elevationImages![0].imageData,
+                              `opening-${openingNumber}-elevation.png`
+                            )
+                          }}
+                          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Download
+                        </button>
+                      </div>
+
+                      {/* Display all elevation images seamlessly side by side */}
+                      <div className="bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto">
+                        <div className="flex items-end justify-center" style={{ minHeight: '400px' }}>
+                          {drawingData.elevationImages.map((img, index) => {
+                            // Check if imageData already contains data URI prefix
+                            const imageSrc = img.imageData.startsWith('data:')
+                              ? img.imageData
+                              : `data:image/png;base64,${img.imageData}`
+
+                            return (
+                              <img
+                                key={index}
+                                src={imageSrc}
+                                alt={`${img.productName}`}
+                                className="h-auto"
+                                style={{ maxHeight: '400px', display: 'block' }}
+                                onError={(e) => {
+                                  console.error('Image load error for:', img.productName)
+                                }}
+                              />
+                            )
+                          })}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 text-center">
+                        {drawingData.elevationImages.map(img => img.productName).join(' + ')}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Legacy generated elevation drawing */}
+                  {drawingData.elevation_image && !drawingData.elevationImages && (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-lg font-medium">Elevation Drawing</h3>
+                        <button
+                          onClick={() => downloadImage(drawingData.elevation_image!, `opening-${openingNumber}-elevation.png`)}
+                          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Download
+                        </button>
+                      </div>
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <img
+                          src={`data:image/png;base64,${drawingData.elevation_image}`}
+                          alt="Elevation Drawing"
+                          className="w-full h-auto max-h-96 object-contain"
+                        />
+                      </div>
+                      {drawingData.total_width && drawingData.height && (
+                        <div className="text-sm text-gray-600">
+                          Overall dimensions: {drawingData.total_width}" W × {drawingData.height}" H
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
 
               {/* Plan Tab */}
-              {activeTab === 'plan' && drawingData?.plan_image && (
+              {activeTab === 'plan' && (drawingData?.plan_image || drawingData?.planViews) && (
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-medium">Plan View</h3>
-                    <button
-                      onClick={() => downloadImage(drawingData.plan_image!, `opening-${openingNumber}-plan.png`)}
-                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Download
-                    </button>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <img
-                      src={`data:image/png;base64,${drawingData.plan_image}`}
-                      alt="Plan View Drawing"
-                      className="w-full h-auto max-h-96 object-contain"
-                    />
-                  </div>
+                  {/* Product-based plan views */}
+                  {drawingData.planViews && drawingData.planViews.length > 0 && (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <h3 className="text-lg font-medium">Plan View</h3>
+                          <p className="text-sm text-gray-600">
+                            {drawingData.planViews.length} component{drawingData.planViews.length > 1 ? 's' : ''}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            downloadImage(
+                              drawingData.planViews![0].imageData,
+                              `opening-${openingNumber}-plan.png`
+                            )
+                          }}
+                          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Download
+                        </button>
+                      </div>
+
+                      {/* Display all plan views seamlessly side by side */}
+                      <div className="bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto">
+                        <div className="flex items-center justify-center" style={{ minHeight: '400px' }}>
+                          {drawingData.planViews.map((view, index) => {
+                            // Check if imageData already contains data URI prefix
+                            const imageSrc = view.imageData.startsWith('data:')
+                              ? view.imageData
+                              : `data:image/png;base64,${view.imageData}`
+
+                            return (
+                              <img
+                                key={index}
+                                src={imageSrc}
+                                alt={`${view.productName} - ${view.planViewName}`}
+                                className="h-auto"
+                                style={{ maxHeight: '400px', display: 'block' }}
+                                onError={(e) => {
+                                  console.error('Image load error for:', view.productName, view.planViewName)
+                                }}
+                              />
+                            )
+                          })}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 text-center">
+                        {drawingData.planViews.map(v => `${v.productName} (${v.planViewName})`).join(' + ')}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Legacy generated plan view */}
+                  {drawingData.plan_image && !drawingData.planViews && (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-lg font-medium">Plan View</h3>
+                        <button
+                          onClick={() => downloadImage(drawingData.plan_image!, `opening-${openingNumber}-plan.png`)}
+                          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Download
+                        </button>
+                      </div>
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <img
+                          src={`data:image/png;base64,${drawingData.plan_image}`}
+                          alt="Plan View Drawing"
+                          className="w-full h-auto max-h-96 object-contain"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
               {/* Plan Tab Error */}
-              {activeTab === 'plan' && !drawingData?.plan_image && !loading && (
+              {activeTab === 'plan' && !drawingData?.plan_image && !drawingData?.planViews && !loading && (
                 <div className="text-center py-8">
                   <p className="text-gray-600 mb-4">Plan view is available for openings with swing or sliding doors.</p>
                   <button
