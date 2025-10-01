@@ -58,6 +58,7 @@ export default function ProductsView() {
   const [editProductDescription, setEditProductDescription] = useState('')
   const [updating, setUpdating] = useState(false)
   const [showArchiveDialog, setShowArchiveDialog] = useState<{product: Product, projects: string[]} | null>(null)
+  const [showCreateForm, setShowCreateForm] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -243,6 +244,13 @@ export default function ProductsView() {
           <h1 className="text-3xl font-bold text-gray-900">Products</h1>
           <p className="text-gray-600 mt-2">Manage product catalog and configurations</p>
         </div>
+        <button
+          onClick={() => setShowCreateForm(true)}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          <Plus className="w-5 h-5 mr-2" />
+          New Product
+        </button>
       </div>
 
       {/* Tabs */}
@@ -288,8 +296,8 @@ export default function ProductsView() {
                   onDelete={handleDeleteProduct}
                 />
               ) : (
-                <ProductsTab 
-                  products={products} 
+                <ProductsTab
+                  products={products}
                   onRefresh={fetchProducts}
                   onSelectProduct={setSelectedProduct}
                   editingProduct={editingProduct}
@@ -303,6 +311,8 @@ export default function ProductsView() {
                   onDuplicateProduct={handleDuplicateProduct}
                   setEditProductName={setEditProductName}
                   setEditProductDescription={setEditProductDescription}
+                  showCreateForm={showCreateForm}
+                  setShowCreateForm={setShowCreateForm}
                 />
               )
             )}
@@ -385,7 +395,9 @@ function ProductsTab({
   onDeleteProduct,
   onDuplicateProduct,
   setEditProductName,
-  setEditProductDescription
+  setEditProductDescription,
+  showCreateForm,
+  setShowCreateForm
 }: {
   products: Product[],
   onRefresh: () => void,
@@ -400,9 +412,10 @@ function ProductsTab({
   onDeleteProduct: (product: Product) => void,
   onDuplicateProduct: (product: Product) => void,
   setEditProductName: (name: string) => void,
-  setEditProductDescription: (description: string) => void
+  setEditProductDescription: (description: string) => void,
+  showCreateForm: boolean,
+  setShowCreateForm: (show: boolean) => void
 }) {
-  const [showCreateForm, setShowCreateForm] = useState(false)
   const [newProductName, setNewProductName] = useState('')
   const [newProductDescription, setNewProductDescription] = useState('')
   const [newProductType, setNewProductType] = useState('SWING_DOOR')
@@ -446,16 +459,6 @@ function ProductsTab({
 
   return (
     <div>
-      <div className="flex justify-end items-center mb-6">
-        <button
-          onClick={() => setShowCreateForm(true)}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          New Product
-        </button>
-      </div>
-      
       {products.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {products.map((product) => (

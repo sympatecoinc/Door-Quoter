@@ -1,0 +1,12 @@
+2025/10/01 13:58:59 This is the Cloud SQL Proxy v1. It is no longer receiving active feature development. For the latest features and improvements, migrate to the v2 version of the Cloud SQL Proxy. For details, see: https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/main/migration-guide.md
+2025/10/01 13:58:59 current FDs rlimit set to 524288, wanted limit is 8500. Nothing to do here.
+2025/10/01 13:59:04 Listening on 127.0.0.1:5432 for door-quoter:us-central1:door-app-staging
+2025/10/01 13:59:04 Ready for new connections
+2025/10/01 13:59:04 Generated RSA key in 161.766766ms
+2025/10/01 13:59:50 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/01 13:59:50 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
+2025/10/01 13:59:50 Scheduling refresh of ephemeral certificate in 55m0s
+2025/10/01 14:02:45 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/01 14:02:45 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/01 14:02:45 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/01 14:02:45 New connection for "door-quoter:us-central1:door-app-staging"
