@@ -108,7 +108,10 @@ export function scaleElement(
   element: Element,
   componentType: ComponentType,
   scaling: ComponentScaling,
-  mode: ViewMode = 'elevation'
+  targetDimensions: ScalingDimensions,
+  mode: ViewMode = 'elevation',
+  leftStileWidth: number = 0,
+  rightStileWidth: number = 0
 ): ElementTransform {
   const svgEl = element as SVGElement
   const bounds = svgEl.getBBox()
@@ -122,59 +125,151 @@ export function scaleElement(
     const width = parseFloat(element.getAttribute('width') || '0')
     const height = parseFloat(element.getAttribute('height') || '0')
 
+    console.log(`Scaling ${element.id} (${componentType}): x=${x}, y=${y}, w=${width}, h=${height}`)
+
+    // Remove any existing transforms - we're using direct attribute modification
+    if (element.getAttribute('transform')) {
+      element.removeAttribute('transform')
+    }
+
     switch (componentType) {
       case 'vertical':
-        // Stiles: scale height only, adjust Y position
+        // Stiles: Keep in ORIGINAL coordinate system, use PRE-SCALED widths
         if (mode === 'elevation') {
-          element.setAttribute('y', (y * scaling.scaleY).toString())
-          element.setAttribute('height', (height * scaling.scaleY).toString())
-          scaledBounds.height *= scaling.scaleY
+          const origViewBoxWidth = scaling.original.width
+          const origViewBoxHeight = scaling.original.height
+
+          if (x > origViewBoxWidth * 0.5) {
+            // Right stile - position at right edge in ORIGINAL coordinate system
+            element.setAttribute('x', (origViewBoxWidth - rightStileWidth).toString())
+            element.setAttribute('y', '0')
+            element.setAttribute('width', rightStileWidth.toString())
+            element.setAttribute('height', origViewBoxHeight.toString())
+            console.log(`  → Vertical (RIGHT): x → ${origViewBoxWidth - rightStileWidth}, width → ${rightStileWidth} (PRE-SCALED), height → ${origViewBoxHeight}`)
+            scaledBounds.width = rightStileWidth
+          } else {
+            // Left stile
+            element.setAttribute('x', '0')
+            element.setAttribute('y', '0')
+            element.setAttribute('width', leftStileWidth.toString())
+            element.setAttribute('height', origViewBoxHeight.toString())
+            console.log(`  → Vertical (LEFT): x=0, width → ${leftStileWidth} (PRE-SCALED), height → ${origViewBoxHeight}`)
+            scaledBounds.width = leftStileWidth
+          }
+
+          scaledBounds.height = origViewBoxHeight
         }
         break
 
       case 'horizontal':
-        // Rails: scale width only, adjust X position
+        // Rails: Work in ORIGINAL coordinate system
         if (mode === 'elevation') {
-          element.setAttribute('x', (x * scaling.scaleX).toString())
-          element.setAttribute('width', (width * scaling.scaleX).toString())
-          scaledBounds.width *= scaling.scaleX
+          const origViewBoxWidth = scaling.original.width
+          const origViewBoxHeight = scaling.original.height
+          const yRatio = y / origViewBoxHeight
+
+          // Scale rail height by WIDTH factor (SHOPGEN approach)
+          const scaledHeight = height * scaling.scaleX
+
+          // Calculate Y position in ORIGINAL coordinates
+          let newY: number
+          if (yRatio < 0.1) {
+            newY = 0
+          } else if (yRatio > 0.8) {
+            newY = origViewBoxHeight - scaledHeight
+          } else {
+            newY = yRatio * origViewBoxHeight
+          }
+
+          // Use PRE-SCALED stile widths, span between them in ORIGINAL coordinate system
+          const newX = leftStileWidth
+          const newWidth = origViewBoxWidth - leftStileWidth - rightStileWidth
+
+          element.setAttribute('x', newX.toString())
+          element.setAttribute('y', newY.toString())
+          element.setAttribute('width', newWidth.toString())
+          element.setAttribute('height', scaledHeight.toString())
+          console.log(`  → Horizontal: x → ${newX}, y → ${newY}, width → ${newWidth}, height=${height} → ${scaledHeight}`)
+
+          scaledBounds.width = newWidth
+          scaledBounds.height = scaledHeight
         }
         break
 
       case 'grow':
-        // Glass areas: scale both dimensions and positions
-        element.setAttribute('x', (x * scaling.scaleX).toString())
-        element.setAttribute('y', (y * scaling.scaleY).toString())
-        element.setAttribute('width', (width * scaling.scaleX).toString())
-        element.setAttribute('height', (height * scaling.scaleY).toString())
-        scaledBounds.width *= scaling.scaleX
-        scaledBounds.height *= scaling.scaleY
+        // Glass areas: Keep in ORIGINAL coordinate system - no changes
+        console.log(`  → Grow: keeping original (x=${x}, y=${y}, w=${width}, h=${height})`)
         break
 
       case 'glassstop':
-        // Glass stops: intelligent scaling based on glass opening
-        const glassStopScaleX = Math.max(0.5, scaling.scaleX * 0.9)
-        const glassStopScaleY = Math.max(0.5, scaling.scaleY * 0.9)
-        element.setAttribute('x', (x * scaling.scaleX).toString())
-        element.setAttribute('y', (y * scaling.scaleY).toString())
-        element.setAttribute('width', (width * glassStopScaleX).toString())
-        element.setAttribute('height', (height * glassStopScaleY).toString())
-        scaledBounds.width *= glassStopScaleX
-        scaledBounds.height *= glassStopScaleY
+        // Glass stops: Work in ORIGINAL coordinate system
+        const isHorizontalGS = element.id.includes('horizontal') || width > height
+        const isVerticalGS = element.id.includes('vertical') || height > width
+
+        if (isVerticalGS) {
+          // Vertical glassstop - use PRE-SCALED stile widths in ORIGINAL coordinates
+          const origViewBoxWidth = scaling.original.width
+          const origViewBoxHeight = scaling.original.height
+
+          if (x > origViewBoxWidth * 0.5) {
+            // Right-side
+            const newHeightGS = (origViewBoxHeight - 2 * y)
+
+            element.setAttribute('x', (origViewBoxWidth - rightStileWidth).toString())
+            element.setAttribute('y', y.toString())
+            element.setAttribute('width', rightStileWidth.toString())
+            element.setAttribute('height', newHeightGS.toString())
+            console.log(`  → Glassstop-V (RIGHT): x → ${origViewBoxWidth - rightStileWidth}, y → ${y}, width → ${rightStileWidth}, height → ${newHeightGS}`)
+          } else {
+            // Left-side
+            const newHeightGS = (origViewBoxHeight - 2 * y)
+
+            element.setAttribute('x', '0')
+            element.setAttribute('y', y.toString())
+            element.setAttribute('width', leftStileWidth.toString())
+            element.setAttribute('height', newHeightGS.toString())
+            console.log(`  → Glassstop-V (LEFT): x=0, y → ${y}, width → ${leftStileWidth}, height → ${newHeightGS}`)
+          }
+        } else if (isHorizontalGS) {
+          // Horizontal glassstop - use PRE-SCALED stile widths in ORIGINAL coordinates
+          const origViewBoxWidth = scaling.original.width
+          const scaledHeightGS = height * scaling.scaleX
+          const newWidthGS = origViewBoxWidth - leftStileWidth - rightStileWidth
+
+          element.setAttribute('x', leftStileWidth.toString())
+          element.setAttribute('y', y.toString())
+          element.setAttribute('width', newWidthGS.toString())
+          element.setAttribute('height', scaledHeightGS.toString())
+          console.log(`  → Glassstop-H: x → ${leftStileWidth}, y → ${y}, width → ${newWidthGS}, height=${height} → ${scaledHeightGS}`)
+        } else {
+          // Unknown - scale both
+          const newXGS = x * scaling.scaleX
+          const newYGS = y * scaling.scaleY
+          const newWGS = width * scaling.scaleX
+          const newHGS = height * scaling.scaleY
+
+          element.setAttribute('x', newXGS.toString())
+          element.setAttribute('y', newYGS.toString())
+          element.setAttribute('width', newWGS.toString())
+          element.setAttribute('height', newHGS.toString())
+          console.log(`  → Glassstop (unknown): x → ${newXGS}, y → ${newYGS}, w → ${newWGS}, h → ${newHGS}`)
+        }
         break
 
       case 'fixed':
         // Hardware/text: no scaling
+        console.log(`  → Fixed: no changes`)
         break
 
       default:
-        // Default: proportional scaling
-        element.setAttribute('x', (x * scaling.scaleX).toString())
-        element.setAttribute('y', (y * scaling.scaleY).toString())
-        element.setAttribute('width', (width * scaling.scaleX).toString())
-        element.setAttribute('height', (height * scaling.scaleY).toString())
+        // Default: scale dimensions only
+        const newWidthDef = width * scaling.scaleX
+        const newHeightDef = height * scaling.scaleY
+        element.setAttribute('width', newWidthDef.toString())
+        element.setAttribute('height', newHeightDef.toString())
         scaledBounds.width *= scaling.scaleX
         scaledBounds.height *= scaling.scaleY
+        console.log(`  → Default: w ${width} → ${newWidthDef}, h ${height} → ${newHeightDef}`)
     }
   } else {
     // For non-rect elements, use transform approach (fallback)
@@ -249,18 +344,48 @@ export function processParametricSVG(
   const originalDimensions = extractOriginalDimensions(svgElement)
   const scaling = calculateScaleFactors(originalDimensions, targetDimensions)
 
-  // Update SVG viewport
-  svgElement.setAttribute('width', targetDimensions.width.toString())
-  svgElement.setAttribute('height', targetDimensions.height.toString())
-  svgElement.setAttribute('viewBox', `0 0 ${targetDimensions.width} ${targetDimensions.height}`)
+  // Keep viewBox at ORIGINAL dimensions during element processing
+  // We'll update it to target dimensions at the end
+  svgElement.setAttribute('viewBox', `0 0 ${originalDimensions.width} ${originalDimensions.height}`)
+  svgElement.setAttribute('width', originalDimensions.width.toString())
+  svgElement.setAttribute('height', originalDimensions.height.toString())
 
-  // Process all elements with IDs or classes
   const elements = svgElement.querySelectorAll('[id], [class]')
+
+  // PASS 1: Detect ORIGINAL stile widths from SVG
+  let leftStileOriginalWidth = 0
+  let rightStileOriginalWidth = 0
+
+  elements.forEach(element => {
+    if (element.tagName === 'rect') {
+      const componentType = detectComponentType(element)
+      if (componentType === 'vertical') {
+        const x = parseFloat(element.getAttribute('x') || '0')
+        const width = parseFloat(element.getAttribute('width') || '0')
+
+        if (x > originalDimensions.width * 0.5) {
+          rightStileOriginalWidth = width
+        } else {
+          leftStileOriginalWidth = width
+        }
+      }
+    }
+  })
+
+  // PASS 2: Calculate PRE-SCALED stile widths (SHOPGEN approach)
+  // Scale by HEIGHT factor to maintain real-world dimensions
+  const leftStileWidth = leftStileOriginalWidth * scaling.scaleY
+  const rightStileWidth = rightStileOriginalWidth * scaling.scaleY
+
+  console.log(`Original stile widths: left=${leftStileOriginalWidth}, right=${rightStileOriginalWidth}`)
+  console.log(`Scaled stile widths: left=${leftStileWidth}, right=${rightStileWidth} (scaled by HEIGHT factor ${scaling.scaleY})`)
+
+  // PASS 3: Process all elements using PRE-SCALED stile widths
   const transforms: ElementTransform[] = []
 
   elements.forEach(element => {
     const componentType = detectComponentType(element)
-    const elementTransform = scaleElement(element, componentType, scaling, mode)
+    const elementTransform = scaleElement(element, componentType, scaling, targetDimensions, mode, leftStileWidth, rightStileWidth)
 
     // Apply transform to element
     if (elementTransform.transform && elementTransform.transform !== 'scale(1, 1)') {
@@ -278,6 +403,13 @@ export function processParametricSVG(
   if (mode === 'plan') {
     adjustPlanViewElements(svgElement, scaling)
   }
+
+  // FINAL STEP: Update viewBox to target dimensions
+  // Now that all elements are scaled, update the SVG container to target size
+  // This ensures resvg renders at the correct dimensions without additional scaling
+  svgElement.setAttribute('viewBox', `0 0 ${originalDimensions.width} ${originalDimensions.height}`)
+  svgElement.setAttribute('width', targetDimensions.width.toString())
+  svgElement.setAttribute('height', targetDimensions.height.toString())
 
   // Convert back to string
   const serializer = new XMLSerializer()

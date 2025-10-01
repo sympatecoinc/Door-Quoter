@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { X, Download, FileText, Eye } from 'lucide-react'
-import { processParametricSVG, svgToDataUrl } from '@/lib/parametric-svg'
 
 interface DrawingData {
   elevation_image?: string
@@ -93,134 +92,15 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
     link.click()
   }
 
-  // Process SVG image with parametric scaling - only for SVG files
-  const processImage = (imageData: string, fileName: string | undefined, width: number, height: number, mode: 'elevation' | 'plan' = 'elevation') => {
-    try {
-      console.log('=== Processing Image ===')
-      console.log('Filename:', fileName)
-      console.log('Dimensions:', width, 'x', height)
-      console.log('Mode:', mode)
-      console.log('Data length:', imageData.length)
-      console.log('Data prefix:', imageData.substring(0, 50))
-
-      // Check if this is an SVG file by filename extension
-      const isSvgFile = fileName?.toLowerCase().endsWith('.svg')
-
-      if (!isSvgFile) {
-        console.log('→ Not an SVG file (based on filename), skipping parametric scaling')
-        return imageData.startsWith('data:') ? imageData : `data:image/png;base64,${imageData}`
-      }
-
-      console.log('→ SVG file detected, attempting parametric scaling')
-
-      let svgString = ''
-
-      // Decode the SVG data
-      if (imageData.startsWith('data:image/svg+xml')) {
-        // Data URI SVG - check if it's base64 or url-encoded
-        const parts = imageData.split(',')
-        const dataContent = parts[1]
-
-        // Check if it's base64 encoded (indicated in the data URI)
-        if (parts[0].includes('base64')) {
-          svgString = atob(dataContent)
-          console.log('→ Decoded from data:image/svg+xml;base64 URI')
-        } else {
-          svgString = decodeURIComponent(dataContent)
-          console.log('→ Decoded from data:image/svg+xml URI (URL encoded)')
-        }
-      } else if (imageData.startsWith('data:')) {
-        // Should not happen for SVG files, but handle it
-        console.warn('→ SVG file has non-SVG data URI, skipping')
-        return imageData
-      } else {
-        // Base64 encoded SVG - may be double-encoded
-        try {
-          svgString = atob(imageData)
-          console.log('→ Decoded from base64 (first pass)')
-          console.log('→ First decode result starts with:', svgString.substring(0, 50))
-
-          // Check if it's still base64 encoded (double encoding)
-          if (!svgString.includes('<') && /^[A-Za-z0-9+/=]+$/.test(svgString.substring(0, 100))) {
-            console.log('→ Detected double base64 encoding, decoding again')
-            svgString = atob(svgString)
-            console.log('→ Second decode result starts with:', svgString.substring(0, 50))
-          }
-        } catch (e) {
-          console.error('→ Failed to decode base64:', e)
-          return `data:image/svg+xml;base64,${imageData}`
-        }
-      }
-
-      // Trim whitespace and check for SVG content
-      svgString = svgString.trim()
-
-      // Check if it's valid SVG (can have XML declaration or start with <svg)
-      const hasSvgTag = svgString.includes('<svg')
-      const hasXmlDeclaration = svgString.startsWith('<?xml')
-
-      if (!hasSvgTag && !hasXmlDeclaration) {
-        console.error('→ Decoded data does not contain <svg> tag or XML declaration')
-        console.log('→ Content preview:', svgString.substring(0, 500))
-        console.log('→ Content type check - starts with:', svgString.substring(0, 20))
-        return imageData.startsWith('data:') ? imageData : `data:image/svg+xml;base64,${imageData}`
-      }
-
-      if (!hasSvgTag) {
-        console.error('→ Has XML declaration but no <svg> tag found')
-        console.log('→ Full content:', svgString)
-        return imageData.startsWith('data:') ? imageData : `data:image/svg+xml;base64,${imageData}`
-      }
-
-      console.log('→ Valid SVG content found')
-      console.log('→ SVG preview:', svgString.substring(0, 300))
-
-      // Apply parametric scaling
-      // The SVG viewBox is in arbitrary units (pixels from design software)
-      // We need to extract the original viewBox and scale proportionally
-      const viewBoxMatch = svgString.match(/viewBox="([^"]+)"/)
-      let targetWidth = width
-      let targetHeight = height
-
-      if (viewBoxMatch) {
-        const viewBoxValues = viewBoxMatch[1].split(/\s+/)
-        const origWidth = parseFloat(viewBoxValues[2])
-        const origHeight = parseFloat(viewBoxValues[3])
-
-        console.log('→ Original SVG viewBox dimensions:', origWidth, 'x', origHeight)
-
-        // Assume the original SVG represents a standard door size (e.g., 36" x 96")
-        // Scale the viewBox dimensions proportionally based on the panel dimensions
-        const widthRatio = width / 36  // Assuming 36" is standard width
-        const heightRatio = height / 96 // Assuming 96" is standard height
-
-        targetWidth = origWidth * widthRatio
-        targetHeight = origHeight * heightRatio
-
-        console.log('→ Width ratio:', widthRatio, 'Height ratio:', heightRatio)
-        console.log('→ Scaled target dimensions:', targetWidth, 'x', targetHeight)
-      }
-
-      console.log('→ Calling processParametricSVG with target dimensions:', targetWidth, 'x', targetHeight)
-      const { scaledSVG, scaling, transforms } = processParametricSVG(svgString, { width: targetWidth, height: targetHeight }, mode)
-
-      console.log('→ Parametric scaling applied successfully')
-      console.log('→ Scale factors: X =', scaling.scaleX, ', Y =', scaling.scaleY)
-      console.log('→ Elements processed:', transforms.length)
-      console.log('→ Element types detected:', transforms.map(t => `${t.elementId || 'unnamed'}: ${t.elementType}`))
-      console.log('→ Scaled SVG preview:', scaledSVG.substring(0, 500))
-
-      const result = svgToDataUrl(scaledSVG)
-      console.log('→ Converted to data URL, length:', result.length)
-      console.log('=== Processing Complete ===')
-
-      return result
-    } catch (error) {
-      console.error('!!! Error processing image:', error)
-      console.error('Stack:', (error as Error).stack)
-      // Fallback to original image
-      return imageData.startsWith('data:') ? imageData : `data:image/svg+xml;base64,${imageData}`
+  // Simple image data URL converter
+  // SVG processing now happens server-side (SHOPGEN approach)
+  const getImageDataUrl = (imageData: string) => {
+    // If already a data URL, return as-is
+    if (imageData.startsWith('data:')) {
+      return imageData
     }
+    // Otherwise, treat as base64 PNG
+    return `data:image/png;base64,${imageData}`
   }
 
   const handleTabChange = (tab: 'elevation' | 'plan' | 'schedule') => {
@@ -365,8 +245,8 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                       <div className="bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto">
                         <div className="flex items-end justify-center" style={{ minHeight: '400px' }}>
                           {drawingData.elevationImages.map((img, index) => {
-                            // Apply parametric scaling to SVG images based on panel dimensions
-                            const imageSrc = processImage(img.imageData, img.fileName, img.width, img.height, 'elevation')
+                            // Server-side rendering handles all SVG processing (SHOPGEN approach)
+                            const imageSrc = getImageDataUrl(img.imageData)
 
                             return (
                               <img
@@ -450,8 +330,8 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                       <div className="bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto">
                         <div className="flex items-center justify-center" style={{ minHeight: '400px' }}>
                           {drawingData.planViews.map((view, index) => {
-                            // Apply parametric scaling to SVG images based on panel dimensions
-                            const imageSrc = processImage(view.imageData, view.fileName, view.width, view.height, 'plan')
+                            // Server-side rendering handles all SVG processing (SHOPGEN approach)
+                            const imageSrc = getImageDataUrl(view.imageData)
 
                             return (
                               <img

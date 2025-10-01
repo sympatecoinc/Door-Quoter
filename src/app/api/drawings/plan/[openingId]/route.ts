@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { renderSvgToPng, isSvgFile, decodeSvgData } from '@/lib/svg-renderer'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ openingId: string }> }) {
   try {
@@ -58,11 +59,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         )
 
         if (matchingPlanView) {
+          let imageData = matchingPlanView.imageData
+          const fileName = matchingPlanView.fileName
+
+          // If SVG, render to PNG server-side (SHOPGEN approach)
+          if (isSvgFile(fileName)) {
+            try {
+              console.log(`Processing SVG plan view for panel ${panel.id}: ${fileName}`)
+
+              // Decode SVG data
+              const svgString = decodeSvgData(imageData)
+
+              // Render to PNG with panel dimensions
+              imageData = await renderSvgToPng(svgString, {
+                width: panel.width,
+                height: panel.height,
+                mode: 'plan'
+              })
+
+              console.log(`Successfully rendered SVG plan view to PNG for panel ${panel.id}`)
+            } catch (error) {
+              console.error(`Error rendering SVG plan view for panel ${panel.id}:`, error)
+              // Fall back to original image data on error
+            }
+          }
+
           planViews.push({
             productName: panel.componentInstance.product.name,
             planViewName: matchingPlanView.name,
-            imageData: matchingPlanView.imageData,
-            fileName: matchingPlanView.fileName || undefined,
+            imageData: imageData,
+            fileName: fileName || undefined,
             width: panel.width,
             height: panel.height
           })

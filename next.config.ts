@@ -14,6 +14,16 @@ const nextConfig: NextConfig = {
     // !! WARN !!
     ignoreBuildErrors: true,
   },
+  webpack: (config, { isServer }) => {
+    // Externalize native modules for server-side only
+    if (isServer) {
+      config.externals = config.externals || [];
+      config.externals.push({
+        '@resvg/resvg-js': 'commonjs @resvg/resvg-js'
+      });
+    }
+    return config;
+  },
 };
 
 export default nextConfig;
