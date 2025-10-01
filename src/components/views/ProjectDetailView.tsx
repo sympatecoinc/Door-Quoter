@@ -329,7 +329,18 @@ export default function ProjectDetailView() {
 
   async function handleShowAddComponent(openingId: number) {
     setSelectedOpeningId(openingId)
-    
+
+    // Find the opening and check if it has existing panels
+    const opening = project?.openings.find(o => o.id === openingId)
+    if (opening && opening.panels && opening.panels.length > 0) {
+      // Opening has existing panels - get height from first panel
+      const existingHeight = opening.panels[0].height
+      setComponentHeight(existingHeight.toString())
+    } else {
+      // First panel in opening - reset height
+      setComponentHeight('')
+    }
+
     // Fetch products
     try {
       const response = await fetch('/api/products')
@@ -948,7 +959,21 @@ export default function ProjectDetailView() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Product</label>
                 <select
                   value={selectedProductId || ''}
-                  onChange={(e) => setSelectedProductId(parseInt(e.target.value))}
+                  onChange={(e) => {
+                    const productId = parseInt(e.target.value)
+                    setSelectedProductId(productId)
+
+                    // Set default direction to first plan view name if available
+                    const product = products.find(p => p.id === productId)
+                    if (product?.planViews && product.planViews.length > 0) {
+                      const firstPlanViewName = product.planViews[0].name
+                      if (product.productType === 'SWING_DOOR') {
+                        setSwingDirection(firstPlanViewName)
+                      } else if (product.productType === 'SLIDING_DOOR') {
+                        setSlidingDirection(firstPlanViewName)
+                      }
+                    }
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 >
                   <option value="">Select a product...</option>
@@ -1010,10 +1035,21 @@ export default function ProjectDetailView() {
                         placeholder="Enter height"
                         step="0.01"
                         min="0"
+                        disabled={(() => {
+                          const opening = project?.openings.find(o => o.id === selectedOpeningId)
+                          return opening && opening.panels && opening.panels.length > 0
+                        })()}
                         className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
-                          componentHeight && parseFloat(componentHeight) <= 0 
-                            ? 'border-red-300 bg-red-50' 
-                            : 'border-gray-300'
+                          (() => {
+                            const opening = project?.openings.find(o => o.id === selectedOpeningId)
+                            const isDisabled = opening && opening.panels && opening.panels.length > 0
+                            if (isDisabled) {
+                              return 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-300'
+                            }
+                            return componentHeight && parseFloat(componentHeight) <= 0
+                              ? 'border-red-300 bg-red-50'
+                              : 'border-gray-300'
+                          })()
                         }`}
                       />
                       {componentHeight && parseFloat(componentHeight) <= 0 && (
@@ -1027,7 +1063,14 @@ export default function ProjectDetailView() {
               {/* Direction Selection - Show for Swing, Sliding, and Corner */}
               {selectedProductId && (() => {
                 const selectedProduct = products.find(p => p.id === selectedProductId)
+                const availablePlanViews = selectedProduct?.planViews || []
+                const planViewNames = availablePlanViews.map((pv: any) => pv.name)
+
                 if (selectedProduct?.productType === 'SWING_DOOR') {
+                  // Only show if product has plan views
+                  if (planViewNames.length === 0) {
+                    return null
+                  }
                   return (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Swing Direction</label>
@@ -1036,7 +1079,7 @@ export default function ProjectDetailView() {
                         onChange={(e) => setSwingDirection(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                       >
-                        {SWING_DIRECTIONS.map((direction) => (
+                        {planViewNames.map((direction: string) => (
                           <option key={direction} value={direction}>
                             {direction}
                           </option>
@@ -1045,6 +1088,10 @@ export default function ProjectDetailView() {
                     </div>
                   )
                 } else if (selectedProduct?.productType === 'SLIDING_DOOR') {
+                  // Only show if product has plan views
+                  if (planViewNames.length === 0) {
+                    return null
+                  }
                   return (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Sliding Direction</label>
@@ -1053,7 +1100,7 @@ export default function ProjectDetailView() {
                         onChange={(e) => setSlidingDirection(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                       >
-                        {SLIDING_DIRECTIONS.map((direction) => (
+                        {planViewNames.map((direction: string) => (
                           <option key={direction} value={direction}>
                             {direction}
                           </option>

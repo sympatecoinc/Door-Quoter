@@ -29,15 +29,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       )
     }
 
-    // Get elevation images from products
-    const elevationImages: Array<{ productName: string; imageData: string; fileName?: string }> = []
+    // Get elevation images from products with panel dimensions
+    const elevationImages: Array<{
+      productName: string
+      imageData: string
+      fileName?: string
+      width: number
+      height: number
+    }> = []
 
     for (const panel of opening.panels) {
       if (panel.componentInstance?.product?.elevationImageData) {
         elevationImages.push({
           productName: panel.componentInstance.product.name,
           imageData: panel.componentInstance.product.elevationImageData,
-          fileName: panel.componentInstance.product.elevationFileName || undefined
+          fileName: panel.componentInstance.product.elevationFileName || undefined,
+          width: panel.width,
+          height: panel.height
         })
       }
     }

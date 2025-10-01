@@ -37,22 +37,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       )
     }
 
-    // Get plan view images from products
+    // Get plan view images from products, filtered by panel's swing/sliding direction
     const planViews: Array<{
       productName: string
       planViewName: string
       imageData: string
       fileName?: string
+      width: number
+      height: number
     }> = []
 
     for (const panel of opening.panels) {
       if (panel.componentInstance?.product?.planViews) {
-        for (const planView of panel.componentInstance.product.planViews) {
+        // Get the direction from the panel (swingDirection or slidingDirection)
+        const panelDirection = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+
+        // Find the plan view that matches this panel's direction
+        const matchingPlanView = panel.componentInstance.product.planViews.find(
+          (pv: any) => pv.name === panelDirection
+        )
+
+        if (matchingPlanView) {
           planViews.push({
             productName: panel.componentInstance.product.name,
-            planViewName: planView.name,
-            imageData: planView.imageData,
-            fileName: planView.fileName || undefined
+            planViewName: matchingPlanView.name,
+            imageData: matchingPlanView.imageData,
+            fileName: matchingPlanView.fileName || undefined,
+            width: panel.width,
+            height: panel.height
           })
         }
       }

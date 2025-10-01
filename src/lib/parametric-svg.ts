@@ -110,53 +110,112 @@ export function scaleElement(
   scaling: ComponentScaling,
   mode: ViewMode = 'elevation'
 ): ElementTransform {
-  const bounds = (element as SVGElement).getBBox()
+  const svgEl = element as SVGElement
+  const bounds = svgEl.getBBox()
   let transform = ''
   let scaledBounds = { ...bounds } as DOMRect
 
-  switch (componentType) {
-    case 'vertical':
-      // Stiles: scale height only
-      if (mode === 'elevation') {
-        transform = `scale(1, ${scaling.scaleY})`
-        scaledBounds.height *= scaling.scaleY
-      }
-      break
+  // For rect elements, directly modify attributes instead of using transforms
+  if (element.tagName === 'rect') {
+    const x = parseFloat(element.getAttribute('x') || '0')
+    const y = parseFloat(element.getAttribute('y') || '0')
+    const width = parseFloat(element.getAttribute('width') || '0')
+    const height = parseFloat(element.getAttribute('height') || '0')
 
-    case 'horizontal':
-      // Rails: scale width only
-      if (mode === 'elevation') {
-        transform = `scale(${scaling.scaleX}, 1)`
+    switch (componentType) {
+      case 'vertical':
+        // Stiles: scale height only, adjust Y position
+        if (mode === 'elevation') {
+          element.setAttribute('y', (y * scaling.scaleY).toString())
+          element.setAttribute('height', (height * scaling.scaleY).toString())
+          scaledBounds.height *= scaling.scaleY
+        }
+        break
+
+      case 'horizontal':
+        // Rails: scale width only, adjust X position
+        if (mode === 'elevation') {
+          element.setAttribute('x', (x * scaling.scaleX).toString())
+          element.setAttribute('width', (width * scaling.scaleX).toString())
+          scaledBounds.width *= scaling.scaleX
+        }
+        break
+
+      case 'grow':
+        // Glass areas: scale both dimensions and positions
+        element.setAttribute('x', (x * scaling.scaleX).toString())
+        element.setAttribute('y', (y * scaling.scaleY).toString())
+        element.setAttribute('width', (width * scaling.scaleX).toString())
+        element.setAttribute('height', (height * scaling.scaleY).toString())
         scaledBounds.width *= scaling.scaleX
-      }
-      break
+        scaledBounds.height *= scaling.scaleY
+        break
 
-    case 'grow':
-      // Glass areas: scale both dimensions
-      transform = `scale(${scaling.scaleX}, ${scaling.scaleY})`
-      scaledBounds.width *= scaling.scaleX
-      scaledBounds.height *= scaling.scaleY
-      break
+      case 'glassstop':
+        // Glass stops: intelligent scaling based on glass opening
+        const glassStopScaleX = Math.max(0.5, scaling.scaleX * 0.9)
+        const glassStopScaleY = Math.max(0.5, scaling.scaleY * 0.9)
+        element.setAttribute('x', (x * scaling.scaleX).toString())
+        element.setAttribute('y', (y * scaling.scaleY).toString())
+        element.setAttribute('width', (width * glassStopScaleX).toString())
+        element.setAttribute('height', (height * glassStopScaleY).toString())
+        scaledBounds.width *= glassStopScaleX
+        scaledBounds.height *= glassStopScaleY
+        break
 
-    case 'glassstop':
-      // Glass stops: intelligent scaling based on glass opening
-      const glassStopScaleX = Math.max(0.5, scaling.scaleX * 0.9) // Maintain minimum thickness
-      const glassStopScaleY = Math.max(0.5, scaling.scaleY * 0.9)
-      transform = `scale(${glassStopScaleX}, ${glassStopScaleY})`
-      scaledBounds.width *= glassStopScaleX
-      scaledBounds.height *= glassStopScaleY
-      break
+      case 'fixed':
+        // Hardware/text: no scaling
+        break
 
-    case 'fixed':
-      // Hardware/text: no scaling
-      transform = 'scale(1, 1)'
-      break
+      default:
+        // Default: proportional scaling
+        element.setAttribute('x', (x * scaling.scaleX).toString())
+        element.setAttribute('y', (y * scaling.scaleY).toString())
+        element.setAttribute('width', (width * scaling.scaleX).toString())
+        element.setAttribute('height', (height * scaling.scaleY).toString())
+        scaledBounds.width *= scaling.scaleX
+        scaledBounds.height *= scaling.scaleY
+    }
+  } else {
+    // For non-rect elements, use transform approach (fallback)
+    switch (componentType) {
+      case 'vertical':
+        if (mode === 'elevation') {
+          transform = `scale(1, ${scaling.scaleY})`
+          scaledBounds.height *= scaling.scaleY
+        }
+        break
 
-    default:
-      // Default: proportional scaling
-      transform = `scale(${scaling.scaleX}, ${scaling.scaleY})`
-      scaledBounds.width *= scaling.scaleX
-      scaledBounds.height *= scaling.scaleY
+      case 'horizontal':
+        if (mode === 'elevation') {
+          transform = `scale(${scaling.scaleX}, 1)`
+          scaledBounds.width *= scaling.scaleX
+        }
+        break
+
+      case 'grow':
+        transform = `scale(${scaling.scaleX}, ${scaling.scaleY})`
+        scaledBounds.width *= scaling.scaleX
+        scaledBounds.height *= scaling.scaleY
+        break
+
+      case 'glassstop':
+        const glassStopScaleX = Math.max(0.5, scaling.scaleX * 0.9)
+        const glassStopScaleY = Math.max(0.5, scaling.scaleY * 0.9)
+        transform = `scale(${glassStopScaleX}, ${glassStopScaleY})`
+        scaledBounds.width *= glassStopScaleX
+        scaledBounds.height *= glassStopScaleY
+        break
+
+      case 'fixed':
+        transform = 'scale(1, 1)'
+        break
+
+      default:
+        transform = `scale(${scaling.scaleX}, ${scaling.scaleY})`
+        scaledBounds.width *= scaling.scaleX
+        scaledBounds.height *= scaling.scaleY
+    }
   }
 
   return {

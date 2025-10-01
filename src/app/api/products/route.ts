@@ -15,6 +15,11 @@ export async function GET(request: NextRequest) {
           }
         },
         productBOMs: true,
+        planViews: {
+          orderBy: {
+            displayOrder: 'asc'
+          }
+        },
         _count: {
           select: {
             productBOMs: true,
