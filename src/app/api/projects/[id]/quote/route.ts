@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { spawn } from 'child_process'
-import path from 'path'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -50,8 +48,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Generate quote data for each opening
     const quoteItems = await Promise.all(
       project.openings.map(async (opening) => {
-        // Generate miniature elevation view
-        const elevationResult = await generateMiniatureElevation(opening)
+        // Get product elevation images instead of generating
+        const elevationImages: string[] = []
+        for (const panel of opening.panels) {
+          if (panel.componentInstance?.product?.elevationImageData) {
+            elevationImages.push(panel.componentInstance.product.elevationImageData)
+          }
+        }
+        const elevationImage = elevationImages.length > 0 ? elevationImages[0] : null
         
         // Calculate opening dimensions (sum of panel widths, max height)
         const totalWidth = opening.panels.reduce((sum, panel) => sum + panel.width, 0)
@@ -133,7 +137,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           hardwarePrice: totalHardwarePrice,
           glassType: Array.from(glassTypes).join(', ') || 'Clear',
           price: opening.price,
-          elevationImage: elevationResult.success ? elevationResult.elevation_image : null
+          elevationImage: elevationImage
         }
       })
     )
@@ -158,63 +162,4 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       { status: 500 }
     )
   }
-}
-
-async function generateMiniatureElevation(openingData: any): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const pythonScript = path.join(process.cwd(), 'shop-drawings', 'drawing_generator.py')
-    const python = spawn('python3', [pythonScript])
-    
-    let stdout = ''
-    let stderr = ''
-    
-    python.stdout.on('data', (data) => {
-      stdout += data.toString()
-    })
-    
-    python.stderr.on('data', (data) => {
-      stderr += data.toString()
-    })
-    
-    python.on('close', (code) => {
-      if (code !== 0) {
-        console.error('Python script error:', stderr)
-        resolve({
-          success: false,
-          error: `Python script failed with code ${code}: ${stderr}`
-        })
-        return
-      }
-      
-      try {
-        const result = JSON.parse(stdout)
-        resolve(result)
-      } catch (parseError) {
-        console.error('Failed to parse Python output:', parseError)
-        resolve({
-          success: false,
-          error: 'Failed to parse drawing service response'
-        })
-      }
-    })
-    
-    // Send input data to Python script for miniature elevation
-    const inputData = {
-      type: 'elevation',
-      data: openingData,
-      miniature: true // Flag for smaller dimensions
-    }
-    
-    python.stdin.write(JSON.stringify(inputData))
-    python.stdin.end()
-    
-    // Set timeout
-    setTimeout(() => {
-      python.kill()
-      resolve({
-        success: false,
-        error: 'Drawing generation timed out'
-      })
-    }, 15000) // 15 second timeout for miniatures
-  })
 }
