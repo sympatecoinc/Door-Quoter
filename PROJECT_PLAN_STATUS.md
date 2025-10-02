@@ -216,15 +216,18 @@ Legend: ✅ Done | 🟡 Partial | ⏳ Pending | 🚫 Blocked
 ## 9. Recently Completed
 
 ### 2025-10-02
-- ✅ **SVG scaling system fixed - FINAL** (src/lib/parametric-svg-server.ts)
+- ✅ **SVG scaling system fixed - FINAL** (src/lib/parametric-svg-server.ts, DrawingViewer.tsx)
   - Fixed element positioning to use scaled coordinate system (eliminates gaps)
   - ViewBox now matches scaled dimensions (e.g., 364.4 x 610.2 for 48" door)
   - Elements positioned in scaled pixel space to fill entire width
   - Right stile positioned at edge of scaled width (no gaps)
   - Rails span between stiles in scaled coordinate space
+  - **Fixed rail heights**: Rails keep original thickness (don't scale with width)
+  - **Fixed glassstop visibility**: Horizontal glassstops keep original height
+  - **Fixed bottom rail cutoff**: Bottom rail stays within viewBox bounds
   - Fixed display in DrawingViewer.tsx to use fixed scale (4px per inch)
-  - Tested: 24", 36", 48" widths - all display proportionally without gaps
-  - Wider panels now visually appear wider on screen
+  - Tested: 24", 36", 48" widths - all display proportionally
+  - All visual elements render correctly at all widths
 
 - ✅ **Project planning system created**
   - Created PROJECT_PLAN.md

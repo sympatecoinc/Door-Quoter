@@ -149,14 +149,15 @@ export function scaleElement(
         break
 
       case 'horizontal':
-        // Rails: Span between stiles in SCALED coordinate system, scale height by scaleX
+        // Rails: Span between stiles in SCALED coordinate system
+        // Keep original height - rails don't change thickness when door width changes
         if (mode === 'elevation') {
           const origViewBoxWidth = originalDimensions.width
           const origViewBoxHeight = originalDimensions.height
           const targetPixelWidth = origViewBoxWidth * scaling.scaleX
 
-          // Scale rail height by WIDTH factor (SHOPGEN approach)
-          const scaledHeight = height * scaling.scaleX
+          // Keep original rail height - thickness doesn't change with width
+          const railHeight = height
 
           // Keep Y position in ORIGINAL coordinates - don't reposition rails vertically
           // Rails must span between left and right stiles in SCALED coordinate space
@@ -166,8 +167,8 @@ export function scaleElement(
           element.setAttribute('x', newX.toString())
           element.setAttribute('y', y.toString())  // Keep original Y
           element.setAttribute('width', newWidth.toString())
-          element.setAttribute('height', scaledHeight.toString())
-          console.log(`  → Horizontal: x → ${newX}, y → ${y} (original), width → ${newWidth}, height → ${scaledHeight}`)
+          element.setAttribute('height', railHeight.toString())
+          console.log(`  → Horizontal: x → ${newX}, y → ${y} (original), width → ${newWidth}, height → ${railHeight} (original)`)
         }
         break
 
@@ -226,14 +227,14 @@ export function scaleElement(
         } else if (isHorizontalGS) {
           const origViewBoxWidth = originalDimensions.width
           const targetPixelWidth = origViewBoxWidth * scaling.scaleX
-          const scaledHeightGS = height * scaling.scaleX
+          const glassStopHeight = height  // Keep original height
           const newWidthGS = targetPixelWidth - leftStileWidth - rightStileWidth
 
           element.setAttribute('x', leftStileWidth.toString())
           element.setAttribute('y', y.toString())
           element.setAttribute('width', newWidthGS.toString())
-          element.setAttribute('height', scaledHeightGS.toString())
-          console.log(`  → Glassstop-H: x → ${leftStileWidth}, y → ${y}, width → ${newWidthGS}, height → ${scaledHeightGS}`)
+          element.setAttribute('height', glassStopHeight.toString())
+          console.log(`  → Glassstop-H: x → ${leftStileWidth}, y → ${y}, width → ${newWidthGS}, height → ${glassStopHeight} (original)`)
         }
         break
 
