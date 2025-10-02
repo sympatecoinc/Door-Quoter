@@ -124,7 +124,7 @@ export function scaleElement(
 
     switch (componentType) {
       case 'vertical':
-        // Stiles: Keep constant WIDTH, but position at edges of SCALED door
+        // Stiles: Keep constant WIDTH, position at edges of SCALED coordinate system
         if (mode === 'elevation') {
           const origViewBoxWidth = originalDimensions.width
           const origViewBoxHeight = originalDimensions.height
@@ -149,41 +149,30 @@ export function scaleElement(
         break
 
       case 'horizontal':
-        // Rails: Extend across the SCALED width
+        // Rails: Span between stiles in SCALED coordinate system, scale height by scaleX
         if (mode === 'elevation') {
           const origViewBoxWidth = originalDimensions.width
           const origViewBoxHeight = originalDimensions.height
-          const yRatio = y / origViewBoxHeight
+          const targetPixelWidth = origViewBoxWidth * scaling.scaleX
 
           // Scale rail height by WIDTH factor (SHOPGEN approach)
           const scaledHeight = height * scaling.scaleX
 
-          // Calculate Y position
-          let newY: number
-          if (yRatio < 0.1) {
-            newY = 0
-          } else if (yRatio > 0.8) {
-            newY = origViewBoxHeight - scaledHeight
-          } else {
-            newY = yRatio * origViewBoxHeight
-          }
-
-          // CRITICAL: Rails must span the SCALED width in pixel coordinates
-          // The target pixel width is originalWidth * scaleX
-          const targetPixelWidth = origViewBoxWidth * scaling.scaleX
+          // Keep Y position in ORIGINAL coordinates - don't reposition rails vertically
+          // Rails must span between left and right stiles in SCALED coordinate space
           const newX = leftStileWidth
           const newWidth = targetPixelWidth - leftStileWidth - rightStileWidth
 
           element.setAttribute('x', newX.toString())
-          element.setAttribute('y', newY.toString())
+          element.setAttribute('y', y.toString())  // Keep original Y
           element.setAttribute('width', newWidth.toString())
           element.setAttribute('height', scaledHeight.toString())
-          console.log(`  → Horizontal: x → ${newX}, y → ${newY}, width → ${newWidth} (scaled from ${origViewBoxWidth}), height → ${scaledHeight}`)
+          console.log(`  → Horizontal: x → ${newX}, y → ${y} (original), width → ${newWidth}, height → ${scaledHeight}`)
         }
         break
 
       case 'grow':
-        // Glass area: Scale to fill space between stiles and rails
+        // Glass area: Fill space between stiles in SCALED coordinate system
         if (mode === 'elevation') {
           const origViewBoxWidth = originalDimensions.width
           const targetPixelWidth = origViewBoxWidth * scaling.scaleX
@@ -200,7 +189,7 @@ export function scaleElement(
         break
 
       case 'glassstop':
-        // Glass stops logic
+        // Glass stops logic - position in SCALED coordinate system
         const isHorizontalGS = element.getAttribute('id')?.includes('horizontal') || width > height
         const isVerticalGS = element.getAttribute('id')?.includes('vertical') || height > width
 
@@ -209,20 +198,30 @@ export function scaleElement(
           const origViewBoxHeight = originalDimensions.height
           const targetPixelWidth = origViewBoxWidth * scaling.scaleX
 
+          // Vertical glassstops are thin strips INSIDE the stiles
+          // Keep their original width (typically 3-4 pixels)
+          const glassStopWidth = width
+
           if (x > origViewBoxWidth * 0.5) {
-            // Right-side glassstop
+            // Right-side glassstop - position inside right stile in SCALED coords
             const newHeightGS = (origViewBoxHeight - 2 * y)
-            element.setAttribute('x', (targetPixelWidth - rightStileWidth).toString())
+            const newX = targetPixelWidth - rightStileWidth + (rightStileWidth - glassStopWidth) / 2
+
+            element.setAttribute('x', newX.toString())
             element.setAttribute('y', y.toString())
-            element.setAttribute('width', rightStileWidth.toString())
+            element.setAttribute('width', glassStopWidth.toString())
             element.setAttribute('height', newHeightGS.toString())
+            console.log(`  → Glassstop-V (RIGHT): x → ${newX}, width → ${glassStopWidth}, height → ${newHeightGS}`)
           } else {
-            // Left-side glassstop
+            // Left-side glassstop - position inside left stile
             const newHeightGS = (origViewBoxHeight - 2 * y)
-            element.setAttribute('x', '0')
+            const newX = (leftStileWidth - glassStopWidth) / 2
+
+            element.setAttribute('x', newX.toString())
             element.setAttribute('y', y.toString())
-            element.setAttribute('width', leftStileWidth.toString())
+            element.setAttribute('width', glassStopWidth.toString())
             element.setAttribute('height', newHeightGS.toString())
+            console.log(`  → Glassstop-V (LEFT): x → ${newX}, width → ${glassStopWidth}, height → ${newHeightGS}`)
           }
         } else if (isHorizontalGS) {
           const origViewBoxWidth = originalDimensions.width
@@ -234,6 +233,7 @@ export function scaleElement(
           element.setAttribute('y', y.toString())
           element.setAttribute('width', newWidthGS.toString())
           element.setAttribute('height', scaledHeightGS.toString())
+          console.log(`  → Glassstop-H: x → ${leftStileWidth}, y → ${y}, width → ${newWidthGS}, height → ${scaledHeightGS}`)
         }
         break
 
@@ -292,15 +292,16 @@ export function processParametricSVG(
   console.log(`Target dimensions (inches): ${targetDimensions.width}" x ${targetDimensions.height}"`)
   console.log(`Scale factors: X=${scaling.scaleX}, Y=${scaling.scaleY}`)
 
-  // Calculate the target pixel dimensions based on the scale factors
-  // The SVG represents a 36"x96" door in pixels, we need to scale to target door size
+  // Calculate the target pixel dimensions for rendering
+  // This is only used for the final width/height attributes, NOT for viewBox
   const targetPixelWidth = originalDimensions.width * scaling.scaleX
   const targetPixelHeight = originalDimensions.height * scaling.scaleY
 
   console.log(`Target pixel dimensions: ${targetPixelWidth} x ${targetPixelHeight}`)
 
-  // Initially set viewBox to ORIGINAL dimensions
-  // We'll update it after processing all elements
+  // CRITICAL: Keep viewBox at ORIGINAL dimensions - all element positioning
+  // will be done in this coordinate system. The width/height attributes
+  // control the final rendered size, and SVG handles the scaling automatically.
   svgElement.setAttribute('viewBox', `0 0 ${originalDimensions.width} ${originalDimensions.height}`)
   svgElement.setAttribute('width', originalDimensions.width.toString())
   svgElement.setAttribute('height', originalDimensions.height.toString())
@@ -364,12 +365,15 @@ export function processParametricSVG(
     transforms.push(elementTransform)
   })
 
-  // FINAL STEP: Update viewBox to scaled dimensions
-  // All elements have been positioned in the scaled coordinate system
-  // Use the targetPixelWidth/Height calculated earlier
-  console.log(`Final viewBox: 0 0 ${targetPixelWidth} ${targetPixelHeight}`)
+  // FINAL STEP: Set viewBox to match the scaled coordinate system
+  // Elements are now positioned in scaled pixel space, so viewBox must match
+  const finalViewBoxWidth = targetPixelWidth
+  const finalViewBoxHeight = targetPixelHeight
 
-  svgElement.setAttribute('viewBox', `0 0 ${targetPixelWidth} ${targetPixelHeight}`)
+  console.log(`Final viewBox: 0 0 ${finalViewBoxWidth} ${finalViewBoxHeight}`)
+  console.log(`Final width/height attributes: ${targetPixelWidth} x ${targetPixelHeight}`)
+
+  svgElement.setAttribute('viewBox', `0 0 ${finalViewBoxWidth} ${finalViewBoxHeight}`)
   svgElement.setAttribute('width', targetPixelWidth.toString())
   svgElement.setAttribute('height', targetPixelHeight.toString())
 

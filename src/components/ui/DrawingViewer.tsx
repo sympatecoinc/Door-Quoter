@@ -248,13 +248,23 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                             // Server-side rendering handles all SVG processing (SHOPGEN approach)
                             const imageSrc = getImageDataUrl(img.imageData)
 
+                            // Calculate display size maintaining aspect ratio
+                            // Use a fixed scale factor so all panels render at the same scale
+                            const pixelsPerInch = 4  // Fixed scale for all panels
+                            const displayHeight = img.height * pixelsPerInch
+                            const displayWidth = img.width * pixelsPerInch
+
                             return (
                               <img
                                 key={index}
                                 src={imageSrc}
-                                alt={`${img.productName}`}
+                                alt={`${img.productName} (${img.width}" × ${img.height}")`}
                                 className="h-auto"
-                                style={{ maxHeight: '400px', display: 'block' }}
+                                style={{
+                                  height: `${displayHeight}px`,
+                                  width: `${displayWidth}px`,
+                                  display: 'block'
+                                }}
                                 onError={(e) => {
                                   console.error('Image load error for:', img.productName)
                                 }}
@@ -333,13 +343,23 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                             // Server-side rendering handles all SVG processing (SHOPGEN approach)
                             const imageSrc = getImageDataUrl(view.imageData)
 
+                            // Calculate display size maintaining aspect ratio
+                            // Use a fixed scale factor so all panels render at the same scale
+                            const pixelsPerInch = 4  // Fixed scale for all panels
+                            const displayHeight = view.height * pixelsPerInch
+                            const displayWidth = view.width * pixelsPerInch
+
                             return (
                               <img
                                 key={index}
                                 src={imageSrc}
-                                alt={`${view.productName} - ${view.planViewName}`}
+                                alt={`${view.productName} - ${view.planViewName} (${view.width}" × ${view.height}")`}
                                 className="h-auto"
-                                style={{ maxHeight: '400px', display: 'block' }}
+                                style={{
+                                  height: `${displayHeight}px`,
+                                  width: `${displayWidth}px`,
+                                  display: 'block'
+                                }}
                                 onError={(e) => {
                                   console.error('Image load error for:', view.productName, view.planViewName)
                                 }}
