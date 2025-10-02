@@ -60,7 +60,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         if (matchingPlanView) {
           let imageData = matchingPlanView.imageData
-          const fileName = matchingPlanView.fileName
+          const fileName = matchingPlanView.fileName ?? undefined
 
           // If SVG, render to PNG server-side (SHOPGEN approach)
           if (isSvgFile(fileName)) {

@@ -42,7 +42,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     for (const panel of opening.panels) {
       if (panel.componentInstance?.product?.elevationImageData) {
         let imageData = panel.componentInstance.product.elevationImageData
-        const fileName = panel.componentInstance.product.elevationFileName
+        const fileName = panel.componentInstance.product.elevationFileName ?? undefined
 
         // If SVG, render to PNG server-side (SHOPGEN approach)
         if (isSvgFile(fileName)) {
