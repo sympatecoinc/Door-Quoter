@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Create the BOM entry using master part data
+        // Note: Don't set cost for Extrusions - they should use stock length rules for pricing
         await prisma.productBOM.create({
           data: {
             productId: productId,
@@ -107,7 +108,7 @@ export async function POST(request: NextRequest) {
             quantity: parseFloat(row.quantity),
             stockLength: null,
             partNumber: masterPart.partNumber,
-            cost: masterPart.cost || null
+            cost: masterPart.partType === 'Extrusion' ? null : (masterPart.cost || null)
           }
         })
         imported++

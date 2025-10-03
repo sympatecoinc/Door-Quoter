@@ -18,13 +18,17 @@ Staging DB → Staging DB → Production DB
 |-------------|-----|----------|
 | **Local Dev** | http://localhost:3000 | door-app-staging (postgres) |
 | **Staging** | https://door-quoter-staging-259524707165.us-central1.run.app | door-app-staging (postgres) |
-| **Production** | https://door-quoter-app-259524707165.us-central1.run.app | door-app-db (door_quoter) |
+| **Production** | https://door-quoter-3app-259524707165.us-central1.run.app | door-app-db (door_quoter) |
 
 ## 🚀 Deployment Workflow
 ```bash
 
 # Use dev branch for safe testing, commits, rollback practice
 
+git checkout dev
+git add .
+git commit -m "Test changes"
+git push origin dev
 
 
 THEN:
