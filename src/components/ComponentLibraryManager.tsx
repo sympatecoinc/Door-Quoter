@@ -583,7 +583,7 @@ export default function ComponentLibraryManager() {
                       onClick={() => handleDelete(component.id)}
                       className="p-2 text-gray-400 hover:text-red-600"
                       title="Delete component"
-                      disabled={component._count?.panels && component._count.panels > 0}
+                      disabled={!!(component._count?.panels && component._count.panels > 0)}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

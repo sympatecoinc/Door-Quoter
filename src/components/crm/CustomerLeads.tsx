@@ -118,7 +118,7 @@ export default function CustomerLeads({ customerId, customer }: CustomerLeadsPro
   }
 
   const getStageColor = (stage: string) => {
-    const colors = {
+    const colors: { [key: string]: string } = {
       'New': 'bg-gray-100 text-gray-800',
       'Qualified': 'bg-blue-100 text-blue-800',
       'Proposal': 'bg-yellow-100 text-yellow-800',

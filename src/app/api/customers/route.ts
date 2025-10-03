@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error creating customer:', error)
 
-    if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002' && 'meta' in error && error.meta && typeof error.meta === 'object' && 'target' in error.meta && Array.isArray(error.meta.target) && error.meta.target.includes('email')) {
       return NextResponse.json(
         { error: 'Email address already exists' },
         { status: 409 }

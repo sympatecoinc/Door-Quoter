@@ -356,7 +356,7 @@ export default function CRMView() {
         }}
         onSubmit={handleCustomerSubmit}
         customer={editingCustomer}
-        mode={customerFormMode}
+        mode={customerFormMode as 'create' | 'edit'}
       />
       <LeadForm
         isOpen={showLeadForm}

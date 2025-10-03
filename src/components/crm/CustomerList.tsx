@@ -82,7 +82,7 @@ export default function CustomerList({ onAddCustomer, onEditCustomer, onDeleteCu
   }
 
   const getStatusBadge = (status: string) => {
-    const colors = {
+    const colors: { [key: string]: string } = {
       'Active': 'bg-green-100 text-green-800',
       'Inactive': 'bg-gray-100 text-gray-800',
       'Prospect': 'bg-blue-100 text-blue-800'

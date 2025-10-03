@@ -24,10 +24,8 @@ Staging DB → Staging DB → Production DB
 ```bash
 
 # Use dev branch for safe testing, commits, rollback practice
-git checkout dev
-git add .
-git commit -m ""
-git push origin dev
+
+
 
 THEN:
 

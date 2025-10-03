@@ -54,7 +54,7 @@ export async function PUT(
   } catch (error) {
     console.error('Error updating customer note:', error)
 
-    if (error.code === 'P2025') {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
       return NextResponse.json(
         { error: 'Note not found' },
         { status: 404 }
@@ -97,7 +97,7 @@ export async function DELETE(
   } catch (error) {
     console.error('Error deleting customer note:', error)
 
-    if (error.code === 'P2025') {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
       return NextResponse.json(
         { error: 'Note not found' },
         { status: 404 }
