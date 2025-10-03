@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, ChevronDown } from 'lucide-react'
+import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, ChevronDown, Sparkles } from 'lucide-react'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 
@@ -76,9 +76,18 @@ interface PricingRule {
   updatedAt: string
 }
 
+interface GlassType {
+  id: number
+  name: string
+  description?: string
+  pricePerSqFt: number
+  createdAt: string
+  updatedAt: string
+}
+
 export default function MasterPartsView() {
   const { toasts, removeToast, showSuccess, showError } = useToast()
-  const [activeTab, setActiveTab] = useState<'masterParts' | 'partRules'>('masterParts')
+  const [activeTab, setActiveTab] = useState<'masterParts' | 'partRules' | 'glass'>('masterParts')
   
   // Current master part for viewing rules
   const [selectedMasterPartId, setSelectedMasterPartId] = useState<number | null>(null)
@@ -134,6 +143,19 @@ export default function MasterPartsView() {
   const [maxQuantity, setMaxQuantity] = useState('')
   const [pricingPartType, setPricingPartType] = useState('Extrusion')
   const [pricingIsActive, setPricingIsActive] = useState(true)
+
+  // Glass Types State
+  const [glassTypes, setGlassTypes] = useState<GlassType[]>([])
+  const [loadingGlass, setLoadingGlass] = useState(false)
+  const [showAddGlassForm, setShowAddGlassForm] = useState(false)
+  const [editingGlassType, setEditingGlassType] = useState<number | null>(null)
+  const [creatingGlass, setCreatingGlass] = useState(false)
+  const [updatingGlass, setUpdatingGlass] = useState(false)
+
+  // Glass Type Form State
+  const [glassName, setGlassName] = useState('')
+  const [glassDescription, setGlassDescription] = useState('')
+  const [glassPricePerSqFt, setGlassPricePerSqFt] = useState('')
 
   // Filter and sort master parts
   const filteredMasterParts = masterParts
@@ -629,6 +651,127 @@ export default function MasterPartsView() {
     setPricingIsActive(true)
   }
 
+  // Glass Type Functions
+  async function fetchGlassTypes() {
+    setLoadingGlass(true)
+    try {
+      const response = await fetch('/api/glass-types')
+      if (response.ok) {
+        const data = await response.json()
+        setGlassTypes(data)
+      }
+    } catch (error) {
+      console.error('Error fetching glass types:', error)
+      showError('Error fetching glass types')
+    } finally {
+      setLoadingGlass(false)
+    }
+  }
+
+  async function handleCreateGlassType(e: React.FormEvent) {
+    e.preventDefault()
+    if (!glassName.trim() || !glassPricePerSqFt) return
+
+    setCreatingGlass(true)
+    try {
+      const response = await fetch('/api/glass-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: glassName,
+          description: glassDescription,
+          pricePerSqFt: parseFloat(glassPricePerSqFt)
+        })
+      })
+
+      if (response.ok) {
+        resetGlassForm()
+        setShowAddGlassForm(false)
+        fetchGlassTypes()
+        showSuccess('Glass type created successfully!')
+      } else {
+        const errorData = await response.json()
+        showError(errorData.error || 'Failed to create glass type')
+      }
+    } catch (error) {
+      console.error('Error creating glass type:', error)
+      showError('Error creating glass type')
+    } finally {
+      setCreatingGlass(false)
+    }
+  }
+
+  async function handleUpdateGlassType(e: React.FormEvent) {
+    e.preventDefault()
+    if (!glassName.trim() || !glassPricePerSqFt || !editingGlassType) return
+
+    setUpdatingGlass(true)
+    try {
+      const response = await fetch(`/api/glass-types/${editingGlassType}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: glassName,
+          description: glassDescription,
+          pricePerSqFt: parseFloat(glassPricePerSqFt)
+        })
+      })
+
+      if (response.ok) {
+        resetGlassForm()
+        setEditingGlassType(null)
+        fetchGlassTypes()
+        showSuccess('Glass type updated successfully!')
+      } else {
+        const errorData = await response.json()
+        showError(errorData.error || 'Failed to update glass type')
+      }
+    } catch (error) {
+      console.error('Error updating glass type:', error)
+      showError('Error updating glass type')
+    } finally {
+      setUpdatingGlass(false)
+    }
+  }
+
+  async function handleDeleteGlassType(id: number) {
+    if (!confirm('Are you sure you want to delete this glass type?')) return
+
+    try {
+      const response = await fetch(`/api/glass-types/${id}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        fetchGlassTypes()
+        showSuccess('Glass type deleted successfully!')
+      }
+    } catch (error) {
+      console.error('Error deleting glass type:', error)
+      showError('Error deleting glass type')
+    }
+  }
+
+  function startEditGlassType(glassType: GlassType) {
+    setEditingGlassType(glassType.id)
+    setGlassName(glassType.name)
+    setGlassDescription(glassType.description || '')
+    setGlassPricePerSqFt(glassType.pricePerSqFt.toString())
+  }
+
+  function resetGlassForm() {
+    setGlassName('')
+    setGlassDescription('')
+    setGlassPricePerSqFt('')
+  }
+
+  // Fetch glass types when glass tab is opened
+  useEffect(() => {
+    if (activeTab === 'glass') {
+      fetchGlassTypes()
+    }
+  }, [activeTab])
+
   return (
     <div className="p-8">
       <div className="flex justify-between items-center mb-8">
@@ -665,6 +808,17 @@ export default function MasterPartsView() {
               {selectedMasterPart.partNumber} Rules
             </button>
           )}
+          <button
+            onClick={() => setActiveTab('glass')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'glass'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <Sparkles className="w-5 h-5 inline-block mr-2" />
+            Glass ({glassTypes.length})
+          </button>
         </nav>
       </div>
 
@@ -1052,6 +1206,100 @@ export default function MasterPartsView() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Glass Tab */}
+      {activeTab === 'glass' && (
+        <div>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-semibold text-gray-900">Glass Types</h2>
+            <button
+              onClick={() => setShowAddGlassForm(true)}
+              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Add Glass Type
+            </button>
+          </div>
+
+          {loadingGlass ? (
+            <div className="flex justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : glassTypes.length > 0 ? (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Name
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Description
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Price per SqFt
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {glassTypes.map((glassType) => (
+                      <tr key={glassType.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4">
+                          <div className="text-sm font-medium text-gray-900">{glassType.name}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-600">
+                            {glassType.description || '-'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm font-medium text-gray-900">
+                            ${glassType.pricePerSqFt.toFixed(2)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex space-x-2 justify-end">
+                            <button
+                              onClick={() => startEditGlassType(glassType)}
+                              className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                              title="Edit glass type"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteGlassType(glassType.id)}
+                              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                              title="Delete glass type"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Sparkles className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+              <p className="text-gray-500 mb-4">No glass types found</p>
+              <button
+                onClick={() => setShowAddGlassForm(true)}
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Add Your First Glass Type
+              </button>
             </div>
           )}
         </div>
@@ -1502,6 +1750,89 @@ export default function MasterPartsView() {
                 >
                   <Save className="w-4 h-4 mr-2" />
                   {creatingPricingRule || updatingPricingRule ? 'Saving...' : editingPricingRule ? 'Update' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Glass Type Modal */}
+      {(showAddGlassForm || editingGlassType) && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">
+                {editingGlassType ? 'Edit Glass Type' : 'Add Glass Type'}
+              </h3>
+              <button
+                onClick={() => {
+                  resetGlassForm()
+                  setShowAddGlassForm(false)
+                  setEditingGlassType(null)
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={editingGlassType ? handleUpdateGlassType : handleCreateGlassType} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={glassName}
+                  onChange={(e) => setGlassName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., Clear, Frosted, Tempered"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={glassDescription}
+                  onChange={(e) => setGlassDescription(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Optional description"
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Price per SqFt ($) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={glassPricePerSqFt}
+                  onChange={(e) => setGlassPricePerSqFt(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="0.00"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetGlassForm()
+                    setShowAddGlassForm(false)
+                    setEditingGlassType(null)
+                  }}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingGlass || updatingGlass}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  {creatingGlass || updatingGlass ? 'Saving...' : editingGlassType ? 'Update' : 'Create'}
                 </button>
               </div>
             </form>

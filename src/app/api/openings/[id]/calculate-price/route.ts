@@ -345,8 +345,10 @@ export async function POST(
         height: panel.height,
         bomCosts: [] as any[],
         optionCosts: [] as any[],
+        glassCost: null as any,
         totalBOMCost: 0,
         totalOptionCost: 0,
+        totalGlassCost: 0,
         totalComponentCost: 0
       }
 
@@ -369,16 +371,16 @@ export async function POST(
       if (component.subOptionSelections) {
         try {
           const selections = JSON.parse(component.subOptionSelections)
-          
+
           for (const [categoryId, optionId] of Object.entries(selections)) {
             if (!optionId) continue
-            
+
             // Find the individual option
-            const category = product.productSubOptions.find(pso => 
+            const category = product.productSubOptions.find(pso =>
               pso.category.id === parseInt(categoryId)
             )?.category
-            
-            const individualOption = category?.individualOptions.find(io => 
+
+            const individualOption = category?.individualOptions.find(io =>
               io.id === parseInt(optionId as string)
             )
 
@@ -388,7 +390,7 @@ export async function POST(
                 optionName: individualOption.name,
                 price: individualOption.price
               })
-              
+
               componentBreakdown.totalOptionCost += individualOption.price
               componentCost += individualOption.price
             }
@@ -398,6 +400,79 @@ export async function POST(
         }
       }
 
+      // Calculate glass cost if glass type is specified
+      if (panel.glassType && panel.glassType !== 'N/A') {
+        console.log(`[Glass Pricing] Panel ${panel.id} has glass type: ${panel.glassType}`)
+        try {
+          // Fetch glass type pricing from database
+          const glassType = await prisma.glassType.findUnique({
+            where: { name: panel.glassType }
+          })
+
+          console.log(`[Glass Pricing] Found glass type in DB:`, glassType)
+          console.log(`[Glass Pricing] Product glass formulas:`, {
+            width: product.glassWidthFormula,
+            height: product.glassHeightFormula,
+            quantity: product.glassQuantityFormula
+          })
+
+          if (glassType && product.glassWidthFormula && product.glassHeightFormula) {
+            const variables = {
+              width: panel.width,
+              height: panel.height
+            }
+
+            console.log(`[Glass Pricing] Variables for formulas:`, variables)
+
+            // Calculate glass dimensions
+            const glassWidth = evaluateFormula(product.glassWidthFormula, variables)
+            const glassHeight = evaluateFormula(product.glassHeightFormula, variables)
+            const glassQuantity = product.glassQuantityFormula
+              ? evaluateFormula(product.glassQuantityFormula, variables)
+              : 1
+
+            console.log(`[Glass Pricing] Calculated dimensions - width: ${glassWidth}", height: ${glassHeight}", quantity: ${glassQuantity}`)
+
+            // Check for invalid dimensions
+            if (glassWidth <= 0 || glassHeight <= 0) {
+              console.error(`[Glass Pricing] ERROR: Invalid glass dimensions! Width: ${glassWidth}, Height: ${glassHeight}`)
+              console.error(`[Glass Pricing] Product formulas may be incorrect. Expected formulas like "width - 5" not "-5"`)
+              console.error(`[Glass Pricing] Current formulas:`, {
+                width: product.glassWidthFormula,
+                height: product.glassHeightFormula
+              })
+            }
+
+            // Calculate square footage (convert inches to square feet)
+            const sqft = (glassWidth * glassHeight / 144) * glassQuantity
+            const glassCost = sqft * glassType.pricePerSqFt
+
+            console.log(`[Glass Pricing] Sqft: ${sqft}, Price/sqft: $${glassType.pricePerSqFt}, Total: $${glassCost}`)
+
+            componentBreakdown.glassCost = {
+              glassType: glassType.name,
+              width: glassWidth,
+              height: glassHeight,
+              quantity: glassQuantity,
+              sqft: Math.round(sqft * 100) / 100,
+              pricePerSqFt: glassType.pricePerSqFt,
+              totalCost: Math.round(glassCost * 100) / 100
+            }
+
+            componentBreakdown.totalGlassCost = Math.round(glassCost * 100) / 100
+            componentCost += componentBreakdown.totalGlassCost
+
+            console.log(`[Glass Pricing] Calculated glass cost: $${componentBreakdown.totalGlassCost}`)
+          } else {
+            console.log(`[Glass Pricing] Missing data - glassType: ${!!glassType}, widthFormula: ${!!product.glassWidthFormula}, heightFormula: ${!!product.glassHeightFormula}`)
+          }
+        } catch (error) {
+          console.error('[Glass Pricing] Error calculating glass cost:', error)
+        }
+      } else {
+        console.log(`[Glass Pricing] Panel ${panel.id} - No glass type or is N/A`)
+      }
+
       componentBreakdown.totalComponentCost = componentCost
       priceBreakdown.components.push(componentBreakdown)
       priceBreakdown.totalComponentCost += componentCost
@@ -405,11 +480,12 @@ export async function POST(
 
     priceBreakdown.totalPrice = Math.round(priceBreakdown.totalComponentCost * 100) / 100
 
-    // Update the opening price in the database
+    // Update the opening price in the database with timestamp
     await prisma.opening.update({
       where: { id: openingId },
       data: {
-        price: priceBreakdown.totalPrice
+        price: priceBreakdown.totalPrice,
+        priceCalculatedAt: new Date()
       }
     })
 

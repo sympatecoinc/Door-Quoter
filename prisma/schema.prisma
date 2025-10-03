@@ -26,19 +26,20 @@ model Project {
 }
 
 model Opening {
-  id             Int      @id @default(autoincrement())
-  projectId      Int
-  name           String
-  roughWidth     Float?
-  roughHeight    Float?
-  finishedWidth  Float?
-  finishedHeight Float?
-  finishColor    String?  // Black, Clear, Other - used for extrusion part number suffixes
-  price          Float    @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  panels         Panel[]
+  id                Int       @id @default(autoincrement())
+  projectId         Int
+  name              String
+  roughWidth        Float?
+  roughHeight       Float?
+  finishedWidth     Float?
+  finishedHeight    Float?
+  finishColor       String?  // Black, Clear, Other - used for extrusion part number suffixes
+  price             Float     @default(0)
+  priceCalculatedAt DateTime? // Track when price was last calculated
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  panels            Panel[]
 
   @@map("Openings")
 }
@@ -373,3 +374,15 @@ model ProductPlanView {
 }
 
 // Add customer relationship to existing Project model
+
+// Glass Types - Pricing for glass by square foot
+model GlassType {
+  id           Int      @id @default(autoincrement())
+  name         String   @unique
+  description  String?
+  pricePerSqFt Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("GlassTypes")
+}

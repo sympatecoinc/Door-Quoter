@@ -238,8 +238,22 @@ function GlassSizeCalculatorModal({
   // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
-      setWidthFormula(product.glassWidthFormula || '')
-      setHeightFormula(product.glassHeightFormula || '')
+      // Strip 'width' and 'height' prefix when loading existing formulas for editing
+      const existingWidthFormula = product.glassWidthFormula || ''
+      const existingHeightFormula = product.glassHeightFormula || ''
+
+      // Remove 'width' prefix if present (case-insensitive)
+      const widthForEdit = existingWidthFormula.trim().toLowerCase().startsWith('width')
+        ? existingWidthFormula.trim().substring(5).trim()
+        : existingWidthFormula.trim()
+
+      // Remove 'height' prefix if present (case-insensitive)
+      const heightForEdit = existingHeightFormula.trim().toLowerCase().startsWith('height')
+        ? existingHeightFormula.trim().substring(6).trim()
+        : existingHeightFormula.trim()
+
+      setWidthFormula(widthForEdit)
+      setHeightFormula(heightForEdit)
       setQuantityFormula(product.glassQuantityFormula || '')
     }
   }, [isOpen, product])
@@ -247,16 +261,25 @@ function GlassSizeCalculatorModal({
   const handleSave = async () => {
     setIsSaving(true)
     try {
+      // Auto-prepend 'width' and 'height' to user input if not already present
+      const finalWidthFormula = widthFormula.trim()
+        ? (widthFormula.trim().toLowerCase().includes('width') ? widthFormula.trim() : `width ${widthFormula.trim()}`)
+        : ''
+
+      const finalHeightFormula = heightFormula.trim()
+        ? (heightFormula.trim().toLowerCase().includes('height') ? heightFormula.trim() : `height ${heightFormula.trim()}`)
+        : ''
+
       const response = await fetch(`/api/products/${product.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          glassWidthFormula: widthFormula,
-          glassHeightFormula: heightFormula,
-          glassQuantityFormula: quantityFormula
+          glassWidthFormula: finalWidthFormula,
+          glassHeightFormula: finalHeightFormula,
+          glassQuantityFormula: quantityFormula.trim()
         })
       })
-      
+
       if (response.ok) {
         onRefresh()
         onClose()
@@ -287,37 +310,52 @@ function GlassSizeCalculatorModal({
 
         <div className="space-y-4 mb-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Width Formula
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Glass Width Deduction (inches)
             </label>
-            <GlassFormulaInput
-              value={widthFormula}
-              onChange={setWidthFormula}
-              placeholder="e.g., - 0.5"
-              baseValue={36}
-            />
+            <p className="text-xs text-gray-500 mb-2">
+              Enter deduction amount. Example: <code className="bg-gray-100 px-1 rounded">- 5</code> for 5" smaller than component width
+            </p>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600 font-mono">width</span>
+              <GlassFormulaInput
+                value={widthFormula}
+                onChange={setWidthFormula}
+                placeholder="- 5"
+                baseValue={36}
+              />
+            </div>
           </div>
-          
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Height Formula
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Glass Height Deduction (inches)
             </label>
-            <GlassFormulaInput
-              value={heightFormula}
-              onChange={setHeightFormula}
-              placeholder="e.g., - 1"
-              baseValue={96}
-            />
+            <p className="text-xs text-gray-500 mb-2">
+              Enter deduction amount. Example: <code className="bg-gray-100 px-1 rounded">- 10</code> for 10" smaller than component height
+            </p>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600 font-mono">height</span>
+              <GlassFormulaInput
+                value={heightFormula}
+                onChange={setHeightFormula}
+                placeholder="- 10"
+                baseValue={96}
+              />
+            </div>
           </div>
-          
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Quantity Formula
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Glass Quantity
             </label>
+            <p className="text-xs text-gray-500 mb-2">
+              Usually <code className="bg-gray-100 px-1 rounded">1</code> for single pane
+            </p>
             <GlassFormulaInput
               value={quantityFormula}
               onChange={setQuantityFormula}
-              placeholder="e.g., 1 or /12"
+              placeholder="1"
               baseValue={1}
             />
           </div>
