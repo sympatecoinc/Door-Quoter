@@ -135,11 +135,6 @@ export default function MasterPartsView() {
   const [pricingPartType, setPricingPartType] = useState('Extrusion')
   const [pricingIsActive, setPricingIsActive] = useState(true)
 
-  // CSV Upload State
-  const [showCSVUpload, setShowCSVUpload] = useState(false)
-  const [csvFile, setCsvFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
-
   // Filter and sort master parts
   const filteredMasterParts = masterParts
     .filter(part => {
@@ -634,56 +629,6 @@ export default function MasterPartsView() {
     setPricingIsActive(true)
   }
 
-  async function handleCSVUpload() {
-    if (!csvFile) return
-
-    setUploading(true)
-    try {
-      const formData = new FormData()
-      formData.append('csvFile', csvFile)
-
-      const response = await fetch('/api/master-parts/upload-csv', {
-        method: 'POST',
-        body: formData
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        let message = `Successfully imported ${result.imported} new parts`
-        
-        if (result.skipped && result.skipped.length > 0) {
-          message += `\n\nSkipped ${result.skipped.length} parts:`
-          result.skipped.forEach((skip: string, index: number) => {
-            if (index < 10) { // Show first 10 skipped items
-              message += `\n• ${skip}`
-            }
-          })
-          if (result.skipped.length > 10) {
-            message += `\n... and ${result.skipped.length - 10} more skipped parts`
-          }
-        }
-        if (result.errors && result.errors.length > 0) {
-          message += `\n\nErrors: ${result.errors.slice(0, 5).join('\n')}`
-          if (result.errors.length > 5) {
-            message += `\n... and ${result.errors.length - 5} more errors`
-          }
-        }
-        showSuccess(message)
-        setShowCSVUpload(false)
-        setCsvFile(null)
-        fetchMasterParts()
-      } else {
-        const errorData = await response.json()
-        showError(errorData.error || 'Failed to upload CSV')
-      }
-    } catch (error) {
-      console.error('Error uploading CSV:', error)
-      showError('Error uploading CSV file')
-    } finally {
-      setUploading(false)
-    }
-  }
-
   return (
     <div className="p-8">
       <div className="flex justify-between items-center mb-8">
@@ -729,13 +674,6 @@ export default function MasterPartsView() {
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-semibold text-gray-900">Master Parts Database</h2>
             <div className="flex space-x-3">
-              <button
-                onClick={() => setShowCSVUpload(true)}
-                className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-              >
-                <Upload className="w-5 h-5 mr-2" />
-                Import CSV
-              </button>
               <button
                 onClick={() => setShowAddPartForm(true)}
                 className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -1571,72 +1509,6 @@ export default function MasterPartsView() {
         </div>
       )}
 
-      {/* CSV Upload Modal */}
-      {showCSVUpload && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-lg">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium text-gray-900">Import Master Parts from CSV</h3>
-              <button
-                onClick={() => {
-                  setShowCSVUpload(false)
-                  setCsvFile(null)
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  CSV File
-                </label>
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                />
-                <p className="text-sm text-gray-500 mt-1">
-                  Required columns: partNumber, baseName, partType
-                </p>
-                <p className="text-sm text-gray-500">
-                  Optional columns: description, unit, cost
-                </p>
-              </div>
-
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <p className="text-sm text-yellow-800">
-                  <strong>Note:</strong> Glass parts will be automatically skipped as they cannot be master parts.
-                  Existing parts will be updated with new information.
-                </p>
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  onClick={() => {
-                    setShowCSVUpload(false)
-                    setCsvFile(null)
-                  }}
-                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCSVUpload}
-                  disabled={uploading || !csvFile}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center"
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  {uploading ? 'Uploading...' : 'Import CSV'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       <ToastContainer toasts={toasts} removeToast={removeToast} />
     </div>
   )

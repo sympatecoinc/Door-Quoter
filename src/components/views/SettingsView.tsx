@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Download, Save } from 'lucide-react'
+import { Download, Save, Upload, FileUp } from 'lucide-react'
 
 export default function SettingsView() {
   const [companyName, setCompanyName] = useState('')
@@ -11,6 +11,11 @@ export default function SettingsView() {
   const [unitSystem, setUnitSystem] = useState('imperial')
   const [precision, setPrecision] = useState('2')
   const [saving, setSaving] = useState(false)
+
+  // Import/Export state
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<any>(null)
 
   // Load saved settings on component mount
   useEffect(() => {
@@ -99,6 +104,69 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,FALSE
     link.click()
     document.body.removeChild(link)
   }
+
+  const handleExportMasterParts = async () => {
+    try {
+      const response = await fetch('/api/master-parts/export-csv')
+
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `master-parts-export-${new Date().toISOString().split('T')[0]}.csv`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        alert('Master parts exported successfully!')
+      } else {
+        alert('Failed to export master parts')
+      }
+    } catch (error) {
+      console.error('Error exporting master parts:', error)
+      alert('Error exporting master parts')
+    }
+  }
+
+  const handleImportMasterParts = async () => {
+    if (!importFile) {
+      alert('Please select a file to import')
+      return
+    }
+
+    setImporting(true)
+    setImportResult(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('csvFile', importFile)
+
+      const response = await fetch('/api/master-parts/import-with-rules', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        setImportResult(result)
+        setImportFile(null)
+
+        // Reset file input
+        const fileInput = document.getElementById('import-file-input') as HTMLInputElement
+        if (fileInput) fileInput.value = ''
+      } else {
+        const errorData = await response.json()
+        alert(errorData.error || 'Failed to import master parts')
+      }
+    } catch (error) {
+      console.error('Error importing master parts:', error)
+      alert('Error importing master parts')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   return (
     <div className="p-8">
       <div className="mb-8">
@@ -243,6 +311,118 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,FALSE
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Export Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Export</h2>
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium text-gray-700 mb-2">Export Master Parts</h3>
+              <p className="text-sm text-gray-600 mb-3">
+                Export all master parts with their pricing rules. This format includes stock length rules for extrusions and can be re-imported.
+              </p>
+              <button
+                onClick={handleExportMasterParts}
+                className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export Master Parts with Pricing Rules
+              </button>
+              <p className="text-xs text-gray-500 mt-1">
+                Exports to: master-parts-export-YYYY-MM-DD.csv
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Import Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Import</h2>
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium text-gray-700 mb-2">Import Master Parts</h3>
+              <p className="text-sm text-gray-600 mb-3">
+                Import master parts from CSV. Supports both basic template format and enhanced format with pricing rules. Format is automatically detected.
+              </p>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <input
+                    id="import-file-input"
+                    type="file"
+                    accept=".csv"
+                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                    className="flex-1 text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
+                  />
+                  <button
+                    onClick={handleImportMasterParts}
+                    disabled={!importFile || importing}
+                    className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {importing ? (
+                      <>
+                        <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                        Importing...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 mr-2" />
+                        Import
+                      </>
+                    )}
+                  </button>
+                </div>
+                {importFile && (
+                  <p className="text-xs text-gray-600">
+                    Selected: {importFile.name}
+                  </p>
+                )}
+              </div>
+
+              {/* Import Results */}
+              {importResult && (
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <h4 className="text-sm font-medium text-gray-900 mb-2">Import Results</h4>
+                  <div className="space-y-2 text-sm">
+                    <p className="text-green-600">
+                      ✓ Successfully imported: {importResult.imported} parts
+                    </p>
+                    {importResult.format && (
+                      <p className="text-gray-600">
+                        Format detected: {importResult.format === 'enhanced' ? 'Enhanced (with pricing rules)' : 'Basic (template)'}
+                      </p>
+                    )}
+                    {importResult.skipped && importResult.skipped.length > 0 && (
+                      <div className="text-yellow-600">
+                        <p className="font-medium">⚠ Skipped: {importResult.skipped.length} items</p>
+                        <ul className="list-disc list-inside ml-2 text-xs mt-1">
+                          {importResult.skipped.slice(0, 5).map((msg: string, i: number) => (
+                            <li key={i}>{msg}</li>
+                          ))}
+                          {importResult.skipped.length > 5 && (
+                            <li>... and {importResult.skipped.length - 5} more</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                    {importResult.errors && importResult.errors.length > 0 && (
+                      <div className="text-red-600">
+                        <p className="font-medium">✗ Errors: {importResult.errors.length} items</p>
+                        <ul className="list-disc list-inside ml-2 text-xs mt-1">
+                          {importResult.errors.slice(0, 5).map((msg: string, i: number) => (
+                            <li key={i}>{msg}</li>
+                          ))}
+                          {importResult.errors.length > 5 && (
+                            <li>... and {importResult.errors.length - 5} more</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

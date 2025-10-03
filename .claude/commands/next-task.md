@@ -1,7 +1,5 @@
 # Next Task Command
 
-<model>claude-opus-4-20250514</model>
-
 <anthropic_thinking_protocol>
 enabled
 </anthropic_thinking_protocol>
