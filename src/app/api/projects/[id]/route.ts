@@ -26,7 +26,7 @@ export async function GET(
                 componentInstance: {
                   include: {
                     product: {
-                      // Only include basic product info, not sub-options for faster loading
+                      // Include product info and BOMs for sync detection
                       select: {
                         id: true,
                         name: true,
@@ -39,7 +39,13 @@ export async function GET(
                         glassHeightFormula: true,
                         glassQuantityFormula: true,
                         createdAt: true,
-                        updatedAt: true
+                        updatedAt: true,
+                        productBOMs: {
+                          select: {
+                            id: true,
+                            updatedAt: true
+                          }
+                        }
                       }
                     }
                   }

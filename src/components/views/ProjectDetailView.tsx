@@ -139,6 +139,47 @@ export default function ProjectDetailView() {
   const [showDrawingViewer, setShowDrawingViewer] = useState(false)
   const [selectedDrawingOpeningId, setSelectedDrawingOpeningId] = useState<number | null>(null)
   const [selectedDrawingOpeningNumber, setSelectedDrawingOpeningNumber] = useState<string>('')
+  const [glassTypes, setGlassTypes] = useState<any[]>([])
+  const [needsSync, setNeedsSync] = useState(false)
+  const [showSyncConfirmation, setShowSyncConfirmation] = useState(false)
+  const [syncingPrices, setSyncingPrices] = useState(false)
+
+  // Check if pricing needs sync
+  useEffect(() => {
+    if (project) {
+      const needsSyncCheck = project.openings.some(opening => {
+        const hasComponents = opening.panels.some(panel => panel.componentInstance)
+        if (!hasComponents) return false
+
+        // If price is zero or null, definitely needs sync
+        if (opening.price === null || opening.price === 0) return true
+
+        // If never calculated, needs sync
+        if (!opening.priceCalculatedAt) return true
+
+        // Check if any component's product BOM has been updated after price calculation
+        const priceCalcTime = new Date(opening.priceCalculatedAt).getTime()
+
+        for (const panel of opening.panels) {
+          if (!panel.componentInstance) continue
+
+          const product = panel.componentInstance.product
+
+          // Check if product BOMs were updated after price calculation
+          const hasStaleProductBOM = product.productBOMs?.some((bom: any) => {
+            const bomUpdateTime = new Date(bom.updatedAt).getTime()
+            return bomUpdateTime > priceCalcTime
+          })
+
+          if (hasStaleProductBOM) return true
+        }
+
+        return false
+      })
+
+      setNeedsSync(needsSyncCheck)
+    }
+  }, [project])
 
   useEffect(() => {
     if (selectedProjectId) {
@@ -146,9 +187,13 @@ export default function ProjectDetailView() {
     }
   }, [selectedProjectId])
 
+  useEffect(() => {
+    fetchGlassTypes()
+  }, [])
+
   async function fetchProject() {
     if (!selectedProjectId) return
-    
+
     setLoading(true)
     try {
       const response = await fetch(`/api/projects/${selectedProjectId}`)
@@ -162,6 +207,18 @@ export default function ProjectDetailView() {
       console.error('Error fetching project:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function fetchGlassTypes() {
+    try {
+      const response = await fetch('/api/glass-types')
+      if (response.ok) {
+        const data = await response.json()
+        setGlassTypes(data)
+      }
+    } catch (error) {
+      console.error('Error fetching glass types:', error)
     }
   }
 
@@ -733,6 +790,18 @@ export default function ProjectDetailView() {
           <div>
             <div className="flex items-center">
               <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
+              {needsSync && !calculatingPrices && (
+                <button
+                  onClick={() => setShowSyncConfirmation(true)}
+                  className="ml-3 flex items-center text-sm text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg transition-colors"
+                  title="Pricing is out of sync. Click to sync all opening prices with latest product BOMs and parts pricing."
+                >
+                  <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Needs Sync
+                </button>
+              )}
               {calculatingPrices && (
                 <div className="ml-3 flex items-center text-sm text-blue-600">
                   <div className="w-4 h-4 border border-blue-600 border-t-transparent rounded-full animate-spin mr-2"></div>
@@ -1244,9 +1313,15 @@ export default function ProjectDetailView() {
                     onChange={(e) => setGlassType(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                   >
-                    <option value="Clear">Clear</option>
-                    <option value="Frosted">Frosted</option>
-                    <option value="Custom">Custom</option>
+                    {glassTypes.length > 0 ? (
+                      glassTypes.map((type) => (
+                        <option key={type.id} value={type.name}>
+                          {type.name} (${type.pricePerSqFt}/sqft)
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No glass types available</option>
+                    )}
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
                     Select the type of glass for this component
@@ -1565,6 +1640,56 @@ export default function ProjectDetailView() {
                 </div>
               )}
             </div>
+
+            {/* Sync Pricing Section */}
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!project) return
+                  setCalculatingPrices(true)
+                  try {
+                    // Recalculate all opening prices
+                    const calculations = project.openings.map(opening =>
+                      fetch(`/api/openings/${opening.id}/calculate-price`, {
+                        method: 'POST'
+                      }).catch(error => {
+                        console.error(`Error recalculating price for opening ${opening.id}:`, error)
+                      })
+                    )
+
+                    await Promise.allSettled(calculations)
+                    await fetchProject()
+                    showSuccess('All pricing synced with latest product BOMs and parts pricing!')
+                  } catch (error) {
+                    console.error('Error syncing prices:', error)
+                    showError('Error syncing prices')
+                  } finally {
+                    setCalculatingPrices(false)
+                  }
+                }}
+                disabled={calculatingPrices || !project || project.openings.length === 0}
+                className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              >
+                {calculatingPrices ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Syncing Pricing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Sync All Pricing
+                  </>
+                )}
+              </button>
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                Recalculates all opening prices with latest product BOMs, parts pricing, and glass types
+              </p>
+            </div>
+
             <div className="flex justify-between items-center pt-6">
               <button
                 onClick={handleDeleteProject}
@@ -1593,6 +1718,65 @@ export default function ProjectDetailView() {
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sync Confirmation Modal */}
+      {showSyncConfirmation && project && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md text-center">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Sync All Pricing?</h2>
+            <p className="text-gray-600 mb-6">
+              This will recalculate all opening prices with the latest product BOMs, master parts pricing, and glass types.
+            </p>
+            <div className="flex justify-center space-x-3">
+              <button
+                onClick={() => setShowSyncConfirmation(false)}
+                disabled={syncingPrices}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                No, Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setSyncingPrices(true)
+                  setCalculatingPrices(true)
+                  try {
+                    // Recalculate all opening prices
+                    const calculations = project.openings.map(opening =>
+                      fetch(`/api/openings/${opening.id}/calculate-price`, {
+                        method: 'POST'
+                      }).catch(error => {
+                        console.error(`Error recalculating price for opening ${opening.id}:`, error)
+                      })
+                    )
+
+                    await Promise.allSettled(calculations)
+                    await fetchProject()
+                    showSuccess('All pricing synced successfully!')
+                    setShowSyncConfirmation(false)
+                  } catch (error) {
+                    console.error('Error syncing prices:', error)
+                    showError('Error syncing prices')
+                  } finally {
+                    setSyncingPrices(false)
+                    setCalculatingPrices(false)
+                  }
+                }}
+                disabled={syncingPrices}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center"
+              >
+                {syncingPrices ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Syncing...
+                  </>
+                ) : (
+                  'Yes, Sync Now'
+                )}
+              </button>
             </div>
           </div>
         </div>
