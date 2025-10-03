@@ -132,7 +132,7 @@ export async function PUT(
       )
     }
 
-    const { name, status, dueDate } = await request.json()
+    const { name, status, dueDate, extrusionCostingMethod, excludedPartNumbers } = await request.json()
 
     if (!name) {
       return NextResponse.json(
@@ -141,9 +141,25 @@ export async function PUT(
       )
     }
 
+    // Validate extrusionCostingMethod if provided
+    if (extrusionCostingMethod !== undefined &&
+        extrusionCostingMethod !== 'FULL_STOCK' &&
+        extrusionCostingMethod !== 'PERCENTAGE_BASED') {
+      return NextResponse.json(
+        { error: 'Invalid extrusion costing method. Must be FULL_STOCK or PERCENTAGE_BASED' },
+        { status: 400 }
+      )
+    }
+
     const updateData: any = { name, status }
     if (dueDate !== undefined) {
       updateData.dueDate = dueDate ? new Date(dueDate) : null
+    }
+    if (extrusionCostingMethod !== undefined) {
+      updateData.extrusionCostingMethod = extrusionCostingMethod
+    }
+    if (excludedPartNumbers !== undefined) {
+      updateData.excludedPartNumbers = excludedPartNumbers
     }
 
     const updatedProject = await prisma.project.update({

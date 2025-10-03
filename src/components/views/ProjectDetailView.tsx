@@ -16,6 +16,8 @@ interface Project {
   id: number
   name: string
   status: string
+  extrusionCostingMethod?: string
+  excludedPartNumbers?: string[]
   createdAt: string
   updatedAt: string
   openings: Opening[]
@@ -101,6 +103,11 @@ export default function ProjectDetailView() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editName, setEditName] = useState('')
   const [editStatus, setEditStatus] = useState('')
+  const [editExtrusionCostingMethod, setEditExtrusionCostingMethod] = useState('FULL_STOCK')
+  const [editExcludedPartNumbers, setEditExcludedPartNumbers] = useState<string[]>([])
+  const [showExcludedPartsModal, setShowExcludedPartsModal] = useState(false)
+  const [projectParts, setProjectParts] = useState<any[]>([])
+  const [loadingParts, setLoadingParts] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showAddOpening, setShowAddOpening] = useState(false)
   const [addingOpening, setAddingOpening] = useState(false)
@@ -198,7 +205,12 @@ export default function ProjectDetailView() {
 
   async function handleSaveProject() {
     if (!selectedProjectId || !editName.trim()) return
-    
+
+    // Check if costing method or excluded parts changed (which requires price recalculation)
+    const costingMethodChanged = project?.extrusionCostingMethod !== editExtrusionCostingMethod
+    const excludedPartsChanged = JSON.stringify(project?.excludedPartNumbers || []) !== JSON.stringify(editExcludedPartNumbers)
+    const needsPriceRecalculation = costingMethodChanged || excludedPartsChanged
+
     setSaving(true)
     try {
       const response = await fetch(`/api/projects/${selectedProjectId}`, {
@@ -208,18 +220,33 @@ export default function ProjectDetailView() {
         },
         body: JSON.stringify({
           name: editName,
-          status: editStatus
+          status: editStatus,
+          extrusionCostingMethod: editExtrusionCostingMethod,
+          excludedPartNumbers: editExcludedPartNumbers
         })
       })
 
       if (response.ok) {
-        await fetchProject()
+        if (needsPriceRecalculation) {
+          // Fetch the updated project data first
+          const projectResponse = await fetch(`/api/projects/${selectedProjectId}`)
+          if (projectResponse.ok) {
+            const updatedProject = await projectResponse.json()
+
+            // Recalculate all opening prices with the new settings
+            await calculateAllOpeningPrices(updatedProject)
+
+            showSuccess('Project updated and prices recalculated!')
+          }
+        } else {
+          await fetchProject()
+          showSuccess('Project updated successfully!')
+        }
         setShowEditModal(false)
-        alert('Project updated successfully!')
       }
     } catch (error) {
       console.error('Error updating project:', error)
-      alert('Error updating project')
+      showError('Error updating project')
     } finally {
       setSaving(false)
     }
@@ -227,10 +254,10 @@ export default function ProjectDetailView() {
 
   async function handleDeleteProject() {
     if (!selectedProjectId) return
-    
+
     const confirmed = confirm(`Are you sure you want to delete the project "${project?.name}"? This action cannot be undone and will delete all openings and components.`)
     if (!confirmed) return
-    
+
     try {
       const response = await fetch(`/api/projects/${selectedProjectId}`, {
         method: 'DELETE'
@@ -245,6 +272,80 @@ export default function ProjectDetailView() {
     } catch (error) {
       console.error('Error deleting project:', error)
       alert('Error deleting project')
+    }
+  }
+
+  async function handleUpdateExtrusionCostingMethod(method: string) {
+    if (!selectedProjectId || !project) return
+
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: project.name,
+          status: project.status,
+          extrusionCostingMethod: method
+        })
+      })
+
+      if (response.ok) {
+        // Fetch the full project data with openings
+        const projectResponse = await fetch(`/api/projects/${selectedProjectId}`)
+        if (projectResponse.ok) {
+          const updatedProject = await projectResponse.json()
+
+          // Recalculate all opening prices with the new costing method
+          await calculateAllOpeningPrices(updatedProject)
+
+          // Refresh project one final time to show updated prices
+          await fetchProject()
+
+          showSuccess('Extrusion costing method updated and prices recalculated!')
+        }
+      } else {
+        showError('Failed to update extrusion costing method')
+      }
+    } catch (error) {
+      console.error('Error updating extrusion costing method:', error)
+      showError('Network error. Please try again.')
+    }
+  }
+
+  async function fetchProjectParts() {
+    if (!selectedProjectId) return
+
+    setLoadingParts(true)
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}/bom`)
+      if (response.ok) {
+        const data = await response.json()
+
+        // Get unique extrusion parts from BOM
+        const uniqueParts = new Map()
+        data.bomItems?.forEach((item: any) => {
+          if (item.partType === 'Extrusion' && item.partNumber) {
+            // Use the part number as-is from the BOM (it should already be the base part number without finish codes)
+            const partNumber = item.partNumber
+            if (!uniqueParts.has(partNumber)) {
+              uniqueParts.set(partNumber, {
+                partNumber: partNumber,
+                partName: item.partName,
+                partType: item.partType
+              })
+            }
+          }
+        })
+
+        setProjectParts(Array.from(uniqueParts.values()))
+      }
+    } catch (error) {
+      console.error('Error fetching project parts:', error)
+      showError('Failed to load project parts')
+    } finally {
+      setLoadingParts(false)
     }
   }
 
@@ -660,6 +761,8 @@ export default function ProjectDetailView() {
             onClick={() => {
               setEditName(project.name)
               setEditStatus(project.status)
+              setEditExtrusionCostingMethod(project.extrusionCostingMethod || 'FULL_STOCK')
+              setEditExcludedPartNumbers(project.excludedPartNumbers || [])
               setShowEditModal(true)
             }}
             className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -1325,10 +1428,24 @@ export default function ProjectDetailView() {
                     }
 
                     showSuccess('Component updated successfully!')
-                    
+
+                    // Recalculate opening price
+                    const panel = project?.openings.flatMap(o => o.panels).find(p => p.id === currentPanelId)
+                    const openingId = panel?.openingId || project?.openings.find(o => o.panels.some(p => p.id === currentPanelId))?.id
+
+                    if (openingId) {
+                      try {
+                        await fetch(`/api/openings/${openingId}/calculate-price`, {
+                          method: 'POST'
+                        })
+                      } catch (error) {
+                        console.error('Error recalculating opening price:', error)
+                      }
+                    }
+
                     // Fetch updated project data
                     await fetchProject()
-                    
+
                   } catch (error) {
                     console.error('Error updating component:', error)
                     showError('Error updating component')
@@ -1374,7 +1491,7 @@ export default function ProjectDetailView() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Status
                 </label>
-                <select 
+                <select
                   value={editStatus}
                   onChange={(e) => setEditStatus(e.target.value)}
                   disabled={saving}
@@ -1385,7 +1502,40 @@ export default function ProjectDetailView() {
                   <option value="Completed">Completed</option>
                 </select>
               </div>
-              
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Extrusion Costing Method
+                </label>
+                <select
+                  value={editExtrusionCostingMethod}
+                  onChange={(e) => setEditExtrusionCostingMethod(e.target.value)}
+                  disabled={saving}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                >
+                  <option value="FULL_STOCK">Full Stock Cost</option>
+                  <option value="PERCENTAGE_BASED">Percentage-Based Cost</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  {editExtrusionCostingMethod === 'PERCENTAGE_BASED'
+                    ? 'Only charge for % of stock used when >50% remains unused'
+                    : 'Always charge for the full stock length'}
+                </p>
+                {editExtrusionCostingMethod === 'FULL_STOCK' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowExcludedPartsModal(true)
+                      fetchProjectParts()
+                    }}
+                    disabled={saving}
+                    className="mt-2 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                  >
+                    Exclude Parts ({editExcludedPartNumbers.length})
+                  </button>
+                )}
+              </div>
+
               {/* Openings Management */}
               {project && project.openings.length > 0 && (
                 <div>
@@ -1443,6 +1593,74 @@ export default function ProjectDetailView() {
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Excluded Parts Modal */}
+      {showExcludedPartsModal && project && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Exclude Expensive Parts from Full Stock Cost</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Select parts that should use percentage-based costing even when the project uses "Full Stock Cost" method.
+              This is useful for expensive extrusions where you want to charge only for the percentage used.
+            </p>
+
+            <div className="flex-1 overflow-y-auto border border-gray-200 rounded-lg">
+              {loadingParts ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : projectParts.length > 0 ? (
+                <div className="divide-y divide-gray-200">
+                  {projectParts.map((part) => {
+                    const isExcluded = editExcludedPartNumbers.includes(part.partNumber)
+                    return (
+                      <div key={part.partNumber} className="p-4 hover:bg-gray-50 flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="font-mono text-sm font-medium text-gray-900">{part.partNumber}</div>
+                          <div className="text-sm text-gray-600">{part.partName}</div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (isExcluded) {
+                              setEditExcludedPartNumbers(editExcludedPartNumbers.filter(p => p !== part.partNumber))
+                            } else {
+                              setEditExcludedPartNumbers([...editExcludedPartNumbers, part.partNumber])
+                            }
+                          }}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                            isExcluded ? 'bg-blue-600' : 'bg-gray-200'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              isExcluded ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="p-4 text-center text-gray-500">
+                  No extrusion parts found in this project.
+                  <br />
+                  <span className="text-xs">Add components to your openings to see parts here.</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-4 pt-4 border-t border-gray-200">
+              <button
+                onClick={() => setShowExcludedPartsModal(false)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>
@@ -1545,6 +1763,7 @@ export default function ProjectDetailView() {
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Type</th>
                                           <th className="border border-gray-200 px-3 py-2 text-center text-sm font-medium text-gray-900">Qty</th>
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Cut Length</th>
+                                          <th className="border border-gray-200 px-3 py-2 text-center text-sm font-medium text-gray-900">% of Stock</th>
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Unit</th>
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Color</th>
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Description</th>
@@ -1575,6 +1794,13 @@ export default function ProjectDetailView() {
                                                 </div>
                                               ) : (
                                                 item.cutLength ? `${item.cutLength.toFixed(2)}"` : '-'
+                                              )}
+                                            </td>
+                                            <td className="border border-gray-200 px-3 py-2 text-sm text-center text-gray-900">
+                                              {item.percentOfStock !== null && item.percentOfStock !== undefined ? (
+                                                `${item.percentOfStock.toFixed(1)}%`
+                                              ) : (
+                                                '-'
                                               )}
                                             </td>
                                             <td className="border border-gray-200 px-3 py-2 text-sm text-gray-900">{item.unit}</td>
