@@ -52,7 +52,7 @@ export async function DELETE(
   } catch (error) {
     console.error('Error deleting customer file:', error)
 
-    if (error.code === 'P2025') {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
       return NextResponse.json(
         { error: 'File not found' },
         { status: 404 }

@@ -111,7 +111,7 @@ export async function PUT(
   } catch (error) {
     console.error('Error updating lead:', error)
 
-    if (error.code === 'P2025') {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
       return NextResponse.json(
         { error: 'Lead not found' },
         { status: 404 }
@@ -148,7 +148,7 @@ export async function DELETE(
   } catch (error) {
     console.error('Error deleting lead:', error)
 
-    if (error.code === 'P2025') {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
       return NextResponse.json(
         { error: 'Lead not found' },
         { status: 404 }

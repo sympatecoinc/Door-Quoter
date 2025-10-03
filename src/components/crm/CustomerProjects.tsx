@@ -117,7 +117,7 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
   }
 
   const getStatusColor = (status: string) => {
-    const colors = {
+    const colors: { [key: string]: string } = {
       'Draft': 'bg-gray-100 text-gray-800',
       'Active': 'bg-blue-100 text-blue-800',
       'On Hold': 'bg-yellow-100 text-yellow-800',

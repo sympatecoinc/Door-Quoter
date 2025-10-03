@@ -118,14 +118,14 @@ export async function PUT(
   } catch (error) {
     console.error('Error updating customer:', error)
 
-    if (error.code === 'P2025') {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
       return NextResponse.json(
         { error: 'Customer not found' },
         { status: 404 }
       )
     }
 
-    if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002' && 'meta' in error && error.meta && typeof error.meta === 'object' && 'target' in error.meta && Array.isArray(error.meta.target) && error.meta.target.includes('email')) {
       return NextResponse.json(
         { error: 'Email address already exists' },
         { status: 409 }
@@ -162,7 +162,7 @@ export async function DELETE(
   } catch (error) {
     console.error('Error deleting customer:', error)
 
-    if (error.code === 'P2025') {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
       return NextResponse.json(
         { error: 'Customer not found' },
         { status: 404 }

@@ -1,64 +1,8 @@
-2025/10/02 13:27:18 This is the Cloud SQL Proxy v1. It is no longer receiving active feature development. For the latest features and improvements, migrate to the v2 version of the Cloud SQL Proxy. For details, see: https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/main/migration-guide.md
-2025/10/02 13:27:18 current FDs rlimit set to 524288, wanted limit is 8500. Nothing to do here.
-2025/10/02 13:27:25 Listening on 127.0.0.1:5432 for door-quoter:us-central1:door-app-staging
-2025/10/02 13:27:25 Ready for new connections
-2025/10/02 13:27:26 Generated RSA key in 273.59402ms
-2025/10/02 13:32:12 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 13:32:12 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
-2025/10/02 13:32:12 Scheduling refresh of ephemeral certificate in 54m59s
-2025/10/02 13:46:01 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 13:46:01 Client closed local connection on 127.0.0.1:5432
-2025/10/02 13:50:27 Instance door-quoter:us-central1:door-app-staging closed connection
-2025/10/02 14:04:09 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 14:19:20 Client closed local connection on 127.0.0.1:5432
-2025/10/02 14:19:20 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 14:19:20 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 14:19:20 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 14:19:20 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 14:19:20 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 14:27:12 ephemeral certificate for instance door-quoter:us-central1:door-app-staging will expire soon, refreshing now.
-2025/10/02 14:27:12 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
-2025/10/02 14:27:12 Scheduling refresh of ephemeral certificate in 55m0s
-2025/10/02 14:31:35 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 14:31:35 Client closed local connection on 127.0.0.1:5432
-2025/10/02 14:31:51 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 14:32:07 Client closed local connection on 127.0.0.1:5432
-2025/10/02 15:22:12 ephemeral certificate for instance door-quoter:us-central1:door-app-staging will expire soon, refreshing now.
-2025/10/02 15:22:12 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
-2025/10/02 15:22:13 Scheduling refresh of ephemeral certificate in 55m0s
-2025/10/02 16:17:13 ephemeral certificate for instance door-quoter:us-central1:door-app-staging will expire soon, refreshing now.
-2025/10/02 16:17:13 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
-2025/10/02 16:17:13 Scheduling refresh of ephemeral certificate in 55m0s
-2025/10/02 16:17:55 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:17:55 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:17:55 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:17:55 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:17:55 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:18:08 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:18:18 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:19:23 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:27:18 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:27:18 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:27:26 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:27:26 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:27:26 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:27:26 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:29:02 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:29:48 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:40:28 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:40:28 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:40:49 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:41:00 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:41:00 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:41:00 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:41:00 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:41:00 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:41:00 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:41:00 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:41:25 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:42:58 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:44:34 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:48:39 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:48:39 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/02 16:49:16 Client closed local connection on 127.0.0.1:5432
-2025/10/02 16:49:23 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/03 12:38:20 This is the Cloud SQL Proxy v1. It is no longer receiving active feature development. For the latest features and improvements, migrate to the v2 version of the Cloud SQL Proxy. For details, see: https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/main/migration-guide.md
+2025/10/03 12:38:20 current FDs rlimit set to 524288, wanted limit is 8500. Nothing to do here.
+2025/10/03 12:38:27 Listening on 127.0.0.1:5432 for door-quoter:us-central1:door-app-staging
+2025/10/03 12:38:27 Ready for new connections
+2025/10/03 12:38:28 Generated RSA key in 569.217489ms
+2025/10/03 12:39:34 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/03 12:39:34 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
+2025/10/03 12:39:34 Scheduling refresh of ephemeral certificate in 55m0s

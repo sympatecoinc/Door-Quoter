@@ -113,10 +113,10 @@ export function scaleElement(
   leftStileWidth: number = 0,
   rightStileWidth: number = 0
 ): ElementTransform {
-  const svgEl = element as SVGElement
+  const svgEl = element as SVGGraphicsElement
   const bounds = svgEl.getBBox()
   let transform = ''
-  let scaledBounds = { ...bounds } as DOMRect
+  const scaledBounds = { ...bounds } as DOMRect
 
   // For rect elements, directly modify attributes instead of using transforms
   if (element.tagName === 'rect') {
@@ -430,7 +430,7 @@ function adjustPlanViewElements(svgElement: SVGSVGElement, scaling: ComponentSca
   const rightElements = svgElement.querySelectorAll('[id*="1"], [class*="right"]')
 
   rightElements.forEach(element => {
-    const bounds = (element as SVGElement).getBBox()
+    const bounds = (element as SVGGraphicsElement).getBBox()
     const currentX = bounds.x
     const newX = currentX * scaling.scaleX
 
