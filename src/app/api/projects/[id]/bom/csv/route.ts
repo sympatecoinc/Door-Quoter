@@ -4,18 +4,19 @@ import { prisma } from '@/lib/prisma'
 // Function to evaluate simple formulas for cut lengths
 function evaluateFormula(formula: string, variables: Record<string, number>): number {
   if (!formula || typeof formula !== 'string' || formula.trim() === '') return 0
-  
+
   try {
     let expression = formula.trim()
     for (const [key, value] of Object.entries(variables)) {
-      const regex = new RegExp(`\\b${key}\\b`, 'g')
+      // Case-insensitive variable replacement
+      const regex = new RegExp(`\\b${key}\\b`, 'gi')
       expression = expression.replace(regex, value.toString())
     }
-    
+
     if (!expression || expression.trim() === '') {
       return 0
     }
-    
+
     const result = eval(expression)
     return isNaN(result) ? 0 : Math.max(0, result)
   } catch (error) {
@@ -177,6 +178,13 @@ export async function GET(
             stockLength = await findStockLength(bom.partNumber, panel.width, panel.height)
           }
 
+          // Calculate % of stock used
+          let percentOfStock: string = ''
+          if (bom.partType === 'Extrusion' && cutLength && stockLength && stockLength > 0) {
+            const percentage = (cutLength / stockLength) * 100
+            percentOfStock = percentage.toFixed(1) + '%'
+          }
+
           // Add stock length to part number if available
           if (stockLength && fullPartNumber) {
             fullPartNumber = `${fullPartNumber}-${stockLength}`
@@ -192,6 +200,7 @@ export async function GET(
             partType: bom.partType,
             quantity: bom.quantity || 1,
             cutLength: cutLength ? cutLength.toFixed(2) : '',
+            percentOfStock: percentOfStock,
             unit: bom.unit || '',
             description: bom.description || '',
             color: opening.finishColor || 'N/A'
@@ -240,6 +249,7 @@ export async function GET(
             partType: 'Glass',
             quantity: 1,
             cutLength: `${glassWidth.toFixed(2)}" x ${glassHeight.toFixed(2)}" (${glassArea} SQ FT)`,
+            percentOfStock: '',
             unit: 'SQ FT',
             description: panel.glassType,
             color: 'N/A'
@@ -267,10 +277,11 @@ export async function GET(
       'Product Name',
       'Component Size',
       'Part Number',
-      'Part Name', 
+      'Part Name',
       'Part Type',
       'Quantity',
       'Cut Length',
+      '% of Stock',
       'Unit',
       'Color',
       'Description'
@@ -287,6 +298,7 @@ export async function GET(
         `"${item.partType}"`,
         item.quantity,
         `"${item.cutLength}"`,
+        `"${item.percentOfStock}"`,
         `"${item.unit}"`,
         `"${item.color}"`,
         `"${item.description}"`

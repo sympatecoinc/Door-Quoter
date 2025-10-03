@@ -2,6 +2,8 @@ export interface Project {
   id: number
   name: string
   status: string
+  extrusionCostingMethod?: string // "FULL_STOCK" | "PERCENTAGE_BASED"
+  excludedPartNumbers?: string[] // Part numbers to exclude from FULL_STOCK rule
   createdAt: Date
   updatedAt: Date
 }

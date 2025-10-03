@@ -4,18 +4,19 @@ import { prisma } from '@/lib/prisma'
 // Function to evaluate simple formulas for cut lengths
 function evaluateFormula(formula: string, variables: Record<string, number>): number {
   if (!formula || typeof formula !== 'string' || formula.trim() === '') return 0
-  
+
   try {
     let expression = formula.trim()
     for (const [key, value] of Object.entries(variables)) {
-      const regex = new RegExp(`\\b${key}\\b`, 'g')
+      // Case-insensitive variable replacement
+      const regex = new RegExp(`\\b${key}\\b`, 'gi')
       expression = expression.replace(regex, value.toString())
     }
-    
+
     if (!expression || expression.trim() === '') {
       return 0
     }
-    
+
     const result = eval(expression)
     return isNaN(result) ? 0 : Math.max(0, result)
   } catch (error) {
@@ -197,6 +198,12 @@ export async function GET(
             }
           }
 
+          // Calculate % of stock used
+          let percentOfStock: number | null = null
+          if (bom.partType === 'Extrusion' && cutLength && stockLength && stockLength > 0) {
+            percentOfStock = (cutLength / stockLength) * 100
+          }
+
           bomItems.push({
             openingName: opening.name,
             panelId: panel.id,
@@ -209,6 +216,7 @@ export async function GET(
             quantity: bom.quantity || 1,
             cutLength: cutLength,
             stockLength: stockLength,
+            percentOfStock: percentOfStock,
             unit: bom.unit || '',
             description: bom.description || '',
             color: opening.finishColor || 'N/A'
@@ -257,6 +265,7 @@ export async function GET(
             quantity: 1,
             cutLength: null,
             stockLength: null,
+            percentOfStock: null,
             unit: 'SQ FT',
             description: panel.glassType,
             glassWidth: glassWidth,

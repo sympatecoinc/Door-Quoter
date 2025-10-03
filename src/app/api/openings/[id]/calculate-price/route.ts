@@ -98,7 +98,7 @@ function applyFinishCode(partNumber: string, finishColor: string): string {
 }
 
 // Function to calculate the price of a single BOM item using component dimensions
-async function calculateBOMItemPrice(bom: any, componentWidth: number, componentHeight: number, finishColor?: string): Promise<{cost: number, breakdown: any}> {
+async function calculateBOMItemPrice(bom: any, componentWidth: number, componentHeight: number, finishColor?: string, extrusionCostingMethod?: string, excludedPartNumbers?: string[]): Promise<{cost: number, breakdown: any}> {
   const variables = {
     width: componentWidth || 0,
     height: componentHeight || 0,
@@ -173,9 +173,42 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
         if (masterPart.partType === 'Extrusion' && masterPart.stockLengthRules.length > 0) {
           // Calculate the required part length from the ProductBOM formula
           const requiredLength = calculateRequiredPartLength(bom, variables)
-          
+
           const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
           if (bestRule) {
+            // Check if this part is excluded from FULL_STOCK rule
+            // Need to check both exact match and base part number (without finish codes)
+            // Excluded list might have finish codes like DR-ASD-TUB2669-BL-120
+            // But master part is just DR-ASD-TUB2669
+            const isExcludedPart = excludedPartNumbers?.some(excludedPart => {
+              // Remove finish codes (-BL, -C2, -AL) and stock lengths (-120, -144, etc) from excluded part
+              const baseExcludedPart = excludedPart.replace(/(-BL|-C2|-AL)(-\d+)?$/, '')
+              return baseExcludedPart === masterPart.partNumber || excludedPart === masterPart.partNumber
+            })
+
+            // Check if using percentage-based costing method
+            // Use percentage-based if: method is PERCENTAGE_BASED OR part is in excluded list
+            const usePercentageBased = extrusionCostingMethod === 'PERCENTAGE_BASED' || isExcludedPart
+
+            if (usePercentageBased && bestRule.stockLength && bestRule.basePrice) {
+              // Calculate usage percentage
+              const usagePercentage = requiredLength / bestRule.stockLength
+              const remainingPercentage = 1 - usagePercentage
+
+              // If more than 50% of stock remains unused, use percentage-based cost
+              if (remainingPercentage > 0.5) {
+                cost = bestRule.basePrice * usagePercentage * (bom.quantity || 1)
+                breakdown.method = 'extrusion_percentage_based'
+                const excludedNote = isExcludedPart ? ' (Excluded Part)' : ''
+                breakdown.details = `Percentage-based cost${excludedNote}: ${(usagePercentage * 100).toFixed(2)}% of stock (${requiredLength}"/${bestRule.stockLength}") × $${bestRule.basePrice} × ${bom.quantity || 1} = $${cost.toFixed(2)}`
+                breakdown.unitCost = cost / (bom.quantity || 1)
+                breakdown.totalCost = cost
+                return { cost, breakdown }
+              }
+              // If 50% or less remains, fall through to full stock cost
+            }
+
+            // FULL_STOCK method or percentage fallback
             if (bestRule.formula) {
               const extrusionVariables = {
                 ...variables,
@@ -185,12 +218,12 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
                 requiredLength: requiredLength
               }
               cost = evaluateFormula(bestRule.formula, extrusionVariables)
-              breakdown.method = 'extrusion_rule_formula'
-              breakdown.details = `Extrusion rule for ${requiredLength}" length: ${bestRule.formula} (basePrice: ${bestRule.basePrice}, stockLength: ${bestRule.stockLength}) = $${cost}`
+              breakdown.method = usePercentageBased ? 'extrusion_full_stock_fallback' : 'extrusion_rule_formula'
+              breakdown.details = `${usePercentageBased ? 'Full stock cost (>50% used): ' : ''}Extrusion rule for ${requiredLength}" length: ${bestRule.formula} (basePrice: ${bestRule.basePrice}, stockLength: ${bestRule.stockLength}) = $${cost}`
             } else if (bestRule.basePrice) {
               cost = bestRule.basePrice * (bom.quantity || 1)
-              breakdown.method = 'extrusion_rule_base'
-              breakdown.details = `Extrusion base price for ${requiredLength}" length: $${bestRule.basePrice} × ${bom.quantity || 1}`
+              breakdown.method = usePercentageBased ? 'extrusion_full_stock_fallback' : 'extrusion_rule_base'
+              breakdown.details = `${usePercentageBased ? 'Full stock cost (>50% used): ' : ''}Extrusion base price for ${requiredLength}" length: $${bestRule.basePrice} × ${bom.quantity || 1}`
             }
             breakdown.unitCost = cost / (bom.quantity || 1)
             breakdown.totalCost = cost
@@ -259,6 +292,7 @@ export async function POST(
     const opening = await prisma.opening.findUnique({
       where: { id: openingId },
       include: {
+        project: true, // Include project to get extrusion costing method and excluded parts
         panels: {
           include: {
             componentInstance: {
@@ -318,7 +352,14 @@ export async function POST(
 
       // Calculate BOM costs using proper pricing rules
       for (const bom of product.productBOMs) {
-        const { cost, breakdown } = await calculateBOMItemPrice(bom, panel.width, panel.height, opening.finishColor || '')
+        const { cost, breakdown } = await calculateBOMItemPrice(
+          bom,
+          panel.width,
+          panel.height,
+          opening.finishColor || '',
+          opening.project.extrusionCostingMethod || 'FULL_STOCK',
+          opening.project.excludedPartNumbers || []
+        )
         componentBreakdown.bomCosts.push(breakdown)
         componentBreakdown.totalBOMCost += cost
         componentCost += cost
