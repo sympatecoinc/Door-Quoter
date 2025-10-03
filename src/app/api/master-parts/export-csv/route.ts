@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// Properly escape CSV values according to RFC 4180
+function escapeCsvValue(value: string | number | boolean | null | undefined): string {
+  // Convert to string
+  const str = value?.toString() || ''
+
+  // If the value contains quotes, commas, or newlines, it must be quoted
+  // and internal quotes must be doubled
+  if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`
+  }
+
+  // Otherwise, just wrap in quotes for consistency
+  return `"${str}"`
+}
+
 export async function GET(request: NextRequest) {
   try {
     // Fetch all master parts with their pricing rules
@@ -42,7 +57,7 @@ export async function GET(request: NextRequest) {
       // Pricing rule fields (for other parts)
       'pricingRule_basePrice',
       'pricingRule_formula'
-    ].map(h => `"${h}"`).join(','))
+    ].map(h => escapeCsvValue(h)).join(','))
 
     // Add data rows
     for (const part of masterParts) {
@@ -58,7 +73,7 @@ export async function GET(request: NextRequest) {
           part.isOption ? 'TRUE' : 'FALSE',
           '', '', '', '', '', '', // Stock rule fields
           '', '' // Pricing rule fields
-        ].map(v => `"${v}"`).join(','))
+        ].map(v => escapeCsvValue(v)).join(','))
       }
 
       // For extrusions with stock length rules, add one row per rule
@@ -80,7 +95,7 @@ export async function GET(request: NextRequest) {
             rule.basePrice?.toString() || '',
             rule.formula || '',
             '', '' // Pricing rule fields (empty for stock rules)
-          ].map(v => `"${v}"`).join(','))
+          ].map(v => escapeCsvValue(v)).join(','))
         }
       }
 
@@ -99,7 +114,7 @@ export async function GET(request: NextRequest) {
             // Pricing rule fields
             rule.basePrice?.toString() || '',
             rule.formula || ''
-          ].map(v => `"${v}"`).join(','))
+          ].map(v => escapeCsvValue(v)).join(','))
         }
       }
     }
