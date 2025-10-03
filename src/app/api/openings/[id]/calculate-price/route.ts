@@ -4,20 +4,21 @@ import { prisma } from '@/lib/prisma'
 // Function to evaluate simple mathematical formulas
 function evaluateFormula(formula: string, variables: Record<string, number>): number {
   if (!formula || typeof formula !== 'string' || formula.trim() === '') return 0
-  
+
   try {
-    // Replace variables in formula
+    // Replace variables in formula (case-insensitive)
     let expression = formula.trim()
     for (const [key, value] of Object.entries(variables)) {
-      const regex = new RegExp(`\\b${key}\\b`, 'g')
+      // Create case-insensitive regex to match variable names
+      const regex = new RegExp(`\\b${key}\\b`, 'gi')
       expression = expression.replace(regex, value.toString())
     }
-    
+
     // Check if expression is empty after variable replacement
     if (!expression || expression.trim() === '') {
       return 0
     }
-    
+
     // Basic math evaluation (be careful with eval - this is simplified)
     // In production, consider using a safer math expression parser
     const result = eval(expression)
@@ -290,7 +291,6 @@ export async function POST(
       )
     }
 
-    const totalPrice = 0
     const priceBreakdown = {
       components: [] as any[],
       totalComponentCost: 0,
