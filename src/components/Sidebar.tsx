@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/stores/appStore'
 import { MenuOption } from '@/types'
 import {
@@ -12,7 +13,9 @@ import {
   Plus,
   ChevronDown,
   ChevronRight,
-  Users
+  Users,
+  LogOut,
+  User
 } from 'lucide-react'
 
 const menuItems = [
@@ -31,15 +34,49 @@ interface Project {
 }
 
 export default function Sidebar() {
+  const router = useRouter()
   const { currentMenu, setCurrentMenu, selectedProjectId, setSelectedProjectId } = useAppStore()
   const [showProjects, setShowProjects] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
+  const [currentUser, setCurrentUser] = useState<any>(null)
 
   useEffect(() => {
     if (showProjects) {
       fetchProjects()
     }
   }, [showProjects])
+
+  useEffect(() => {
+    fetchCurrentUser()
+  }, [])
+
+  async function fetchCurrentUser() {
+    try {
+      const response = await fetch('/api/auth/session')
+      if (response.ok) {
+        const data = await response.json()
+        setCurrentUser(data.user)
+      }
+    } catch (error) {
+      console.error('Error fetching current user:', error)
+    }
+  }
+
+  // Filter menu items based on user permissions
+  const visibleMenuItems = currentUser
+    ? menuItems.filter(item => currentUser.permissions?.includes(item.id))
+    : menuItems
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      router.push('/login')
+      router.refresh()
+    } catch (error) {
+      console.error('Error logging out:', error)
+      alert('Failed to logout')
+    }
+  }
 
   async function fetchProjects() {
     try {
@@ -63,10 +100,10 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2">
-        {menuItems.map((item) => {
+        {visibleMenuItems.map((item) => {
           const Icon = item.icon
           const isActive = currentMenu === item.id
-          
+
           return (
             <button
               key={item.id}
@@ -97,10 +134,10 @@ export default function Sidebar() {
             <ChevronRight className="w-4 h-4" />
           )}
         </button>
-        
+
         {showProjects && (
           <div className="mt-2 space-y-1">
-            <button 
+            <button
               onClick={() => setCurrentMenu('projects')}
               className="w-full flex items-center px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg"
             >
@@ -124,7 +161,7 @@ export default function Sidebar() {
                   {project.name}
                 </div>
                 <span className={`text-xs px-2 py-1 rounded-full ${
-                  project.status === 'Draft' 
+                  project.status === 'Draft'
                     ? 'bg-gray-100 text-gray-600'
                     : project.status === 'In Progress'
                     ? 'bg-blue-100 text-blue-600'
@@ -137,6 +174,26 @@ export default function Sidebar() {
           </div>
         )}
       </div>
+
+      {/* User Section */}
+      {currentUser && (
+        <div className="p-4 border-t border-gray-200">
+          <div className="flex items-center mb-2 px-3 py-2">
+            <User className="w-5 h-5 text-gray-600 mr-3" />
+            <div className="flex-1">
+              <div className="text-sm font-medium text-gray-900">{currentUser.name}</div>
+              <div className="text-xs text-gray-500">{currentUser.role}</div>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+          >
+            <LogOut className="w-5 h-5 mr-3" />
+            Logout
+          </button>
+        </div>
+      )}
     </div>
   )
 }

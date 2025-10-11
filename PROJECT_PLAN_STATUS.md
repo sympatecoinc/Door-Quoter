@@ -1,7 +1,7 @@
 # Door Quoter - Project Status
 
-**Last Updated:** 2025-10-02
-**Overall Progress:** ~45%
+**Last Updated:** 2025-10-11
+**Overall Progress:** ~50%
 
 Legend: ✅ Done | 🟡 Partial | ⏳ Pending | 🚫 Blocked
 
@@ -95,14 +95,22 @@ Legend: ✅ Done | 🟡 Partial | ⏳ Pending | 🚫 Blocked
 - ✅ Automatic scaling
 - ⏳ Multi-page layouts
 - ⏳ Dimension annotations
+2
 - ⏳ Hardware placement visualization
 - **Status:** Parametric scaling complete and tested
 
 ### Export & Output
-- ⏳ PDF generation
+- ✅ PDF generation
 - ⏳ Print optimization
 - ⏳ Drawing templates
-- **Status:** Not started
+- **Status:** PDF export complete
+- **Implementation Notes:**
+  - Created PDF generation utility library (src/lib/pdf-generator.ts)
+  - Single opening PDF export API (src/app/api/drawings/pdf/[openingId]/route.ts)
+  - Multi-opening project PDF export API (src/app/api/projects/[id]/drawings/pdf/route.ts)
+  - Export PDF button added to DrawingViewer component
+  - Server-side PDF generation using jsPDF
+  - Letter format with proper layout, title blocks, and metadata
 
 ---
 
@@ -177,18 +185,7 @@ Legend: ✅ Done | 🟡 Partial | ⏳ Pending | 🚫 Blocked
     - Width/height attributes control final rendered size
     - Tested with 24", 36", 48" widths - all scale correctly
 
-- ⏳ **Verify and fix pricing calculation accuracy**
-  - Priority: HIGH
-  - Files: Pricing engine components
-  - Dependencies: None
-  - Estimated effort: 4-6 hours
-
 ### High Priority (Do Next)
-- ⏳ **Complete PDF export functionality**
-  - Priority: MEDIUM-HIGH
-  - Dependencies: SVG scaling must be fixed first
-  - Estimated effort: 6-10 hours
-
 - ⏳ **Implement multi-page shop drawing layouts**
   - Priority: MEDIUM-HIGH
   - Dependencies: SVG scaling, PDF export
@@ -214,6 +211,22 @@ Legend: ✅ Done | 🟡 Partial | ⏳ Pending | 🚫 Blocked
 ---
 
 ## 9. Recently Completed
+
+### 2025-10-11
+- ✅ **Complete PDF export functionality** (COMPLETED)
+  - Created PDF generation utility library (src/lib/pdf-generator.ts)
+  - Implemented single opening PDF export API (src/app/api/drawings/pdf/[openingId]/route.ts)
+  - Implemented multi-opening project PDF export API (src/app/api/projects/[id]/drawings/pdf/route.ts)
+  - Added "Export PDF" button to DrawingViewer component with loading states
+  - Server-side PDF generation using jsPDF
+  - Letter format (portrait) with proper layout and margins
+  - Title blocks with project name, opening number, dimensions
+  - Cover page for multi-opening exports with table of contents
+  - Each opening gets 2 pages: elevation view + plan view
+  - Proper image scaling to fit pages while maintaining aspect ratios
+  - Footer with metadata (project name, date, page numbers)
+  - Build verification: All files compile without errors
+  - Task document: tasks/pdf-export-shop-drawings-2025-10-11.md
 
 ### 2025-10-02
 - ✅ **SVG scaling system fixed - FINAL** (src/lib/parametric-svg-server.ts, DrawingViewer.tsx)

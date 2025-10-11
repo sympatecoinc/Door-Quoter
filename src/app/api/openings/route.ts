@@ -38,18 +38,19 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { 
-      projectId, 
-      name, 
+    const {
+      projectId,
+      name,
       openingNumber, // Support both field names for backward compatibility
-      roughWidth, 
-      roughHeight, 
-      finishedWidth, 
-      finishedHeight, 
+      roughWidth,
+      roughHeight,
+      finishedWidth,
+      finishedHeight,
       width, // Support the form field name
       height, // Support the form field name
       finishColor,
-      price = 0 
+      price = 0,
+      multiplier
     } = await request.json()
 
     // Use name if provided, otherwise use openingNumber
@@ -91,6 +92,10 @@ export async function POST(request: NextRequest) {
       name: openingName,
       finishColor: finishColor,
       price: parseFloat(price) || 0
+    }
+
+    if (multiplier !== undefined) {
+      openingData.multiplier = parseFloat(multiplier) || 1.0
     }
 
     // Add size fields only if they have values

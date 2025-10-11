@@ -5,6 +5,8 @@ import { ArrowLeft, Download, FileText, Printer, Ruler, Palette, Eye, Wrench, Do
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
+import html2canvas from 'html2canvas'
+import { jsPDF } from 'jspdf'
 
 interface QuoteItem {
   openingId: number
@@ -16,7 +18,7 @@ interface QuoteItem {
   hardwarePrice: number
   glassType: string
   price: number
-  elevationImage: string | null
+  elevationImages: string[]
 }
 
 interface QuoteData {
@@ -28,6 +30,9 @@ interface QuoteData {
     updatedAt: string
   }
   quoteItems: QuoteItem[]
+  subtotal: number
+  taxRate: number
+  taxAmount: number
   totalPrice: number
 }
 
@@ -77,20 +82,31 @@ export default function QuoteView() {
 
   const handleDownload = async () => {
     if (!quoteRef.current || !quoteData) return
-    
+
     try {
       setIsDownloading(true)
-      
-      // Dynamically import the libraries
-      const html2canvas = (await import('html2canvas')).default
-      const jsPDF = (await import('jspdf')).jsPDF
-      
+
       // Temporarily hide print-hidden elements and adjust for PDF
       const printHiddenElements = document.querySelectorAll('.print\\:hidden')
       printHiddenElements.forEach(el => {
         (el as HTMLElement).style.display = 'none'
       })
-      
+
+      // Wait for all images to load before capturing
+      const images = quoteRef.current.querySelectorAll('img')
+      await Promise.all(
+        Array.from(images).map((img) => {
+          if (img.complete) return Promise.resolve()
+          return new Promise((resolve) => {
+            img.onload = () => resolve(null)
+            img.onerror = () => resolve(null)
+          })
+        })
+      )
+
+      // Small delay to ensure rendering is complete
+      await new Promise(resolve => setTimeout(resolve, 100))
+
       // Configure options for better PDF output
       const canvas = await html2canvas(quoteRef.current, {
         scale: 2, // Higher resolution
@@ -98,7 +114,10 @@ export default function QuoteView() {
         allowTaint: true,
         backgroundColor: '#ffffff',
         width: quoteRef.current.scrollWidth,
-        height: quoteRef.current.scrollHeight
+        height: quoteRef.current.scrollHeight,
+        logging: true, // Enable logging for debugging
+        imageTimeout: 0, // No timeout for image loading
+        removeContainer: true,
       })
       
       // Restore hidden elements
@@ -300,15 +319,19 @@ export default function QuoteView() {
             <tbody className="divide-y divide-gray-200">
               {quoteData.quoteItems.map((item, index) => (
                 <tr key={item.openingId} className="hover:bg-gray-50 transition-colors">
-                  {/* Elevation Thumbnail */}
+                  {/* Elevation Thumbnails - All Panels Side by Side */}
                   <td className="py-6 px-6 w-56 border-r border-gray-200">
-                    {item.elevationImage ? (
+                    {item.elevationImages && item.elevationImages.length > 0 ? (
                       <div className="flex items-center justify-center h-40">
-                        <img
-                          src={`data:image/png;base64,${item.elevationImage}`}
-                          alt={`Opening ${item.name} elevation`}
-                          className="max-w-full max-h-full object-contain"
-                        />
+                        {item.elevationImages.map((elevationImage, imgIndex) => (
+                          <div key={imgIndex} className="flex-1 h-full flex items-center justify-center">
+                            <img
+                              src={elevationImage.startsWith('data:') ? elevationImage : `data:image/png;base64,${elevationImage}`}
+                              alt={`Opening ${item.name} panel ${imgIndex + 1}`}
+                              className="max-w-full max-h-full object-contain"
+                            />
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <div className="flex items-center justify-center h-40">
@@ -323,7 +346,7 @@ export default function QuoteView() {
                       {/* Opening name and color pill for screen */}
                       <div className="flex items-center space-x-3">
                         <h3 className="text-lg font-medium text-gray-900">
-                          Opening {item.name}
+                          {item.name}
                         </h3>
                         <span className="print:hidden">
                           {getColorPill(item.color)}
@@ -384,15 +407,40 @@ export default function QuoteView() {
 
         {/* Quote Footer */}
         <div className="p-8 border-t border-gray-200 bg-gray-50">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-start">
             <div className="text-gray-600">
               <p className="text-lg">This quote includes {quoteData.quoteItems.length} opening{quoteData.quoteItems.length !== 1 ? 's' : ''}</p>
             </div>
-            <div className="text-right">
-              <div className="text-4xl font-light text-gray-900 mb-2">
-                ${quoteData.totalPrice.toLocaleString()}
+            <div className="text-right space-y-3">
+              {/* Subtotal */}
+              <div className="flex justify-between items-center gap-8">
+                <span className="text-sm font-medium text-gray-500 uppercase tracking-wide">Subtotal</span>
+                <span className="text-xl text-gray-900">
+                  ${quoteData.subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                </span>
               </div>
-              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Project Cost</p>
+
+              {/* Tax - only show if not 0 */}
+              {quoteData.taxRate > 0 && (
+                <div className="flex justify-between items-center gap-8">
+                  <span className="text-sm font-medium text-gray-500 uppercase tracking-wide">
+                    Tax ({(quoteData.taxRate * 100).toFixed(1)}%)
+                  </span>
+                  <span className="text-xl text-gray-900">
+                    ${quoteData.taxAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </span>
+                </div>
+              )}
+
+              {/* Total */}
+              <div className="pt-3 border-t border-gray-300">
+                <div className="flex justify-between items-center gap-8">
+                  <span className="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Project Cost</span>
+                  <span className="text-4xl font-light text-gray-900">
+                    ${quoteData.totalPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

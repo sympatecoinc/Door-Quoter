@@ -1,7 +1,31 @@
+'use client'
+
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import Dashboard from '@/components/Dashboard'
 
 export default function Home() {
+  const router = useRouter()
+
+  useEffect(() => {
+    // Validate session on page load
+    const validateSession = async () => {
+      try {
+        const response = await fetch('/api/auth/session')
+        if (!response.ok) {
+          // Session invalid, redirect to login
+          router.push('/login')
+        }
+      } catch (error) {
+        console.error('Session validation error:', error)
+        router.push('/login')
+      }
+    }
+
+    validateSession()
+  }, [router])
+
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar />

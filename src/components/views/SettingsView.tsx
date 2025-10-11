@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { Download, Save, Upload, FileUp } from 'lucide-react'
+import UserManagement from '../UserManagement'
 
 export default function SettingsView() {
+  const [currentUser, setCurrentUser] = useState<any>(null)
   const [companyName, setCompanyName] = useState('')
   const [defaultCurrency, setDefaultCurrency] = useState('USD')
   const [defaultMarkup, setDefaultMarkup] = useState('')
@@ -17,7 +19,7 @@ export default function SettingsView() {
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<any>(null)
 
-  // Load saved settings on component mount
+  // Load saved settings and current user on component mount
   useEffect(() => {
     try {
       const savedSettings = localStorage.getItem('appSettings')
@@ -33,7 +35,22 @@ export default function SettingsView() {
     } catch (error) {
       console.error('Error loading settings:', error)
     }
+
+    // Fetch current user session
+    fetchCurrentUser()
   }, [])
+
+  const fetchCurrentUser = async () => {
+    try {
+      const response = await fetch('/api/auth/session')
+      if (response.ok) {
+        const data = await response.json()
+        setCurrentUser(data.user)
+      }
+    } catch (error) {
+      console.error('Error fetching current user:', error)
+    }
+  }
 
   const handleSaveSettings = async () => {
     setSaving(true)
@@ -427,9 +444,17 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,FALSE
           </div>
         </div>
 
+        {/* User Management Section (Admin Only) */}
+        {currentUser?.role === 'ADMIN' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">User Management</h2>
+            <UserManagement />
+          </div>
+        )}
+
         {/* Save Button */}
         <div className="flex justify-end">
-          <button 
+          <button
             onClick={handleSaveSettings}
             disabled={saving}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"

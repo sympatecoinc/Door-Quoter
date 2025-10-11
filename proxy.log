@@ -1,8 +1,312 @@
-2025/10/03 12:38:20 This is the Cloud SQL Proxy v1. It is no longer receiving active feature development. For the latest features and improvements, migrate to the v2 version of the Cloud SQL Proxy. For details, see: https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/main/migration-guide.md
-2025/10/03 12:38:20 current FDs rlimit set to 524288, wanted limit is 8500. Nothing to do here.
-2025/10/03 12:38:27 Listening on 127.0.0.1:5432 for door-quoter:us-central1:door-app-staging
-2025/10/03 12:38:27 Ready for new connections
-2025/10/03 12:38:28 Generated RSA key in 569.217489ms
-2025/10/03 12:39:34 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/03 12:39:34 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
-2025/10/03 12:39:34 Scheduling refresh of ephemeral certificate in 55m0s
+2025/10/11 17:58:17 This is the Cloud SQL Proxy v1. It is no longer receiving active feature development. For the latest features and improvements, migrate to the v2 version of the Cloud SQL Proxy. For details, see: https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/main/migration-guide.md
+2025/10/11 17:58:17 current FDs rlimit set to 524288, wanted limit is 8500. Nothing to do here.
+2025/10/11 17:58:24 Listening on 127.0.0.1:5432 for door-quoter:us-central1:door-app-staging
+2025/10/11 17:58:24 Ready for new connections
+2025/10/11 17:58:24 Generated RSA key in 105.043632ms
+2025/10/11 17:59:53 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 17:59:53 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
+2025/10/11 17:59:54 Scheduling refresh of ephemeral certificate in 54m59s
+2025/10/11 17:59:59 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:19:09 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:19:09 Client closed local connection on 127.0.0.1:5432
+2025/10/11 18:19:12 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:46:13 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:46:13 Client closed local connection on 127.0.0.1:5432
+2025/10/11 18:46:13 Client closed local connection on 127.0.0.1:5432
+2025/10/11 18:46:13 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:46:13 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:46:16 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:46:31 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:46:40 Client closed local connection on 127.0.0.1:5432
+2025/10/11 18:46:42 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:46:42 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:46:44 Client closed local connection on 127.0.0.1:5432
+2025/10/11 18:46:47 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:51:41 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:51:41 Client closed local connection on 127.0.0.1:5432
+2025/10/11 18:54:03 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:54:03 Client closed local connection on 127.0.0.1:5432
+2025/10/11 18:54:53 ephemeral certificate for instance door-quoter:us-central1:door-app-staging will expire soon, refreshing now.
+2025/10/11 18:54:53 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
+2025/10/11 18:54:53 Scheduling refresh of ephemeral certificate in 55m0s
+2025/10/11 18:57:22 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:57:23 Client closed local connection on 127.0.0.1:5432
+2025/10/11 18:57:23 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:57:24 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 18:57:25 Client closed local connection on 127.0.0.1:5432
+2025/10/11 18:58:26 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:05:37 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:05:37 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:13:38 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:13:38 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:13:38 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:13:38 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:13:38 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:13:38 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:13:38 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:14:25 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:14:25 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:14:33 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:15:04 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:16:36 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:17:30 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:17:30 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:17:30 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:18:04 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:20:15 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:20:15 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:20:15 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:20:15 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:20:15 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:20:15 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:20:18 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:20:21 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:20:21 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:20:21 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:20:43 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:21:10 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:21:12 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:21:44 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:21:47 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:22:47 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:49:53 ephemeral certificate for instance door-quoter:us-central1:door-app-staging will expire soon, refreshing now.
+2025/10/11 19:49:53 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
+2025/10/11 19:49:54 Scheduling refresh of ephemeral certificate in 55m0s
+2025/10/11 19:52:16 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:52:16 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:52:16 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:52:16 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:52:16 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:53:03 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:53:03 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:53:03 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:53:03 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:53:03 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:53:03 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:53:06 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:54:49 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:56:03 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:56:03 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:56:03 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:56:03 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:56:03 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:56:03 Client closed local connection on 127.0.0.1:5432
+2025/10/11 19:57:00 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:57:00 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:57:05 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 19:57:36 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:01:00 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:01:15 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:03:29 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:03:29 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:03:35 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:03:35 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:03:35 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:03:35 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:04:22 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:04:22 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:20:42 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:20:42 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:20:42 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:20:42 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:20:47 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:22:00 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:22:50 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:22:50 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:23:33 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:23:33 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:23:38 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:24:19 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:25:48 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:26:26 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 20:26:59 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:26:59 Client closed local connection on 127.0.0.1:5432
+2025/10/11 20:44:54 ephemeral certificate for instance door-quoter:us-central1:door-app-staging will expire soon, refreshing now.
+2025/10/11 20:44:54 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
+2025/10/11 20:44:55 Scheduling refresh of ephemeral certificate in 54m59s
+2025/10/11 21:04:22 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:04:22 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:05:47 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:05:47 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:06:20 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:06:20 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:09:00 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:10:06 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:13:38 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:13:38 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:14:34 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:14:34 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:14:44 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:15:21 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:18:05 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:18:05 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:18:41 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:18:41 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:18:49 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:19:24 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:22:22 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:22:27 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:22:36 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:22:36 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:24:10 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:24:10 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:24:13 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:24:49 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:28:16 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:28:16 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:29:01 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:29:01 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:29:30 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:30:40 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:30:47 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:32:29 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:33:00 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:33:00 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:35:46 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:35:46 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:35:47 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:35:47 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:35:51 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:35:55 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:36:19 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:36:19 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:37:40 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:37:40 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:37:40 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:37:42 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:38:22 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:39:55 ephemeral certificate for instance door-quoter:us-central1:door-app-staging will expire soon, refreshing now.
+2025/10/11 21:39:55 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
+2025/10/11 21:39:55 Scheduling refresh of ephemeral certificate in 55m0s
+2025/10/11 21:39:57 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:41:27 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:41:27 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:41:27 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:41:27 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:42:39 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:42:39 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:43:29 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:44:35 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:46:51 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:47:02 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:47:02 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:47:02 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:47:29 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:47:37 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:48:05 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:48:09 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:48:48 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:48:50 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:49:25 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:50:49 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:51:38 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:51:38 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:51:38 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:51:40 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:52:16 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:53:57 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:54:03 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:58:20 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:58:20 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:58:20 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:58:20 Client closed local connection on 127.0.0.1:5432
+2025/10/11 21:58:23 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 21:58:59 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:02:30 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:02:36 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:02:36 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:02:36 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:02:36 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:03:22 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:03:22 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:03:33 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:03:56 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:04:35 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:04:35 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:08:01 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:08:06 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:09:18 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:09:18 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:09:18 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:09:18 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:09:28 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:09:42 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:10:01 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:10:01 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:10:01 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:10:01 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:10:29 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:10:29 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:10:34 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:11:03 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:13:50 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:14:11 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:15:22 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:15:22 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:17:19 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:17:19 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:17:19 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:17:19 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:17:24 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:17:26 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:17:48 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:18:49 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:20:20 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:20:45 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:21:09 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:21:46 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:25:04 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:25:04 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:25:04 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:25:04 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:25:04 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:25:30 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:26:13 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:27:33 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:27:42 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:27:55 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:27:59 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:27:59 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:28:10 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:28:29 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:29:21 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:29:21 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:29:21 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:29:21 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:29:49 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:29:49 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:29:49 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:29:52 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:31:21 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:32:28 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:33:44 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:34:35 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:34:49 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:34:49 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:34:55 ephemeral certificate for instance door-quoter:us-central1:door-app-staging will expire soon, refreshing now.
+2025/10/11 22:34:55 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
+2025/10/11 22:34:56 Scheduling refresh of ephemeral certificate in 54m59s
+2025/10/11 22:36:06 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:38:54 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:38:54 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:38:54 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:39:20 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:39:23 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:39:35 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:40:12 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:58:58 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:58:58 Client closed local connection on 127.0.0.1:5432
+2025/10/11 22:58:58 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 22:58:58 Client closed local connection on 127.0.0.1:5432
+2025/10/11 23:03:16 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 23:03:20 Client closed local connection on 127.0.0.1:5432
+2025/10/11 23:03:32 Client closed local connection on 127.0.0.1:5432
+2025/10/11 23:03:32 Client closed local connection on 127.0.0.1:5432
+2025/10/11 23:04:10 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 23:04:10 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 23:07:07 Client closed local connection on 127.0.0.1:5432
+2025/10/11 23:07:07 Client closed local connection on 127.0.0.1:5432
+2025/10/11 23:07:49 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 23:07:51 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 23:07:55 New connection for "door-quoter:us-central1:door-app-staging"
+2025/10/11 23:08:36 Client closed local connection on 127.0.0.1:5432
