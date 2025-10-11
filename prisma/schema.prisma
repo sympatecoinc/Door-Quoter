@@ -15,6 +15,8 @@ model Project {
   customerId             Int?
   extrusionCostingMethod String    @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED"
   excludedPartNumbers    String[]  @default([]) // Part numbers to exclude from FULL_STOCK rule (use percentage-based instead)
+  multiplier             Float     @default(1.0) // Price multiplier/markup for quotes (e.g., 1.2 = 20% markup)
+  taxRate                Float     @default(0) // Tax rate as decimal (e.g., 0.08 for 8%)
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
   dueDate                DateTime?
@@ -35,6 +37,7 @@ model Opening {
   finishedHeight    Float?
   finishColor       String?  // Black, Clear, Other - used for extrusion part number suffixes
   price             Float     @default(0)
+  multiplier        Float     @default(1.0) // Price multiplier/markup for this opening (e.g., 1.2 = 20% markup)
   priceCalculatedAt DateTime? // Track when price was last calculated
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -385,4 +388,37 @@ model GlassType {
   updatedAt    DateTime @updatedAt
 
   @@map("GlassTypes")
+}
+
+// Authentication and User Management
+enum Role {
+  ADMIN
+  MANAGER
+  VIEWER
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         Role      @default(VIEWER)
+  isActive     Boolean   @default(true)
+  permissions  String[]  @default(["dashboard", "projects", "crm", "products", "masterParts", "settings"]) // Available tabs for user
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+
+  @@map("Users")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("Sessions")
 }

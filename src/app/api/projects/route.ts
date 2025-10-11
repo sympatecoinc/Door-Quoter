@@ -30,7 +30,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, status = 'Draft', dueDate } = await request.json()
+    const { name, status = 'Draft', dueDate, multiplier, taxRate } = await request.json()
 
     if (!name) {
       return NextResponse.json(
@@ -42,6 +42,12 @@ export async function POST(request: NextRequest) {
     const projectData: any = { name, status }
     if (dueDate) {
       projectData.dueDate = new Date(dueDate)
+    }
+    if (multiplier !== undefined) {
+      projectData.multiplier = multiplier
+    }
+    if (taxRate !== undefined) {
+      projectData.taxRate = taxRate
     }
 
     const project = await prisma.project.create({

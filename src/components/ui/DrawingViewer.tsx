@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Download, FileText, Eye } from 'lucide-react'
+import { X, FileText, Eye, FileDown } from 'lucide-react'
 
 interface DrawingData {
   elevation_image?: string
@@ -44,6 +44,7 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
   const [lastOpeningId, setLastOpeningId] = useState<number | null>(null)
   const [selectedElevationIndex, setSelectedElevationIndex] = useState(0)
   const [selectedPlanViewIndex, setSelectedPlanViewIndex] = useState(0)
+  const [isExportingPdf, setIsExportingPdf] = useState(false)
 
   const generateElevationDrawing = async () => {
     setLoading(true)
@@ -85,11 +86,32 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
     }
   }
 
-  const downloadImage = (imageData: string, filename: string) => {
-    const link = document.createElement('a')
-    link.href = `data:image/png;base64,${imageData}`
-    link.download = filename
-    link.click()
+  const exportToPdf = async () => {
+    setIsExportingPdf(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/drawings/pdf/${openingId}`)
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF')
+      }
+
+      // Get the PDF blob
+      const blob = await response.blob()
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Opening_${openingNumber}_Shop_Drawings.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export PDF')
+    } finally {
+      setIsExportingPdf(false)
+    }
   }
 
   // Simple image data URL converter
@@ -136,12 +158,31 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
           <h2 className="text-xl font-bold text-gray-900">
             Shop Drawings - Opening {openingNumber}
           </h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={exportToPdf}
+              disabled={isExportingPdf}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors"
+            >
+              {isExportingPdf ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span>Generating PDF...</span>
+                </>
+              ) : (
+                <>
+                  <FileDown className="w-4 h-4" />
+                  <span>Export PDF</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-full"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -218,27 +259,11 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                   {/* Product-based elevation images */}
                   {drawingData.elevationImages && drawingData.elevationImages.length > 0 && (
                     <>
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h3 className="text-lg font-medium">Elevation View</h3>
-                          <p className="text-sm text-gray-600">
-                            {drawingData.elevationImages.length} component{drawingData.elevationImages.length > 1 ? 's' : ''}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            // Download all images as a single combined view would require canvas manipulation
-                            // For now, download first image
-                            downloadImage(
-                              drawingData.elevationImages![0].imageData,
-                              `opening-${openingNumber}-elevation.png`
-                            )
-                          }}
-                          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Download
-                        </button>
+                      <div className="mb-4">
+                        <h3 className="text-lg font-medium">Elevation View</h3>
+                        <p className="text-sm text-gray-600">
+                          {drawingData.elevationImages.length} component{drawingData.elevationImages.length > 1 ? 's' : ''}
+                        </p>
                       </div>
 
                       {/* Display all elevation images seamlessly side by side */}
@@ -282,16 +307,7 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                   {/* Legacy generated elevation drawing */}
                   {drawingData.elevation_image && !drawingData.elevationImages && (
                     <>
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-lg font-medium">Elevation Drawing</h3>
-                        <button
-                          onClick={() => downloadImage(drawingData.elevation_image!, `opening-${openingNumber}-elevation.png`)}
-                          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Download
-                        </button>
-                      </div>
+                      <h3 className="text-lg font-medium mb-4">Elevation Drawing</h3>
                       <div className="bg-gray-50 p-4 rounded-lg">
                         <img
                           src={`data:image/png;base64,${drawingData.elevation_image}`}
@@ -315,57 +331,45 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                   {/* Product-based plan views */}
                   {drawingData.planViews && drawingData.planViews.length > 0 && (
                     <>
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h3 className="text-lg font-medium">Plan View</h3>
-                          <p className="text-sm text-gray-600">
-                            {drawingData.planViews.length} component{drawingData.planViews.length > 1 ? 's' : ''}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            downloadImage(
-                              drawingData.planViews![0].imageData,
-                              `opening-${openingNumber}-plan.png`
-                            )
-                          }}
-                          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Download
-                        </button>
+                      <div className="mb-4">
+                        <h3 className="text-lg font-medium">Plan View</h3>
+                        <p className="text-sm text-gray-600">
+                          {drawingData.planViews.length} component{drawingData.planViews.length > 1 ? 's' : ''}
+                        </p>
                       </div>
 
                       {/* Display all plan views seamlessly side by side */}
                       <div className="bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto">
-                        <div className="flex items-center justify-center" style={{ minHeight: '400px' }}>
-                          {drawingData.planViews.map((view, index) => {
-                            // Server-side rendering handles all SVG processing (SHOPGEN approach)
-                            const imageSrc = getImageDataUrl(view.imageData)
+                        <div className="flex items-center justify-center w-full" style={{ minHeight: '400px' }}>
+                          <div className="flex items-start">
+                            {drawingData.planViews.map((view, index) => {
+                              // Server-side rendering handles all SVG processing (SHOPGEN approach)
+                              const imageSrc = getImageDataUrl(view.imageData)
 
-                            // Calculate display size maintaining aspect ratio
-                            // Use a fixed scale factor so all panels render at the same scale
-                            const pixelsPerInch = 4  // Fixed scale for all panels
-                            const displayHeight = view.height * pixelsPerInch
-                            const displayWidth = view.width * pixelsPerInch
+                              // Calculate display size maintaining aspect ratio
+                              // Use same scale as elevation views for consistency
+                              const pixelsPerInch = 4  // Same as elevation views
+                              const displayHeight = view.height * pixelsPerInch
+                              const displayWidth = view.width * pixelsPerInch
 
-                            return (
-                              <img
-                                key={index}
-                                src={imageSrc}
-                                alt={`${view.productName} - ${view.planViewName} (${view.width}" × ${view.height}")`}
-                                className="h-auto"
-                                style={{
-                                  height: `${displayHeight}px`,
-                                  width: `${displayWidth}px`,
-                                  display: 'block'
-                                }}
-                                onError={(e) => {
-                                  console.error('Image load error for:', view.productName, view.planViewName)
-                                }}
-                              />
-                            )
-                          })}
+                              return (
+                                <img
+                                  key={index}
+                                  src={imageSrc}
+                                  alt={`${view.productName} - ${view.planViewName} (${view.width}" × ${view.height}")`}
+                                  className="h-auto"
+                                  style={{
+                                    height: `${displayHeight}px`,
+                                    width: `${displayWidth}px`,
+                                    display: 'block'
+                                  }}
+                                  onError={(e) => {
+                                    console.error('Image load error for:', view.productName, view.planViewName)
+                                  }}
+                                />
+                              )
+                            })}
+                          </div>
                         </div>
                       </div>
                       <div className="text-xs text-gray-500 text-center">
@@ -377,16 +381,7 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                   {/* Legacy generated plan view */}
                   {drawingData.plan_image && !drawingData.planViews && (
                     <>
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-lg font-medium">Plan View</h3>
-                        <button
-                          onClick={() => downloadImage(drawingData.plan_image!, `opening-${openingNumber}-plan.png`)}
-                          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Download
-                        </button>
-                      </div>
+                      <h3 className="text-lg font-medium mb-4">Plan View</h3>
                       <div className="bg-gray-50 p-4 rounded-lg">
                         <img
                           src={`data:image/png;base64,${drawingData.plan_image}`}

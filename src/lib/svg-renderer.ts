@@ -3,6 +3,7 @@
 
 import { Resvg } from '@resvg/resvg-js'
 import { processParametricSVG } from './parametric-svg-server'
+import { DOMParser, XMLSerializer } from '@xmldom/xmldom'
 
 export interface RenderOptions {
   width: number
@@ -29,8 +30,53 @@ export async function renderSvgToPng(
     console.log('Mode:', options.mode || 'elevation')
     console.log('SVG length:', svgString.length)
 
-    // Step 1: Apply parametric scaling to SVG
-    // This modifies the SVG elements to maintain correct proportions
+    // Extract original dimensions from SVG viewBox (before processing)
+    const viewBoxMatch = svgString.match(/viewBox="([^"]+)"/)
+    if (!viewBoxMatch) {
+      throw new Error('SVG missing viewBox attribute')
+    }
+    const viewBox = viewBoxMatch[1].split(/\s+/).map(parseFloat)
+    const originalDimensions = {
+      width: viewBox[2],
+      height: viewBox[3]
+    }
+    const originalAspectRatio = originalDimensions.height / originalDimensions.width
+    console.log('→ Original SVG dimensions from viewBox:', originalDimensions.width, 'x', originalDimensions.height)
+    console.log('→ Original aspect ratio:', originalAspectRatio.toFixed(4))
+
+    // For plan views, render at high resolution maintaining original aspect ratio
+    if (options.mode === 'plan') {
+      console.log('→ Plan view: rendering at high resolution with natural aspect ratio')
+
+      // Render at 300px width, height scales proportionally
+      // This maintains the original narrow aspect ratio (wide but short)
+      const resvg = new Resvg(svgString, {
+        background: options.background || '#ffffff',
+        fitTo: {
+          mode: 'width',
+          value: 300
+        },
+        font: {
+          loadSystemFonts: true
+        }
+      })
+
+      const pngData = resvg.render()
+      const pngBuffer = pngData.asPng()
+
+      console.log('→ PNG render successful, size:', pngBuffer.length, 'bytes')
+      console.log('→ PNG dimensions:', pngData.width, 'x', pngData.height)
+      console.log('→ PNG aspect ratio maintained:', (pngData.height / pngData.width).toFixed(4))
+
+      const base64 = pngBuffer.toString('base64')
+
+      console.log('→ Converted to base64, length:', base64.length)
+      console.log('=== SVG Renderer: Complete ===')
+
+      return base64
+    }
+
+    // For elevation views, apply parametric scaling
     const { scaledSVG, scaling, transforms } = processParametricSVG(
       svgString,
       { width: options.width, height: options.height },
@@ -42,9 +88,6 @@ export async function renderSvgToPng(
     console.log('  Elements processed:', transforms.length)
 
     // Step 2: Render scaled SVG to PNG using resvg
-    // The SVG is in original pixel coordinates, so we scale based on the
-    // ratio of target dimensions to SVG standard dimensions (36" x 96")
-    // Then apply resolution scale for high-quality output
     const pixelsPerInch = 8  // Reasonable resolution for shop drawings
     const pngWidth = Math.round(options.width * pixelsPerInch)
     const pngHeight = Math.round(options.height * pixelsPerInch)

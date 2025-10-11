@@ -1,6 +1,6 @@
 # Database Migration Guide
 
-## Manual Production Database Update
+## Latest Migration (2025-10-03): Glass Pricing System
 
 ### Step 1: Start Cloud SQL Proxy
 ```bash
@@ -11,30 +11,49 @@
 sleep 5
 ```
 
-### Step 2: Check Current Schema
+### Step 2: Add GlassTypes Table
 ```bash
-# View current table structure
-PGPASSWORD=SimplePass123 psql -h 127.0.0.1 -p 5433 -U postgres -d door_quoter -c "\d \"Projects\""
+PGPASSWORD=SimplePass123 psql -h 127.0.0.1 -p 5433 -U postgres -d door_quoter -c "
+CREATE TABLE IF NOT EXISTS \"GlassTypes\" (
+  \"id\" SERIAL PRIMARY KEY,
+  \"name\" TEXT UNIQUE NOT NULL,
+  \"description\" TEXT,
+  \"pricePerSqFt\" DOUBLE PRECISION NOT NULL,
+  \"createdAt\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  \"updatedAt\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);"
 ```
 
-### Step 3: Add New Columns
+### Step 3: Add priceCalculatedAt to Openings
+```bash
+PGPASSWORD=SimplePass123 psql -h 127.0.0.1 -p 5433 -U postgres -d door_quoter -c "ALTER TABLE \"Openings\" ADD COLUMN IF NOT EXISTS \"priceCalculatedAt\" TIMESTAMP(3);"
+```
+
+### Step 4: Verify Changes
+```bash
+# Check GlassTypes table
+PGPASSWORD=SimplePass123 psql -h 127.0.0.1 -p 5433 -U postgres -d door_quoter -c "\d \"GlassTypes\""
+
+# Check Openings table
+PGPASSWORD=SimplePass123 psql -h 127.0.0.1 -p 5433 -U postgres -d door_quoter -c "\d \"Openings\""
+```
+
+### Step 5: Stop Proxy
+```bash
+pkill -f cloud_sql_proxy
+```
+
+---
+
+## Previous Migration: Extrusion Costing
+
+### Add New Columns to Projects
 ```bash
 # Add text column with default
 PGPASSWORD=SimplePass123 psql -h 127.0.0.1 -p 5433 -U postgres -d door_quoter -c "ALTER TABLE \"Projects\" ADD COLUMN IF NOT EXISTS \"extrusionCostingMethod\" TEXT NOT NULL DEFAULT 'FULL_STOCK';"
 
 # Add array column
 PGPASSWORD=SimplePass123 psql -h 127.0.0.1 -p 5433 -U postgres -d door_quoter -c "ALTER TABLE \"Projects\" ADD COLUMN IF NOT EXISTS \"excludedPartNumbers\" TEXT[] NOT NULL DEFAULT '{}';"
-```
-
-### Step 4: Verify Changes
-```bash
-# Confirm columns were added
-PGPASSWORD=SimplePass123 psql -h 127.0.0.1 -p 5433 -U postgres -d door_quoter -c "\d \"Projects\""
-```
-
-### Step 5: Stop Proxy
-```bash
-pkill -f cloud_sql_proxy
 ```
 
 ## Common Column Types

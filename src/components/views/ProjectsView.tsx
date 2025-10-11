@@ -11,6 +11,8 @@ interface Project {
   name: string
   status: string
   dueDate: string | null
+  multiplier: number
+  taxRate: number
   openingsCount: number
   value: number
   updatedAt: string
@@ -23,6 +25,8 @@ export default function ProjectsView() {
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectStatus, setNewProjectStatus] = useState('Draft')
   const [newProjectDueDate, setNewProjectDueDate] = useState('')
+  const [newProjectMultiplier, setNewProjectMultiplier] = useState('1.0')
+  const [newProjectTaxRate, setNewProjectTaxRate] = useState('0')
   const [creating, setCreating] = useState(false)
   const { toasts, removeToast, showSuccess, showError } = useToast()
   const [error, setError] = useState<string | null>(null)
@@ -30,6 +34,8 @@ export default function ProjectsView() {
   const [editName, setEditName] = useState('')
   const [editStatus, setEditStatus] = useState('')
   const [editDueDate, setEditDueDate] = useState('')
+  const [editMultiplier, setEditMultiplier] = useState('1.0')
+  const [editTaxRate, setEditTaxRate] = useState('0')
   const [updating, setUpdating] = useState(false)
   const [downloadingProject, setDownloadingProject] = useState<number | null>(null)
   const { setSelectedProjectId } = useAppStore()
@@ -48,6 +54,7 @@ export default function ProjectsView() {
           name: string;
           status: string;
           dueDate: string | null;
+          multiplier: number;
           _count: { openings: number };
           openings: { price: number }[];
           updatedAt: string;
@@ -56,6 +63,8 @@ export default function ProjectsView() {
           name: project.name,
           status: project.status,
           dueDate: project.dueDate ? new Date(project.dueDate).toLocaleDateString() : null,
+          multiplier: project.multiplier || 1.0,
+          taxRate: project.taxRate || 0,
           openingsCount: project._count.openings,
           value: project.openings.reduce((sum: number, opening: { price: number }) => sum + opening.price, 0),
           updatedAt: new Date(project.updatedAt).toLocaleDateString()
@@ -85,7 +94,9 @@ export default function ProjectsView() {
         body: JSON.stringify({
           name: newProjectName,
           status: newProjectStatus,
-          dueDate: newProjectDueDate || null
+          dueDate: newProjectDueDate || null,
+          multiplier: parseFloat(newProjectMultiplier) || 1.0,
+          taxRate: parseFloat(newProjectTaxRate) || 0
         })
       })
 
@@ -93,6 +104,7 @@ export default function ProjectsView() {
         setNewProjectName('')
         setNewProjectStatus('Draft')
         setNewProjectDueDate('')
+        setNewProjectMultiplier('1.0')
         setShowCreateForm(false)
         await fetchProjects() // Refresh the projects list
         showSuccess('Project created successfully!')
@@ -133,6 +145,8 @@ export default function ProjectsView() {
     setEditName(project.name)
     setEditStatus(project.status)
     setEditDueDate(project.dueDate ? new Date(project.dueDate).toISOString().split('T')[0] : '')
+    setEditMultiplier(String(project.multiplier || 1.0))
+    setEditTaxRate(String(project.taxRate || 0))
   }
 
   function cancelEdit() {
@@ -140,6 +154,8 @@ export default function ProjectsView() {
     setEditName('')
     setEditStatus('')
     setEditDueDate('')
+    setEditMultiplier('1.0')
+    setEditTaxRate('0')
   }
 
   async function handleUpdateProject(e: React.FormEvent) {
@@ -154,7 +170,9 @@ export default function ProjectsView() {
         body: JSON.stringify({
           name: editName,
           status: editStatus,
-          dueDate: editDueDate || null
+          dueDate: editDueDate || null,
+          multiplier: parseFloat(editMultiplier) || 1.0,
+          taxRate: parseFloat(editTaxRate) || 0
         })
       })
 
@@ -226,8 +244,8 @@ export default function ProjectsView() {
 
       {/* Create Project Form */}
       {showCreateForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Create New Project</h2>
             {error && (
               <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
@@ -276,6 +294,43 @@ export default function ProjectsView() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Price Multiplier
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={newProjectMultiplier}
+                  onChange={(e) => setNewProjectMultiplier(e.target.value)}
+                  disabled={creating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                  placeholder="1.0"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter 1.2 for 20% markup, 1.5 for 50% markup, etc.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tax Rate
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="1"
+                  value={newProjectTaxRate}
+                  onChange={(e) => setNewProjectTaxRate(e.target.value)}
+                  disabled={creating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                  placeholder="0.08"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter 0.08 for 8% tax, 0.065 for 6.5% tax, etc.
+                </p>
+              </div>
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
@@ -285,6 +340,7 @@ export default function ProjectsView() {
                     setNewProjectName('')
                     setNewProjectStatus('Draft')
                     setNewProjectDueDate('')
+                    setNewProjectMultiplier('1.0')
                   }}
                   disabled={creating}
                   className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
@@ -309,8 +365,8 @@ export default function ProjectsView() {
 
       {/* Edit Project Form */}
       {editingProject && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Edit Project</h2>
             <form onSubmit={handleUpdateProject} className="space-y-4">
               <div>
@@ -353,6 +409,43 @@ export default function ProjectsView() {
                   disabled={updating}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Price Multiplier
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={editMultiplier}
+                  onChange={(e) => setEditMultiplier(e.target.value)}
+                  disabled={updating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                  placeholder="1.0"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter 1.2 for 20% markup, 1.5 for 50% markup, etc.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tax Rate
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="1"
+                  value={editTaxRate}
+                  onChange={(e) => setEditTaxRate(e.target.value)}
+                  disabled={updating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                  placeholder="0.08"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter 0.08 for 8% tax, 0.065 for 6.5% tax, etc.
+                </p>
               </div>
               <div className="flex justify-end space-x-3 pt-4">
                 <button

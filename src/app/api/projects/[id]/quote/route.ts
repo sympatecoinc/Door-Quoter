@@ -48,14 +48,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Generate quote data for each opening
     const quoteItems = await Promise.all(
       project.openings.map(async (opening) => {
-        // Get product elevation images instead of generating
+        // Get all product elevation images from all panels
         const elevationImages: string[] = []
         for (const panel of opening.panels) {
           if (panel.componentInstance?.product?.elevationImageData) {
             elevationImages.push(panel.componentInstance.product.elevationImageData)
           }
         }
-        const elevationImage = elevationImages.length > 0 ? elevationImages[0] : null
         
         // Calculate opening dimensions (sum of panel widths, max height)
         const totalWidth = opening.panels.reduce((sum, panel) => sum + panel.width, 0)
@@ -127,6 +126,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           })
           .join(', ')
 
+        // Apply opening-level multiplier to the price
+        const openingMultiplier = opening.multiplier || 1.0
+        const finalPrice = opening.price * openingMultiplier
+
         return {
           openingId: opening.id,
           name: opening.name,
@@ -136,11 +139,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           hardware: hardwareItems.length > 0 ? hardwareItems.map(item => `${item.name} | +$${item.price.toLocaleString()}`).join(' • ') : 'Standard',
           hardwarePrice: totalHardwarePrice,
           glassType: Array.from(glassTypes).join(', ') || 'Clear',
-          price: opening.price,
-          elevationImage: elevationImage
+          price: finalPrice,
+          elevationImages: elevationImages
         }
       })
     )
+
+    // Calculate subtotal from all opening prices (already multiplied at opening level)
+    const subtotal = quoteItems.reduce((sum, item) => sum + item.price, 0)
+
+    // Apply tax
+    const taxRate = project.taxRate || 0
+    const taxAmount = subtotal * taxRate
+    const totalPrice = subtotal + taxAmount
 
     return NextResponse.json({
       success: true,
@@ -152,7 +163,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         updatedAt: project.updatedAt
       },
       quoteItems,
-      totalPrice: quoteItems.reduce((sum, item) => sum + item.price, 0)
+      subtotal,
+      taxRate,
+      taxAmount,
+      totalPrice
     })
     
   } catch (error) {

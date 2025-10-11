@@ -64,19 +64,25 @@ export async function PUT(
       )
     }
 
-    const { name, roughWidth, roughHeight, finishedWidth, finishedHeight, price, finishColor } = await request.json()
+    const { name, roughWidth, roughHeight, finishedWidth, finishedHeight, price, finishColor, multiplier } = await request.json()
+
+    const updateData: any = {
+      name,
+      roughWidth: roughWidth ? parseFloat(roughWidth) : null,
+      roughHeight: roughHeight ? parseFloat(roughHeight) : null,
+      finishedWidth: finishedWidth ? parseFloat(finishedWidth) : null,
+      finishedHeight: finishedHeight ? parseFloat(finishedHeight) : null,
+      price: parseFloat(price) || 0,
+      finishColor
+    }
+
+    if (multiplier !== undefined) {
+      updateData.multiplier = parseFloat(multiplier) || 1.0
+    }
 
     const updatedOpening = await prisma.opening.update({
       where: { id: openingId },
-      data: {
-        name,
-        roughWidth: roughWidth ? parseFloat(roughWidth) : null,
-        roughHeight: roughHeight ? parseFloat(roughHeight) : null,
-        finishedWidth: finishedWidth ? parseFloat(finishedWidth) : null,
-        finishedHeight: finishedHeight ? parseFloat(finishedHeight) : null,
-        price: parseFloat(price) || 0,
-        finishColor
-      },
+      data: updateData,
       include: {
         panels: {
           include: {

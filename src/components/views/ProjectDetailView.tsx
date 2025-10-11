@@ -37,6 +37,7 @@ interface Opening {
   finishedHeight?: number
   finishColor?: string
   price: number
+  multiplier: number
   panels: Panel[]
 }
 
@@ -881,15 +882,52 @@ export default function ProjectDetailView() {
                 <div className="mb-3">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-3">
-                      <h3 className="font-bold text-gray-900">Opening {opening.name}</h3>
+                      <h3 className="font-bold text-gray-900">{opening.name}</h3>
                       {opening.finishColor && (
                         <span className={`px-2 py-1 text-sm rounded border ${getColorStyling(opening.finishColor)}`}>
                           {opening.finishColor}
                         </span>
                       )}
                       <span className="px-2 py-1 text-sm rounded border bg-green-50 text-green-700 border-green-200">
-                        ${opening.price.toLocaleString()}
+                        ${(opening.price * (opening.multiplier || 1.0)).toLocaleString()}
                       </span>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-600">Markup:</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={opening.multiplier || 1.0}
+                          onChange={async (e) => {
+                            const newMultiplier = parseFloat(e.target.value) || 1.0
+                            try {
+                              const response = await fetch(`/api/openings/${opening.id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  name: opening.name,
+                                  roughWidth: opening.roughWidth,
+                                  roughHeight: opening.roughHeight,
+                                  finishedWidth: opening.finishedWidth,
+                                  finishedHeight: opening.finishedHeight,
+                                  price: opening.price,
+                                  finishColor: opening.finishColor,
+                                  multiplier: newMultiplier
+                                })
+                              })
+                              if (response.ok) {
+                                await fetchProject()
+                                showSuccess('Markup updated')
+                              }
+                            } catch (error) {
+                              console.error('Error updating multiplier:', error)
+                              showError('Failed to update markup')
+                            }
+                          }}
+                          className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <span className="text-xs text-gray-500">({((opening.multiplier - 1) * 100).toFixed(0)}%)</span>
+                      </div>
                     </div>
                     <div className="flex space-x-2">
                       <button
@@ -1621,7 +1659,7 @@ export default function ProjectDetailView() {
                     {project.openings.map((opening) => (
                       <div key={opening.id} className="flex items-center justify-between bg-gray-50 rounded p-2">
                         <div className="flex-1">
-                          <span className="text-sm font-medium text-gray-900">Opening {opening.name}</span>
+                          <span className="text-sm font-medium text-gray-900">{opening.name}</span>
                           <div className="text-xs text-gray-500">
                             {opening.panels.filter(p => p.componentInstance).length} components • ${opening.price.toLocaleString()}
                           </div>
@@ -1641,56 +1679,7 @@ export default function ProjectDetailView() {
               )}
             </div>
 
-            {/* Sync Pricing Section */}
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!project) return
-                  setCalculatingPrices(true)
-                  try {
-                    // Recalculate all opening prices
-                    const calculations = project.openings.map(opening =>
-                      fetch(`/api/openings/${opening.id}/calculate-price`, {
-                        method: 'POST'
-                      }).catch(error => {
-                        console.error(`Error recalculating price for opening ${opening.id}:`, error)
-                      })
-                    )
-
-                    await Promise.allSettled(calculations)
-                    await fetchProject()
-                    showSuccess('All pricing synced with latest product BOMs and parts pricing!')
-                  } catch (error) {
-                    console.error('Error syncing prices:', error)
-                    showError('Error syncing prices')
-                  } finally {
-                    setCalculatingPrices(false)
-                  }
-                }}
-                disabled={calculatingPrices || !project || project.openings.length === 0}
-                className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-              >
-                {calculatingPrices ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Syncing Pricing...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Sync All Pricing
-                  </>
-                )}
-              </button>
-              <p className="text-xs text-gray-500 mt-2 text-center">
-                Recalculates all opening prices with latest product BOMs, parts pricing, and glass types
-              </p>
-            </div>
-
-            <div className="flex justify-between items-center pt-6">
+            <div className="flex justify-between items-center pt-6 mt-4 border-t border-gray-200">
               <button
                 onClick={handleDeleteProject}
                 className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
