@@ -450,6 +450,8 @@ interface ProductPlanView {
   name: string
   imageData: string
   fileName?: string
+  fileType?: string
+  orientation?: string
   displayOrder: number
   createdAt: string
   updatedAt: string
@@ -513,6 +515,7 @@ export default function ProductDetailView({
   const [showPlanViewForm, setShowPlanViewForm] = useState(false)
   const [newPlanViewName, setNewPlanViewName] = useState('')
   const [newPlanViewFile, setNewPlanViewFile] = useState<File | null>(null)
+  const [newPlanViewOrientation, setNewPlanViewOrientation] = useState<string>('bottom')
   const [uploadingPlanView, setUploadingPlanView] = useState(false)
   const [showElevationUpload, setShowElevationUpload] = useState(false)
   const [elevationFile, setElevationFile] = useState<File | null>(null)
@@ -781,7 +784,9 @@ export default function ProductDetailView({
         body: JSON.stringify({
           name: newPlanViewName,
           imageData,
-          fileName: newPlanViewFile.name
+          fileName: newPlanViewFile.name,
+          fileType: newPlanViewFile.type,
+          orientation: newPlanViewOrientation
         })
       })
 
@@ -794,6 +799,7 @@ export default function ProductDetailView({
         }
         setNewPlanViewName('')
         setNewPlanViewFile(null)
+        setNewPlanViewOrientation('bottom')
         setShowPlanViewForm(false)
         alert('Plan view added successfully!')
       } else {
@@ -1963,6 +1969,7 @@ export default function ProductDetailView({
                   setShowPlanViewForm(false)
                   setNewPlanViewName('')
                   setNewPlanViewFile(null)
+                  setNewPlanViewOrientation('bottom')
                 }}
                 className="p-2 hover:bg-gray-100 rounded-full"
               >
@@ -2007,6 +2014,23 @@ export default function ProductDetailView({
                 )}
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Orientation *
+                </label>
+                <select
+                  value={newPlanViewOrientation}
+                  onChange={(e) => setNewPlanViewOrientation(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                >
+                  <option value="bottom">Bottom (align top of PNG with other components)</option>
+                  <option value="top">Top (align bottom of PNG with other components)</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Choose how this plan view aligns with other components in the opening.
+                </p>
+              </div>
+
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
@@ -2014,6 +2038,7 @@ export default function ProductDetailView({
                     setShowPlanViewForm(false)
                     setNewPlanViewName('')
                     setNewPlanViewFile(null)
+                    setNewPlanViewOrientation('bottom')
                   }}
                   disabled={uploadingPlanView}
                   className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"

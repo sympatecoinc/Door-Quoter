@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 
 // Direction constants matching SHOPGEN
 const SWING_DIRECTIONS = ["Left In", "Right In", "Left Out", "Right Out"]
@@ -80,7 +81,10 @@ interface Component {
 // Function to get color-specific styling for finish colors
 function getColorStyling(color: string) {
   const colorMap: Record<string, string> = {
-    'Black': 'bg-gray-100 text-gray-900 border-gray-300',
+    'Black': 'bg-black text-white border-black',
+    'Clear': 'bg-blue-600 text-white border-blue-600',
+    'Other': 'bg-gray-600 text-white border-gray-600',
+    // Keep other colors with their original styling for backwards compatibility
     'White': 'bg-gray-50 text-gray-800 border-gray-200',
     'Brown': 'bg-amber-100 text-amber-800 border-amber-300',
     'Bronze': 'bg-yellow-100 text-yellow-800 border-yellow-300',
@@ -89,12 +93,11 @@ function getColorStyling(color: string) {
     'Red': 'bg-red-100 text-red-800 border-red-300',
     'Blue': 'bg-blue-100 text-blue-800 border-blue-300',
     'Green': 'bg-green-100 text-green-800 border-green-300',
-    'Gray': 'bg-gray-100 text-gray-700 border-gray-300',
-    'Clear': 'bg-blue-50 text-blue-700 border-blue-200'
+    'Gray': 'bg-gray-100 text-gray-700 border-gray-300'
   }
-  
-  // Default to blue styling if color not found
-  return colorMap[color] || 'bg-blue-50 text-blue-700 border-blue-200'
+
+  // Default to gray styling if color not found
+  return colorMap[color] || 'bg-gray-600 text-white border-gray-600'
 }
 
 export default function ProjectDetailView() {
@@ -733,7 +736,7 @@ export default function ProjectDetailView() {
 
   async function handleDownloadComponentBOM(panelId: number) {
     if (!selectedProjectId) return
-    
+
     try {
       const response = await fetch(`/api/projects/${selectedProjectId}/bom/component/${panelId}`)
       if (response.ok) {
@@ -741,21 +744,21 @@ export default function ProjectDetailView() {
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        
+
         // Get filename from Content-Disposition header or use default
         const contentDisposition = response.headers.get('Content-Disposition')
         let filename = 'component-bom.csv'
         if (contentDisposition && contentDisposition.includes('filename=')) {
           filename = contentDisposition.split('filename=')[1].replace(/"/g, '')
         }
-        
+
         link.setAttribute('download', filename)
         link.style.visibility = 'hidden'
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
         window.URL.revokeObjectURL(url)
-        
+
         showSuccess('Component BOM downloaded successfully!')
       } else {
         showError('Failed to download component BOM')
@@ -763,6 +766,77 @@ export default function ProjectDetailView() {
     } catch (error) {
       console.error('Error downloading component BOM:', error)
       showError('Error downloading component BOM')
+    }
+  }
+
+  async function handleDragEnd(result: DropResult, openingId: number) {
+    if (!result.destination || !project) return
+
+    const sourceIndex = result.source.index
+    const destIndex = result.destination.index
+
+    if (sourceIndex === destIndex) return
+
+    // Find the opening and its panels
+    const opening = project.openings.find(o => o.id === openingId)
+    if (!opening) return
+
+    const panels = opening.panels.filter(p => p.componentInstance)
+
+    // Reorder the panels array
+    const reorderedPanels = Array.from(panels)
+    const [removed] = reorderedPanels.splice(sourceIndex, 1)
+    reorderedPanels.splice(destIndex, 0, removed)
+
+    // Create new order mapping
+    const panelOrders = reorderedPanels.map((panel, index) => ({
+      id: panel.id,
+      displayOrder: index
+    }))
+
+    // Optimistically update UI
+    const updatedOpenings = project.openings.map(o => {
+      if (o.id === openingId) {
+        // Update displayOrder for all panels
+        const updatedPanels = o.panels.map(panel => {
+          const newOrder = panelOrders.find(po => po.id === panel.id)
+          if (newOrder) {
+            return { ...panel, displayOrder: newOrder.displayOrder }
+          }
+          return panel
+        })
+
+        return {
+          ...o,
+          panels: updatedPanels
+        }
+      }
+      return o
+    })
+
+    setProject({ ...project, openings: updatedOpenings })
+
+    // Send update to server
+    try {
+      const response = await fetch('/api/panels/reorder', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ panelOrders })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to reorder')
+      }
+
+      console.log('Panels reordered successfully:', panelOrders)
+    } catch (error) {
+      console.error('Error reordering panels:', error)
+      showError('Failed to reorder components')
+      // Revert on error
+      await fetchProject()
     }
   }
 
@@ -906,11 +980,11 @@ export default function ProjectDetailView() {
                     <div className="flex items-center gap-3">
                       <h3 className="font-bold text-gray-900">{opening.name}</h3>
                       {opening.finishColor && (
-                        <span className={`px-2 py-1 text-sm rounded border ${getColorStyling(opening.finishColor)}`}>
+                        <span className={`px-2 py-1 text-sm font-bold rounded border ${getColorStyling(opening.finishColor)}`}>
                           {opening.finishColor}
                         </span>
                       )}
-                      <span className="px-2 py-1 text-sm rounded border bg-green-50 text-green-700 border-green-200">
+                      <span className="px-2 py-1 text-sm font-bold rounded border bg-green-600 text-white border-green-600">
                         ${opening.price.toLocaleString()}
                       </span>
                     </div>
@@ -944,9 +1018,26 @@ export default function ProjectDetailView() {
                     <h4 className="text-sm font-medium text-gray-700">Components ({opening.panels.filter(p => p.componentInstance).length})</h4>
                   </div>
                   {opening.panels.filter(p => p.componentInstance).length > 0 ? (
-                    <div className="space-y-2">
-                      {opening.panels.filter(p => p.componentInstance).map((panel) => (
-                        <div key={panel.id} className={`text-sm rounded p-3 ${panel.isCorner ? 'bg-orange-50 border-2 border-orange-200' : 'bg-gray-50'}`}>
+                    <DragDropContext onDragEnd={(result) => handleDragEnd(result, opening.id)}>
+                      <Droppable droppableId={`opening-${opening.id}`}>
+                        {(provided) => (
+                          <div
+                            {...provided.droppableProps}
+                            ref={provided.innerRef}
+                            className="space-y-2"
+                          >
+                            {opening.panels
+                              .filter(p => p.componentInstance)
+                              .sort((a, b) => a.displayOrder - b.displayOrder)
+                              .map((panel, index) => (
+                              <Draggable key={panel.id} draggableId={`panel-${panel.id}`} index={index}>
+                                {(provided, snapshot) => (
+                                  <div
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                    className={`text-sm rounded p-3 cursor-grab active:cursor-grabbing ${panel.isCorner ? 'bg-orange-50 border-2 border-orange-200' : 'bg-gray-50'} ${snapshot.isDragging ? 'shadow-lg' : ''}`}
+                                  >
                           <div className={`flex justify-between items-start ${panel.isCorner ? 'relative' : ''}`}>
                             {panel.isCorner && (
                               <div className="absolute -top-2 -right-2 bg-orange-500 text-white text-xs px-2 py-1 rounded-full">
@@ -991,19 +1082,20 @@ export default function ProjectDetailView() {
                                   </div>
                                 </div>
                               )}
+                              {/* Hardware Options Display */}
                               <div className="text-gray-500 text-xs mt-1">
                                 {(() => {
                                   try {
                                     const selectionsStr = panel.componentInstance!.subOptionSelections || '{}'
                                     const selections = JSON.parse(selectionsStr)
                                     const product = panel.componentInstance!.product
-                                    const optionLabels: string[] = []
-                                    
+                                    const optionItems: Array<{ categoryName: string; optionName: string }> = []
+
                                     // Only process if there are actual selections
                                     if (Object.keys(selections).length === 0) {
                                       return null
                                     }
-                                    
+
                                     Object.entries(selections).forEach(([categoryId, optionId]) => {
                                       if (optionId) {
                                         // Find the category and option
@@ -1011,17 +1103,30 @@ export default function ProjectDetailView() {
                                           pso.category.id === parseInt(categoryId)
                                         )
                                         if (productOption) {
-                                          const individualOption = productOption.category.individualOptions?.find((opt: any) => 
+                                          const individualOption = productOption.category.individualOptions?.find((opt: any) =>
                                             opt.id === Number(optionId)
                                           )
                                           if (individualOption) {
-                                            optionLabels.push(`${productOption.category.name}: ${individualOption.name}`)
+                                            optionItems.push({
+                                              categoryName: productOption.category.name,
+                                              optionName: individualOption.name
+                                            })
                                           }
                                         }
                                       }
                                     })
-                                    
-                                    return optionLabels.length > 0 ? optionLabels.join(', ') : null
+
+                                    if (optionItems.length === 0) return null
+
+                                    return (
+                                      <>
+                                        {optionItems.map((item, index) => (
+                                          <div key={index} className="pl-2 border-l-2 border-gray-200">
+                                            {item.categoryName}: {item.optionName}
+                                          </div>
+                                        ))}
+                                      </>
+                                    )
                                   } catch (e) {
                                     return null
                                   }
@@ -1045,9 +1150,15 @@ export default function ProjectDetailView() {
                               </button>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                                  </div>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                          </div>
+                        )}
+                      </Droppable>
+                    </DragDropContext>
                   ) : (
                     <p className="text-sm text-gray-500">No components added yet</p>
                   )}

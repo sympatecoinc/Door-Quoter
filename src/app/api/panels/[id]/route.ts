@@ -89,6 +89,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (updateData.slidingDirection !== undefined) fieldsToUpdate.slidingDirection = updateData.slidingDirection
     if (updateData.isCorner !== undefined) fieldsToUpdate.isCorner = updateData.isCorner
     if (updateData.cornerDirection !== undefined) fieldsToUpdate.cornerDirection = updateData.cornerDirection
+    if (updateData.displayOrder !== undefined) fieldsToUpdate.displayOrder = parseInt(updateData.displayOrder)
 
     const panel = await prisma.panel.update({
       where: { id: panelId },

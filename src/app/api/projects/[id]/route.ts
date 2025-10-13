@@ -45,6 +45,15 @@ export async function GET(
                             id: true,
                             updatedAt: true
                           }
+                        },
+                        productSubOptions: {
+                          include: {
+                            category: {
+                              include: {
+                                individualOptions: true
+                              }
+                            }
+                          }
                         }
                       }
                     }

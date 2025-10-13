@@ -27,13 +27,32 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { id } = await params
     const productId = parseInt(id)
-    const { name, imageData, fileName } = await request.json()
+    const { name, imageData, fileName, fileType, orientation } = await request.json()
 
     if (!name || !imageData) {
       return NextResponse.json(
         { error: 'Name and image data are required' },
         { status: 400 }
       )
+    }
+
+    // Auto-detect file type from data URL or filename if not provided
+    let detectedFileType = fileType
+    if (!detectedFileType && imageData) {
+      // Check if it's a data URL
+      if (imageData.startsWith('data:')) {
+        const match = imageData.match(/^data:([^;]+);/)
+        if (match) {
+          detectedFileType = match[1]
+        }
+      }
+      // Fallback to filename extension
+      if (!detectedFileType && fileName) {
+        const ext = fileName.toLowerCase().split('.').pop()
+        if (ext === 'svg') detectedFileType = 'image/svg+xml'
+        else if (ext === 'png') detectedFileType = 'image/png'
+        else if (ext === 'jpg' || ext === 'jpeg') detectedFileType = 'image/jpeg'
+      }
     }
 
     // Get the current max display order for this product
@@ -48,6 +67,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         name,
         imageData,
         fileName,
+        fileType: detectedFileType || 'image/png',
+        orientation: orientation || 'bottom',
         displayOrder: (maxOrder._max.displayOrder || 0) + 1
       }
     })

@@ -18,6 +18,8 @@ interface DrawingData {
     planViewName: string
     imageData: string
     fileName?: string
+    fileType?: string
+    orientation?: string
     width: number
     height: number
   }>
@@ -129,7 +131,8 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
     setActiveTab(tab)
     if (tab === 'elevation' && !drawingData?.elevation_image && !drawingData?.elevationImages) {
       generateElevationDrawing()
-    } else if (tab === 'plan' && !drawingData?.plan_image && !drawingData?.planViews) {
+    } else if ((tab === 'plan' || tab === 'schedule') && !drawingData?.plan_image && !drawingData?.planViews) {
+      // Plan API also returns door schedule data
       generatePlanDrawing()
     }
   }
@@ -340,8 +343,22 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
 
                       {/* Display all plan views seamlessly side by side */}
                       <div className="bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto">
-                        <div className="flex items-center justify-center w-full" style={{ minHeight: '400px' }}>
-                          <div className="flex items-start">
+                        <div className="flex justify-center w-full" style={{ minHeight: '400px', position: 'relative' }}>
+                          {/* Invisible center line marker */}
+                          <div style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: 0,
+                            right: 0,
+                            height: '0px',
+                            pointerEvents: 'none'
+                          }} />
+                          <div className="flex" style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, 0)'
+                          }}>
                             {drawingData.planViews.map((view, index) => {
                               // Server-side rendering handles all SVG processing (SHOPGEN approach)
                               const imageSrc = getImageDataUrl(view.imageData)
@@ -352,16 +369,27 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                               const displayHeight = view.height * pixelsPerInch
                               const displayWidth = view.width * pixelsPerInch
 
+                              // Debug logging
+                              console.log(`Plan view ${index}: ${view.planViewName}, orientation: ${view.orientation}`)
+
+                              // Determine vertical offset based on orientation
+                              // All images align to the horizontal center line of the viewport
+                              // 'bottom' = bottom edge at center line (shift up by full height)
+                              // 'top' = top edge at center line (shift down by full height)
+                              const translateY = view.orientation === 'bottom'
+                                ? `-${displayHeight}px`  // Move up so bottom edge is at center line
+                                : `0px`                   // Top edge at center line (no shift needed)
+
                               return (
                                 <img
                                   key={index}
                                   src={imageSrc}
                                   alt={`${view.productName} - ${view.planViewName} (${view.width}" × ${view.height}")`}
-                                  className="h-auto"
                                   style={{
                                     height: `${displayHeight}px`,
                                     width: `${displayWidth}px`,
-                                    display: 'block'
+                                    display: 'block',
+                                    transform: `translateY(${translateY})`,
                                   }}
                                   onError={(e) => {
                                     console.error('Image load error for:', view.productName, view.planViewName)
