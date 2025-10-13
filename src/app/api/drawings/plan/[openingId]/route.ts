@@ -21,6 +21,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                       orderBy: {
                         displayOrder: 'asc'
                       }
+                    },
+                    productSubOptions: {
+                      include: {
+                        category: {
+                          include: {
+                            individualOptions: true
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -44,6 +53,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       planViewName: string
       imageData: string
       fileName?: string
+      fileType?: string
+      orientation?: string
       width: number
       height: number
     }> = []
@@ -57,8 +68,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         if (product.productType === 'FIXED_PANEL' && product.planViews.length > 0) {
           matchingPlanView = product.planViews[0]
           console.log(`Using fixed panel plan view: ${matchingPlanView.name}`)
+        } else if (product.productType === 'SLIDING_DOOR') {
+          // For sliding doors, always use slidingDirection
+          const panelDirection = panel.slidingDirection
+          console.log(`Looking for sliding door plan view with direction: ${panelDirection}`)
+          matchingPlanView = product.planViews.find(
+            (pv: any) => pv.name === panelDirection
+          )
+          if (matchingPlanView) {
+            console.log(`Found matching plan view: ${matchingPlanView.name}`)
+          } else {
+            console.log(`No matching plan view found for sliding direction: ${panelDirection}`)
+            console.log(`Available plan views:`, product.planViews.map((pv: any) => pv.name))
+          }
+        } else if (product.productType === 'SWING_DOOR') {
+          // For swing doors, use swingDirection
+          const panelDirection = panel.swingDirection
+          console.log(`Looking for swing door plan view with direction: ${panelDirection}`)
+          matchingPlanView = product.planViews.find(
+            (pv: any) => pv.name === panelDirection
+          )
+          if (matchingPlanView) {
+            console.log(`Found matching plan view: ${matchingPlanView.name}`)
+          } else {
+            console.log(`No matching plan view found for swing direction: ${panelDirection}`)
+            console.log(`Available plan views:`, product.planViews.map((pv: any) => pv.name))
+          }
         } else {
-          // For swing/sliding doors, match by direction
+          // For other product types (e.g., CORNER_90), use fallback logic
           const panelDirection = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
           matchingPlanView = product.planViews.find(
             (pv: any) => pv.name === panelDirection
@@ -134,6 +171,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             planViewName: matchingPlanView.name,
             imageData: imageData,
             fileName: fileName || undefined,
+            fileType: (matchingPlanView as any).fileType || undefined,
+            orientation: (matchingPlanView as any).orientation || 'bottom',
             width: displayWidth,
             height: displayHeight
           })
@@ -151,9 +190,63 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       )
     }
 
+    // Generate door schedule
+    const doorSchedule = {
+      headers: ['Opening Name', 'Direction', 'Glass', 'Hardware'],
+      rows: opening.panels.map((panel) => {
+        const product = panel.componentInstance?.product
+        const componentInstance = panel.componentInstance
+
+        // Determine direction based on product type
+        let direction = 'N/A'
+        if (product?.productType === 'SWING_DOOR') {
+          direction = panel.swingDirection || 'None'
+        } else if (product?.productType === 'SLIDING_DOOR') {
+          direction = panel.slidingDirection || 'Left'
+        } else if (product?.productType === 'FIXED_PANEL') {
+          direction = 'Fixed'
+        }
+
+        // Parse sub-option selections to get hardware options
+        let hardwareOptions: string[] = []
+        if (componentInstance?.subOptionSelections) {
+          try {
+            const selections = JSON.parse(componentInstance.subOptionSelections)
+
+            // Get all selected option names from all categories
+            product?.productSubOptions?.forEach((subOption: any) => {
+              const categoryId = subOption.category.id
+              const selectedOptionId = selections[categoryId]
+
+              if (selectedOptionId) {
+                const selectedOption = subOption.category.individualOptions.find(
+                  (opt: any) => opt.id === selectedOptionId
+                )
+                if (selectedOption) {
+                  hardwareOptions.push(selectedOption.name)
+                }
+              }
+            })
+          } catch (error) {
+            console.error('Error parsing sub-option selections:', error)
+          }
+        }
+
+        const hardwareText = hardwareOptions.length > 0 ? hardwareOptions.join(', ') : 'None'
+
+        return [
+          product?.name || 'Unknown',
+          direction,
+          panel.glassType || 'N/A',
+          hardwareText
+        ]
+      })
+    }
+
     return NextResponse.json({
       success: true,
-      planViews: planViews
+      planViews: planViews,
+      door_schedule: doorSchedule
     })
 
   } catch (error) {

@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
         }
       },
       orderBy: {
-        createdAt: 'asc'
+        displayOrder: 'asc'
       }
     })
 
@@ -34,13 +34,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { 
-      openingId, 
-      type, 
-      width, 
-      height, 
-      glassType, 
-      locking, 
+    const {
+      openingId,
+      type,
+      width,
+      height,
+      glassType,
+      locking,
       swingDirection = 'None',
       slidingDirection = 'Left',
       isCorner = false,
@@ -54,6 +54,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Get the max displayOrder for this opening to append new panel at the end
+    const maxOrderPanel = await prisma.panel.findFirst({
+      where: { openingId: parseInt(openingId) },
+      orderBy: { displayOrder: 'desc' },
+      select: { displayOrder: true }
+    })
+
+    const nextDisplayOrder = (maxOrderPanel?.displayOrder ?? -1) + 1
+
     const panel = await prisma.panel.create({
       data: {
         openingId: parseInt(openingId),
@@ -65,7 +74,8 @@ export async function POST(request: NextRequest) {
         swingDirection,
         slidingDirection,
         isCorner,
-        cornerDirection
+        cornerDirection,
+        displayOrder: nextDisplayOrder
       },
       include: {
         componentInstance: {

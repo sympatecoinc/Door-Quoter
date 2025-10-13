@@ -61,6 +61,7 @@ model Panel {
   slidingDirection    String             @default("Left")
   isCorner            Boolean            @default(false)
   cornerDirection     String             @default("Up")
+  displayOrder        Int                @default(0) // Order for display in UI
   componentLibraryId  Int?               // Link to component library for parametric SVGs
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
@@ -370,6 +371,8 @@ model ProductPlanView {
   name         String   // e.g., "Right-In", "Right-Out", "Left-In", "Left-Out"
   imageData    String   // Base64 encoded plan view image
   fileName     String?  // Original filename
+  fileType     String   @default("image/png") // MIME type of the uploaded file
+  orientation  String   @default("bottom") // "bottom" (align top) or "top" (align bottom)
   displayOrder Int      @default(0) // Order for display in UI
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
