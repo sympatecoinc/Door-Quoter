@@ -19,6 +19,7 @@ const AVAILABLE_TABS = [
   { id: 'crm', label: 'CRM' },
   { id: 'products', label: 'Products' },
   { id: 'masterParts', label: 'Master Parts' },
+  { id: 'accounting', label: 'Accounting' },
   { id: 'settings', label: 'Settings' },
 ] as const
 
@@ -270,7 +271,7 @@ function UserFormModal({
   const [password, setPassword] = useState('')
   const [isActive, setIsActive] = useState(user?.isActive ?? true)
   const [permissions, setPermissions] = useState<string[]>(
-    user?.permissions || ['dashboard', 'projects', 'crm', 'products', 'masterParts', 'settings']
+    user?.permissions || ['dashboard', 'projects', 'crm', 'products', 'masterParts', 'accounting', 'settings']
   )
 
   const togglePermission = (tabId: string) => {

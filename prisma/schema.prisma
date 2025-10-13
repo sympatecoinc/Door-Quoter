@@ -9,20 +9,22 @@ datasource db {
 }
 
 model Project {
-  id                     Int       @id @default(autoincrement())
+  id                     Int           @id @default(autoincrement())
   name                   String
-  status                 String    @default("Draft")
+  status                 String        @default("Draft")
   customerId             Int?
-  extrusionCostingMethod String    @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED"
-  excludedPartNumbers    String[]  @default([]) // Part numbers to exclude from FULL_STOCK rule (use percentage-based instead)
-  multiplier             Float     @default(1.0) // Price multiplier/markup for quotes (e.g., 1.2 = 20% markup)
-  taxRate                Float     @default(0) // Tax rate as decimal (e.g., 0.08 for 8%)
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  pricingModeId          Int?
+  extrusionCostingMethod String        @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED"
+  excludedPartNumbers    String[]      @default([]) // Part numbers to exclude from FULL_STOCK rule (use percentage-based instead)
+  multiplier             Float         @default(1.0) // Price multiplier/markup for quotes (e.g., 1.2 = 20% markup)
+  taxRate                Float         @default(0) // Tax rate as decimal (e.g., 0.08 for 8%)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
   dueDate                DateTime?
   boms                   BOM[]
   openings               Opening[]
-  customer               Customer? @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: SetNull)
+  customer               Customer?     @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: SetNull)
+  pricingMode            PricingMode?  @relation(fields: [pricingModeId], references: [id], onDelete: SetNull)
 
   @@map("Projects")
 }
@@ -390,6 +392,24 @@ model GlassType {
   @@map("GlassTypes")
 }
 
+// Pricing Modes - Configurable pricing strategies for projects
+model PricingMode {
+  id              Int       @id @default(autoincrement())
+  name            String    @unique
+  description     String?
+  isDefault       Boolean   @default(false)
+  markup          Float     @default(0) // Global markup percentage (e.g., 20 for 20%) - kept for backward compatibility
+  extrusionMarkup Float     @default(0) // Extrusion-specific markup percentage
+  hardwareMarkup  Float     @default(0) // Hardware-specific markup percentage
+  glassMarkup     Float     @default(0) // Glass-specific markup percentage
+  discount        Float     @default(0) // Global discount percentage (e.g., 10 for 10%)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  projects        Project[]
+
+  @@map("PricingModes")
+}
+
 // Authentication and User Management
 enum Role {
   ADMIN
@@ -404,7 +424,7 @@ model User {
   name         String
   role         Role      @default(VIEWER)
   isActive     Boolean   @default(true)
-  permissions  String[]  @default(["dashboard", "projects", "crm", "products", "masterParts", "settings"]) // Available tabs for user
+  permissions  String[]  @default(["dashboard", "projects", "crm", "products", "masterParts", "accounting", "settings"]) // Available tabs for user
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   sessions     Session[]
