@@ -5,7 +5,24 @@ export async function GET() {
   try {
     const projects = await prisma.project.findMany({
       include: {
-        openings: true,
+        openings: {
+          include: {
+            panels: {
+              include: {
+                componentInstance: {
+                  include: {
+                    product: {
+                      include: {
+                        productBOMs: true // Include BOMs for category-specific markup calculation
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        pricingMode: true, // Include pricing mode for sale price calculation
         _count: {
           select: {
             openings: true,
@@ -30,7 +47,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, status = 'Draft', dueDate, multiplier, taxRate } = await request.json()
+    const { name, status = 'Draft', dueDate, pricingModeId } = await request.json()
 
     if (!name) {
       return NextResponse.json(
@@ -43,11 +60,8 @@ export async function POST(request: NextRequest) {
     if (dueDate) {
       projectData.dueDate = new Date(dueDate)
     }
-    if (multiplier !== undefined) {
-      projectData.multiplier = multiplier
-    }
-    if (taxRate !== undefined) {
-      projectData.taxRate = taxRate
+    if (pricingModeId !== undefined) {
+      projectData.pricingModeId = pricingModeId
     }
 
     const project = await prisma.project.create({

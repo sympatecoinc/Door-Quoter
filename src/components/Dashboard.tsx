@@ -7,6 +7,7 @@ import ProjectDetailView from './views/ProjectDetailView'
 import CRMView from './views/CRMView'
 import ProductsView from './views/ProductsView'
 import MasterPartsView from './views/MasterPartsView'
+import AccountingView from './views/AccountingView'
 import SettingsView from './views/SettingsView'
 import QuoteView from './views/QuoteView'
 
@@ -25,6 +26,8 @@ export default function Dashboard() {
         return <ProductsView />
       case 'masterParts':
         return <MasterPartsView />
+      case 'accounting':
+        return <AccountingView />
       case 'settings':
         return <SettingsView />
       case 'quote':

@@ -5,6 +5,7 @@ import { Plus, Eye, Edit, Trash, Download } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
+import { PricingMode } from '@/types'
 
 interface Project {
   id: number
@@ -13,6 +14,7 @@ interface Project {
   dueDate: string | null
   multiplier: number
   taxRate: number
+  pricingModeId?: number | null
   openingsCount: number
   value: number
   updatedAt: string
@@ -25,8 +27,7 @@ export default function ProjectsView() {
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectStatus, setNewProjectStatus] = useState('Draft')
   const [newProjectDueDate, setNewProjectDueDate] = useState('')
-  const [newProjectMultiplier, setNewProjectMultiplier] = useState('1.0')
-  const [newProjectTaxRate, setNewProjectTaxRate] = useState('0')
+  const [newProjectPricingModeId, setNewProjectPricingModeId] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
   const { toasts, removeToast, showSuccess, showError } = useToast()
   const [error, setError] = useState<string | null>(null)
@@ -34,14 +35,16 @@ export default function ProjectsView() {
   const [editName, setEditName] = useState('')
   const [editStatus, setEditStatus] = useState('')
   const [editDueDate, setEditDueDate] = useState('')
-  const [editMultiplier, setEditMultiplier] = useState('1.0')
   const [editTaxRate, setEditTaxRate] = useState('0')
+  const [editPricingModeId, setEditPricingModeId] = useState<number | null>(null)
   const [updating, setUpdating] = useState(false)
   const [downloadingProject, setDownloadingProject] = useState<number | null>(null)
+  const [pricingModes, setPricingModes] = useState<PricingMode[]>([])
   const { setSelectedProjectId } = useAppStore()
 
   useEffect(() => {
     fetchProjects()
+    fetchPricingModes()
   }, [])
 
   async function fetchProjects() {
@@ -55,26 +58,125 @@ export default function ProjectsView() {
           status: string;
           dueDate: string | null;
           multiplier: number;
+          taxRate: number;
+          pricingModeId?: number | null;
+          pricingMode?: {
+            markup: number;
+            extrusionMarkup: number;
+            hardwareMarkup: number;
+            glassMarkup: number;
+            discount: number
+          } | null;
           _count: { openings: number };
-          openings: { price: number }[];
+          openings: {
+            price: number;
+            panels: {
+              componentInstance: {
+                product: {
+                  productBOMs: { partType: string }[]
+                }
+              } | null
+            }[]
+          }[];
           updatedAt: string;
-        }) => ({
-          id: project.id,
-          name: project.name,
-          status: project.status,
-          dueDate: project.dueDate ? new Date(project.dueDate).toLocaleDateString() : null,
-          multiplier: project.multiplier || 1.0,
-          taxRate: project.taxRate || 0,
-          openingsCount: project._count.openings,
-          value: project.openings.reduce((sum: number, opening: { price: number }) => sum + opening.price, 0),
-          updatedAt: new Date(project.updatedAt).toLocaleDateString()
-        }))
+        }) => {
+          // Calculate COG (cost of goods)
+          const costValue = project.openings.reduce((sum: number, opening: { price: number }) => sum + opening.price, 0)
+
+          // Apply category-specific pricing mode to get sale price
+          let saleValue = costValue
+          if (project.pricingMode) {
+            // Count BOMs by type to estimate cost breakdown
+            const bomCounts = { Extrusion: 0, Hardware: 0, Glass: 0, Other: 0 }
+
+            for (const opening of project.openings) {
+              for (const panel of opening.panels) {
+                if (!panel.componentInstance) continue
+
+                for (const bom of panel.componentInstance.product.productBOMs || []) {
+                  if (bom.partType === 'Extrusion') {
+                    bomCounts.Extrusion++
+                  } else if (bom.partType === 'Hardware') {
+                    bomCounts.Hardware++
+                  } else if (bom.partType === 'Glass') {
+                    bomCounts.Glass++
+                  } else {
+                    bomCounts.Other++
+                  }
+                }
+              }
+            }
+
+            // Estimate cost breakdown
+            const totalBOMCount = bomCounts.Extrusion + bomCounts.Hardware + bomCounts.Glass + bomCounts.Other
+            if (totalBOMCount > 0) {
+              const extrusionCost = (costValue * bomCounts.Extrusion) / totalBOMCount
+              const hardwareCost = (costValue * bomCounts.Hardware) / totalBOMCount
+              const glassCost = (costValue * bomCounts.Glass) / totalBOMCount
+              const otherCost = (costValue * bomCounts.Other) / totalBOMCount
+
+              // Apply category-specific markups
+              const applyMarkup = (cost: number, categoryMarkup: number) => {
+                const markup = categoryMarkup > 0 ? categoryMarkup : project.pricingMode!.markup
+                let price = cost * (1 + markup / 100)
+                if (project.pricingMode!.discount > 0) {
+                  price *= (1 - project.pricingMode!.discount / 100)
+                }
+                return price
+              }
+
+              saleValue =
+                applyMarkup(extrusionCost, project.pricingMode.extrusionMarkup) +
+                applyMarkup(hardwareCost, project.pricingMode.hardwareMarkup) +
+                applyMarkup(glassCost, project.pricingMode.glassMarkup) +
+                applyMarkup(otherCost, 0) // Other uses global markup
+            } else {
+              // Fallback to global markup if no BOMs
+              if (project.pricingMode.markup > 0) {
+                saleValue = saleValue * (1 + project.pricingMode.markup / 100)
+              }
+              if (project.pricingMode.discount > 0) {
+                saleValue = saleValue * (1 - project.pricingMode.discount / 100)
+              }
+            }
+          }
+
+          return {
+            id: project.id,
+            name: project.name,
+            status: project.status,
+            dueDate: project.dueDate ? new Date(project.dueDate).toLocaleDateString() : null,
+            multiplier: project.multiplier || 1.0,
+            taxRate: project.taxRate || 0,
+            pricingModeId: project.pricingModeId || null,
+            openingsCount: project._count.openings,
+            value: saleValue, // Sale price (with markup/discount applied)
+            updatedAt: new Date(project.updatedAt).toLocaleDateString()
+          }
+        })
         setProjects(formattedProjects)
       }
     } catch (error) {
       console.error('Error fetching projects:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function fetchPricingModes() {
+    try {
+      const response = await fetch('/api/pricing-modes')
+      if (response.ok) {
+        const modes = await response.json()
+        setPricingModes(modes)
+        // Set default pricing mode for new projects
+        const defaultMode = modes.find((m: PricingMode) => m.isDefault)
+        if (defaultMode) {
+          setNewProjectPricingModeId(defaultMode.id)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching pricing modes:', error)
     }
   }
 
@@ -95,8 +197,7 @@ export default function ProjectsView() {
           name: newProjectName,
           status: newProjectStatus,
           dueDate: newProjectDueDate || null,
-          multiplier: parseFloat(newProjectMultiplier) || 1.0,
-          taxRate: parseFloat(newProjectTaxRate) || 0
+          pricingModeId: newProjectPricingModeId
         })
       })
 
@@ -104,7 +205,6 @@ export default function ProjectsView() {
         setNewProjectName('')
         setNewProjectStatus('Draft')
         setNewProjectDueDate('')
-        setNewProjectMultiplier('1.0')
         setShowCreateForm(false)
         await fetchProjects() // Refresh the projects list
         showSuccess('Project created successfully!')
@@ -145,8 +245,8 @@ export default function ProjectsView() {
     setEditName(project.name)
     setEditStatus(project.status)
     setEditDueDate(project.dueDate ? new Date(project.dueDate).toISOString().split('T')[0] : '')
-    setEditMultiplier(String(project.multiplier || 1.0))
     setEditTaxRate(String(project.taxRate || 0))
+    setEditPricingModeId(project.pricingModeId || null)
   }
 
   function cancelEdit() {
@@ -154,7 +254,6 @@ export default function ProjectsView() {
     setEditName('')
     setEditStatus('')
     setEditDueDate('')
-    setEditMultiplier('1.0')
     setEditTaxRate('0')
   }
 
@@ -171,8 +270,8 @@ export default function ProjectsView() {
           name: editName,
           status: editStatus,
           dueDate: editDueDate || null,
-          multiplier: parseFloat(editMultiplier) || 1.0,
-          taxRate: parseFloat(editTaxRate) || 0
+          taxRate: parseFloat(editTaxRate) || 0,
+          pricingModeId: editPricingModeId
         })
       })
 
@@ -296,39 +395,23 @@ export default function ProjectsView() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Price Multiplier
+                  Pricing Mode (Optional)
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={newProjectMultiplier}
-                  onChange={(e) => setNewProjectMultiplier(e.target.value)}
+                <select
+                  value={newProjectPricingModeId || ''}
+                  onChange={(e) => setNewProjectPricingModeId(e.target.value ? parseInt(e.target.value) : null)}
                   disabled={creating}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
-                  placeholder="1.0"
-                />
+                >
+                  <option value="">No pricing mode</option>
+                  {pricingModes.map((mode) => (
+                    <option key={mode.id} value={mode.id}>
+                      {mode.name} {mode.isDefault ? '(Default)' : ''} - {mode.markup}% markup, {mode.discount}% discount
+                    </option>
+                  ))}
+                </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Enter 1.2 for 20% markup, 1.5 for 50% markup, etc.
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tax Rate
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="1"
-                  value={newProjectTaxRate}
-                  onChange={(e) => setNewProjectTaxRate(e.target.value)}
-                  disabled={creating}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
-                  placeholder="0.08"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Enter 0.08 for 8% tax, 0.065 for 6.5% tax, etc.
+                  Select a pricing mode to apply pre-configured markup and discount rules
                 </p>
               </div>
               <div className="flex justify-end space-x-3 pt-4">
@@ -340,7 +423,6 @@ export default function ProjectsView() {
                     setNewProjectName('')
                     setNewProjectStatus('Draft')
                     setNewProjectDueDate('')
-                    setNewProjectMultiplier('1.0')
                   }}
                   disabled={creating}
                   className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
@@ -412,24 +494,6 @@ export default function ProjectsView() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Price Multiplier
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={editMultiplier}
-                  onChange={(e) => setEditMultiplier(e.target.value)}
-                  disabled={updating}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
-                  placeholder="1.0"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Enter 1.2 for 20% markup, 1.5 for 50% markup, etc.
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Tax Rate
                 </label>
                 <input
@@ -445,6 +509,27 @@ export default function ProjectsView() {
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Enter 0.08 for 8% tax, 0.065 for 6.5% tax, etc.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Pricing Mode (Optional)
+                </label>
+                <select
+                  value={editPricingModeId || ''}
+                  onChange={(e) => setEditPricingModeId(e.target.value ? parseInt(e.target.value) : null)}
+                  disabled={updating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                >
+                  <option value="">No pricing mode</option>
+                  {pricingModes.map((mode) => (
+                    <option key={mode.id} value={mode.id}>
+                      {mode.name} {mode.isDefault ? '(Default)' : ''} - {mode.markup}% markup, {mode.discount}% discount
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Select a pricing mode to apply pre-configured markup and discount rules
                 </p>
               </div>
               <div className="flex justify-end space-x-3 pt-4">

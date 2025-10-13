@@ -2,6 +2,7 @@ export interface Project {
   id: number
   name: string
   status: string
+  pricingModeId?: number | null
   extrusionCostingMethod?: string // "FULL_STOCK" | "PERCENTAGE_BASED"
   excludedPartNumbers?: string[] // Part numbers to exclude from FULL_STOCK rule
   createdAt: Date
@@ -99,4 +100,18 @@ export interface ComponentInstance {
   updatedAt: Date
 }
 
-export type MenuOption = 'dashboard' | 'projects' | 'crm' | 'products' | 'componentLibrary' | 'masterParts' | 'settings' | 'quote'
+export type MenuOption = 'dashboard' | 'projects' | 'crm' | 'products' | 'componentLibrary' | 'masterParts' | 'accounting' | 'settings' | 'quote'
+
+export interface PricingMode {
+  id: number
+  name: string
+  description?: string
+  isDefault: boolean
+  markup: number
+  extrusionMarkup: number
+  hardwareMarkup: number
+  glassMarkup: number
+  discount: number
+  createdAt: Date
+  updatedAt: Date
+}

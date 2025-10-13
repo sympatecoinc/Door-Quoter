@@ -17,7 +17,8 @@ interface QuoteItem {
   hardware: string
   hardwarePrice: number
   glassType: string
-  price: number
+  costPrice: number // Internal cost (not shown to customer)
+  price: number // Customer-facing marked-up price
   elevationImages: string[]
 }
 
@@ -28,9 +29,17 @@ interface QuoteData {
     status: string
     createdAt: string
     updatedAt: string
+    pricingMode?: {
+      name: string
+      markup: number
+      discount: number
+    } | null
   }
   quoteItems: QuoteItem[]
   subtotal: number
+  markupAmount: number
+  discountAmount: number
+  adjustedSubtotal: number
   taxRate: number
   taxAmount: number
   totalPrice: number
@@ -412,11 +421,11 @@ export default function QuoteView() {
               <p className="text-lg">This quote includes {quoteData.quoteItems.length} opening{quoteData.quoteItems.length !== 1 ? 's' : ''}</p>
             </div>
             <div className="text-right space-y-3">
-              {/* Subtotal */}
+              {/* Subtotal (after markup/discount applied) */}
               <div className="flex justify-between items-center gap-8">
                 <span className="text-sm font-medium text-gray-500 uppercase tracking-wide">Subtotal</span>
                 <span className="text-xl text-gray-900">
-                  ${quoteData.subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  ${quoteData.adjustedSubtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                 </span>
               </div>
 

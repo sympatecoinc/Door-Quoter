@@ -18,6 +18,8 @@ interface Project {
   status: string
   extrusionCostingMethod?: string
   excludedPartNumbers?: string[]
+  pricingModeId?: number | null
+  taxRate?: number
   createdAt: string
   updatedAt: string
   openings: Opening[]
@@ -106,6 +108,9 @@ export default function ProjectDetailView() {
   const [editStatus, setEditStatus] = useState('')
   const [editExtrusionCostingMethod, setEditExtrusionCostingMethod] = useState('FULL_STOCK')
   const [editExcludedPartNumbers, setEditExcludedPartNumbers] = useState<string[]>([])
+  const [editTaxRate, setEditTaxRate] = useState('0')
+  const [editPricingModeId, setEditPricingModeId] = useState<number | null>(null)
+  const [pricingModes, setPricingModes] = useState<any[]>([])
   const [showExcludedPartsModal, setShowExcludedPartsModal] = useState(false)
   const [projectParts, setProjectParts] = useState<any[]>([])
   const [loadingParts, setLoadingParts] = useState(false)
@@ -190,6 +195,7 @@ export default function ProjectDetailView() {
 
   useEffect(() => {
     fetchGlassTypes()
+    fetchPricingModes()
   }, [])
 
   async function fetchProject() {
@@ -220,6 +226,18 @@ export default function ProjectDetailView() {
       }
     } catch (error) {
       console.error('Error fetching glass types:', error)
+    }
+  }
+
+  async function fetchPricingModes() {
+    try {
+      const response = await fetch('/api/pricing-modes')
+      if (response.ok) {
+        const data = await response.json()
+        setPricingModes(data)
+      }
+    } catch (error) {
+      console.error('Error fetching pricing modes:', error)
     }
   }
 
@@ -280,7 +298,9 @@ export default function ProjectDetailView() {
           name: editName,
           status: editStatus,
           extrusionCostingMethod: editExtrusionCostingMethod,
-          excludedPartNumbers: editExcludedPartNumbers
+          excludedPartNumbers: editExcludedPartNumbers,
+          pricingModeId: editPricingModeId,
+          taxRate: parseFloat(editTaxRate)
         })
       })
 
@@ -833,6 +853,8 @@ export default function ProjectDetailView() {
               setEditStatus(project.status)
               setEditExtrusionCostingMethod(project.extrusionCostingMethod || 'FULL_STOCK')
               setEditExcludedPartNumbers(project.excludedPartNumbers || [])
+              setEditPricingModeId(project.pricingModeId || null)
+              setEditTaxRate((project.taxRate || 0).toString())
               setShowEditModal(true)
             }}
             className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -889,45 +911,8 @@ export default function ProjectDetailView() {
                         </span>
                       )}
                       <span className="px-2 py-1 text-sm rounded border bg-green-50 text-green-700 border-green-200">
-                        ${(opening.price * (opening.multiplier || 1.0)).toLocaleString()}
+                        ${opening.price.toLocaleString()}
                       </span>
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs text-gray-600">Markup:</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          value={opening.multiplier || 1.0}
-                          onChange={async (e) => {
-                            const newMultiplier = parseFloat(e.target.value) || 1.0
-                            try {
-                              const response = await fetch(`/api/openings/${opening.id}`, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  name: opening.name,
-                                  roughWidth: opening.roughWidth,
-                                  roughHeight: opening.roughHeight,
-                                  finishedWidth: opening.finishedWidth,
-                                  finishedHeight: opening.finishedHeight,
-                                  price: opening.price,
-                                  finishColor: opening.finishColor,
-                                  multiplier: newMultiplier
-                                })
-                              })
-                              if (response.ok) {
-                                await fetchProject()
-                                showSuccess('Markup updated')
-                              }
-                            } catch (error) {
-                              console.error('Error updating multiplier:', error)
-                              showError('Failed to update markup')
-                            }
-                          }}
-                          className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <span className="text-xs text-gray-500">({((opening.multiplier - 1) * 100).toFixed(0)}%)</span>
-                      </div>
                     </div>
                     <div className="flex space-x-2">
                       <button
@@ -1614,6 +1599,64 @@ export default function ProjectDetailView() {
                   <option value="In Progress">In Progress</option>
                   <option value="Completed">Completed</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Pricing Mode
+                </label>
+                <select
+                  value={editPricingModeId || ''}
+                  onChange={(e) => setEditPricingModeId(e.target.value ? parseInt(e.target.value) : null)}
+                  disabled={saving}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                >
+                  <option value="">No pricing mode</option>
+                  {pricingModes.map((mode) => {
+                    // Build description based on what markups are set
+                    const parts = []
+                    if (mode.extrusionMarkup > 0 || mode.hardwareMarkup > 0 || mode.glassMarkup > 0) {
+                      const categoryParts = []
+                      if (mode.extrusionMarkup > 0) categoryParts.push(`E:${mode.extrusionMarkup}%`)
+                      if (mode.hardwareMarkup > 0) categoryParts.push(`H:${mode.hardwareMarkup}%`)
+                      if (mode.glassMarkup > 0) categoryParts.push(`G:${mode.glassMarkup}%`)
+                      parts.push(categoryParts.join(', '))
+                    } else if (mode.markup > 0) {
+                      parts.push(`+${mode.markup}%`)
+                    }
+                    if (mode.discount > 0) parts.push(`-${mode.discount}%`)
+
+                    const description = parts.length > 0 ? ` (${parts.join(', ')})` : ''
+                    return (
+                      <option key={mode.id} value={mode.id}>
+                        {mode.name}{description}
+                      </option>
+                    )
+                  })}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Pricing mode applies markup and discount to quotes
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tax Rate (%)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  value={editTaxRate}
+                  onChange={(e) => setEditTaxRate(e.target.value)}
+                  disabled={saving}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                  placeholder="0.00"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Pre-populated based on delivery address, but can be overwritten
+                </p>
               </div>
 
               <div>

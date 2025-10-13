@@ -1,30 +1,39 @@
 # Door Quoter - Project Plan
 
 **Project Start Date:** 2025-10-02
-**Last Updated:** 2025-10-02
+**Last Updated:** 2025-10-13
 
 ---
 
 ## 1. Planned Features (To Be Implemented)
 
-### Accounting & Pricing Rules
+### ✅ Accounting & Pricing Rules (COMPLETED 2025-10-13)
 
-- **New "Accounting" Menu Tab**
-  - Add "Accounting" to main navigation sidebar
+- **✅ New "Accounting" Menu Tab**
+  - Added "Accounting" to main navigation sidebar
   - Dedicated section for financial management
-  - Houses pricing rules and related accounting features
+  - Houses pricing modes and links to pricing rules
+  - **Implementation:** src/components/Sidebar.tsx, src/components/Dashboard.tsx, src/components/views/AccountingView.tsx
 
-- **Pricing Mode Dropdown for Projects**
-  - Add dropdown in project creation/edit interface
-  - Allow users to select from pre-created pricing modes
-  - Selected mode applies its configured pricing rules to the project
-  - Affects how project costs and margins are calculated
+- **✅ Pricing Mode Dropdown for Projects**
+  - Dropdown added to project create/edit forms
+  - Auto-selects default pricing mode for new projects
+  - Shows mode details (markup/discount percentages)
+  - Saved with project in database
+  - **Implementation:** src/components/views/ProjectsView.tsx, src/types/index.ts
 
-- **Pricing Rules Management**
-  - Create interface to define and manage pricing rules
-  - Allow creation, editing, and deletion of pricing rules
-  - Rules can be grouped into pricing modes
-  - Configure markups, discounts, and calculation methods
+- **✅ Pricing Modes Management**
+  - Create, edit, delete pricing modes with CRUD interface
+  - Configure markup and discount percentages per mode
+  - Set default pricing mode for new projects
+  - **Database:** PricingMode model with name, description, markup, discount, isDefault fields
+  - **API Routes:** /api/pricing-modes (GET, POST), /api/pricing-modes/[id] (GET, PUT, DELETE)
+  - **Implementation:** src/components/accounting/PricingModesTab.tsx
+
+- **✅ Pricing Rules Management**
+  - Informational tab linking to existing Master Parts pricing rules
+  - Future enhancement: consolidated pricing rules view
+  - **Implementation:** src/components/accounting/PricingRulesTab.tsx
 
 ### Extrusion Cut Length Units
 - **Convert Cut Length Calculations to Millimeters**
