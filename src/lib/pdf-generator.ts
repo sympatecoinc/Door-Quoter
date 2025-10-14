@@ -389,39 +389,13 @@ function addCombinedViewPage(
     // Use fixed pixels-per-inch scale (same as modal: 4 pixels per inch)
     const mmPerDisplayInch = 25.4 / 4  // 6.35mm
 
-    // Build segments: horizontal until corner, then vertical based on corner direction (EXACT modal logic)
-    interface Segment {
-      views: typeof openingData.planViews
-      direction: 'horizontal' | 'vertical-up' | 'vertical-down'
-    }
+    // For now, just render horizontal panels (skip corners and vertical panels)
+    // Filter out corners
+    const horizontalPanels = openingData.planViews.filter(v => v.productType !== 'CORNER_90')
 
-    const segments: Segment[] = []
-    let currentSegment: typeof openingData.planViews = []
-    let currentDirection: 'horizontal' | 'vertical-up' | 'vertical-down' = 'horizontal'
+    console.log(`PDF Plan: Rendering ${horizontalPanels.length} horizontal panels (${openingData.planViews.length} total including corners)`)
 
-    openingData.planViews.forEach((view) => {
-      if (view.isCorner && view.productType === 'CORNER_90') {
-        console.log(`PDF Plan: Corner detected, direction: ${view.cornerDirection}`)
-        // Push current segment before corner
-        if (currentSegment.length > 0) {
-          segments.push({ views: currentSegment, direction: currentDirection })
-          currentSegment = []
-        }
-        // Change direction based on corner
-        currentDirection = view.cornerDirection === 'Down' ? 'vertical-down' : 'vertical-up'
-      } else {
-        currentSegment.push(view)
-      }
-    })
-
-    // Push last segment
-    if (currentSegment.length > 0) {
-      segments.push({ views: currentSegment, direction: currentDirection })
-    }
-
-    console.log(`PDF Plan: ${segments.length} segments`)
-
-    // First pass: calculate all positions and bounding box (EXACT modal logic)
+    // Simple horizontal layout - just position panels side by side
     interface PanelPosition {
       view: typeof openingData.planViews[0]
       x: number
@@ -429,7 +403,6 @@ function addCombinedViewPage(
       displayWidth: number
       displayHeight: number
       translateY: number
-      rotation: number
       imgData: string
     }
 
@@ -440,83 +413,37 @@ function addCombinedViewPage(
     let maxY = -Infinity
 
     let cumulativeX = 0
-    let cumulativeY = 0
 
-    segments.forEach((segment) => {
-      const isHorizontal = segment.direction === 'horizontal'
-      const isVerticalDown = segment.direction === 'vertical-down'
+    horizontalPanels.forEach((view) => {
+      const displayHeight = view.height * mmPerDisplayInch
+      const displayWidth = view.width * mmPerDisplayInch
 
-      segment.views.forEach((view) => {
-        const displayHeight = view.height * mmPerDisplayInch
-        const displayWidth = view.width * mmPerDisplayInch
+      const x = cumulativeX
+      const y = 0
+      const translateY = view.orientation === 'bottom' ? -displayHeight : 0
 
-        let x = cumulativeX
-        let y = cumulativeY
-        let translateY = 0
-        let rotation = 0
+      // Update bounding box
+      minX = Math.min(minX, x)
+      maxX = Math.max(maxX, x + displayWidth)
+      const yWithTranslate = y + translateY
+      minY = Math.min(minY, yWithTranslate)
+      maxY = Math.max(maxY, yWithTranslate + displayHeight)
 
-        if (isHorizontal) {
-          // Horizontal layout - no rotation
-          translateY = view.orientation === 'bottom' ? -displayHeight : 0
+      const imgData = view.imageData.startsWith('data:')
+        ? view.imageData
+        : `data:image/png;base64,${view.imageData}`
 
-          // Update bounding box for horizontal panel
-          minX = Math.min(minX, x)
-          maxX = Math.max(maxX, x + displayWidth)
-          const yWithTranslate = y + translateY
-          minY = Math.min(minY, yWithTranslate)
-          maxY = Math.max(maxY, yWithTranslate + displayHeight)
-
-          cumulativeX += displayWidth
-        } else {
-          // Vertical layout - rotate 90 degrees
-          const isSquarish = Math.abs(displayWidth - displayHeight) < 5 * mmPerDisplayInch // ~20px at 4px/inch
-
-          if (isVerticalDown) {
-            rotation = 90
-            if (isSquarish) {
-              x = x + displayHeight
-            }
-
-            // Update bounding box for vertical-down panel (rotated 90°)
-            minX = Math.min(minX, x)
-            maxX = Math.max(maxX, x + displayHeight)
-            minY = Math.min(minY, y)
-            maxY = Math.max(maxY, y + displayWidth)
-
-            cumulativeY += displayWidth
-          } else {
-            // Vertical up
-            rotation = -90
-            if (isSquarish) {
-              y = y - displayHeight
-              x = x + displayHeight
-            }
-
-            // Update bounding box for vertical-up panel (rotated -90°)
-            minX = Math.min(minX, x)
-            maxX = Math.max(maxX, x + displayHeight)
-            minY = Math.min(minY, y - displayWidth)
-            maxY = Math.max(maxY, y)
-
-            cumulativeY -= displayWidth
-          }
-        }
-
-        const imgData = view.imageData.startsWith('data:')
-          ? view.imageData
-          : `data:image/png;base64,${view.imageData}`
-
-        panelPositions.push({
-          view,
-          x,
-          y,
-          displayWidth,
-          displayHeight,
-          translateY,
-          rotation,
-          imgData
-        })
+      panelPositions.push({
+        view,
+        x,
+        y,
+        displayWidth,
+        displayHeight,
+        translateY,
+        imgData
       })
+
+      cumulativeX += displayWidth
     })
 
     // Calculate center offset to center the entire assembly
@@ -542,31 +469,13 @@ function addCombinedViewPage(
     panelPositions.forEach((panel) => {
       const scaledWidth = panel.displayWidth * planScale
       const scaledHeight = panel.displayHeight * planScale
-      const scaledTranslateY = panel.translateY * planScale
 
       // Apply center offset, then scale, then translate to center of section
       const finalX = centerX + (panel.x + centerOffsetX) * planScale
       const finalY = centerY + (panel.y + centerOffsetY + panel.translateY) * planScale
 
       try {
-        // For now, skip rotated images in PDF - they need special handling
-        // The modal handles this with CSS transforms, but PDF requires pre-rotated images
-        if (panel.rotation === 0) {
-          pdf.addImage(panel.imgData, 'PNG', finalX, finalY, scaledWidth, scaledHeight)
-        } else {
-          // TODO: Implement image rotation for PDF
-          // For now, draw a placeholder rectangle
-          console.warn(`PDF: Skipping rotated panel (rotation: ${panel.rotation}°)`)
-          pdf.setDrawColor(200, 200, 200)
-          pdf.setFillColor(240, 240, 240)
-          pdf.rect(finalX, finalY, scaledWidth, scaledHeight, 'FD')
-
-          pdf.setFontSize(6)
-          pdf.setTextColor(100, 100, 100)
-          pdf.text(`${panel.view.productName}`, finalX + scaledWidth / 2, finalY + scaledHeight / 2, { align: 'center' })
-          pdf.text(`(Rotated ${panel.rotation}°)`, finalX + scaledWidth / 2, finalY + scaledHeight / 2 + 3, { align: 'center' })
-          pdf.setTextColor(0, 0, 0)
-        }
+        pdf.addImage(panel.imgData, 'PNG', finalX, finalY, scaledWidth, scaledHeight)
       } catch (error) {
         console.error('Error adding plan view image to PDF:', error)
         pdf.setDrawColor(200, 200, 200)
