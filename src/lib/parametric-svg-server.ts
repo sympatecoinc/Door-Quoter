@@ -265,30 +265,33 @@ export function scaleElement(
             const origViewBoxHeight = originalDimensions.height
             const targetPixelWidth = origViewBoxWidth * scaling.scaleX
 
-            // Vertical glassstops are thin strips INSIDE the stiles
+            // Vertical glassstops are thin strips at the inner edge of stiles
             // Keep their original width (typically 3-4 pixels)
             const glassStopWidth = width
 
+            // Keep original Y and height - they're in the viewBox coordinate system
+            // which stays at original height (610px) even when width scales
+            const glassStopY = y
+            const glassStopHeight = height
+
             if (x > origViewBoxWidth * 0.5) {
-              // Right-side glassstop - position inside right stile in SCALED coords
-              const newHeightGS = (origViewBoxHeight - 2 * y)
-              const newX = targetPixelWidth - rightStileWidth + (rightStileWidth - glassStopWidth) / 2
+              // Right-side glassstop - position at inner edge of right stile (left side of stile)
+              const newX = targetPixelWidth - rightStileWidth
 
               element.setAttribute('x', newX.toString())
-              element.setAttribute('y', y.toString())
+              element.setAttribute('y', glassStopY.toString())
               element.setAttribute('width', glassStopWidth.toString())
-              element.setAttribute('height', newHeightGS.toString())
-              console.log(`  → Glassstop-V (RIGHT): x → ${newX}, width → ${glassStopWidth}, height → ${newHeightGS}`)
+              element.setAttribute('height', glassStopHeight.toString())
+              console.log(`  → Glassstop-V (RIGHT): x → ${newX}, y → ${glassStopY}, width → ${glassStopWidth}, height → ${glassStopHeight}`)
             } else {
-              // Left-side glassstop - position inside left stile
-              const newHeightGS = (origViewBoxHeight - 2 * y)
-              const newX = (leftStileWidth - glassStopWidth) / 2
+              // Left-side glassstop - position at inner edge of left stile (right side of stile)
+              const newX = leftStileWidth - glassStopWidth
 
               element.setAttribute('x', newX.toString())
-              element.setAttribute('y', y.toString())
+              element.setAttribute('y', glassStopY.toString())
               element.setAttribute('width', glassStopWidth.toString())
-              element.setAttribute('height', newHeightGS.toString())
-              console.log(`  → Glassstop-V (LEFT): x → ${newX}, width → ${glassStopWidth}, height → ${newHeightGS}`)
+              element.setAttribute('height', glassStopHeight.toString())
+              console.log(`  → Glassstop-V (LEFT): x → ${newX}, y → ${glassStopY}, width → ${glassStopWidth}, height → ${glassStopHeight}`)
             }
           } else if (isHorizontalGS) {
             const origViewBoxWidth = originalDimensions.width

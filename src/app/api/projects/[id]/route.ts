@@ -22,6 +22,9 @@ export async function GET(
         openings: {
           include: {
             panels: {
+              orderBy: {
+                displayOrder: 'asc'
+              },
               include: {
                 componentInstance: {
                   include: {

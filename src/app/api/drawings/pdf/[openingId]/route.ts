@@ -25,6 +25,9 @@ export async function GET(
           }
         },
         panels: {
+          orderBy: {
+            displayOrder: 'asc'
+          },
           include: {
             componentInstance: {
               include: {
@@ -67,7 +70,7 @@ export async function GET(
 
       // Handle corners (they don't have elevation images but need to be markers)
       if (product?.productType === 'CORNER_90' && panel.isCorner) {
-        console.log(`Adding CORNER marker for panel ${panel.id}`)
+        console.log(`Adding CORNER marker for elevation panel ${panel.id} at position ${elevationImages.length}`)
 
         elevationImages.push({
           productName: product.name,
@@ -84,6 +87,12 @@ export async function GET(
           cornerDirection: panel.cornerDirection,
           isCorner: true
         })
+        continue
+      }
+
+      if (!panel.componentInstance?.product?.elevationImageData) {
+        // Skip panels without elevation images
+        console.log(`Skipping panel ${panel.id} - no elevation image`)
         continue
       }
 
@@ -298,7 +307,7 @@ export async function GET(
     }
 
     // Generate PDF
-    const pdf = createSingleOpeningPDF(opening.project.name, openingData)
+    const pdf = await createSingleOpeningPDF(opening.project.name, openingData)
 
     // Convert PDF to buffer
     const pdfBuffer = Buffer.from(pdf.output('arraybuffer'))
