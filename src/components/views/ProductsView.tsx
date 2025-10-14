@@ -613,6 +613,7 @@ function ProductsTab({
                   <option value="SWING_DOOR">Swing Door</option>
                   <option value="SLIDING_DOOR">Sliding Door</option>
                   <option value="FIXED_PANEL">Fixed Panel</option>
+                  <option value="CORNER_90">90° Corner</option>
                 </select>
               </div>
               

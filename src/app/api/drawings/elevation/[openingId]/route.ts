@@ -12,6 +12,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       where: { id },
       include: {
         panels: {
+          orderBy: {
+            displayOrder: 'asc'
+          },
           include: {
             componentInstance: {
               include: {
@@ -37,9 +40,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       fileName?: string
       width: number
       height: number
+      productType: string
+      swingDirection?: string
+      slidingDirection?: string
+      isCorner: boolean
+      cornerDirection?: string
     }> = []
 
     for (const panel of opening.panels) {
+      const product = panel.componentInstance?.product
+
+      // Handle corners (they don't have elevation images but need to be markers)
+      if (product?.productType === 'CORNER_90' && panel.isCorner) {
+        elevationImages.push({
+          productName: product.name,
+          imageData: '', // Empty for corners
+          fileName: undefined,
+          width: panel.width,
+          height: panel.height,
+          productType: product.productType,
+          swingDirection: undefined,
+          slidingDirection: undefined,
+          isCorner: true,
+          cornerDirection: panel.cornerDirection
+        })
+        continue
+      }
+
+      // Handle regular components with elevation images
       if (panel.componentInstance?.product?.elevationImageData) {
         let imageData = panel.componentInstance.product.elevationImageData
         const fileName = panel.componentInstance.product.elevationFileName ?? undefined
@@ -48,7 +76,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         if (isSvgFile(fileName)) {
           try {
             console.log(`\n=== Processing SVG for panel ${panel.id} ===`)
-            console.log(`  Product: ${panel.componentInstance.product.name}`)
+            console.log(`  Product: ${product.name}`)
             console.log(`  File: ${fileName}`)
             console.log(`  Panel dimensions: ${panel.width}" x ${panel.height}"`)
 
@@ -70,11 +98,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
 
         elevationImages.push({
-          productName: panel.componentInstance.product.name,
+          productName: product.name,
           imageData: imageData,
           fileName: fileName || undefined,
           width: panel.width,
-          height: panel.height
+          height: panel.height,
+          productType: product.productType,
+          swingDirection: panel.swingDirection !== 'None' ? panel.swingDirection : undefined,
+          slidingDirection: panel.slidingDirection !== 'Left' && panel.slidingDirection ? panel.slidingDirection : undefined,
+          isCorner: false,
+          cornerDirection: undefined
         })
       }
     }

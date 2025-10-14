@@ -6,7 +6,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 // Direction constants matching SHOPGEN
 const SWING_DIRECTIONS = ["Left In", "Right In", "Left Out", "Right Out"]
 const SLIDING_DIRECTIONS = ["Left", "Right"]
-const CORNER_DIRECTIONS = ["Up", "Up-Right", "Right", "Down-Right", "Down", "Down-Left", "Left", "Up-Left"]
+const CORNER_DIRECTIONS = ["Up", "Down"]
 import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
