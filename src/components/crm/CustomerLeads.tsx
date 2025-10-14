@@ -390,6 +390,7 @@ export default function CustomerLeads({ customerId, customer }: CustomerLeadsPro
         onClose={() => setShowLeadForm(false)}
         onSubmit={handleCreateLead}
         defaultStage="New"
+        customerId={customerId}
       />
     </div>
   )

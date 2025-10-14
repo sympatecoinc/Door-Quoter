@@ -28,6 +28,8 @@ export default function ProjectsView() {
   const [newProjectStatus, setNewProjectStatus] = useState('Draft')
   const [newProjectDueDate, setNewProjectDueDate] = useState('')
   const [newProjectPricingModeId, setNewProjectPricingModeId] = useState<number | null>(null)
+  const [newProjectCustomerId, setNewProjectCustomerId] = useState<number | null>(null)
+  const [customers, setCustomers] = useState<{ id: number; companyName: string }[]>([])
   const [creating, setCreating] = useState(false)
   const { toasts, removeToast, showSuccess, showError } = useToast()
   const [error, setError] = useState<string | null>(null)
@@ -45,6 +47,7 @@ export default function ProjectsView() {
   useEffect(() => {
     fetchProjects()
     fetchPricingModes()
+    fetchCustomers()
   }, [])
 
   async function fetchProjects() {
@@ -180,9 +183,26 @@ export default function ProjectsView() {
     }
   }
 
+  async function fetchCustomers() {
+    try {
+      const response = await fetch('/api/customers?limit=1000')
+      if (response.ok) {
+        const data = await response.json()
+        setCustomers(data.customers || [])
+      }
+    } catch (error) {
+      console.error('Error fetching customers:', error)
+      setCustomers([])
+    }
+  }
+
   async function handleCreateProject(e: React.FormEvent) {
     e.preventDefault()
     if (!newProjectName.trim()) return
+    if (!newProjectCustomerId) {
+      setError('Please select a customer for this project')
+      return
+    }
 
     setCreating(true)
     setError(null)
@@ -197,7 +217,8 @@ export default function ProjectsView() {
           name: newProjectName,
           status: newProjectStatus,
           dueDate: newProjectDueDate || null,
-          pricingModeId: newProjectPricingModeId
+          pricingModeId: newProjectPricingModeId,
+          customerId: newProjectCustomerId
         })
       })
 
@@ -205,6 +226,7 @@ export default function ProjectsView() {
         setNewProjectName('')
         setNewProjectStatus('Draft')
         setNewProjectDueDate('')
+        setNewProjectCustomerId(null)
         setShowCreateForm(false)
         await fetchProjects() // Refresh the projects list
         showSuccess('Project created successfully!')
@@ -354,7 +376,29 @@ export default function ProjectsView() {
             <form onSubmit={handleCreateProject} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Project Name
+                  Customer *
+                </label>
+                <select
+                  value={newProjectCustomerId || ''}
+                  onChange={(e) => setNewProjectCustomerId(e.target.value ? parseInt(e.target.value) : null)}
+                  disabled={creating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                  required
+                >
+                  <option value="">Select a customer</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.companyName}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  All projects must be associated with a customer
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Project Name *
                 </label>
                 <input
                   type="text"
@@ -406,7 +450,7 @@ export default function ProjectsView() {
                   <option value="">No pricing mode</option>
                   {pricingModes.map((mode) => (
                     <option key={mode.id} value={mode.id}>
-                      {mode.name} {mode.isDefault ? '(Default)' : ''} - {mode.markup}% markup, {mode.discount}% discount
+                      {mode.name} {mode.isDefault ? '(Default)' : ''}
                     </option>
                   ))}
                 </select>
@@ -423,6 +467,7 @@ export default function ProjectsView() {
                     setNewProjectName('')
                     setNewProjectStatus('Draft')
                     setNewProjectDueDate('')
+                    setNewProjectCustomerId(null)
                   }}
                   disabled={creating}
                   className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
@@ -431,7 +476,7 @@ export default function ProjectsView() {
                 </button>
                 <button
                   type="submit"
-                  disabled={creating || !newProjectName.trim()}
+                  disabled={creating || !newProjectName.trim() || !newProjectCustomerId}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                 >
                   {creating && (
@@ -524,7 +569,7 @@ export default function ProjectsView() {
                   <option value="">No pricing mode</option>
                   {pricingModes.map((mode) => (
                     <option key={mode.id} value={mode.id}>
-                      {mode.name} {mode.isDefault ? '(Default)' : ''} - {mode.markup}% markup, {mode.discount}% discount
+                      {mode.name} {mode.isDefault ? '(Default)' : ''}
                     </option>
                   ))}
                 </select>

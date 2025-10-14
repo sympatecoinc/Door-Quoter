@@ -47,7 +47,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, status = 'Draft', dueDate, pricingModeId } = await request.json()
+    const { name, status = 'Draft', dueDate, pricingModeId, customerId } = await request.json()
 
     if (!name) {
       return NextResponse.json(
@@ -56,7 +56,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const projectData: any = { name, status }
+    if (!customerId) {
+      return NextResponse.json(
+        { error: 'Customer ID is required - all projects must be associated with a customer' },
+        { status: 400 }
+      )
+    }
+
+    const projectData: any = { name, status, customerId }
     if (dueDate) {
       projectData.dueDate = new Date(dueDate)
     }
@@ -65,7 +72,12 @@ export async function POST(request: NextRequest) {
     }
 
     const project = await prisma.project.create({
-      data: projectData
+      data: projectData,
+      include: {
+        openings: {
+          select: { id: true, name: true, price: true }
+        }
+      }
     })
 
     return NextResponse.json(project, { status: 201 })
