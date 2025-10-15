@@ -398,6 +398,18 @@ async function addCombinedViewPage(
     pdf.setFont('helvetica', 'bold')
     pdf.text('PLAN VIEW', planViewX + planViewWidth / 2, 37 + 25.4, { align: 'center' })
 
+    // Component labels right below title
+    pdf.setFontSize(8)
+    pdf.setFont('helvetica', 'italic')
+    const labelText = openingData.planViews
+      .filter(v => v.productType !== 'CORNER_90')
+      .map((img) => `${img.productName} (${img.planViewName || 'Plan'})`)
+      .join(' + ')
+    pdf.text(labelText, planViewX + planViewWidth / 2, 37 + 25.4 + 6, {
+      align: 'center',
+      maxWidth: planViewWidth - 10
+    })
+
     // Use fixed pixels-per-inch scale (same as modal: 4 pixels per inch)
     const mmPerDisplayInch = 25.4 / 4  // 6.35mm
 
@@ -580,17 +592,6 @@ async function addCombinedViewPage(
         pdf.rect(finalX, finalY, scaledWidth, scaledHeight)
       }
     }
-
-    // Component labels below plan view
-    pdf.setFontSize(8)
-    pdf.setFont('helvetica', 'italic')
-    const labelText = openingData.planViews
-      .filter(v => v.productType !== 'CORNER_90')
-      .map((img) => `${img.productName} (${img.planViewName || 'Plan'})`)
-      .join(' + ')
-    pdf.text(labelText, planViewX + planViewWidth / 2, planViewY + planViewHeight + 3, {
-      align: 'center'
-    })
   } else {
     // No plan view available message
     pdf.setFontSize(10)
