@@ -247,12 +247,13 @@ async function addCombinedViewPage(
   const availableWidth = pageWidth - 2 * marginSide - middleGap
   const availableHeight = pageHeight - marginTop - marginBottom
 
-  // Left section for elevation (50% of width, bottom half) - aligned with door schedule at x=15
-  // Moved up by 25.4mm (1 inch)
+  // Left section for elevation (50% of width, bottom section) - aligned with door schedule at x=15
+  // Position to be 0.5 inches (12.7mm) above the footer line
   const elevationWidth = availableWidth * 0.50 - 2 * sectionPadding
   const elevationX = scheduleX  // Align with door schedule left edge
   const elevationHeight = availableHeight * 0.5 - 2 * sectionPadding
-  const elevationY = marginTop + availableHeight * 0.5 + sectionPadding - 25.4 // Moved up 1 inch
+  const footerLineY = pageHeight - 17 // Footer line position
+  const elevationY = footerLineY - elevationHeight - 12.7 - 20 // 0.5" above footer, 20mm for labels
 
   // Right section for plan view (50% of width, top section) - decreased from 55%
   const planViewWidth = availableWidth * 0.50 - 2 * sectionPadding
