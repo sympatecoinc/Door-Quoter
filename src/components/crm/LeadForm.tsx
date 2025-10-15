@@ -14,11 +14,12 @@ interface LeadFormProps {
   onClose: () => void
   onSubmit: (leadData: any) => Promise<void>
   defaultStage?: string
+  customerId?: number // Optional: pre-set customer ID (hides customer selector)
 }
 
-export default function LeadForm({ isOpen, onClose, onSubmit, defaultStage = 'New' }: LeadFormProps) {
+export default function LeadForm({ isOpen, onClose, onSubmit, defaultStage = 'New', customerId }: LeadFormProps) {
   const [formData, setFormData] = useState({
-    customerId: '',
+    customerId: customerId ? String(customerId) : '',
     title: '',
     description: '',
     value: '',
@@ -32,10 +33,10 @@ export default function LeadForm({ isOpen, onClose, onSubmit, defaultStage = 'Ne
   const [loadingCustomers, setLoadingCustomers] = useState(false)
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !customerId) {
       fetchCustomers()
     }
-  }, [isOpen])
+  }, [isOpen, customerId])
 
   const fetchCustomers = async () => {
     setLoadingCustomers(true)
@@ -74,7 +75,7 @@ export default function LeadForm({ isOpen, onClose, onSubmit, defaultStage = 'Ne
       await onSubmit(submitData)
 
       setFormData({
-        customerId: '',
+        customerId: customerId ? String(customerId) : '',
         title: '',
         description: '',
         value: '',
@@ -123,28 +124,30 @@ export default function LeadForm({ isOpen, onClose, onSubmit, defaultStage = 'Ne
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Customer
-            </label>
-            <select
-              name="customerId"
-              value={formData.customerId}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">Select a customer (optional)</option>
-              {loadingCustomers ? (
-                <option disabled>Loading customers...</option>
-              ) : (
-                customers.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.companyName} {customer.contactName ? `(${customer.contactName})` : ''}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
+          {!customerId && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Customer
+              </label>
+              <select
+                name="customerId"
+                value={formData.customerId}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select a customer (optional)</option>
+                {loadingCustomers ? (
+                  <option disabled>Loading customers...</option>
+                ) : (
+                  customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.companyName} {customer.contactName ? `(${customer.contactName})` : ''}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

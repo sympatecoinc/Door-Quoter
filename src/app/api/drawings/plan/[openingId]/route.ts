@@ -12,6 +12,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       where: { id },
       include: {
         panels: {
+          orderBy: {
+            displayOrder: 'asc'
+          },
           include: {
             componentInstance: {
               include: {
@@ -57,11 +60,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       orientation?: string
       width: number
       height: number
+      productType: string
+      cornerDirection?: string
+      isCorner: boolean
     }> = []
 
     for (const panel of opening.panels) {
+      const product = panel.componentInstance?.product
+
+      // Handle corners (they don't have plan view images but need to be markers)
+      if (product?.productType === 'CORNER_90' && panel.isCorner) {
+        console.log(`\n=== Adding CORNER marker for panel ${panel.id} ===`)
+        console.log(`  Corner Direction: ${panel.cornerDirection}`)
+
+        planViews.push({
+          productName: product.name,
+          planViewName: 'Corner',
+          imageData: '', // Empty for corners
+          fileName: undefined,
+          fileType: undefined,
+          orientation: 'bottom',
+          width: 0,
+          height: 0,
+          productType: product.productType,
+          cornerDirection: panel.cornerDirection,
+          isCorner: true
+        })
+        continue
+      }
+
       if (panel.componentInstance?.product?.planViews) {
-        const product = panel.componentInstance.product
         let matchingPlanView
 
         // Fixed Panels should use the first/only plan view regardless of swing direction
@@ -166,7 +194,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             console.log(`PNG display (square): ${displayWidth}" x ${displayHeight}"`)
           }
 
-          planViews.push({
+          const planViewData = {
             productName: panel.componentInstance.product.name,
             planViewName: matchingPlanView.name,
             imageData: imageData,
@@ -174,8 +202,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             fileType: (matchingPlanView as any).fileType || undefined,
             orientation: (matchingPlanView as any).orientation || 'bottom',
             width: displayWidth,
-            height: displayHeight
-          })
+            height: displayHeight,
+            productType: product.productType,
+            cornerDirection: panel.isCorner ? panel.cornerDirection : undefined,
+            isCorner: panel.isCorner || false
+          }
+
+          console.log(`\n=== Adding plan view for panel ${panel.id} ===`)
+          console.log(`  Product: ${planViewData.productName}`)
+          console.log(`  Product Type: ${planViewData.productType}`)
+          console.log(`  Is Corner: ${planViewData.isCorner}`)
+          console.log(`  Corner Direction: ${planViewData.cornerDirection}`)
+
+          planViews.push(planViewData)
         }
       }
     }
@@ -192,10 +231,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Generate door schedule
     const doorSchedule = {
-      headers: ['Opening Name', 'Direction', 'Glass', 'Hardware'],
+      headers: ['Opening Name', 'Dimensions', 'Direction', 'Glass', 'Hardware'],
       rows: opening.panels.map((panel) => {
         const product = panel.componentInstance?.product
         const componentInstance = panel.componentInstance
+
+        // Format dimensions
+        const dimensions = `${panel.width}" × ${panel.height}"`
 
         // Determine direction based on product type
         let direction = 'N/A'
@@ -236,6 +278,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         return [
           product?.name || 'Unknown',
+          dimensions,
           direction,
           panel.glassType || 'N/A',
           hardwareText

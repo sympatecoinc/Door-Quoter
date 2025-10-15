@@ -96,7 +96,8 @@ export default function CRMView() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to update customer')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update customer')
       }
     } else {
       const response = await fetch('/api/customers', {
@@ -108,7 +109,8 @@ export default function CRMView() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to create customer')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create customer')
       }
     }
 

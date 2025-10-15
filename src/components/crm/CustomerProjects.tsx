@@ -141,6 +141,9 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
   }
 
   const calculateProjectValue = (project: Project) => {
+    if (!project.openings || project.openings.length === 0) {
+      return 0
+    }
     return project.openings.reduce((sum, opening) => sum + opening.price, 0)
   }
 

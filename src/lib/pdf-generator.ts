@@ -2,6 +2,7 @@
 // Uses jsPDF to create properly formatted shop drawing PDFs
 
 import { jsPDF } from 'jspdf'
+import { rotateImage } from './image-rotator'
 
 export interface DrawingImageData {
   productName: string
@@ -14,9 +15,11 @@ export interface DrawingImageData {
   swingDirection?: string
   slidingDirection?: string
   hardware?: string // Hardware/sub-options
-  productType?: string // SWING_DOOR, SLIDING_DOOR, FIXED_PANEL, etc.
+  productType?: string // SWING_DOOR, SLIDING_DOOR, FIXED_PANEL, CORNER_90, etc.
   orientation?: string // Plan view orientation: 'bottom' or 'top'
   planViewName?: string // Plan view direction name
+  cornerDirection?: string // Corner direction: 'Up' or 'Down'
+  isCorner?: boolean // Whether this is a corner marker
 }
 
 export interface OpeningDrawingData {
@@ -38,10 +41,10 @@ export interface ProjectDrawingData {
  * Creates a PDF for a single opening with elevation and plan views
  * Uses 11x17 landscape format with both views on one page
  */
-export function createSingleOpeningPDF(
+export async function createSingleOpeningPDF(
   projectName: string,
   openingData: OpeningDrawingData
-): jsPDF {
+): Promise<jsPDF> {
   // 11x17 inches = 279.4mm x 431.8mm
   const pdf = new jsPDF({
     orientation: 'landscape',
@@ -50,7 +53,7 @@ export function createSingleOpeningPDF(
   })
 
   // Combined page: Both elevation and plan views
-  addCombinedViewPage(pdf, projectName, openingData)
+  await addCombinedViewPage(pdf, projectName, openingData)
 
   return pdf
 }
@@ -89,11 +92,11 @@ export function createMultiOpeningPDF(projectData: ProjectDrawingData): jsPDF {
 /**
  * Adds a combined page with both elevation and plan views (11x17 landscape)
  */
-function addCombinedViewPage(
+async function addCombinedViewPage(
   pdf: jsPDF,
   projectName: string,
   openingData: OpeningDrawingData
-): void {
+): Promise<void> {
   const pageWidth = pdf.internal.pageSize.getWidth() // 431.8mm
   const pageHeight = pdf.internal.pageSize.getHeight() // 279.4mm
 
@@ -108,10 +111,10 @@ function addCombinedViewPage(
     align: 'center'
   })
 
-  // Dimensions with tolerance
+  // Dimensions
   pdf.setFontSize(10)
   pdf.text(
-    `Overall: ${openingData.totalWidth}" W (+/- 1") × ${openingData.totalHeight}" H`,
+    `Overall: ${openingData.totalWidth}" W × ${openingData.totalHeight}" H`,
     pageWidth / 2,
     27,
     { align: 'center' }
@@ -142,13 +145,14 @@ function addCombinedViewPage(
     : openingData.openingName
   pdf.text(`Opening ${openingData.openingNumber}: ${displayName} | ${openingData.totalWidth}" W × ${openingData.totalHeight}" H`, scheduleX, scheduleY + 5)
 
-  // Component table with same columns as modal: Opening Name, Direction, Glass, Hardware
+  // Component table with same columns as modal: Opening Name, Dimensions, Direction, Glass, Hardware
   const tableStartY = scheduleY + 10
   const colWidths = {
-    openingName: 60,  // Product name
-    direction: 35,
-    glass: 40,
-    hardware: 50
+    openingName: 50,  // Product name (reduced to make room for dimensions)
+    dimensions: 30,   // Width x Height
+    direction: 30,    // Direction (reduced)
+    glass: 35,        // Glass type (reduced)
+    hardware: 40      // Hardware (reduced)
   }
 
   // Table header - simple borders only, no background fills
@@ -163,6 +167,10 @@ function addCombinedViewPage(
   pdf.text('Opening Name', currentX + 3, tableStartY + 4)
 
   currentX += colWidths.openingName
+  pdf.rect(currentX, tableStartY, colWidths.dimensions, rowHeight)
+  pdf.text('Dimensions', currentX + 3, tableStartY + 4)
+
+  currentX += colWidths.dimensions
   pdf.rect(currentX, tableStartY, colWidths.direction, rowHeight)
   pdf.text('Direction', currentX + 3, tableStartY + 4)
 
@@ -185,13 +193,19 @@ function addCombinedViewPage(
 
     // Opening Name (Product name)
     pdf.rect(currentX, currentY, colWidths.openingName, rowHeight)
-    const truncatedName = component.productName.length > 30
-      ? component.productName.substring(0, 28) + '..'
+    const truncatedName = component.productName.length > 25
+      ? component.productName.substring(0, 23) + '..'
       : component.productName
     pdf.text(truncatedName, currentX + 3, currentY + 4)
 
-    // Direction (based on product type)
+    // Dimensions (Width x Height)
     currentX += colWidths.openingName
+    pdf.rect(currentX, currentY, colWidths.dimensions, rowHeight)
+    const dimensionsText = `${component.width}" × ${component.height}"`
+    pdf.text(dimensionsText, currentX + 3, currentY + 4)
+
+    // Direction (based on product type)
+    currentX += colWidths.dimensions
     pdf.rect(currentX, currentY, colWidths.direction, rowHeight)
     let directionText = 'N/A'
     if (component.productType === 'SWING_DOOR') {
@@ -207,14 +221,14 @@ function addCombinedViewPage(
     currentX += colWidths.direction
     pdf.rect(currentX, currentY, colWidths.glass, rowHeight)
     const glassText = component.glassType || 'N/A'
-    const truncatedGlass = glassText.length > 18 ? glassText.substring(0, 16) + '..' : glassText
+    const truncatedGlass = glassText.length > 15 ? glassText.substring(0, 13) + '..' : glassText
     pdf.text(truncatedGlass, currentX + 3, currentY + 4)
 
     // Hardware
     currentX += colWidths.glass
     pdf.rect(currentX, currentY, colWidths.hardware, rowHeight)
     const hardwareText = component.hardware || 'None'
-    const truncatedHardware = hardwareText.length > 22 ? hardwareText.substring(0, 20) + '..' : hardwareText
+    const truncatedHardware = hardwareText.length > 18 ? hardwareText.substring(0, 16) + '..' : hardwareText
     pdf.text(truncatedHardware, currentX + 3, currentY + 4)
 
     currentY += rowHeight
@@ -226,7 +240,7 @@ function addCombinedViewPage(
   // Calculate layout: Elevation bottom left, Plan view top right
   const marginTop = 40
   const marginBottom = 25
-  const marginSide = 20  // Increased from 15 to 20
+  const marginSide = 13.33  // Reduced by 1/3 from 20mm
   const middleGap = 15   // Increased from 10 to 15
   const sectionPadding = 8  // Internal padding within each section
 
@@ -234,10 +248,11 @@ function addCombinedViewPage(
   const availableHeight = pageHeight - marginTop - marginBottom
 
   // Left section for elevation (50% of width, bottom half) - aligned with door schedule at x=15
+  // Moved up by 25.4mm (1 inch)
   const elevationWidth = availableWidth * 0.50 - 2 * sectionPadding
   const elevationX = scheduleX  // Align with door schedule left edge
   const elevationHeight = availableHeight * 0.5 - 2 * sectionPadding
-  const elevationY = marginTop + availableHeight * 0.5 + sectionPadding // Start at middle
+  const elevationY = marginTop + availableHeight * 0.5 + sectionPadding - 25.4 // Moved up 1 inch
 
   // Right section for plan view (50% of width, top section) - decreased from 55%
   const planViewWidth = availableWidth * 0.50 - 2 * sectionPadding
@@ -247,130 +262,332 @@ function addCombinedViewPage(
 
   // Draw elevation view at bottom left
   if (openingData.elevationImages && openingData.elevationImages.length > 0) {
-    // Section label
+    // Split images into rows based on corners (same logic as modal)
+    const elevationRows: typeof openingData.elevationImages[] = []
+    let currentRow: typeof openingData.elevationImages = []
+
+    openingData.elevationImages.forEach((img) => {
+      // If this is a corner, end the current row and start a new one
+      if (img.productType === 'CORNER_90' && img.isCorner && currentRow.length > 0) {
+        elevationRows.push(currentRow)
+        currentRow = [img]
+      } else {
+        currentRow.push(img)
+      }
+    })
+
+    // Push the last row
+    if (currentRow.length > 0) {
+      elevationRows.push(currentRow)
+    }
+
+    // Section label(s)
     pdf.setFontSize(12)
     pdf.setFont('helvetica', 'bold')
-    pdf.text('ELEVATION VIEW', elevationX + elevationWidth / 2, elevationY - 5, { align: 'center' })
+
+    if (elevationRows.length === 1) {
+      pdf.text('ELEVATION VIEW', elevationX + elevationWidth / 2, elevationY - 5, { align: 'center' })
+    } else {
+      // Multiple rows - label them A, B, C, etc.
+      pdf.text('ELEVATION VIEWS', elevationX + elevationWidth / 2, elevationY - 5, { align: 'center' })
+    }
 
     // Use fixed pixels-per-inch scale (same as modal: 4 pixels per inch)
     const mmPerDisplayInch = 25.4 / 4  // 6.35mm
 
-    // Calculate total width and max height at this fixed scale
-    const totalElevationWidthMm = openingData.elevationImages.reduce((sum, img) => sum + (img.width * mmPerDisplayInch), 0)
-    const maxElevationHeightMm = Math.max(...openingData.elevationImages.map((img) => img.height * mmPerDisplayInch))
+    // Render rows side by side instead of stacked - with uniform heights
+    const rowSpacing = 10 // mm spacing between elevation groups
+    const availableWidthPerRow = (elevationWidth - (elevationRows.length - 1) * rowSpacing) / elevationRows.length
 
-    // Scale down to fit in elevation section (allow up to 0.8 scale for better prominence)
-    const scaleByWidth = elevationWidth / totalElevationWidthMm
-    const scaleByHeight = elevationHeight / maxElevationHeightMm
-    const elevationScale = Math.min(scaleByWidth, scaleByHeight, 0.8) // Max 0.8 for ~14% larger display
+    // First pass: Calculate the uniform scale factor for all rows (increased to 1.425 for 50% larger elevations)
+    let globalScale = Infinity
+    elevationRows.forEach((row) => {
+      const visibleImages = row.filter(img => img.productType !== 'CORNER_90')
+      if (visibleImages.length === 0) return
 
-    // Left-align (starting at elevationX, which is aligned with door schedule)
-    const scaledTotalWidthMm = totalElevationWidthMm * elevationScale
-    const scaledMaxHeightMm = maxElevationHeightMm * elevationScale
-    let currentX = elevationX  // Start at left edge (aligned with door schedule)
+      const totalRowWidthMm = visibleImages.reduce((sum, img) => sum + (img.width * mmPerDisplayInch), 0)
+      const maxRowHeightMm = Math.max(...visibleImages.map((img) => img.height * mmPerDisplayInch))
 
-    openingData.elevationImages.forEach((img) => {
-      // Calculate size using consistent scaling
-      const imgWidthMm = img.width * mmPerDisplayInch * elevationScale
-      const imgHeightMm = img.height * mmPerDisplayInch * elevationScale
+      const scaleByWidth = availableWidthPerRow / totalRowWidthMm
+      const scaleByHeight = elevationHeight / maxRowHeightMm
+      const rowScale = Math.min(scaleByWidth, scaleByHeight, 1.425)
 
-      // Align to bottom edge (items-end / baseline alignment like modal)
-      const imgY = elevationY + elevationHeight - imgHeightMm
-
-      try {
-        const imgData = img.imageData.startsWith('data:')
-          ? img.imageData
-          : `data:image/png;base64,${img.imageData}`
-
-        pdf.addImage(imgData, 'PNG', currentX, imgY, imgWidthMm, imgHeightMm)
-      } catch (error) {
-        console.error('Error adding elevation image to PDF:', error)
-        pdf.setDrawColor(200, 200, 200)
-        pdf.rect(currentX, imgY, imgWidthMm, imgHeightMm)
-      }
-
-      currentX += imgWidthMm
+      globalScale = Math.min(globalScale, rowScale)
     })
 
-    // Component labels below elevation
-    pdf.setFontSize(8)
-    pdf.setFont('helvetica', 'italic')
-    const labelText = openingData.elevationImages.map((img) => img.productName).join(' + ')
-    pdf.text(labelText, elevationX + elevationWidth / 2, elevationY + elevationHeight + 5, {
-      align: 'center'
+    let currentRowX = elevationX
+
+    elevationRows.forEach((row, rowIndex) => {
+      // Filter out corners (they don't render)
+      const visibleImages = row.filter(img => img.productType !== 'CORNER_90')
+
+      if (visibleImages.length === 0) return
+
+      // Calculate total width using the global uniform scale
+      const totalRowWidthMm = visibleImages.reduce((sum, img) => sum + (img.width * mmPerDisplayInch), 0)
+      const scaledTotalWidth = totalRowWidthMm * globalScale
+
+      // Center horizontally within this row's space
+      let currentX = currentRowX + (availableWidthPerRow - scaledTotalWidth) / 2
+
+      visibleImages.forEach((img) => {
+        // Calculate size using uniform global scaling
+        const imgWidthMm = img.width * mmPerDisplayInch * globalScale
+        const imgHeightMm = img.height * mmPerDisplayInch * globalScale
+
+        // Align to bottom edge
+        const imgY = elevationY + elevationHeight - imgHeightMm
+
+        try {
+          const imgData = img.imageData.startsWith('data:')
+            ? img.imageData
+            : `data:image/png;base64,${img.imageData}`
+
+          pdf.addImage(imgData, 'PNG', currentX, imgY, imgWidthMm, imgHeightMm)
+        } catch (error) {
+          console.error('Error adding elevation image to PDF:', error)
+          pdf.setDrawColor(200, 200, 200)
+          pdf.rect(currentX, imgY, imgWidthMm, imgHeightMm)
+        }
+
+        currentX += imgWidthMm
+      })
+
+      // Row label (Elevation A, B, etc.) right above component descriptors
+      const rowLabel = String.fromCharCode(65 + rowIndex) // A, B, C, etc.
+      pdf.setFontSize(9)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text(`Elevation ${rowLabel}`, currentRowX + availableWidthPerRow / 2, elevationY + elevationHeight + 5, { align: 'center' })
+
+      // Component labels below elevation label
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'italic')
+      const rowLabelText = visibleImages
+        .map((img) => {
+          // Build component label with direction prefix if applicable
+          let label = ''
+
+          // Add direction prefix
+          if (img.productType === 'SWING_DOOR' && img.swingDirection) {
+            label = `${img.swingDirection} ${img.productName}`
+          } else if (img.productType === 'SLIDING_DOOR' && img.slidingDirection) {
+            label = `${img.slidingDirection} ${img.productName}`
+          } else {
+            label = img.productName
+          }
+
+          // Add dimensions
+          label += ` (${img.width}" x ${img.height}")`
+
+          return label
+        }).join(' + ')
+
+      pdf.text(rowLabelText, currentRowX + availableWidthPerRow / 2, elevationY + elevationHeight + 11, {
+        align: 'center',
+        maxWidth: availableWidthPerRow - 5
+      })
+
+      currentRowX += availableWidthPerRow + rowSpacing
     })
   }
 
   // Draw plan view at top right
   if (openingData.planViews && openingData.planViews.length > 0) {
-    // Section label
+    // Section label - moved down by 25.4mm (1 inch)
     pdf.setFontSize(12)
     pdf.setFont('helvetica', 'bold')
-    pdf.text('PLAN VIEW', planViewX + planViewWidth / 2, 37, { align: 'center' })
+    pdf.text('PLAN VIEW', planViewX + planViewWidth / 2, 37 + 25.4, { align: 'center' })
 
     // Use fixed pixels-per-inch scale (same as modal: 4 pixels per inch)
-    // Convert to mm: 1 inch = 25.4mm, so 4px/inch = 25.4/4 = 6.35mm per "display inch"
     const mmPerDisplayInch = 25.4 / 4  // 6.35mm
 
-    // Calculate total width at this fixed scale
-    const totalPlanWidthMm = openingData.planViews.reduce((sum, img) => sum + (img.width * mmPerDisplayInch), 0)
-    const maxPlanHeightMm = Math.max(...openingData.planViews.map((img) => img.height * mmPerDisplayInch))
+    // Build segments to detect where corners are
+    interface Segment {
+      views: typeof openingData.planViews
+      direction: 'horizontal' | 'vertical-up' | 'vertical-down'
+    }
+
+    const segments: Segment[] = []
+    let currentSegment: typeof openingData.planViews = []
+    let currentDirection: 'horizontal' | 'vertical-up' | 'vertical-down' = 'horizontal'
+    const cornerPositions: Array<{ direction: string, afterPanelCount: number }> = []
+
+    openingData.planViews.forEach((view) => {
+      if (view.isCorner && view.productType === 'CORNER_90') {
+        console.log(`PDF Plan: Corner detected, direction: ${view.cornerDirection}`)
+        cornerPositions.push({
+          direction: view.cornerDirection || 'Up',
+          afterPanelCount: currentSegment.length
+        })
+        // Push current segment before corner
+        if (currentSegment.length > 0) {
+          segments.push({ views: currentSegment, direction: currentDirection })
+          currentSegment = []
+        }
+        // Change direction based on corner
+        currentDirection = view.cornerDirection === 'Down' ? 'vertical-down' : 'vertical-up'
+      } else {
+        currentSegment.push(view)
+      }
+    })
+
+    // Push last segment
+    if (currentSegment.length > 0) {
+      segments.push({ views: currentSegment, direction: currentDirection })
+    }
+
+    console.log(`PDF Plan: ${segments.length} segments, ${cornerPositions.length} corners`)
+
+    // Full rotation implementation - render all segments
+    interface PanelPosition {
+      view: typeof openingData.planViews[0]
+      x: number
+      y: number
+      displayWidth: number
+      displayHeight: number
+      translateY: number
+      rotation: number
+      imgData: string
+    }
+
+    const panelPositions: PanelPosition[] = []
+    let minX = Infinity
+    let maxX = -Infinity
+    let minY = Infinity
+    let maxY = -Infinity
+
+    let cumulativeX = 0
+    let cumulativeY = 0
+
+    for (const segment of segments) {
+      const isHorizontal = segment.direction === 'horizontal'
+      const isVerticalDown = segment.direction === 'vertical-down'
+      const isVerticalUp = segment.direction === 'vertical-up'
+
+      for (const view of segment.views) {
+        const displayHeight = view.height * mmPerDisplayInch
+        const displayWidth = view.width * mmPerDisplayInch
+
+        let x = cumulativeX
+        let y = cumulativeY
+        let translateY = 0
+        let rotation = 0
+
+        if (isHorizontal) {
+          // Horizontal layout - no rotation
+          translateY = view.orientation === 'bottom' ? -displayHeight : 0
+
+          // Update bounding box
+          minX = Math.min(minX, x)
+          maxX = Math.max(maxX, x + displayWidth)
+          const yWithTranslate = y + translateY
+          minY = Math.min(minY, yWithTranslate)
+          maxY = Math.max(maxY, yWithTranslate + displayHeight)
+
+          cumulativeX += displayWidth
+        } else if (isVerticalDown) {
+          // Vertical down - rotate 90 degrees clockwise
+          rotation = 90
+
+          // After rotation: width becomes height, height becomes width
+          // Position at current cumulative position
+          minX = Math.min(minX, x)
+          maxX = Math.max(maxX, x + displayHeight)
+          minY = Math.min(minY, y)
+          maxY = Math.max(maxY, y + displayWidth)
+
+          cumulativeY += displayWidth
+        } else if (isVerticalUp) {
+          // Vertical up - rotate 90 degrees counter-clockwise
+          rotation = -90
+
+          // After rotation: width becomes height, height becomes width
+          // For vertical up, we need to offset to go upward
+          minX = Math.min(minX, x)
+          maxX = Math.max(maxX, x + displayHeight)
+          minY = Math.min(minY, y - displayWidth)
+          maxY = Math.max(maxY, y)
+
+          cumulativeY -= displayWidth
+        }
+
+        const imgData = view.imageData.startsWith('data:')
+          ? view.imageData
+          : `data:image/png;base64,${view.imageData}`
+
+        panelPositions.push({
+          view,
+          x,
+          y,
+          displayWidth,
+          displayHeight,
+          translateY,
+          rotation,
+          imgData
+        })
+      }
+    }
+
+    // Calculate center offset to center the entire assembly
+    const assemblyWidth = maxX - minX
+    const assemblyHeight = maxY - minY
+    const centerOffsetX = -minX - assemblyWidth / 2
+    const centerOffsetY = -minY - assemblyHeight / 2
+
+    console.log(`PDF Plan: Assembly ${assemblyWidth.toFixed(1)}mm x ${assemblyHeight.toFixed(1)}mm, offset (${centerOffsetX.toFixed(1)}, ${centerOffsetY.toFixed(1)})`)
 
     // Check if we need to scale down to fit
-    const scaleByWidth = planViewWidth / totalPlanWidthMm
-    const scaleByHeight = planViewHeight / maxPlanHeightMm
+    const scaleByWidth = planViewWidth / assemblyWidth
+    const scaleByHeight = planViewHeight / assemblyHeight
     const planScale = Math.min(scaleByWidth, scaleByHeight, 1) // Only scale down if needed
 
-    // Calculate baseline Y position (50% of the plan view section, matching modal's top: 50%)
-    const baselineY = planViewY + planViewHeight / 2
+    console.log(`PDF Plan: Scale factor ${planScale.toFixed(3)}`)
 
-    // Calculate total width of all images to center the group horizontally
-    const totalWidthMm = openingData.planViews.reduce((sum, img) => sum + (img.width * mmPerDisplayInch * planScale), 0)
+    // Center point of plan view section
+    const centerX = planViewX + planViewWidth / 2
+    const centerY = planViewY + planViewHeight / 2
 
-    // Start X position - center the group horizontally (matching modal's translate(-50%, 0))
-    let currentX = planViewX + (planViewWidth - totalWidthMm) / 2
+    // Second pass: render all panels with center offset and scaling applied
+    // Rotate images if needed
+    for (const panel of panelPositions) {
+      let scaledWidth = panel.displayWidth * planScale
+      let scaledHeight = panel.displayHeight * planScale
 
-    openingData.planViews.forEach((img, index) => {
-      // Calculate size using consistent scaling
-      const imgWidthMm = img.width * mmPerDisplayInch * planScale
-      const imgHeightMm = img.height * mmPerDisplayInch * planScale
-
-      // Debug logging
-      console.log(`PDF Plan view ${index}: ${img.planViewName}, orientation: ${img.orientation}`)
-
-      // Apply orientation offset (exact modal logic):
-      // Modal uses: transform: `translateY(${translateY})`
-      // - 'bottom': translateY = `-${displayHeight}px` (moves up by full height)
-      // - 'top': translateY = `0px` (stays at baseline)
-      let imgY = baselineY
-      if (img.orientation === 'bottom') {
-        // Move up by full height so bottom edge aligns to baseline
-        imgY = baselineY - imgHeightMm
-        console.log(`  -> Orientation 'bottom': offsetting UP by ${imgHeightMm}mm, imgY = ${imgY}`)
-      } else {
-        console.log(`  -> Orientation '${img.orientation || 'undefined'}': staying at baseline, imgY = ${imgY}`)
-      }
-      // else orientation === 'top': top edge stays at baseline (no offset)
+      // Apply center offset, then scale, then translate to center of section
+      const finalX = centerX + (panel.x + centerOffsetX) * planScale
+      const finalY = centerY + (panel.y + centerOffsetY + panel.translateY) * planScale
 
       try {
-        const imgData = img.imageData.startsWith('data:')
-          ? img.imageData
-          : `data:image/png;base64,${img.imageData}`
+        let imageToRender = panel.imgData
 
-        pdf.addImage(imgData, 'PNG', currentX, imgY, imgWidthMm, imgHeightMm)
+        if (panel.rotation !== 0) {
+          // Rotate the image
+          console.log(`PDF Plan: Rotating image ${panel.rotation}° for ${panel.view.productName}`)
+          imageToRender = await rotateImage(panel.imgData, panel.rotation)
+
+          // After rotation, swap width and height for 90/-90 degree rotations
+          if (panel.rotation === 90 || panel.rotation === -90) {
+            const temp = scaledWidth
+            scaledWidth = scaledHeight
+            scaledHeight = temp
+          }
+        }
+
+        pdf.addImage(imageToRender, 'PNG', finalX, finalY, scaledWidth, scaledHeight)
       } catch (error) {
         console.error('Error adding plan view image to PDF:', error)
         pdf.setDrawColor(200, 200, 200)
-        pdf.rect(currentX, imgY, imgWidthMm, imgHeightMm)
+        pdf.rect(finalX, finalY, scaledWidth, scaledHeight)
       }
-
-      currentX += imgWidthMm
-    })
+    }
 
     // Component labels below plan view
     pdf.setFontSize(8)
     pdf.setFont('helvetica', 'italic')
-    const labelText = openingData.planViews.map((img) => `${img.productName} (${img.planViewName || 'Plan'})`).join(' + ')
+    const labelText = openingData.planViews
+      .filter(v => v.productType !== 'CORNER_90')
+      .map((img) => `${img.productName} (${img.planViewName || 'Plan'})`)
+      .join(' + ')
     pdf.text(labelText, planViewX + planViewWidth / 2, planViewY + planViewHeight + 3, {
       align: 'center'
     })
@@ -479,10 +696,10 @@ function addElevationPage(
     align: 'center'
   })
 
-  // Dimensions with tolerance
+  // Dimensions
   pdf.setFontSize(10)
   pdf.text(
-    `Overall: ${openingData.totalWidth}" W (+/- 1") × ${openingData.totalHeight}" H`,
+    `Overall: ${openingData.totalWidth}" W × ${openingData.totalHeight}" H`,
     pageWidth / 2,
     30,
     { align: 'center' }
@@ -538,7 +755,24 @@ function addElevationPage(
   pdf.setFontSize(8)
   pdf.setFont('helvetica', 'italic')
   const labelsY = marginTop + availableHeight + 3
-  const labelText = openingData.elevationImages.map((img) => img.productName).join(' + ')
+  const labelText = openingData.elevationImages.map((img) => {
+    // Build component label with direction prefix if applicable
+    let label = ''
+
+    // Add direction prefix
+    if (img.productType === 'SWING_DOOR' && img.swingDirection) {
+      label = `${img.swingDirection} ${img.productName}`
+    } else if (img.productType === 'SLIDING_DOOR' && img.slidingDirection) {
+      label = `${img.slidingDirection} ${img.productName}`
+    } else {
+      label = img.productName
+    }
+
+    // Add dimensions
+    label += ` (${img.width}" x ${img.height}")`
+
+    return label
+  }).join(' + ')
   pdf.text(labelText, pageWidth / 2, labelsY, { align: 'center' })
 
   // Footer
@@ -567,10 +801,10 @@ function addPlanViewPage(
     align: 'center'
   })
 
-  // Dimensions with tolerance (plan view only shows width)
+  // Dimensions (plan view only shows width)
   pdf.setFontSize(10)
   pdf.text(
-    `Overall: ${openingData.totalWidth}" W (+/- 1")`,
+    `Overall: ${openingData.totalWidth}" W`,
     pageWidth / 2,
     30,
     { align: 'center' }

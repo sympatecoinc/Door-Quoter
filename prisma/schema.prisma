@@ -12,7 +12,7 @@ model Project {
   id                     Int           @id @default(autoincrement())
   name                   String
   status                 String        @default("Draft")
-  customerId             Int?
+  customerId             Int
   pricingModeId          Int?
   extrusionCostingMethod String        @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED"
   excludedPartNumbers    String[]      @default([]) // Part numbers to exclude from FULL_STOCK rule (use percentage-based instead)
@@ -23,7 +23,7 @@ model Project {
   dueDate                DateTime?
   boms                   BOM[]
   openings               Opening[]
-  customer               Customer?     @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: SetNull)
+  customer               Customer      @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: Restrict)
   pricingMode            PricingMode?  @relation(fields: [pricingModeId], references: [id], onDelete: SetNull)
 
   @@map("Projects")

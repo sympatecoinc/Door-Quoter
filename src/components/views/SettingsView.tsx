@@ -8,8 +8,6 @@ export default function SettingsView() {
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [companyName, setCompanyName] = useState('')
   const [defaultCurrency, setDefaultCurrency] = useState('USD')
-  const [defaultMarkup, setDefaultMarkup] = useState('')
-  const [quoteValidity, setQuoteValidity] = useState('')
   const [unitSystem, setUnitSystem] = useState('imperial')
   const [precision, setPrecision] = useState('2')
   const [saving, setSaving] = useState(false)
@@ -27,8 +25,6 @@ export default function SettingsView() {
         const settings = JSON.parse(savedSettings)
         setCompanyName(settings.companyName || '')
         setDefaultCurrency(settings.defaultCurrency || 'USD')
-        setDefaultMarkup(settings.defaultMarkup || '')
-        setQuoteValidity(settings.quoteValidity || '')
         setUnitSystem(settings.unitSystem || 'imperial')
         setPrecision(settings.precision || '2')
       }
@@ -60,12 +56,10 @@ export default function SettingsView() {
       const settings = {
         companyName,
         defaultCurrency,
-        defaultMarkup,
-        quoteValidity,
         unitSystem,
         precision
       }
-      
+
       localStorage.setItem('appSettings', JSON.stringify(settings))
       alert('Settings saved successfully!')
     } catch (error) {
@@ -221,40 +215,6 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,FALSE
                 <option value="CAD">CAD ($)</option>
                 <option value="EUR">EUR (€)</option>
               </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Quote Settings */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Quote Settings</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Default Markup Percentage
-              </label>
-              <input
-                type="number"
-                value={defaultMarkup}
-                onChange={(e) => setDefaultMarkup(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                placeholder="15"
-                min="0"
-                max="100"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Quote Validity (Days)
-              </label>
-              <input
-                type="number"
-                value={quoteValidity}
-                onChange={(e) => setQuoteValidity(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                placeholder="30"
-                min="1"
-              />
             </div>
           </div>
         </div>
@@ -447,7 +407,6 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,FALSE
         {/* User Management Section (Admin Only) */}
         {currentUser?.role === 'ADMIN' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">User Management</h2>
             <UserManagement />
           </div>
         )}

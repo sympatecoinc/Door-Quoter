@@ -12,6 +12,11 @@ interface DrawingData {
     fileName?: string
     width: number
     height: number
+    productType: string
+    swingDirection?: string
+    slidingDirection?: string
+    isCorner: boolean
+    cornerDirection?: string
   }>
   planViews?: Array<{
     productName: string
@@ -22,6 +27,9 @@ interface DrawingData {
     orientation?: string
     width: number
     height: number
+    productType: string
+    cornerDirection?: string
+    isCorner: boolean
   }>
   door_schedule?: {
     headers: string[]
@@ -269,40 +277,87 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                         </p>
                       </div>
 
-                      {/* Display all elevation images seamlessly side by side */}
+                      {/* Display elevation images with row breaks at corners */}
                       <div className="bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto">
-                        <div className="flex items-end justify-center" style={{ minHeight: '400px' }}>
-                          {drawingData.elevationImages.map((img, index) => {
-                            // Server-side rendering handles all SVG processing (SHOPGEN approach)
-                            const imageSrc = getImageDataUrl(img.imageData)
+                        <div className="space-y-6">
+                          {(() => {
+                            // Split images into rows based on corners
+                            const rows: typeof drawingData.elevationImages[] = []
+                            let currentRow: typeof drawingData.elevationImages = []
 
-                            // Calculate display size maintaining aspect ratio
-                            // Use a fixed scale factor so all panels render at the same scale
-                            const pixelsPerInch = 4  // Fixed scale for all panels
-                            const displayHeight = img.height * pixelsPerInch
-                            const displayWidth = img.width * pixelsPerInch
+                            drawingData.elevationImages.forEach((img, index) => {
+                              // If this is a corner, end the current row and start a new one
+                              if (img.productType === 'CORNER_90' && currentRow.length > 0) {
+                                rows.push(currentRow)
+                                currentRow = [img]
+                              } else {
+                                currentRow.push(img)
+                              }
+                            })
 
-                            return (
-                              <img
-                                key={index}
-                                src={imageSrc}
-                                alt={`${img.productName} (${img.width}" × ${img.height}")`}
-                                className="h-auto"
-                                style={{
-                                  height: `${displayHeight}px`,
-                                  width: `${displayWidth}px`,
-                                  display: 'block'
-                                }}
-                                onError={(e) => {
-                                  console.error('Image load error for:', img.productName)
-                                }}
-                              />
-                            )
-                          })}
+                            // Push the last row
+                            if (currentRow.length > 0) {
+                              rows.push(currentRow)
+                            }
+
+                            return rows.map((row, rowIndex) => (
+                              <div key={rowIndex} className="flex items-end justify-center" style={{ minHeight: '400px' }}>
+                                {row.map((img, imgIndex) => {
+                                  // Server-side rendering handles all SVG processing (SHOPGEN approach)
+                                  const imageSrc = getImageDataUrl(img.imageData)
+
+                                  // Calculate display size maintaining aspect ratio
+                                  // Use a fixed scale factor so all panels render at the same scale
+                                  const pixelsPerInch = 4  // Fixed scale for all panels
+                                  const displayHeight = img.height * pixelsPerInch
+                                  const displayWidth = img.width * pixelsPerInch
+
+                                  // Skip rendering corners in elevation view (they don't have visual representation)
+                                  if (img.productType === 'CORNER_90') {
+                                    return null
+                                  }
+
+                                  return (
+                                    <img
+                                      key={imgIndex}
+                                      src={imageSrc}
+                                      alt={`${img.productName} (${img.width}" × ${img.height}")`}
+                                      className="h-auto"
+                                      style={{
+                                        height: `${displayHeight}px`,
+                                        width: `${displayWidth}px`,
+                                        display: 'block'
+                                      }}
+                                      onError={(e) => {
+                                        console.error('Image load error for:', img.productName)
+                                      }}
+                                    />
+                                  )
+                                })}
+                              </div>
+                            ))
+                          })()}
                         </div>
                       </div>
                       <div className="text-xs text-gray-500 text-center">
-                        {drawingData.elevationImages.map(img => img.productName).join(' + ')}
+                        {drawingData.elevationImages.map(img => {
+                          // Build component label with direction prefix if applicable
+                          let label = ''
+
+                          // Add direction prefix
+                          if (img.productType === 'SWING_DOOR' && img.swingDirection) {
+                            label = `${img.swingDirection} ${img.productName}`
+                          } else if (img.productType === 'SLIDING_DOOR' && img.slidingDirection) {
+                            label = `${img.slidingDirection} ${img.productName}`
+                          } else {
+                            label = img.productName
+                          }
+
+                          // Add dimensions
+                          label += ` (${img.width}" x ${img.height}")`
+
+                          return label
+                        }).join(' + ')}
                       </div>
                     </>
                   )}
@@ -341,63 +396,205 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                         </p>
                       </div>
 
-                      {/* Display all plan views seamlessly side by side */}
+                      {/* Display plan views with directional changes at corners */}
                       <div className="bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto">
-                        <div className="flex justify-center w-full" style={{ minHeight: '400px', position: 'relative' }}>
-                          {/* Invisible center line marker */}
-                          <div style={{
-                            position: 'absolute',
-                            top: '50%',
-                            left: 0,
-                            right: 0,
-                            height: '0px',
-                            pointerEvents: 'none'
-                          }} />
-                          <div className="flex" style={{
-                            position: 'absolute',
-                            top: '50%',
-                            left: '50%',
-                            transform: 'translate(-50%, 0)'
-                          }}>
-                            {drawingData.planViews.map((view, index) => {
-                              // Server-side rendering handles all SVG processing (SHOPGEN approach)
-                              const imageSrc = getImageDataUrl(view.imageData)
+                        <div className="flex justify-center w-full" style={{ minHeight: '600px', position: 'relative' }}>
+                          {(() => {
+                            // Build segments: horizontal until corner, then vertical based on corner direction
+                            const segments: Array<{
+                              views: typeof drawingData.planViews
+                              direction: 'horizontal' | 'vertical-up' | 'vertical-down'
+                            }> = []
 
-                              // Calculate display size maintaining aspect ratio
-                              // Use same scale as elevation views for consistency
-                              const pixelsPerInch = 4  // Same as elevation views
-                              const displayHeight = view.height * pixelsPerInch
-                              const displayWidth = view.width * pixelsPerInch
+                            let currentSegment: typeof drawingData.planViews = []
+                            let currentDirection: 'horizontal' | 'vertical-up' | 'vertical-down' = 'horizontal'
 
-                              // Debug logging
-                              console.log(`Plan view ${index}: ${view.planViewName}, orientation: ${view.orientation}`)
+                            drawingData.planViews.forEach((view, index) => {
+                              console.log(`Plan view ${index}: ${view.productName}, isCorner: ${view.isCorner}, productType: ${view.productType}`)
 
-                              // Determine vertical offset based on orientation
-                              // All images align to the horizontal center line of the viewport
-                              // 'bottom' = bottom edge at center line (shift up by full height)
-                              // 'top' = top edge at center line (shift down by full height)
-                              const translateY = view.orientation === 'bottom'
-                                ? `-${displayHeight}px`  // Move up so bottom edge is at center line
-                                : `0px`                   // Top edge at center line (no shift needed)
+                              if (view.isCorner && view.productType === 'CORNER_90') {
+                                console.log(`  ⟲ CORNER DETECTED! Direction: ${view.cornerDirection}`)
+                                // Push current segment before corner
+                                if (currentSegment.length > 0) {
+                                  console.log(`  → Ending segment with ${currentSegment.length} views, direction: ${currentDirection}`)
+                                  segments.push({ views: currentSegment, direction: currentDirection })
+                                  currentSegment = []
+                                }
+                                // Change direction based on corner
+                                currentDirection = view.cornerDirection === 'Down' ? 'vertical-down' : 'vertical-up'
+                                console.log(`  → New direction: ${currentDirection}`)
+                              } else {
+                                currentSegment.push(view)
+                              }
+                            })
+
+                            // Push last segment
+                            if (currentSegment.length > 0) {
+                              segments.push({ views: currentSegment, direction: currentDirection })
+                            }
+
+                            console.log(`Total segments: ${segments.length}`)
+                            segments.forEach((seg, i) => {
+                              console.log(`  Segment ${i}: ${seg.views.length} views, direction: ${seg.direction}`)
+                            })
+
+                            // First pass: calculate all positions and bounding box
+                            const pixelsPerInch = 4
+                            let cumulativeX = 0
+                            let cumulativeY = 0
+
+                            interface PanelPosition {
+                              view: typeof drawingData.planViews[0]
+                              x: number
+                              y: number
+                              displayWidth: number
+                              displayHeight: number
+                              translateY: string
+                              rotation: number
+                              transformOrigin: string
+                              imageSrc: string
+                            }
+
+                            const panelPositions: PanelPosition[] = []
+                            let minX = Infinity
+                            let maxX = -Infinity
+                            let minY = Infinity
+                            let maxY = -Infinity
+
+                            segments.forEach((segment, segmentIndex) => {
+                              const isHorizontal = segment.direction === 'horizontal'
+                              const isVerticalDown = segment.direction === 'vertical-down'
+
+                              console.log(`\nCalculating segment ${segmentIndex}: ${segment.direction}, starting at X=${cumulativeX}, Y=${cumulativeY}`)
+
+                              segment.views.forEach((view, viewIndex) => {
+                                const imageSrc = getImageDataUrl(view.imageData)
+                                const displayHeight = view.height * pixelsPerInch
+                                const displayWidth = view.width * pixelsPerInch
+
+                                // Calculate position and rotation
+                                let x = cumulativeX
+                                let y = cumulativeY
+                                let translateY = '0px'
+                                let rotation = 0
+                                let transformOrigin = 'center center'
+
+                                if (isHorizontal) {
+                                  // Horizontal layout - no rotation
+                                  translateY = view.orientation === 'bottom'
+                                    ? `-${displayHeight}px`
+                                    : `0px`
+
+                                  console.log(`  Panel ${viewIndex} (${view.productName}): X=${x}, translateY=${translateY}, width=${displayWidth}`)
+
+                                  // Update bounding box for horizontal panel
+                                  minX = Math.min(minX, x)
+                                  maxX = Math.max(maxX, x + displayWidth)
+                                  const yWithTranslate = view.orientation === 'bottom' ? y - displayHeight : y
+                                  minY = Math.min(minY, yWithTranslate)
+                                  maxY = Math.max(maxY, yWithTranslate + displayHeight)
+
+                                  // Add this panel's width to cumulative X for next panel
+                                  cumulativeX += displayWidth
+                                } else {
+                                  // Vertical layout - rotate 90 degrees and position at corner
+                                  const isSquarish = Math.abs(displayWidth - displayHeight) < 20
+
+                                  if (isVerticalDown) {
+                                    rotation = 90
+                                    transformOrigin = isSquarish ? 'left top' : 'left center'
+
+                                    if (isSquarish) {
+                                      x = x + displayHeight
+                                    }
+
+                                    translateY = '0px'
+                                    console.log(`  Panel ${viewIndex} (${view.productName}): X=${x}, Y=${y}, rotation=90°, isSquare=${isSquarish}, origin=${transformOrigin}`)
+
+                                    // Update bounding box for vertical-down panel (rotated 90°)
+                                    // After rotation, width becomes height and height becomes width
+                                    minX = Math.min(minX, x)
+                                    maxX = Math.max(maxX, x + displayHeight)
+                                    minY = Math.min(minY, y)
+                                    maxY = Math.max(maxY, y + displayWidth)
+
+                                    cumulativeY += displayWidth
+                                  } else {
+                                    // Vertical up - rotate counterclockwise
+                                    rotation = -90
+                                    transformOrigin = isSquarish ? 'left bottom' : 'left center'
+
+                                    if (isSquarish) {
+                                      y = -displayHeight
+                                      x = x + displayHeight
+                                    }
+
+                                    translateY = '0px'
+                                    console.log(`  Panel ${viewIndex} (${view.productName}): X=${x}, Y=${y}, rotation=-90°, isSquare=${isSquarish}, origin=${transformOrigin}`)
+
+                                    // Update bounding box for vertical-up panel (rotated -90°)
+                                    minX = Math.min(minX, x)
+                                    maxX = Math.max(maxX, x + displayHeight)
+                                    minY = Math.min(minY, y - displayWidth)
+                                    maxY = Math.max(maxY, y)
+
+                                    cumulativeY -= displayWidth
+                                  }
+                                }
+
+                                panelPositions.push({
+                                  view,
+                                  x,
+                                  y,
+                                  displayWidth,
+                                  displayHeight,
+                                  translateY,
+                                  rotation,
+                                  transformOrigin,
+                                  imageSrc
+                                })
+                              })
+                            })
+
+                            // Calculate center offset to center the entire assembly
+                            const assemblyWidth = maxX - minX
+                            const assemblyHeight = maxY - minY
+                            const centerOffsetX = -minX - assemblyWidth / 2
+                            const centerOffsetY = -minY - assemblyHeight / 2
+
+                            console.log(`\nAssembly bounds: minX=${minX}, maxX=${maxX}, minY=${minY}, maxY=${maxY}`)
+                            console.log(`Assembly size: ${assemblyWidth} x ${assemblyHeight}`)
+                            console.log(`Center offset: X=${centerOffsetX}, Y=${centerOffsetY}`)
+
+                            // Second pass: render all panels with center offset applied
+                            const allImages: JSX.Element[] = panelPositions.map((panel, index) => {
+                              const adjustedX = panel.x + centerOffsetX
+                              const adjustedY = panel.y + centerOffsetY
 
                               return (
                                 <img
                                   key={index}
-                                  src={imageSrc}
-                                  alt={`${view.productName} - ${view.planViewName} (${view.width}" × ${view.height}")`}
+                                  src={panel.imageSrc}
+                                  alt={`${panel.view.productName} - ${panel.view.planViewName}`}
                                   style={{
-                                    height: `${displayHeight}px`,
-                                    width: `${displayWidth}px`,
+                                    height: `${panel.displayHeight}px`,
+                                    width: `${panel.displayWidth}px`,
                                     display: 'block',
-                                    transform: `translateY(${translateY})`,
+                                    position: 'absolute',
+                                    left: `calc(50% + ${adjustedX}px)`,
+                                    top: `calc(50% + ${adjustedY}px)`,
+                                    transform: `translate(0, ${panel.translateY}) rotate(${panel.rotation}deg)`,
+                                    transformOrigin: panel.transformOrigin
                                   }}
                                   onError={(e) => {
-                                    console.error('Image load error for:', view.productName, view.planViewName)
+                                    console.error('Image load error for:', panel.view.productName, panel.view.planViewName)
                                   }}
                                 />
                               )
-                            })}
-                          </div>
+                            })
+
+                            return allImages
+                          })()}
                         </div>
                       </div>
                       <div className="text-xs text-gray-500 text-center">

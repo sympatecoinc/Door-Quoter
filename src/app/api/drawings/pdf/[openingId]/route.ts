@@ -25,6 +25,9 @@ export async function GET(
           }
         },
         panels: {
+          orderBy: {
+            displayOrder: 'asc'
+          },
           include: {
             componentInstance: {
               include: {
@@ -63,10 +66,39 @@ export async function GET(
     const elevationImages: DrawingImageData[] = []
 
     for (const panel of opening.panels) {
+      const product = panel.componentInstance?.product
+
+      // Handle corners (they don't have elevation images but need to be markers)
+      if (product?.productType === 'CORNER_90' && panel.isCorner) {
+        console.log(`Adding CORNER marker for elevation panel ${panel.id} at position ${elevationImages.length}`)
+
+        elevationImages.push({
+          productName: product.name,
+          imageData: '', // Empty for corners
+          width: 0,
+          height: 0,
+          type: panel.type,
+          glassType: panel.glassType,
+          locking: panel.locking,
+          swingDirection: undefined,
+          slidingDirection: undefined,
+          hardware: 'None',
+          productType: product.productType,
+          cornerDirection: panel.cornerDirection,
+          isCorner: true
+        })
+        continue
+      }
+
+      if (!panel.componentInstance?.product?.elevationImageData) {
+        // Skip panels without elevation images
+        console.log(`Skipping panel ${panel.id} - no elevation image`)
+        continue
+      }
+
       if (panel.componentInstance?.product?.elevationImageData) {
         let imageData = panel.componentInstance.product.elevationImageData
         const fileName = panel.componentInstance.product.elevationFileName ?? undefined
-        const product = panel.componentInstance.product
         const componentInstance = panel.componentInstance
 
         // If SVG, render to PNG server-side
@@ -132,8 +164,27 @@ export async function GET(
     const planViews: DrawingImageData[] = []
 
     for (const panel of opening.panels) {
+      const product = panel.componentInstance?.product
+
+      // Handle corners (they don't have plan view images but need to be markers)
+      if (product?.productType === 'CORNER_90' && panel.isCorner) {
+        console.log(`Adding CORNER marker for plan view, panel ${panel.id}, direction: ${panel.cornerDirection}`)
+
+        planViews.push({
+          productName: product.name,
+          imageData: '', // Empty for corners
+          width: 0,
+          height: 0,
+          orientation: 'bottom',
+          planViewName: 'Corner',
+          productType: product.productType,
+          cornerDirection: panel.cornerDirection,
+          isCorner: true
+        })
+        continue
+      }
+
       if (panel.componentInstance?.product?.planViews) {
-        const product = panel.componentInstance.product
         let matchingPlanView
 
         // Fixed Panels use first plan view
@@ -256,7 +307,7 @@ export async function GET(
     }
 
     // Generate PDF
-    const pdf = createSingleOpeningPDF(opening.project.name, openingData)
+    const pdf = await createSingleOpeningPDF(opening.project.name, openingData)
 
     // Convert PDF to buffer
     const pdfBuffer = Buffer.from(pdf.output('arraybuffer'))

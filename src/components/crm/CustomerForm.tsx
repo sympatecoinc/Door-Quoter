@@ -45,10 +45,12 @@ export default function CustomerForm({ isOpen, onClose, onSubmit, customer, mode
 
   const [formData, setFormData] = useState(getInitialFormData())
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (isOpen) {
       setFormData(getInitialFormData())
+      setError(null)
     }
   }, [isOpen, customer])
 
@@ -62,6 +64,7 @@ export default function CustomerForm({ isOpen, onClose, onSubmit, customer, mode
     if (!formData.companyName.trim()) return
 
     setIsSubmitting(true)
+    setError(null)
     try {
       if (mode === 'edit' && customer) {
         await onSubmit({ ...formData, id: customer.id })
@@ -69,8 +72,14 @@ export default function CustomerForm({ isOpen, onClose, onSubmit, customer, mode
         await onSubmit(formData)
       }
       onClose()
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error ${mode === 'edit' ? 'updating' : 'creating'} customer:`, error)
+      // Display the error message from the API
+      if (error.message) {
+        setError(error.message)
+      } else {
+        setError(`Failed to ${mode === 'edit' ? 'update' : 'create'} customer. Please try again.`)
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -92,6 +101,12 @@ export default function CustomerForm({ isOpen, onClose, onSubmit, customer, mode
             <X className="w-6 h-6" />
           </button>
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
