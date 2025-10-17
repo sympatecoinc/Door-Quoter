@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Download, FileText, Printer, Ruler, Palette, Eye, Wrench, DollarSign } from 'lucide-react'
+import { ArrowLeft, Download, FileText, Printer, Ruler, Palette, Eye, Wrench, DollarSign, Paperclip } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
-import html2canvas from 'html2canvas'
-import { jsPDF } from 'jspdf'
+import QuoteAttachmentsManager from '../quote/QuoteAttachmentsManager'
 
 interface QuoteItem {
   openingId: number
@@ -90,84 +89,33 @@ export default function QuoteView() {
   }
 
   const handleDownload = async () => {
-    if (!quoteRef.current || !quoteData) return
+    if (!quoteData) return
 
     try {
       setIsDownloading(true)
 
-      // Temporarily hide print-hidden elements and adjust for PDF
-      const printHiddenElements = document.querySelectorAll('.print\\:hidden')
-      printHiddenElements.forEach(el => {
-        (el as HTMLElement).style.display = 'none'
-      })
+      // Use the new server-side PDF generation API
+      const response = await fetch(`/api/projects/${selectedProjectId}/quote/pdf`)
 
-      // Wait for all images to load before capturing
-      const images = quoteRef.current.querySelectorAll('img')
-      await Promise.all(
-        Array.from(images).map((img) => {
-          if (img.complete) return Promise.resolve()
-          return new Promise((resolve) => {
-            img.onload = () => resolve(null)
-            img.onerror = () => resolve(null)
-          })
-        })
-      )
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF')
+      }
 
-      // Small delay to ensure rendering is complete
-      await new Promise(resolve => setTimeout(resolve, 100))
+      // Get the PDF blob
+      const blob = await response.blob()
 
-      // Configure options for better PDF output
-      const canvas = await html2canvas(quoteRef.current, {
-        scale: 2, // Higher resolution
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        width: quoteRef.current.scrollWidth,
-        height: quoteRef.current.scrollHeight,
-        logging: true, // Enable logging for debugging
-        imageTimeout: 0, // No timeout for image loading
-        removeContainer: true,
-      })
-      
-      // Restore hidden elements
-      printHiddenElements.forEach(el => {
-        (el as HTMLElement).style.display = ''
-      })
-      
-      const imgData = canvas.toDataURL('image/png')
-      
-      // Create PDF
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: 'a4'
-      })
-      
-      const pdfWidth = pdf.internal.pageSize.getWidth()
-      const pdfHeight = pdf.internal.pageSize.getHeight()
-      const imgWidth = canvas.width
-      const imgHeight = canvas.height
-      
-      // Add even smaller margins to prevent right-side cutoff
-      const marginX = 8
-      const marginY = 6
-      const availableWidth = pdfWidth - (2 * marginX)
-      const availableHeight = pdfHeight - (2 * marginY)
-      
-      const ratio = Math.min(availableWidth / imgWidth, availableHeight / imgHeight)
-      const imgX = marginX
-      const imgY = marginY
-      
-      pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio)
-      
-      // Generate filename
-      const filename = `Quote_${quoteData.project.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
-      
-      // Download the PDF
-      pdf.save(filename)
-      
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Quote_${quoteData.project.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
       showSuccess('Quote downloaded successfully!')
-      
+
     } catch (error) {
       console.error('Error generating PDF:', error)
       showError('Failed to download quote')
@@ -236,7 +184,7 @@ export default function QuoteView() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6 print:hidden">
         <div className="flex items-center space-x-4">
@@ -250,7 +198,7 @@ export default function QuoteView() {
             Quote - {quoteData.project.name}
           </h1>
         </div>
-        
+
         <div className="flex items-center space-x-3">
           <button
             onClick={handlePrint}
@@ -271,6 +219,13 @@ export default function QuoteView() {
             )}
             <span>{isDownloading ? 'Generating...' : 'Download PDF'}</span>
           </button>
+        </div>
+      </div>
+
+      {/* Quote Attachments Manager */}
+      <div className="mb-6 print:hidden">
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
+          <QuoteAttachmentsManager projectId={quoteData.project.id} />
         </div>
       </div>
 

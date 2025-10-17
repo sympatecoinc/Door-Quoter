@@ -9,22 +9,23 @@ datasource db {
 }
 
 model Project {
-  id                     Int           @id @default(autoincrement())
+  id                     Int                @id @default(autoincrement())
   name                   String
-  status                 String        @default("Draft")
+  status                 String             @default("Draft")
   customerId             Int
   pricingModeId          Int?
-  extrusionCostingMethod String        @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED"
-  excludedPartNumbers    String[]      @default([]) // Part numbers to exclude from FULL_STOCK rule (use percentage-based instead)
-  multiplier             Float         @default(1.0) // Price multiplier/markup for quotes (e.g., 1.2 = 20% markup)
-  taxRate                Float         @default(0) // Tax rate as decimal (e.g., 0.08 for 8%)
-  createdAt              DateTime      @default(now())
-  updatedAt              DateTime      @updatedAt
+  extrusionCostingMethod String             @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED"
+  excludedPartNumbers    String[]           @default([]) // Part numbers to exclude from FULL_STOCK rule (use percentage-based instead)
+  multiplier             Float              @default(1.0) // Price multiplier/markup for quotes (e.g., 1.2 = 20% markup)
+  taxRate                Float              @default(0) // Tax rate as decimal (e.g., 0.08 for 8%)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
   dueDate                DateTime?
   boms                   BOM[]
   openings               Opening[]
-  customer               Customer      @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: Restrict)
-  pricingMode            PricingMode?  @relation(fields: [pricingModeId], references: [id], onDelete: SetNull)
+  quoteAttachments       QuoteAttachment[]
+  customer               Customer           @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: Restrict)
+  pricingMode            PricingMode?       @relation(fields: [pricingModeId], references: [id], onDelete: SetNull)
 
   @@map("Projects")
 }
@@ -342,6 +343,24 @@ model CustomerFile {
   customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@map("CustomerFiles")
+}
+
+// Quote Attachments - Spec sheets, photos, etc. for quotes
+model QuoteAttachment {
+  id           Int      @id @default(autoincrement())
+  projectId    Int
+  filename     String   // Stored filename in uploads/quote-attachments/[projectId]/
+  originalName String   // Original upload filename
+  mimeType     String   // image/png, image/jpeg, application/pdf
+  size         Int      // File size in bytes
+  type         String   @default("custom") // "spec_sheet", "photo", "custom"
+  displayOrder Int      @default(0) // Order in the PDF
+  description  String?  // Optional description/caption
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("QuoteAttachments")
 }
 
 // Component Library for SHOPGEN Integration

@@ -247,19 +247,19 @@ async function addCombinedViewPage(
   const availableWidth = pageWidth - 2 * marginSide - middleGap
   const availableHeight = pageHeight - marginTop - marginBottom
 
-  // Left section for elevation (50% of width, bottom section) - aligned with door schedule at x=15
+  // Left section for elevation (60% of width, bottom section) - aligned with door schedule at x=15
   // Position closer to bottom with minimal spacing above footer
-  const elevationWidth = availableWidth * 0.50 - 2 * sectionPadding
+  const elevationWidth = availableWidth * 0.60 - 2 * sectionPadding
   const elevationX = scheduleX  // Align with door schedule left edge
-  const elevationHeight = availableHeight * 0.5 - 2 * sectionPadding
+  const elevationHeight = availableHeight * 0.65 - 2 * sectionPadding
   const footerLineY = pageHeight - 17 // Footer line position
   const elevationY = footerLineY - elevationHeight - 16 // Minimal spacing, 16mm for labels
 
-  // Right section for plan view (50% of width, top section) - decreased from 55%
-  const planViewWidth = availableWidth * 0.50 - 2 * sectionPadding
+  // Right section for plan view (40% of width, top section) - adjusted for larger elevation
+  const planViewWidth = availableWidth * 0.40 - 2 * sectionPadding
   const planViewX = elevationX + elevationWidth + middleGap + sectionPadding
   const planViewHeight = availableHeight * 0.6 - 2 * sectionPadding
-  const planViewY = marginTop + sectionPadding
+  const planViewY = 22 // Moved up closer to labels (was marginTop + sectionPadding = 48mm)
 
   // Draw elevation view at bottom left
   if (openingData.elevationImages && openingData.elevationImages.length > 0) {
@@ -394,10 +394,10 @@ async function addCombinedViewPage(
 
   // Draw plan view at top right
   if (openingData.planViews && openingData.planViews.length > 0) {
-    // Section label - moved down by 25.4mm (1 inch)
+    // Section label - positioned close to top divider line at 32mm
     pdf.setFontSize(12)
     pdf.setFont('helvetica', 'bold')
-    pdf.text('PLAN VIEW', planViewX + planViewWidth / 2, 37 + 25.4, { align: 'center' })
+    pdf.text('PLAN VIEW', planViewX + planViewWidth / 2, 38, { align: 'center' })
 
     // Component labels right below title
     pdf.setFontSize(8)
@@ -406,7 +406,7 @@ async function addCombinedViewPage(
       .filter(v => v.productType !== 'CORNER_90')
       .map((img) => `${img.productName} (${img.planViewName || 'Plan'})`)
       .join(' + ')
-    pdf.text(labelText, planViewX + planViewWidth / 2, 37 + 25.4 + 6, {
+    pdf.text(labelText, planViewX + planViewWidth / 2, 44, {
       align: 'center',
       maxWidth: planViewWidth - 10
     })
