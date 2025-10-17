@@ -100,7 +100,7 @@ export interface ComponentInstance {
   updatedAt: Date
 }
 
-export type MenuOption = 'dashboard' | 'projects' | 'crm' | 'products' | 'componentLibrary' | 'masterParts' | 'accounting' | 'settings' | 'quote'
+export type MenuOption = 'dashboard' | 'projects' | 'crm' | 'products' | 'componentLibrary' | 'masterParts' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments'
 
 export interface PricingMode {
   id: number

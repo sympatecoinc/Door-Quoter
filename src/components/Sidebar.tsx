@@ -16,7 +16,8 @@ import {
   Users,
   LogOut,
   User,
-  DollarSign
+  DollarSign,
+  FileText
 } from 'lucide-react'
 
 const menuItems = [
@@ -25,7 +26,8 @@ const menuItems = [
   { id: 'crm' as MenuOption, label: 'Customers', icon: Users },
   { id: 'products' as MenuOption, label: 'Products', icon: Package },
   { id: 'masterParts' as MenuOption, label: 'Master Parts', icon: Database },
-  { id: 'accounting' as MenuOption, label: 'Accounting', icon: DollarSign },
+  { id: 'quoteDocuments' as MenuOption, label: 'Quote', icon: FileText },
+  { id: 'accounting' as MenuOption, label: 'Pricing', icon: DollarSign },
   { id: 'settings' as MenuOption, label: 'Settings', icon: Settings },
 ]
 

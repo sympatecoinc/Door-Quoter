@@ -279,11 +279,84 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       totalPrice
     }
 
-    // Generate PDF with attachments
-    const pdf = await createQuotePDF(quoteData, project.quoteAttachments)
+    // Fetch persistent quote documents
+    // 1. Get all global documents
+    const globalDocuments = await prisma.quoteDocument.findMany({
+      where: { isGlobal: true },
+      orderBy: { displayOrder: 'asc' }
+    })
 
-    // Return the PDF as a blob
-    const pdfBuffer = Buffer.from(pdf.output('arraybuffer'))
+    // 2. Get all unique products used in this quote
+    const productIds = new Set<number>()
+    for (const opening of project.openings) {
+      for (const panel of opening.panels) {
+        if (panel.componentInstance?.productId) {
+          productIds.add(panel.componentInstance.productId)
+        }
+      }
+    }
+
+    // 3. Get product-specific documents for those products
+    const productSpecificDocuments = await prisma.quoteDocument.findMany({
+      where: {
+        productDocuments: {
+          some: {
+            productId: { in: Array.from(productIds) }
+          }
+        }
+      },
+      orderBy: { displayOrder: 'asc' }
+    })
+
+    // 4. Combine and deduplicate documents
+    const documentMap = new Map()
+
+    // Add global documents first
+    for (const doc of globalDocuments) {
+      documentMap.set(doc.id, {
+        id: doc.id,
+        filename: doc.filename,
+        originalName: doc.originalName,
+        mimeType: doc.mimeType,
+        type: doc.category,
+        displayOrder: doc.displayOrder,
+        description: doc.description,
+        isGlobal: true
+      })
+    }
+
+    // Add product-specific documents (won't overwrite if already added as global)
+    for (const doc of productSpecificDocuments) {
+      if (!documentMap.has(doc.id)) {
+        documentMap.set(doc.id, {
+          id: doc.id,
+          filename: doc.filename,
+          originalName: doc.originalName,
+          mimeType: doc.mimeType,
+          type: doc.category,
+          displayOrder: doc.displayOrder,
+          description: doc.description,
+          isGlobal: false
+        })
+      }
+    }
+
+    // 5. Convert to array and sort by displayOrder
+    const persistentDocuments = Array.from(documentMap.values()).sort((a, b) => a.displayOrder - b.displayOrder)
+
+    // 6. Combine project-specific attachments with persistent documents
+    // Project-specific attachments come first, then persistent documents
+    const allAttachments = [
+      ...project.quoteAttachments,
+      ...persistentDocuments.map(doc => ({
+        ...doc,
+        // For persistent documents, we need to map the path correctly
+        isPersistent: true
+      }))
+    ]
+
+    // Generate PDF with all attachments (now returns Buffer directly)
+    const pdfBuffer = await createQuotePDF(quoteData, allAttachments as any)
 
     const filename = `Quote_${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
 

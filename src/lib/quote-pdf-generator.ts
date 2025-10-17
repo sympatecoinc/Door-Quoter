@@ -1,7 +1,9 @@
 // Quote PDF Generation Utility
 // Uses jsPDF to create professional quote PDFs with optional attachments
+// Uses pdf-lib to merge PDF attachments
 
 import { jsPDF } from 'jspdf'
+import { PDFDocument } from 'pdf-lib'
 import fs from 'fs'
 import path from 'path'
 import { ensurePngDataUrl, isSvgDataUrl } from './svg-to-png'
@@ -55,11 +57,12 @@ export interface QuoteAttachment {
 
 /**
  * Creates a complete quote PDF with optional attachments
+ * Returns a Buffer containing the final PDF (either jsPDF only or merged with PDF attachments)
  */
 export async function createQuotePDF(
   quoteData: QuoteData,
   attachments: QuoteAttachment[] = []
-): Promise<jsPDF> {
+): Promise<Buffer> {
   // Create PDF in landscape mode, letter size
   const pdf = new jsPDF({
     orientation: 'landscape',
@@ -70,15 +73,130 @@ export async function createQuotePDF(
   // Page 1: Quote details with pricing
   await addQuotePage(pdf, quoteData)
 
-  // Add attachment pages if any
-  if (attachments.length > 0) {
-    for (const attachment of attachments) {
+  // Separate PDF attachments from image attachments
+  const imageAttachments = attachments.filter(a => a.mimeType.startsWith('image/'))
+  const pdfAttachments = attachments.filter(a => a.mimeType === 'application/pdf')
+
+  // Add image attachment pages to jsPDF
+  if (imageAttachments.length > 0) {
+    for (const attachment of imageAttachments) {
       pdf.addPage()
       await addAttachmentPage(pdf, attachment, quoteData.project.id)
     }
   }
 
-  return pdf
+  // If no PDF attachments, return jsPDF as buffer directly
+  if (pdfAttachments.length === 0) {
+    return Buffer.from(pdf.output('arraybuffer'))
+  }
+
+  // If there are PDF attachments, merge them using pdf-lib
+  try {
+    // Convert jsPDF to pdf-lib PDFDocument
+    const mainPdfBytes = pdf.output('arraybuffer')
+    let finalPdf = await PDFDocument.load(mainPdfBytes)
+
+    // Merge each PDF attachment
+    for (const attachment of pdfAttachments) {
+      const attachmentPath = resolveAttachmentPath(attachment, quoteData.project.id)
+
+      if (!fs.existsSync(attachmentPath)) {
+        console.error(`PDF attachment not found: ${attachmentPath}`)
+        // Add a placeholder page for the missing PDF
+        const placeholderPdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'mm',
+          format: 'letter'
+        })
+        placeholderPdf.setFontSize(12)
+        placeholderPdf.setFont('helvetica', 'bold')
+        placeholderPdf.text(attachment.description || attachment.originalName,
+          placeholderPdf.internal.pageSize.getWidth() / 2, 20, { align: 'center' })
+        placeholderPdf.setFontSize(10)
+        placeholderPdf.setTextColor(150, 150, 150)
+        placeholderPdf.text('PDF attachment not found',
+          placeholderPdf.internal.pageSize.getWidth() / 2,
+          placeholderPdf.internal.pageSize.getHeight() / 2,
+          { align: 'center' })
+
+        const placeholderBytes = placeholderPdf.output('arraybuffer')
+        const placeholderPdfDoc = await PDFDocument.load(placeholderBytes)
+        const pages = await finalPdf.copyPages(placeholderPdfDoc, placeholderPdfDoc.getPageIndices())
+        pages.forEach(page => finalPdf.addPage(page))
+        continue
+      }
+
+      try {
+        // Read and merge the PDF attachment
+        const attachmentBytes = await fs.promises.readFile(attachmentPath)
+        const attachmentPdf = await PDFDocument.load(attachmentBytes)
+
+        // Copy all pages from the attachment to the final PDF
+        const pages = await finalPdf.copyPages(attachmentPdf, attachmentPdf.getPageIndices())
+        pages.forEach(page => finalPdf.addPage(page))
+      } catch (error) {
+        console.error(`Error loading PDF attachment ${attachmentPath}:`, error)
+        // Add error placeholder page
+        const errorPdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'mm',
+          format: 'letter'
+        })
+        errorPdf.setFontSize(12)
+        errorPdf.setFont('helvetica', 'bold')
+        errorPdf.text(attachment.description || attachment.originalName,
+          errorPdf.internal.pageSize.getWidth() / 2, 20, { align: 'center' })
+        errorPdf.setFontSize(10)
+        errorPdf.setTextColor(200, 50, 50)
+        errorPdf.text('Error loading PDF attachment',
+          errorPdf.internal.pageSize.getWidth() / 2,
+          errorPdf.internal.pageSize.getHeight() / 2,
+          { align: 'center' })
+
+        const errorBytes = errorPdf.output('arraybuffer')
+        const errorPdfDoc = await PDFDocument.load(errorBytes)
+        const pages = await finalPdf.copyPages(errorPdfDoc, errorPdfDoc.getPageIndices())
+        pages.forEach(page => finalPdf.addPage(page))
+      }
+    }
+
+    // Save and return the merged PDF
+    const mergedBytes = await finalPdf.save()
+    return Buffer.from(mergedBytes)
+  } catch (error) {
+    console.error('Error merging PDF attachments:', error)
+    // Fall back to returning just the jsPDF without attachments
+    return Buffer.from(pdf.output('arraybuffer'))
+  }
+}
+
+/**
+ * Helper function to resolve the filesystem path for an attachment
+ */
+function resolveAttachmentPath(
+  attachment: QuoteAttachment & { isPersistent?: boolean },
+  projectId: number
+): string {
+  if (attachment.isPersistent) {
+    // Persistent quote documents are stored in /uploads/quote-documents/[docId]/[filename]
+    return path.join(
+      process.cwd(),
+      'public',
+      'uploads',
+      'quote-documents',
+      String(attachment.id),
+      attachment.filename
+    )
+  } else {
+    // Project-specific attachments are stored in /uploads/quote-attachments/[projectId]/[filename]
+    return path.join(
+      process.cwd(),
+      'uploads',
+      'quote-attachments',
+      String(projectId),
+      attachment.filename
+    )
+  }
 }
 
 /**
@@ -127,16 +245,16 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
   pdf.setDrawColor(200, 200, 200)
   pdf.line(20, projectInfoY + 13, pageWidth - 20, projectInfoY + 13)
 
-  // Quote items table
+  // Quote items table - now returns the page number where it ended
   const tableStartY = projectInfoY + 20
   await addQuoteItemsTable(pdf, quoteData, tableStartY)
 
-  // Footer with totals
-  addQuoteFooter(pdf, quoteData)
+  // Footer with totals - will be added on the last page by addQuoteItemsTable
 }
 
 /**
  * Adds the quote items table with elevation images
+ * Uses pagination: 3 items per page, with footer on the last page
  */
 async function addQuoteItemsTable(
   pdf: jsPDF,
@@ -144,18 +262,12 @@ async function addQuoteItemsTable(
   startY: number
 ): Promise<void> {
   const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
   const marginX = 20
   const cellPadding = 3
   const rowHeight = 45 // Height for rows with images (increased for better door proportions)
-
-  // Table header
-  const headerY = startY
-  pdf.setFillColor(0, 0, 0)
-  pdf.rect(marginX, headerY, pageWidth - 2 * marginX, 8, 'F')
-
-  pdf.setFontSize(9)
-  pdf.setFont('helvetica', 'bold')
-  pdf.setTextColor(255, 255, 255)
+  const footerHeight = 60 // Space needed for footer with pricing
+  const ITEMS_PER_PAGE = 3 // Maximum items per page
 
   // Column widths - increased elevation column for better thumbnail visibility
   const colElevation = 60 // Doubled from 30mm to show proper door proportions
@@ -164,27 +276,74 @@ async function addQuoteItemsTable(
   const colHardware = 35 // Reduced from 40mm
   const colPrice = pageWidth - 2 * marginX - colElevation - colOpening - colSpecs - colHardware
 
-  let currentX = marginX
-  pdf.text('Elevation', currentX + colElevation / 2, headerY + 5.5, { align: 'center' })
-  currentX += colElevation
-  pdf.text('Opening', currentX + colOpening / 2, headerY + 5.5, { align: 'center' })
-  currentX += colOpening
-  pdf.text('Specifications', currentX + colSpecs / 2, headerY + 5.5, { align: 'center' })
-  currentX += colSpecs
-  pdf.text('Hardware', currentX + colHardware / 2, headerY + 5.5, { align: 'center' })
-  currentX += colHardware
-  pdf.text('Price', currentX + colPrice / 2, headerY + 5.5, { align: 'center' })
+  const totalItems = quoteData.quoteItems.length
+  let currentY = startY
+  let itemsOnCurrentPage = 0
+  let currentPageIsFirst = true
 
-  pdf.setTextColor(0, 0, 0)
+  // Helper function to add table header
+  const addTableHeader = (yPos: number) => {
+    pdf.setFillColor(0, 0, 0)
+    pdf.rect(marginX, yPos, pageWidth - 2 * marginX, 8, 'F')
 
-  // Table rows
-  let currentY = headerY + 8
+    pdf.setFontSize(9)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(255, 255, 255)
 
-  for (const item of quoteData.quoteItems) {
+    let currentX = marginX
+    pdf.text('Elevation', currentX + colElevation / 2, yPos + 5.5, { align: 'center' })
+    currentX += colElevation
+    pdf.text('Opening', currentX + colOpening / 2, yPos + 5.5, { align: 'center' })
+    currentX += colOpening
+    pdf.text('Specifications', currentX + colSpecs / 2, yPos + 5.5, { align: 'center' })
+    currentX += colSpecs
+    pdf.text('Hardware', currentX + colHardware / 2, yPos + 5.5, { align: 'center' })
+    currentX += colHardware
+    pdf.text('Price', currentX + colPrice / 2, yPos + 5.5, { align: 'center' })
+
+    pdf.setTextColor(0, 0, 0)
+    return yPos + 8
+  }
+
+  // Add initial table header
+  currentY = addTableHeader(currentY)
+
+  // Process each item
+  for (let itemIndex = 0; itemIndex < totalItems; itemIndex++) {
+    const item = quoteData.quoteItems[itemIndex]
+    const isLastItem = itemIndex === totalItems - 1
+    const itemsRemaining = totalItems - itemIndex
+
     // Check if we need a new page
-    if (currentY + rowHeight > 250) {
+    // On first page: check if we've hit 3 items OR if adding footer would overflow
+    // On subsequent pages: check if we've hit 3 items OR if this is last item and footer would overflow
+    let needsNewPage = false
+
+    if (itemsOnCurrentPage >= ITEMS_PER_PAGE) {
+      // Already have 3 items on this page
+      needsNewPage = true
+    } else if (isLastItem && currentY + rowHeight + footerHeight > pageHeight - 10) {
+      // Last item and footer won't fit on current page
+      needsNewPage = true
+    } else if (!isLastItem && currentY + rowHeight > pageHeight - 10) {
+      // Not last item and row won't fit
+      needsNewPage = true
+    }
+
+    if (needsNewPage && !currentPageIsFirst) {
+      // Add new page and reset header
       pdf.addPage()
       currentY = 20
+      currentY = addTableHeader(currentY)
+      itemsOnCurrentPage = 0
+      currentPageIsFirst = false
+    } else if (needsNewPage && currentPageIsFirst) {
+      // First page overflow, add new page
+      pdf.addPage()
+      currentY = 20
+      currentY = addTableHeader(currentY)
+      itemsOnCurrentPage = 0
+      currentPageIsFirst = false
     }
 
     // Draw row border
@@ -192,7 +351,7 @@ async function addQuoteItemsTable(
     pdf.setLineWidth(0.3)
     pdf.rect(marginX, currentY, pageWidth - 2 * marginX, rowHeight)
 
-    currentX = marginX
+    let currentX = marginX
 
     // Column 1: Elevation thumbnails with aspect-ratio-aware rendering
     if (item.elevationImages && item.elevationImages.length > 0) {
@@ -311,6 +470,12 @@ async function addQuoteItemsTable(
       currentX + colPrice / 2, currentY + rowHeight / 2 + 2, { align: 'center' })
 
     currentY += rowHeight
+    itemsOnCurrentPage++
+
+    // If this is the last item, add the footer on the current page
+    if (isLastItem) {
+      addQuoteFooter(pdf, quoteData)
+    }
   }
 }
 
@@ -374,7 +539,7 @@ function addQuoteFooter(pdf: jsPDF, quoteData: QuoteData): void {
  */
 async function addAttachmentPage(
   pdf: jsPDF,
-  attachment: QuoteAttachment,
+  attachment: QuoteAttachment & { isPersistent?: boolean },
   projectId: number
 ): Promise<void> {
   const pageWidth = pdf.internal.pageSize.getWidth()
@@ -391,14 +556,28 @@ async function addAttachmentPage(
   pdf.text(displayName, pageWidth / 2, currentY, { align: 'center' })
   currentY += 10
 
-  // Load attachment file
-  const attachmentPath = path.join(
-    process.cwd(),
-    'uploads',
-    'quote-attachments',
-    String(projectId),
-    attachment.filename
-  )
+  // Determine the correct path based on whether this is a persistent document or project-specific attachment
+  let attachmentPath: string
+  if (attachment.isPersistent) {
+    // Persistent quote documents are stored in /uploads/quote-documents/[docId]/[filename]
+    attachmentPath = path.join(
+      process.cwd(),
+      'public',
+      'uploads',
+      'quote-documents',
+      String(attachment.id),
+      attachment.filename
+    )
+  } else {
+    // Project-specific attachments are stored in /uploads/quote-attachments/[projectId]/[filename]
+    attachmentPath = path.join(
+      process.cwd(),
+      'uploads',
+      'quote-attachments',
+      String(projectId),
+      attachment.filename
+    )
+  }
 
   if (!fs.existsSync(attachmentPath)) {
     console.error(`Attachment file not found: ${attachmentPath}`)

@@ -81,24 +81,25 @@ enum ProductType {
 }
 
 model Product {
-  id                   Int                 @id @default(autoincrement())
+  id                   Int                    @id @default(autoincrement())
   name                 String
   description          String?
-  type                 String              @default("Product")
-  productType          ProductType         @default(SWING_DOOR)
-  archived             Boolean             @default(false)
-  withTrim             String              @default("Without Trim")
+  type                 String                 @default("Product")
+  productType          ProductType            @default(SWING_DOOR)
+  archived             Boolean                @default(false)
+  withTrim             String                 @default("Without Trim")
   glassWidthFormula    String?
   glassHeightFormula   String?
   glassQuantityFormula String?
-  elevationImageData   String?             // Base64 encoded elevation image
-  elevationFileName    String?             // Original elevation filename
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
+  elevationImageData   String?                // Base64 encoded elevation image
+  elevationFileName    String?                // Original elevation filename
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
   componentInstances   ComponentInstance[]
   productBOMs          ProductBOM[]
   productSubOptions    ProductSubOption[]
   planViews            ProductPlanView[]
+  productDocuments     ProductQuoteDocument[] // Documents associated with this product
 
   @@map("Products")
 }
@@ -446,7 +447,7 @@ model User {
   name         String
   role         Role      @default(VIEWER)
   isActive     Boolean   @default(true)
-  permissions  String[]  @default(["dashboard", "projects", "crm", "products", "masterParts", "accounting", "settings"]) // Available tabs for user
+  permissions  String[]  @default(["dashboard", "projects", "crm", "products", "masterParts", "quoteDocuments", "accounting", "settings"]) // Available tabs for user
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   sessions     Session[]
@@ -463,4 +464,37 @@ model Session {
 
   @@index([userId])
   @@map("Sessions")
+}
+
+// Quote Documents - Persistent documents that can be included in quotes
+model QuoteDocument {
+  id               Int                    @id @default(autoincrement())
+  name             String                 // Display name
+  description      String?                // Optional description
+  filename         String                 // Stored filename (unique identifier)
+  originalName     String                 // Original upload filename
+  mimeType         String                 // File MIME type
+  size             Int                    // File size in bytes
+  category         String                 @default("general") // "spec_sheet", "brochure", "warranty", "installation", "general"
+  isGlobal         Boolean                @default(true) // If true, included in all quotes
+  displayOrder     Int                    @default(0) // Order in PDFs
+  uploadedBy       String?                // User who uploaded
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  productDocuments ProductQuoteDocument[] // Products this document is associated with
+
+  @@map("QuoteDocuments")
+}
+
+// Junction table linking products to quote documents
+model ProductQuoteDocument {
+  id              Int           @id @default(autoincrement())
+  productId       Int
+  quoteDocumentId Int
+  createdAt       DateTime      @default(now())
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quoteDocument   QuoteDocument @relation(fields: [quoteDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, quoteDocumentId])
+  @@map("ProductQuoteDocuments")
 }
