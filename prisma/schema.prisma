@@ -18,6 +18,10 @@ model Project {
   excludedPartNumbers    String[]           @default([]) // Part numbers to exclude from FULL_STOCK rule (use percentage-based instead)
   multiplier             Float              @default(1.0) // Price multiplier/markup for quotes (e.g., 1.2 = 20% markup)
   taxRate                Float              @default(0) // Tax rate as decimal (e.g., 0.08 for 8%)
+  installationCost       Float              @default(0) // DEPRECATED - kept for backward compatibility, use manualInstallationCost
+  installationMethod     String             @default("MANUAL") // "MANUAL" or "PER_PRODUCT_TOTAL"
+  installationComplexity String             @default("STANDARD") // "SIMPLE", "STANDARD", "COMPLEX", "VERY_COMPLEX"
+  manualInstallationCost Float              @default(0) // Manual installation cost (preserved when switching modes)
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
   dueDate                DateTime?
@@ -93,6 +97,7 @@ model Product {
   glassQuantityFormula String?
   elevationImageData   String?                // Base64 encoded elevation image
   elevationFileName    String?                // Original elevation filename
+  installationPrice    Float                  @default(0) // Installation cost for this product type (optional)
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
   componentInstances   ComponentInstance[]
@@ -190,18 +195,20 @@ model ComponentInstance {
 }
 
 model MasterPart {
-  id               Int                @id @default(autoincrement())
-  partNumber       String             @unique
-  baseName         String
-  description      String?
-  unit             String?
-  cost             Float?
-  partType         String             @default("Hardware")
-  isOption         Boolean            @default(false) // True if this hardware part can be used as a category option
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  stockLengthRules StockLengthRule[]
-  pricingRules     PricingRule[]
+  id                      Int                @id @default(autoincrement())
+  partNumber              String             @unique
+  baseName                String
+  description             String?
+  unit                    String?
+  cost                    Float?
+  partType                String             @default("Hardware")
+  isOption                Boolean            @default(false) // True if this hardware part can be used as a category option
+  optionImagePath         String?            // Path to uploaded image for category options (relative to public/)
+  optionImageOriginalName String?            // Original filename of uploaded image
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  stockLengthRules        StockLengthRule[]
+  pricingRules            PricingRule[]
 
   @@map("MasterParts")
 }

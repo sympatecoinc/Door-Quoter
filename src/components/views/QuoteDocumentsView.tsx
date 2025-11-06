@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { FileText } from 'lucide-react'
 import DocumentUpload from '../quote-documents/DocumentUpload'
 import DocumentsList from '../quote-documents/DocumentsList'
-import ProductAssociations from '../quote-documents/ProductAssociations'
+import ProductDocumentsList from '../quote-documents/ProductDocumentsList'
 
 interface QuoteDocument {
   id: number
@@ -116,26 +116,20 @@ export default function QuoteDocumentsView() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column: Upload & List */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Upload Section */}
-            <DocumentUpload onUploadComplete={fetchDocuments} />
-
-            {/* Documents List */}
-            <DocumentsList
-              documents={getDisplayedDocuments()}
-              onDocumentsChange={fetchDocuments}
-            />
-          </div>
-
-          {/* Right Column: Product Associations */}
-          <div className="lg:col-span-1">
-            <ProductAssociations
-              documents={documents}
-              onAssociationsChange={fetchDocuments}
-            />
-          </div>
+        <div className="space-y-6">
+          {activeTab === 'products' ? (
+            /* Product-Specific Documents - Show Products List */
+            <ProductDocumentsList onDocumentsChange={fetchDocuments} />
+          ) : (
+            /* All Documents & Global Documents - Show Upload & List */
+            <>
+              <DocumentUpload onUploadComplete={fetchDocuments} />
+              <DocumentsList
+                documents={getDisplayedDocuments()}
+                onDocumentsChange={fetchDocuments}
+              />
+            </>
+          )}
         </div>
       )}
     </div>

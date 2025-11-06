@@ -6,10 +6,11 @@ const prisma = new PrismaClient()
 // GET /api/products/[id]/documents - Get all documents associated with a product
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const productId = parseInt(params.id)
+    const { id } = await params
+    const productId = parseInt(id)
 
     // Verify product exists
     const product = await prisma.product.findUnique({
@@ -51,10 +52,11 @@ export async function GET(
 // POST /api/products/[id]/documents - Associate a document with a product
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const productId = parseInt(params.id)
+    const { id } = await params
+    const productId = parseInt(id)
     const body = await request.json()
     const { quoteDocumentId } = body
 
@@ -130,10 +132,11 @@ export async function POST(
 // DELETE /api/products/[id]/documents - Remove a document association from a product
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const productId = parseInt(params.id)
+    const { id } = await params
+    const productId = parseInt(id)
     const { searchParams } = new URL(request.url)
     const quoteDocumentId = parseInt(searchParams.get('quoteDocumentId') || '')
 

@@ -82,9 +82,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (!customerId) {
+      return NextResponse.json(
+        { error: 'Customer is required' },
+        { status: 400 }
+      )
+    }
+
     const lead = await prisma.lead.create({
       data: {
-        customerId: customerId ? parseInt(customerId) : null,
+        customerId: parseInt(customerId),
         title,
         description,
         value: value ? parseFloat(value) : null,

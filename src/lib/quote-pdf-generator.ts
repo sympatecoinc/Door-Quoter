@@ -40,6 +40,7 @@ export interface QuoteData {
   markupAmount: number
   discountAmount: number
   adjustedSubtotal: number
+  installationCost: number
   taxRate: number
   taxAmount: number
   totalPrice: number
@@ -499,9 +500,15 @@ function addQuoteFooter(pdf: jsPDF, quoteData: QuoteData): void {
   pdf.setFontSize(10)
   pdf.setFont('helvetica', 'normal')
 
-  // Subtotal
-  pdf.text('Subtotal:', priceX, priceY)
+  // Subtotal (Openings)
+  pdf.text('Subtotal (Openings):', priceX, priceY)
   pdf.text(`$${quoteData.adjustedSubtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
+    pageWidth - marginX - 5, priceY, { align: 'right' })
+  priceY += 7
+
+  // Installation (always show)
+  pdf.text('Installation:', priceX, priceY)
+  pdf.text(`$${quoteData.installationCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
     pageWidth - marginX - 5, priceY, { align: 'right' })
   priceY += 7
 

@@ -56,7 +56,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       glassHeightFormula,
       glassQuantityFormula,
       elevationImageData,
-      elevationFileName
+      elevationFileName,
+      installationPrice
     } = await request.json()
 
     // Prepare update data
@@ -91,6 +92,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (glassQuantityFormula !== undefined) updateData.glassQuantityFormula = glassQuantityFormula
     if (elevationImageData !== undefined) updateData.elevationImageData = elevationImageData
     if (elevationFileName !== undefined) updateData.elevationFileName = elevationFileName
+    if (installationPrice !== undefined) updateData.installationPrice = installationPrice
 
     const product = await prisma.product.update({
       where: { id: productId },
