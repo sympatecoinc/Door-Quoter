@@ -20,6 +20,7 @@ export async function GET(
       where: { id: projectId },
       include: {
         openings: {
+          orderBy: { id: 'asc' },
           include: {
             panels: {
               orderBy: {

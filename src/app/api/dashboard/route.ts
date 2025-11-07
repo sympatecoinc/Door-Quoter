@@ -11,6 +11,7 @@ async function calculateProjectSalePrice(projectId: number, costPrice: number, p
     where: { id: projectId },
     include: {
       openings: {
+        orderBy: { id: 'asc' },
         include: {
           panels: {
             include: {

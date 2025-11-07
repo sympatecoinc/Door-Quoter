@@ -32,6 +32,7 @@ export async function GET(
       where: { customerId: customerId },
       include: {
         openings: {
+          orderBy: { id: 'asc' },
           select: { id: true, name: true, price: true }
         }
       },

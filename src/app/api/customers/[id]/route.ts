@@ -31,6 +31,7 @@ export async function GET(
         projects: {
           include: {
             openings: {
+              orderBy: { id: 'asc' },
               select: { id: true, name: true, price: true }
             }
           }

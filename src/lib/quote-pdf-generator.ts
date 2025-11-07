@@ -268,7 +268,7 @@ async function addQuoteItemsTable(
   const cellPadding = 3
   const rowHeight = 45 // Height for rows with images (increased for better door proportions)
   const footerHeight = 60 // Space needed for footer with pricing
-  const ITEMS_PER_PAGE = 3 // Maximum items per page
+  const ITEMS_PER_PAGE = 4 // Maximum items per page
 
   // Column widths - increased elevation column for better thumbnail visibility
   const colElevation = 60 // Doubled from 30mm to show proper door proportions
@@ -281,6 +281,27 @@ async function addQuoteItemsTable(
   let currentY = startY
   let itemsOnCurrentPage = 0
   let currentPageIsFirst = true
+
+  // Smart pagination: calculate max items per page based on total items
+  // - If 2 or fewer items: All items + footer on page 1
+  // - If 3 items: Try to fit all + footer on page 1
+  // - If 4 items: All 4 items + footer on page 1
+  // - If 5+ items: Max 4 per intermediate page, max 2 on last page with footer
+  const getMaxItemsForCurrentPage = (currentPageFirst: boolean, itemsLeft: number): number => {
+    if (totalItems <= 4) {
+      // 4 or fewer items: all on first page with footer
+      return totalItems
+    } else {
+      // 5+ items
+      if (itemsLeft <= 2) {
+        // Last page: max 2 items + footer
+        return 2
+      } else {
+        // Intermediate pages: max 4 items
+        return 4
+      }
+    }
+  }
 
   // Helper function to add table header
   const addTableHeader = (yPos: number) => {
@@ -314,32 +335,36 @@ async function addQuoteItemsTable(
     const item = quoteData.quoteItems[itemIndex]
     const isLastItem = itemIndex === totalItems - 1
     const itemsRemaining = totalItems - itemIndex
+    const maxItemsThisPage = getMaxItemsForCurrentPage(currentPageIsFirst, itemsRemaining)
 
-    // Check if we need a new page
-    // On first page: check if we've hit 3 items OR if adding footer would overflow
-    // On subsequent pages: check if we've hit 3 items OR if this is last item and footer would overflow
+    // Check if we need a new page BEFORE drawing anything
     let needsNewPage = false
 
-    if (itemsOnCurrentPage >= ITEMS_PER_PAGE) {
-      // Already have 3 items on this page
-      needsNewPage = true
-    } else if (isLastItem && currentY + rowHeight + footerHeight > pageHeight - 10) {
-      // Last item and footer won't fit on current page
+    if (itemsOnCurrentPage >= maxItemsThisPage) {
+      // Already at max items for this page
       needsNewPage = true
     } else if (!isLastItem && currentY + rowHeight > pageHeight - 10) {
       // Not last item and row won't fit
       needsNewPage = true
+    } else if (isLastItem) {
+      // For last item, check if it + footer will fit
+      // Special case: If we have 2-4 items total, be more lenient to keep them together
+      if (totalItems <= 4 && currentPageIsFirst) {
+        // For 2-4 items on first page, try to fit them all even if tight
+        // Use minimal margin to maximize space (landscape letter is only 215.9mm tall)
+        if (currentY + rowHeight + footerHeight > pageHeight) {
+          needsNewPage = true
+        }
+      } else {
+        // Normal case: check with standard margin
+        if (currentY + rowHeight + footerHeight > pageHeight - 10) {
+          needsNewPage = true
+        }
+      }
     }
 
-    if (needsNewPage && !currentPageIsFirst) {
-      // Add new page and reset header
-      pdf.addPage()
-      currentY = 20
-      currentY = addTableHeader(currentY)
-      itemsOnCurrentPage = 0
-      currentPageIsFirst = false
-    } else if (needsNewPage && currentPageIsFirst) {
-      // First page overflow, add new page
+    if (needsNewPage) {
+      // Add new page and reset
       pdf.addPage()
       currentY = 20
       currentY = addTableHeader(currentY)

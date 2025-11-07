@@ -343,7 +343,7 @@ export default function QuoteView() {
                 >
                   <option value="SIMPLE">Simple (0.9x multiplier)</option>
                   <option value="STANDARD">Standard (1.0x multiplier)</option>
-                  <option value="COMPLEX">Complex (1.25x multiplier)</option>
+                  <option value="COMPLEX">Complex (1.2x multiplier)</option>
                   <option value="VERY_COMPLEX">Very Complex (1.5x multiplier)</option>
                 </select>
                 <p className="mt-2 text-sm text-gray-500">
