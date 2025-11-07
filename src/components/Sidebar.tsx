@@ -16,7 +16,8 @@ import {
   Users,
   LogOut,
   User,
-  DollarSign
+  DollarSign,
+  FileText
 } from 'lucide-react'
 
 const menuItems = [
@@ -25,7 +26,8 @@ const menuItems = [
   { id: 'crm' as MenuOption, label: 'Customers', icon: Users },
   { id: 'products' as MenuOption, label: 'Products', icon: Package },
   { id: 'masterParts' as MenuOption, label: 'Master Parts', icon: Database },
-  { id: 'accounting' as MenuOption, label: 'Accounting', icon: DollarSign },
+  { id: 'quoteDocuments' as MenuOption, label: 'Quote Settings', icon: FileText },
+  { id: 'accounting' as MenuOption, label: 'Pricing', icon: DollarSign },
   { id: 'settings' as MenuOption, label: 'Settings', icon: Settings },
 ]
 
@@ -93,15 +95,15 @@ export default function Sidebar() {
   }
 
   return (
-    <div className="w-64 bg-white shadow-lg border-r border-gray-200 flex flex-col">
+    <div className="w-64 bg-white shadow-lg border-r border-gray-200 flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="p-6 border-b border-gray-200">
+      <div className="p-6 border-b border-gray-200 flex-shrink-0">
         <h1 className="text-xl font-bold text-gray-900">Quoting Tool</h1>
         <p className="text-sm text-gray-600 mt-1">Aluminum Doors & Windows</p>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-2">
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
         {visibleMenuItems.map((item) => {
           const Icon = item.icon
           const isActive = currentMenu === item.id
@@ -124,7 +126,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Project Selector */}
-      <div className="p-4 border-t border-gray-200">
+      <div className="p-4 border-t border-gray-200 flex-shrink-0">
         <button
           onClick={() => setShowProjects(!showProjects)}
           className="w-full flex items-center justify-between px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg"
@@ -138,7 +140,7 @@ export default function Sidebar() {
         </button>
 
         {showProjects && (
-          <div className="mt-2 space-y-1">
+          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
             <button
               onClick={() => setCurrentMenu('projects')}
               className="w-full flex items-center px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg"
@@ -179,7 +181,7 @@ export default function Sidebar() {
 
       {/* User Section */}
       {currentUser && (
-        <div className="p-4 border-t border-gray-200">
+        <div className="p-4 border-t border-gray-200 flex-shrink-0">
           <div className="flex items-center mb-2 px-3 py-2">
             <User className="w-5 h-5 text-gray-600 mr-3" />
             <div className="flex-1">

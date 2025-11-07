@@ -41,6 +41,7 @@ interface Opening {
   finishColor?: string
   price: number
   multiplier: number
+  priceCalculatedAt?: string | null
   panels: Panel[]
 }
 
@@ -63,6 +64,10 @@ interface Panel {
       name: string
       type: string
       productType: string
+      productBOMs?: {
+        id: number
+        updatedAt: string
+      }[]
     }
     subOptionSelections: string
   }
@@ -152,19 +157,26 @@ export default function ProjectDetailView() {
   const [needsSync, setNeedsSync] = useState(false)
   const [showSyncConfirmation, setShowSyncConfirmation] = useState(false)
   const [syncingPrices, setSyncingPrices] = useState(false)
+  const [syncDetails, setSyncDetails] = useState<string[]>([])
 
-  // Check if pricing needs sync
+  // Check if pricing needs sync and generate details
   useEffect(() => {
     if (project) {
+      const details: string[] = []
+      const affectedOpenings = new Set<string>()
+      const affectedProducts = new Set<string>()
+      let hasNeverCalculated = false
+
       const needsSyncCheck = project.openings.some(opening => {
         const hasComponents = opening.panels.some(panel => panel.componentInstance)
         if (!hasComponents) return false
 
-        // If price is zero or null, definitely needs sync
-        if (opening.price === null || opening.price === 0) return true
-
         // If never calculated, needs sync
-        if (!opening.priceCalculatedAt) return true
+        if (!opening.priceCalculatedAt) {
+          hasNeverCalculated = true
+          affectedOpenings.add(opening.name)
+          return true
+        }
 
         // Check if any component's product BOM has been updated after price calculation
         const priceCalcTime = new Date(opening.priceCalculatedAt).getTime()
@@ -180,13 +192,35 @@ export default function ProjectDetailView() {
             return bomUpdateTime > priceCalcTime
           })
 
-          if (hasStaleProductBOM) return true
+          if (hasStaleProductBOM) {
+            affectedOpenings.add(opening.name)
+            affectedProducts.add(product.name)
+            return true
+          }
         }
 
         return false
       })
 
+      // Build detailed sync messages
+      if (hasNeverCalculated && affectedOpenings.size > 0) {
+        details.push(`${affectedOpenings.size} opening${affectedOpenings.size > 1 ? 's have' : ' has'} never been priced`)
+      }
+
+      if (affectedProducts.size > 0) {
+        details.push(`Product pricing updated for: ${Array.from(affectedProducts).join(', ')}`)
+      }
+
+      if (affectedOpenings.size > 0 && !hasNeverCalculated) {
+        const openingsList = Array.from(affectedOpenings).slice(0, 3).join(', ')
+        const remaining = affectedOpenings.size - 3
+        details.push(
+          `Affected openings: ${openingsList}${remaining > 0 ? ` and ${remaining} more` : ''}`
+        )
+      }
+
       setNeedsSync(needsSyncCheck)
+      setSyncDetails(details.length > 0 ? details : ['Product BOMs or pricing have been updated'])
     }
   }, [project])
 
@@ -1869,9 +1903,25 @@ export default function ProjectDetailView() {
       {/* Sync Confirmation Modal */}
       {showSyncConfirmation && project && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md text-center">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Sync All Pricing?</h2>
-            <p className="text-gray-600 mb-6">
+
+            {/* What Changed Section */}
+            {syncDetails.length > 0 && (
+              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <h3 className="text-sm font-semibold text-amber-900 mb-2">What changed:</h3>
+                <ul className="text-sm text-amber-800 space-y-1">
+                  {syncDetails.map((detail, index) => (
+                    <li key={index} className="flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>{detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <p className="text-gray-600 mb-6 text-left">
               This will recalculate all opening prices with the latest product BOMs, master parts pricing, and glass types.
             </p>
             <div className="flex justify-center space-x-3">

@@ -1,6 +1,7 @@
 # optiCutter API Documentation
 
-Please [contact us](https://www.opticutter.com/#contact) if something is unclear or you need more information. We are ready to help you.
+My Authorization Token: ecd9d1671fb5afb27ad3aa479ff71ddc86a10fcd
+
 
 ## Introduction
 

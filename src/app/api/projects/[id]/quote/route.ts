@@ -266,10 +266,43 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       discountAmount = subtotalBeforeDiscount - adjustedSubtotal
     }
 
-    // Apply tax to adjusted subtotal
+    // Calculate installation cost based on method
+    let installationCost = 0
+
+    if (project.installationMethod === 'MANUAL') {
+      // Manual mode: use manually entered cost
+      installationCost = project.manualInstallationCost || 0
+    } else if (project.installationMethod === 'PER_PRODUCT_TOTAL') {
+      // Per Product Total: sum all product installation prices
+      const complexityMultipliers: Record<string, number> = {
+        'SIMPLE': 0.9,
+        'STANDARD': 1.0,
+        'COMPLEX': 1.2,
+        'VERY_COMPLEX': 1.5
+      }
+
+      const multiplier = complexityMultipliers[project.installationComplexity] || 1.0
+
+      // Sum installation prices from all openings' products
+      let productInstallationSum = 0
+
+      for (const opening of project.openings) {
+        for (const panel of opening.panels) {
+          if (panel.componentInstance?.product?.installationPrice) {
+            productInstallationSum += panel.componentInstance.product.installationPrice
+          }
+        }
+      }
+
+      installationCost = productInstallationSum * multiplier
+    }
+
+    const subtotalWithInstallation = adjustedSubtotal + installationCost
+
+    // Apply tax to subtotal including installation
     const taxRate = project.taxRate || 0
-    const taxAmount = adjustedSubtotal * taxRate
-    const totalPrice = adjustedSubtotal + taxAmount
+    const taxAmount = subtotalWithInstallation * taxRate
+    const totalPrice = subtotalWithInstallation + taxAmount
 
     return NextResponse.json({
       success: true,
@@ -279,6 +312,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         status: project.status,
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
+        installationMethod: project.installationMethod,
+        installationComplexity: project.installationComplexity,
+        manualInstallationCost: project.manualInstallationCost,
         pricingMode: project.pricingMode ? {
           name: project.pricingMode.name,
           markup: project.pricingMode.markup,
@@ -293,6 +329,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       markupAmount,
       discountAmount,
       adjustedSubtotal,
+      installationCost,
       taxRate,
       taxAmount,
       totalPrice

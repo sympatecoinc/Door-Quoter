@@ -9,22 +9,27 @@ datasource db {
 }
 
 model Project {
-  id                     Int           @id @default(autoincrement())
+  id                     Int                @id @default(autoincrement())
   name                   String
-  status                 String        @default("Draft")
+  status                 String             @default("Draft")
   customerId             Int
   pricingModeId          Int?
-  extrusionCostingMethod String        @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED"
-  excludedPartNumbers    String[]      @default([]) // Part numbers to exclude from FULL_STOCK rule (use percentage-based instead)
-  multiplier             Float         @default(1.0) // Price multiplier/markup for quotes (e.g., 1.2 = 20% markup)
-  taxRate                Float         @default(0) // Tax rate as decimal (e.g., 0.08 for 8%)
-  createdAt              DateTime      @default(now())
-  updatedAt              DateTime      @updatedAt
+  extrusionCostingMethod String             @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED"
+  excludedPartNumbers    String[]           @default([]) // Part numbers to exclude from FULL_STOCK rule (use percentage-based instead)
+  multiplier             Float              @default(1.0) // Price multiplier/markup for quotes (e.g., 1.2 = 20% markup)
+  taxRate                Float              @default(0) // Tax rate as decimal (e.g., 0.08 for 8%)
+  installationCost       Float              @default(0) // DEPRECATED - kept for backward compatibility, use manualInstallationCost
+  installationMethod     String             @default("MANUAL") // "MANUAL" or "PER_PRODUCT_TOTAL"
+  installationComplexity String             @default("STANDARD") // "SIMPLE", "STANDARD", "COMPLEX", "VERY_COMPLEX"
+  manualInstallationCost Float              @default(0) // Manual installation cost (preserved when switching modes)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
   dueDate                DateTime?
   boms                   BOM[]
   openings               Opening[]
-  customer               Customer      @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: Restrict)
-  pricingMode            PricingMode?  @relation(fields: [pricingModeId], references: [id], onDelete: SetNull)
+  quoteAttachments       QuoteAttachment[]
+  customer               Customer           @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: Restrict)
+  pricingMode            PricingMode?       @relation(fields: [pricingModeId], references: [id], onDelete: SetNull)
 
   @@map("Projects")
 }
@@ -80,24 +85,26 @@ enum ProductType {
 }
 
 model Product {
-  id                   Int                 @id @default(autoincrement())
+  id                   Int                    @id @default(autoincrement())
   name                 String
   description          String?
-  type                 String              @default("Product")
-  productType          ProductType         @default(SWING_DOOR)
-  archived             Boolean             @default(false)
-  withTrim             String              @default("Without Trim")
+  type                 String                 @default("Product")
+  productType          ProductType            @default(SWING_DOOR)
+  archived             Boolean                @default(false)
+  withTrim             String                 @default("Without Trim")
   glassWidthFormula    String?
   glassHeightFormula   String?
   glassQuantityFormula String?
-  elevationImageData   String?             // Base64 encoded elevation image
-  elevationFileName    String?             // Original elevation filename
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
+  elevationImageData   String?                // Base64 encoded elevation image
+  elevationFileName    String?                // Original elevation filename
+  installationPrice    Float                  @default(0) // Installation cost for this product type (optional)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
   componentInstances   ComponentInstance[]
   productBOMs          ProductBOM[]
   productSubOptions    ProductSubOption[]
   planViews            ProductPlanView[]
+  productDocuments     ProductQuoteDocument[] // Documents associated with this product
 
   @@map("Products")
 }
@@ -188,18 +195,20 @@ model ComponentInstance {
 }
 
 model MasterPart {
-  id               Int                @id @default(autoincrement())
-  partNumber       String             @unique
-  baseName         String
-  description      String?
-  unit             String?
-  cost             Float?
-  partType         String             @default("Hardware")
-  isOption         Boolean            @default(false) // True if this hardware part can be used as a category option
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  stockLengthRules StockLengthRule[]
-  pricingRules     PricingRule[]
+  id                      Int                @id @default(autoincrement())
+  partNumber              String             @unique
+  baseName                String
+  description             String?
+  unit                    String?
+  cost                    Float?
+  partType                String             @default("Hardware")
+  isOption                Boolean            @default(false) // True if this hardware part can be used as a category option
+  optionImagePath         String?            // Path to uploaded image for category options (relative to public/)
+  optionImageOriginalName String?            // Original filename of uploaded image
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  stockLengthRules        StockLengthRule[]
+  pricingRules            PricingRule[]
 
   @@map("MasterParts")
 }
@@ -344,6 +353,24 @@ model CustomerFile {
   @@map("CustomerFiles")
 }
 
+// Quote Attachments - Spec sheets, photos, etc. for quotes
+model QuoteAttachment {
+  id           Int      @id @default(autoincrement())
+  projectId    Int
+  filename     String   // Stored filename in uploads/quote-attachments/[projectId]/
+  originalName String   // Original upload filename
+  mimeType     String   // image/png, image/jpeg, application/pdf
+  size         Int      // File size in bytes
+  type         String   @default("custom") // "spec_sheet", "photo", "custom"
+  displayOrder Int      @default(0) // Order in the PDF
+  description  String?  // Optional description/caption
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("QuoteAttachments")
+}
+
 // Component Library for SHOPGEN Integration
 model ComponentLibrary {
   id                   Int      @id @default(autoincrement())
@@ -427,7 +454,7 @@ model User {
   name         String
   role         Role      @default(VIEWER)
   isActive     Boolean   @default(true)
-  permissions  String[]  @default(["dashboard", "projects", "crm", "products", "masterParts", "accounting", "settings"]) // Available tabs for user
+  permissions  String[]  @default(["dashboard", "projects", "crm", "products", "masterParts", "quoteDocuments", "accounting", "settings"]) // Available tabs for user
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   sessions     Session[]
@@ -444,4 +471,37 @@ model Session {
 
   @@index([userId])
   @@map("Sessions")
+}
+
+// Quote Documents - Persistent documents that can be included in quotes
+model QuoteDocument {
+  id               Int                    @id @default(autoincrement())
+  name             String                 // Display name
+  description      String?                // Optional description
+  filename         String                 // Stored filename (unique identifier)
+  originalName     String                 // Original upload filename
+  mimeType         String                 // File MIME type
+  size             Int                    // File size in bytes
+  category         String                 @default("general") // "spec_sheet", "brochure", "warranty", "installation", "general"
+  isGlobal         Boolean                @default(true) // If true, included in all quotes
+  displayOrder     Int                    @default(0) // Order in PDFs
+  uploadedBy       String?                // User who uploaded
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  productDocuments ProductQuoteDocument[] // Products this document is associated with
+
+  @@map("QuoteDocuments")
+}
+
+// Junction table linking products to quote documents
+model ProductQuoteDocument {
+  id              Int           @id @default(autoincrement())
+  productId       Int
+  quoteDocumentId Int
+  createdAt       DateTime      @default(now())
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quoteDocument   QuoteDocument @relation(fields: [quoteDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, quoteDocumentId])
+  @@map("ProductQuoteDocuments")
 }

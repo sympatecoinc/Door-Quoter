@@ -1,0 +1,37 @@
+2025/11/06 21:49:58 This is the Cloud SQL Proxy v1. It is no longer receiving active feature development. For the latest features and improvements, migrate to the v2 version of the Cloud SQL Proxy. For details, see: https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/main/migration-guide.md
+2025/11/06 21:49:58 current FDs rlimit set to 524288, wanted limit is 8500. Nothing to do here.
+2025/11/06 21:50:03 Listening on 127.0.0.1:5432 for door-quoter:us-central1:door-app-staging
+2025/11/06 21:50:03 Ready for new connections
+2025/11/06 21:50:03 Generated RSA key in 623.373019ms
+2025/11/06 21:50:06 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 21:50:06 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
+2025/11/06 21:50:07 Scheduling refresh of ephemeral certificate in 55m0s
+2025/11/06 21:50:07 Client closed local connection on 127.0.0.1:5432
+2025/11/06 21:50:16 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 21:50:16 Client closed local connection on 127.0.0.1:5432
+2025/11/06 21:50:17 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 21:50:17 Client closed local connection on 127.0.0.1:5432
+2025/11/06 21:51:08 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 21:51:08 Client closed local connection on 127.0.0.1:5432
+2025/11/06 21:51:25 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 21:51:25 Client closed local connection on 127.0.0.1:5432
+2025/11/06 21:51:53 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 21:51:53 Client closed local connection on 127.0.0.1:5432
+2025/11/06 21:52:06 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 21:52:06 Client closed local connection on 127.0.0.1:5432
+2025/11/06 21:52:22 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 21:52:22 Client closed local connection on 127.0.0.1:5432
+2025/11/06 21:58:55 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 21:59:32 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 21:59:52 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 22:00:05 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 22:00:06 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 22:00:18 Client closed local connection on 127.0.0.1:5432
+2025/11/06 22:01:26 Client closed local connection on 127.0.0.1:5432
+2025/11/06 22:01:26 Client closed local connection on 127.0.0.1:5432
+2025/11/06 22:02:39 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 22:03:10 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 22:03:10 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/06 22:04:22 Client closed local connection on 127.0.0.1:5432
+2025/11/06 22:04:22 Client closed local connection on 127.0.0.1:5432
+2025/11/06 22:04:22 Client closed local connection on 127.0.0.1:5432

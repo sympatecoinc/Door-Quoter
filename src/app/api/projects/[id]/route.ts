@@ -150,7 +150,7 @@ export async function PUT(
       )
     }
 
-    const { name, status, dueDate, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId } = await request.json()
+    const { name, status, dueDate, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost } = await request.json()
 
     if (!name) {
       return NextResponse.json(
@@ -184,6 +184,18 @@ export async function PUT(
     }
     if (pricingModeId !== undefined) {
       updateData.pricingModeId = pricingModeId
+    }
+    if (installationCost !== undefined) {
+      updateData.installationCost = installationCost
+    }
+    if (installationMethod !== undefined) {
+      updateData.installationMethod = installationMethod
+    }
+    if (installationComplexity !== undefined) {
+      updateData.installationComplexity = installationComplexity
+    }
+    if (manualInstallationCost !== undefined) {
+      updateData.manualInstallationCost = manualInstallationCost
     }
 
     const updatedProject = await prisma.project.update({

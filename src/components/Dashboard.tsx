@@ -10,6 +10,7 @@ import MasterPartsView from './views/MasterPartsView'
 import AccountingView from './views/AccountingView'
 import SettingsView from './views/SettingsView'
 import QuoteView from './views/QuoteView'
+import QuoteDocumentsView from './views/QuoteDocumentsView'
 
 export default function Dashboard() {
   const { currentMenu, selectedProjectId } = useAppStore()
@@ -26,6 +27,8 @@ export default function Dashboard() {
         return <ProductsView />
       case 'masterParts':
         return <MasterPartsView />
+      case 'quoteDocuments':
+        return <QuoteDocumentsView />
       case 'accounting':
         return <AccountingView />
       case 'settings':

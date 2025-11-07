@@ -13,6 +13,7 @@ interface Product {
   productType: string
   archived: boolean
   withTrim: string
+  installationPrice?: number
   _count: {
     productBOMs: number
     productSubOptions: number
@@ -46,16 +47,14 @@ interface IndividualOption {
 export default function ProductsView() {
   const [activeTab, setActiveTab] = useState('products')
   const [products, setProducts] = useState<Product[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [options, setOptions] = useState<IndividualOption[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null)
   
   // Product editing state
   const [editingProduct, setEditingProduct] = useState<number | null>(null)
   const [editProductName, setEditProductName] = useState('')
   const [editProductDescription, setEditProductDescription] = useState('')
+  const [editProductInstallationPrice, setEditProductInstallationPrice] = useState('0')
   const [updating, setUpdating] = useState(false)
   const [showArchiveDialog, setShowArchiveDialog] = useState<{product: Product, projects: string[]} | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -67,11 +66,7 @@ export default function ProductsView() {
   async function loadData() {
     setLoading(true)
     try {
-      await Promise.all([
-        fetchProducts(),
-        fetchCategories(), 
-        fetchOptions()
-      ])
+      await fetchProducts()
     } finally {
       setLoading(false)
     }
@@ -89,41 +84,19 @@ export default function ProductsView() {
     }
   }
 
-  async function fetchCategories() {
-    try {
-      const response = await fetch('/api/categories')
-      if (response.ok) {
-        const data = await response.json()
-        setCategories(data)
-      }
-    } catch (error) {
-      console.error('Error fetching categories:', error)
-    }
-  }
-
-  async function fetchOptions() {
-    try {
-      const response = await fetch('/api/options')
-      if (response.ok) {
-        const data = await response.json()
-        setOptions(data)
-      }
-    } catch (error) {
-      console.error('Error fetching options:', error)
-    }
-  }
-
 
   function startEditProduct(product: Product) {
     setEditingProduct(product.id)
     setEditProductName(product.name)
     setEditProductDescription(product.description || '')
+    setEditProductInstallationPrice((product.installationPrice || 0).toString())
   }
 
   function cancelEditProduct() {
     setEditingProduct(null)
     setEditProductName('')
     setEditProductDescription('')
+    setEditProductInstallationPrice('0')
   }
 
   async function handleUpdateProduct(e: React.FormEvent) {
@@ -137,7 +110,8 @@ export default function ProductsView() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: editProductName,
-          description: editProductDescription
+          description: editProductDescription,
+          installationPrice: parseFloat(editProductInstallationPrice) || 0
         })
       })
 
@@ -145,6 +119,7 @@ export default function ProductsView() {
         setEditingProduct(null)
         setEditProductName('')
         setEditProductDescription('')
+        setEditProductInstallationPrice('0')
         fetchProducts()
       }
     } catch (error) {
@@ -233,8 +208,6 @@ export default function ProductsView() {
 
   const tabs = [
     { id: 'products', label: 'Products', icon: Package },
-    { id: 'categories', label: 'Categories', icon: Tag },
-    { id: 'options', label: 'Options', icon: Settings },
   ]
 
   return (
@@ -286,9 +259,9 @@ export default function ProductsView() {
           <>
             {activeTab === 'products' && (
               selectedProduct ? (
-                <ProductDetailView 
+                <ProductDetailView
                   product={selectedProduct}
-                  categories={categories}
+                  categories={[]}
                   productBOMs={[]}
                   onBack={() => setSelectedProduct(null)}
                   onRefresh={loadData}
@@ -303,6 +276,7 @@ export default function ProductsView() {
                   editingProduct={editingProduct}
                   editProductName={editProductName}
                   editProductDescription={editProductDescription}
+                  editProductInstallationPrice={editProductInstallationPrice}
                   updating={updating}
                   onStartEdit={startEditProduct}
                   onCancelEdit={cancelEditProduct}
@@ -311,27 +285,12 @@ export default function ProductsView() {
                   onDuplicateProduct={handleDuplicateProduct}
                   setEditProductName={setEditProductName}
                   setEditProductDescription={setEditProductDescription}
+                  setEditProductInstallationPrice={setEditProductInstallationPrice}
                   showCreateForm={showCreateForm}
                   setShowCreateForm={setShowCreateForm}
                 />
               )
             )}
-            {activeTab === 'categories' && (
-              selectedCategory ? (
-                <CategoryDetailView 
-                  category={selectedCategory}
-                  onBack={() => setSelectedCategory(null)}
-                  onRefresh={fetchCategories}
-                />
-              ) : (
-                <CategoriesTab 
-                  categories={categories} 
-                  onRefresh={fetchCategories}
-                  onSelectCategory={setSelectedCategory}
-                />
-              )
-            )}
-            {activeTab === 'options' && <OptionsTab options={options} categories={categories} onRefresh={fetchOptions} />}
           </>
         )}
       </div>
@@ -405,6 +364,7 @@ function ProductsTab({
   editingProduct: number | null,
   editProductName: string,
   editProductDescription: string,
+  editProductInstallationPrice: string,
   updating: boolean,
   onStartEdit: (product: Product) => void,
   onCancelEdit: () => void,
@@ -413,6 +373,7 @@ function ProductsTab({
   onDuplicateProduct: (product: Product) => void,
   setEditProductName: (name: string) => void,
   setEditProductDescription: (description: string) => void,
+  setEditProductInstallationPrice: (price: string) => void,
   showCreateForm: boolean,
   setShowCreateForm: (show: boolean) => void
 }) {
@@ -420,6 +381,7 @@ function ProductsTab({
   const [newProductDescription, setNewProductDescription] = useState('')
   const [newProductType, setNewProductType] = useState('SWING_DOOR')
   const [newProductWithTrim, setNewProductWithTrim] = useState('Without Trim')
+  const [newProductInstallationPrice, setNewProductInstallationPrice] = useState(0)
   const [creating, setCreating] = useState(false)
 
   async function handleCreateProduct(e: React.FormEvent) {
@@ -435,7 +397,8 @@ function ProductsTab({
           name: newProductName,
           description: newProductDescription,
           productType: newProductType,
-          withTrim: newProductWithTrim
+          withTrim: newProductWithTrim,
+          installationPrice: newProductInstallationPrice
         })
       })
 
@@ -444,6 +407,7 @@ function ProductsTab({
         setNewProductDescription('')
         setNewProductType('SWING_DOOR')
         setNewProductWithTrim('Without Trim')
+        setNewProductInstallationPrice(0)
         setShowCreateForm(false)
         onRefresh()
         alert('Product created successfully!')
@@ -483,6 +447,23 @@ function ProductsTab({
                       placeholder="Product description"
                       rows={2}
                     />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Installation Price (Optional)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editProductInstallationPrice}
+                        onChange={(e) => setEditProductInstallationPrice(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        placeholder="0.00"
+                      />
+                    </div>
                   </div>
                   <div className="flex justify-between items-center">
                     <button
@@ -628,6 +609,25 @@ function ProductsTab({
                   <option value="With Trim">With Trim</option>
                 </select>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Installation Price</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                  <input
+                    type="number"
+                    value={newProductInstallationPrice}
+                    onChange={(e) => setNewProductInstallationPrice(parseFloat(e.target.value) || 0)}
+                    step="0.01"
+                    min="0"
+                    className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    placeholder="0.00"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Base installation cost for this product type (optional)
+                </p>
+              </div>
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
@@ -636,6 +636,7 @@ function ProductsTab({
                     setNewProductDescription('')
                     setNewProductType('SWING_DOOR')
                     setNewProductWithTrim('Without Trim')
+                    setNewProductInstallationPrice(0)
                     setShowCreateForm(false)
                   }}
                   className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -658,10 +659,10 @@ function ProductsTab({
   )
 }
 
-function CategoriesTab({ categories, onRefresh, onSelectCategory }: { 
-  categories: Category[], 
-  onRefresh: () => void,
+function CategoriesTab({ categories, onSelectCategory, onRefresh }: {
+  categories: Category[]
   onSelectCategory: (category: Category) => void
+  onRefresh: () => void
 }) {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')

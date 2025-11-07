@@ -61,6 +61,7 @@ export default function LeadForm({ isOpen, onClose, onSubmit, defaultStage = 'Ne
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.title.trim()) return
+    if (!customerId && !formData.customerId) return
 
     setIsSubmitting(true)
     try {
@@ -127,15 +128,16 @@ export default function LeadForm({ isOpen, onClose, onSubmit, defaultStage = 'Ne
           {!customerId && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Customer
+                Customer *
               </label>
               <select
                 name="customerId"
                 value={formData.customerId}
                 onChange={handleChange}
+                required
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="">Select a customer (optional)</option>
+                <option value="">Select a customer *</option>
                 {loadingCustomers ? (
                   <option disabled>Loading customers...</option>
                 ) : (
@@ -267,7 +269,7 @@ export default function LeadForm({ isOpen, onClose, onSubmit, defaultStage = 'Ne
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !formData.title.trim()}
+              disabled={isSubmitting || !formData.title.trim() || (!customerId && !formData.customerId)}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Creating...' : 'Create Lead'}

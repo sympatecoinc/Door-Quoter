@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Download, FileText, Printer, Ruler, Palette, Eye, Wrench, DollarSign } from 'lucide-react'
+import { ArrowLeft, Download, FileText, Printer, Ruler, Palette, Eye, Wrench, DollarSign, Paperclip } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
-import html2canvas from 'html2canvas'
-import { jsPDF } from 'jspdf'
+import QuoteAttachmentsManager from '../quote/QuoteAttachmentsManager'
 
 interface QuoteItem {
   openingId: number
@@ -29,6 +28,9 @@ interface QuoteData {
     status: string
     createdAt: string
     updatedAt: string
+    installationMethod: 'MANUAL' | 'PER_PRODUCT_TOTAL'
+    installationComplexity: 'SIMPLE' | 'STANDARD' | 'COMPLEX' | 'VERY_COMPLEX'
+    manualInstallationCost: number
     pricingMode?: {
       name: string
       markup: number
@@ -40,6 +42,7 @@ interface QuoteData {
   markupAmount: number
   discountAmount: number
   adjustedSubtotal: number
+  installationCost: number
   taxRate: number
   taxAmount: number
   totalPrice: number
@@ -53,11 +56,25 @@ export default function QuoteView() {
   const [isDownloading, setIsDownloading] = useState(false)
   const quoteRef = useRef<HTMLDivElement>(null)
 
+  // Installation state
+  const [installationMethod, setInstallationMethod] = useState<'MANUAL' | 'PER_PRODUCT_TOTAL'>('MANUAL')
+  const [installationComplexity, setInstallationComplexity] = useState<'SIMPLE' | 'STANDARD' | 'COMPLEX' | 'VERY_COMPLEX'>('STANDARD')
+  const [manualInstallationCost, setManualInstallationCost] = useState<number>(0)
+
   useEffect(() => {
     if (selectedProjectId) {
       fetchQuoteData()
     }
   }, [selectedProjectId])
+
+  // Initialize installation state from quote data
+  useEffect(() => {
+    if (quoteData?.project) {
+      setInstallationMethod(quoteData.project.installationMethod)
+      setInstallationComplexity(quoteData.project.installationComplexity)
+      setManualInstallationCost(quoteData.project.manualInstallationCost)
+    }
+  }, [quoteData])
 
   const fetchQuoteData = async () => {
     if (!selectedProjectId) return
@@ -65,13 +82,13 @@ export default function QuoteView() {
     try {
       setLoading(true)
       const response = await fetch(`/api/projects/${selectedProjectId}/quote`)
-      
+
       if (!response.ok) {
         throw new Error('Failed to generate quote')
       }
 
       const data = await response.json()
-      
+
       if (data.success) {
         setQuoteData(data)
       } else {
@@ -85,89 +102,73 @@ export default function QuoteView() {
     }
   }
 
+  const updateProjectInstallation = async (
+    method: 'MANUAL' | 'PER_PRODUCT_TOTAL',
+    complexity: 'SIMPLE' | 'STANDARD' | 'COMPLEX' | 'VERY_COMPLEX',
+    manualCost: number
+  ) => {
+    if (!selectedProjectId || !quoteData) return
+
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: quoteData.project.name,
+          status: quoteData.project.status,
+          installationMethod: method,
+          installationComplexity: complexity,
+          manualInstallationCost: manualCost,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update installation settings')
+      }
+
+      // Refresh quote to show updated installation cost
+      await fetchQuoteData()
+      showSuccess('Installation settings updated')
+    } catch (error) {
+      console.error('Error updating installation:', error)
+      showError('Failed to update installation settings')
+    }
+  }
+
   const handlePrint = () => {
     window.print()
   }
 
   const handleDownload = async () => {
-    if (!quoteRef.current || !quoteData) return
+    if (!quoteData) return
 
     try {
       setIsDownloading(true)
 
-      // Temporarily hide print-hidden elements and adjust for PDF
-      const printHiddenElements = document.querySelectorAll('.print\\:hidden')
-      printHiddenElements.forEach(el => {
-        (el as HTMLElement).style.display = 'none'
-      })
+      // Use the new server-side PDF generation API
+      const response = await fetch(`/api/projects/${selectedProjectId}/quote/pdf`)
 
-      // Wait for all images to load before capturing
-      const images = quoteRef.current.querySelectorAll('img')
-      await Promise.all(
-        Array.from(images).map((img) => {
-          if (img.complete) return Promise.resolve()
-          return new Promise((resolve) => {
-            img.onload = () => resolve(null)
-            img.onerror = () => resolve(null)
-          })
-        })
-      )
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF')
+      }
 
-      // Small delay to ensure rendering is complete
-      await new Promise(resolve => setTimeout(resolve, 100))
+      // Get the PDF blob
+      const blob = await response.blob()
 
-      // Configure options for better PDF output
-      const canvas = await html2canvas(quoteRef.current, {
-        scale: 2, // Higher resolution
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        width: quoteRef.current.scrollWidth,
-        height: quoteRef.current.scrollHeight,
-        logging: true, // Enable logging for debugging
-        imageTimeout: 0, // No timeout for image loading
-        removeContainer: true,
-      })
-      
-      // Restore hidden elements
-      printHiddenElements.forEach(el => {
-        (el as HTMLElement).style.display = ''
-      })
-      
-      const imgData = canvas.toDataURL('image/png')
-      
-      // Create PDF
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: 'a4'
-      })
-      
-      const pdfWidth = pdf.internal.pageSize.getWidth()
-      const pdfHeight = pdf.internal.pageSize.getHeight()
-      const imgWidth = canvas.width
-      const imgHeight = canvas.height
-      
-      // Add even smaller margins to prevent right-side cutoff
-      const marginX = 8
-      const marginY = 6
-      const availableWidth = pdfWidth - (2 * marginX)
-      const availableHeight = pdfHeight - (2 * marginY)
-      
-      const ratio = Math.min(availableWidth / imgWidth, availableHeight / imgHeight)
-      const imgX = marginX
-      const imgY = marginY
-      
-      pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio)
-      
-      // Generate filename
-      const filename = `Quote_${quoteData.project.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
-      
-      // Download the PDF
-      pdf.save(filename)
-      
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Quote_${quoteData.project.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
       showSuccess('Quote downloaded successfully!')
-      
+
     } catch (error) {
       console.error('Error generating PDF:', error)
       showError('Failed to download quote')
@@ -236,7 +237,7 @@ export default function QuoteView() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6 print:hidden">
         <div className="flex items-center space-x-4">
@@ -250,7 +251,7 @@ export default function QuoteView() {
             Quote - {quoteData.project.name}
           </h1>
         </div>
-        
+
         <div className="flex items-center space-x-3">
           <button
             onClick={handlePrint}
@@ -271,6 +272,103 @@ export default function QuoteView() {
             )}
             <span>{isDownloading ? 'Generating...' : 'Download PDF'}</span>
           </button>
+        </div>
+      </div>
+
+      {/* Installation Settings */}
+      <div className="mb-6 print:hidden">
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
+          <div className="flex items-center space-x-2 mb-4">
+            <Wrench className="w-5 h-5 text-gray-700" />
+            <h2 className="text-lg font-semibold text-gray-900">Installation Settings</h2>
+          </div>
+
+          <div className="space-y-4">
+            {/* Installation Method Dropdown */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Calculation Method
+              </label>
+              <select
+                value={installationMethod}
+                onChange={(e) => {
+                  const method = e.target.value as 'MANUAL' | 'PER_PRODUCT_TOTAL'
+                  setInstallationMethod(method)
+                  updateProjectInstallation(method, installationComplexity, manualInstallationCost)
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="MANUAL">Manual - Enter Fixed Amount</option>
+                <option value="PER_PRODUCT_TOTAL">Per Product Total - Auto-Calculate from Products</option>
+              </select>
+            </div>
+
+            {/* Conditional Inputs */}
+            {installationMethod === 'MANUAL' ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Installation Cost
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={manualInstallationCost}
+                    onChange={(e) => {
+                      const cost = parseFloat(e.target.value) || 0
+                      setManualInstallationCost(cost)
+                    }}
+                    onBlur={() => {
+                      updateProjectInstallation(installationMethod, installationComplexity, manualInstallationCost)
+                    }}
+                    className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Installation Complexity
+                </label>
+                <select
+                  value={installationComplexity}
+                  onChange={(e) => {
+                    const complexity = e.target.value as 'SIMPLE' | 'STANDARD' | 'COMPLEX' | 'VERY_COMPLEX'
+                    setInstallationComplexity(complexity)
+                    updateProjectInstallation(installationMethod, complexity, manualInstallationCost)
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="SIMPLE">Simple (0.9x multiplier)</option>
+                  <option value="STANDARD">Standard (1.0x multiplier)</option>
+                  <option value="COMPLEX">Complex (1.25x multiplier)</option>
+                  <option value="VERY_COMPLEX">Very Complex (1.5x multiplier)</option>
+                </select>
+                <p className="mt-2 text-sm text-gray-500">
+                  Automatically calculates installation based on product installation prices and complexity.
+                </p>
+              </div>
+            )}
+
+            {/* Current Installation Cost Display */}
+            <div className="pt-4 border-t border-gray-200">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-gray-700">Current Installation Cost:</span>
+                <span className="text-xl font-semibold text-gray-900">
+                  ${quoteData.installationCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Quote Attachments Manager */}
+      <div className="mb-6 print:hidden">
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
+          <QuoteAttachmentsManager projectId={quoteData.project.id} />
         </div>
       </div>
 
@@ -423,9 +521,17 @@ export default function QuoteView() {
             <div className="text-right space-y-3">
               {/* Subtotal (after markup/discount applied) */}
               <div className="flex justify-between items-center gap-8">
-                <span className="text-sm font-medium text-gray-500 uppercase tracking-wide">Subtotal</span>
+                <span className="text-sm font-medium text-gray-500 uppercase tracking-wide">Subtotal (Openings)</span>
                 <span className="text-xl text-gray-900">
                   ${quoteData.adjustedSubtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                </span>
+              </div>
+
+              {/* Installation - always show */}
+              <div className="flex justify-between items-center gap-8">
+                <span className="text-sm font-medium text-gray-500 uppercase tracking-wide">Installation</span>
+                <span className="text-xl text-gray-900">
+                  ${quoteData.installationCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                 </span>
               </div>
 

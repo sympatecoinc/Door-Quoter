@@ -197,6 +197,7 @@ If test/build fails:
 - Migrations: `npx prisma migrate dev`
 - Always verify database connection before schema changes
 - Test database operations after migrations
+- **For database connection setup:** See `MANUAL_DATABASE_MIGRATION_GUIDE.md` for complete instructions on establishing Cloud SQL proxy connections to staging/production databases
 
 **Testing:**
 - Run tests after significant changes
