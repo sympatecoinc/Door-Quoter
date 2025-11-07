@@ -46,6 +46,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       include: {
         pricingMode: true, // Include pricing mode
         openings: {
+          orderBy: { id: 'asc' },
           include: {
             panels: {
               include: {

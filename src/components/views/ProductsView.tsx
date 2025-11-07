@@ -347,6 +347,7 @@ function ProductsTab({
   editingProduct,
   editProductName,
   editProductDescription,
+  editProductInstallationPrice,
   updating,
   onStartEdit,
   onCancelEdit,
@@ -355,6 +356,7 @@ function ProductsTab({
   onDuplicateProduct,
   setEditProductName,
   setEditProductDescription,
+  setEditProductInstallationPrice,
   showCreateForm,
   setShowCreateForm
 }: {

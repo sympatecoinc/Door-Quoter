@@ -1,5 +1,7 @@
 # Run Task - ClickUp Task Implementation Workflow
 
+IMPORTANT: MAKE SURE YOU ARE ON THE DEV BRANCH
+
 Automatically implement a ClickUp task end-to-end with testing and updates.
 
 ## Instructions
@@ -81,6 +83,13 @@ Present the plan to the user and get confirmation before proceeding.
 ### Step 6: Execute Implementation
 
 Follow the workflow from CLAUDE.md:
+
+### Update Status
+
+Set the CUrrent ClickUp Task Status to "DEVELOPMENT"
+
+### Track Time
+Start Time to Track Time
 
 **For each task in your plan:**
 1. Mark as in_progress in TodoWrite

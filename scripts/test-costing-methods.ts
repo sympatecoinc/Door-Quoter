@@ -7,6 +7,7 @@ async function testCostingMethods() {
   const project = await prisma.project.findFirst({
     include: {
       openings: {
+        orderBy: { id: 'asc' },
         include: {
           panels: true
         }

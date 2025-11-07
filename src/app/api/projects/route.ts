@@ -6,6 +6,7 @@ export async function GET() {
     const projects = await prisma.project.findMany({
       include: {
         openings: {
+          orderBy: { id: 'asc' },
           include: {
             panels: {
               include: {
@@ -75,6 +76,7 @@ export async function POST(request: NextRequest) {
       data: projectData,
       include: {
         openings: {
+          orderBy: { id: 'asc' },
           select: { id: true, name: true, price: true }
         }
       }
