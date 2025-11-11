@@ -403,6 +403,7 @@ interface Product {
   glassWidthFormula?: string
   glassHeightFormula?: string
   glassQuantityFormula?: string
+  installationPrice?: number
   _count: {
     productBOMs: number
     productSubOptions: number
@@ -520,6 +521,9 @@ export default function ProductDetailView({
   const [showElevationUpload, setShowElevationUpload] = useState(false)
   const [elevationFile, setElevationFile] = useState<File | null>(null)
   const [uploadingElevation, setUploadingElevation] = useState(false)
+  const [editingInstallationPrice, setEditingInstallationPrice] = useState(false)
+  const [installationPriceValue, setInstallationPriceValue] = useState('')
+  const [savingInstallationPrice, setSavingInstallationPrice] = useState(false)
 
   // Fetch detailed product data including linked categories and plan views
   useEffect(() => {
@@ -837,6 +841,50 @@ export default function ProductDetailView({
     } catch (error) {
       console.error('Error deleting plan view:', error)
       alert('Error deleting plan view')
+    }
+  }
+
+  function startEditInstallationPrice() {
+    setInstallationPriceValue((productDetails?.installationPrice || 0).toString())
+    setEditingInstallationPrice(true)
+  }
+
+  function cancelEditInstallationPrice() {
+    setInstallationPriceValue('')
+    setEditingInstallationPrice(false)
+  }
+
+  async function handleSaveInstallationPrice() {
+    const price = parseFloat(installationPriceValue) || 0
+
+    setSavingInstallationPrice(true)
+    try {
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          installationPrice: price
+        })
+      })
+
+      if (response.ok) {
+        // Refresh product details
+        const detailsResponse = await fetch(`/api/products/${product.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setProductDetails(data)
+        }
+        setEditingInstallationPrice(false)
+        onRefresh()
+        showSuccess('Installation price updated successfully!')
+      } else {
+        showError('Failed to update installation price')
+      }
+    } catch (error) {
+      console.error('Error updating installation price:', error)
+      showError('Error updating installation price')
+    } finally {
+      setSavingInstallationPrice(false)
     }
   }
 
@@ -1565,6 +1613,90 @@ export default function ProductDetailView({
                 >
                   Link your first category
                 </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Installation Price Section */}
+        <div className="col-span-full mt-6">
+          <div className="bg-gray-50 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Installation Price</h3>
+              {!editingInstallationPrice && (
+                <button
+                  onClick={startEditInstallationPrice}
+                  className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                >
+                  <Edit2 className="w-4 h-4 mr-1" />
+                  Edit Price
+                </button>
+              )}
+            </div>
+
+            {editingInstallationPrice ? (
+              <div className="bg-white rounded-lg p-4 border border-gray-200">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Installation Price
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={installationPriceValue}
+                        onChange={(e) => setInstallationPriceValue(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Base installation cost for this product type
+                    </p>
+                  </div>
+
+                  <div className="flex justify-end space-x-3">
+                    <button
+                      onClick={cancelEditInstallationPrice}
+                      disabled={savingInstallationPrice}
+                      className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveInstallationPrice}
+                      disabled={savingInstallationPrice}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                    >
+                      {savingInstallationPrice ? (
+                        <>
+                          <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4 mr-2" />
+                          Save
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-gray-900">
+                <div className="flex items-center space-x-2">
+                  <span className="text-2xl font-semibold">
+                    ${(productDetails?.installationPrice || 0).toFixed(2)}
+                  </span>
+                  <span className="text-sm text-gray-500">per unit</span>
+                </div>
+                <p className="text-sm text-gray-600 mt-2">
+                  This price will be used for automatic installation cost calculations in quotes when "Per Product Total" method is selected.
+                </p>
               </div>
             )}
           </div>

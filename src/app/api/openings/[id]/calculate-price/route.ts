@@ -371,6 +371,7 @@ export async function POST(
       if (component.subOptionSelections) {
         try {
           const selections = JSON.parse(component.subOptionSelections)
+          const includedOptions = component.includedOptions ? JSON.parse(component.includedOptions) : []
 
           for (const [categoryId, optionId] of Object.entries(selections)) {
             if (!optionId) continue
@@ -384,15 +385,20 @@ export async function POST(
               io.id === parseInt(optionId as string)
             )
 
-            if (individualOption && individualOption.price > 0) {
+            if (individualOption) {
+              // Check if this option is marked as included (no charge)
+              const isIncluded = includedOptions.includes(individualOption.id)
+              const optionPrice = isIncluded ? 0 : individualOption.price
+
               componentBreakdown.optionCosts.push({
                 categoryName: category?.name || '',
                 optionName: individualOption.name,
-                price: individualOption.price
+                price: optionPrice,
+                isIncluded: isIncluded
               })
 
-              componentBreakdown.totalOptionCost += individualOption.price
-              componentCost += individualOption.price
+              componentBreakdown.totalOptionCost += optionPrice
+              componentCost += optionPrice
             }
           }
         } catch (error) {

@@ -144,6 +144,7 @@ export default function ProjectDetailView() {
   const [selectedComponentId, setSelectedComponentId] = useState<number | null>(null)
   const [componentOptions, setComponentOptions] = useState<any[]>([])
   const [selectedOptions, setSelectedOptions] = useState<Record<string, number | null>>({})
+  const [includedOptions, setIncludedOptions] = useState<number[]>([]) // Hardware options marked as included (no charge)
   const [editingComponentWidth, setEditingComponentWidth] = useState<string>('')
   const [editingComponentHeight, setEditingComponentHeight] = useState<string>('')
   const [currentPanelId, setCurrentPanelId] = useState<number | null>(null)
@@ -668,6 +669,7 @@ export default function ProjectDetailView() {
           const productData = await productResponse.json()
           setComponentOptions(productData.productSubOptions || [])
           setSelectedOptions(JSON.parse(componentData.subOptionSelections || '{}'))
+          setIncludedOptions(JSON.parse(componentData.includedOptions || '[]'))
           setShowComponentEdit(true)
         }
       }
@@ -1590,10 +1592,17 @@ export default function ProjectDetailView() {
                     )}
                     <select
                       value={selectedOptions[option.category.id] || ''}
-                      onChange={(e) => setSelectedOptions({
-                        ...selectedOptions,
-                        [option.category.id]: e.target.value ? parseInt(e.target.value) : null
-                      })}
+                      onChange={(e) => {
+                        const newValue = e.target.value ? parseInt(e.target.value) : null
+                        setSelectedOptions({
+                          ...selectedOptions,
+                          [option.category.id]: newValue
+                        })
+                        // If unselecting an option, remove it from included list
+                        if (!newValue && selectedOptions[option.category.id]) {
+                          setIncludedOptions(includedOptions.filter(id => id !== selectedOptions[option.category.id]))
+                        }
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                     >
                       <option value="">Select option...</option>
@@ -1604,6 +1613,33 @@ export default function ProjectDetailView() {
                         </option>
                       ))}
                     </select>
+                    {/* Show "Included" checkbox only when an option is selected */}
+                    {selectedOptions[option.category.id] && (
+                      <div className="mt-2 flex items-center">
+                        <input
+                          type="checkbox"
+                          id={`included-${option.category.id}`}
+                          checked={includedOptions.includes(selectedOptions[option.category.id] as number)}
+                          onChange={(e) => {
+                            const optionId = selectedOptions[option.category.id] as number
+                            if (e.target.checked) {
+                              setIncludedOptions([...includedOptions, optionId])
+                            } else {
+                              setIncludedOptions(includedOptions.filter(id => id !== optionId))
+                            }
+                          }}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor={`included-${option.category.id}`} className="ml-2 text-sm text-gray-700">
+                          Included (no charge)
+                          {includedOptions.includes(selectedOptions[option.category.id] as number) && (
+                            <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded">
+                              Included
+                            </span>
+                          )}
+                        </label>
+                      </div>
+                    )}
                   </div>
                 ))
               ) : (
@@ -1616,6 +1652,7 @@ export default function ProjectDetailView() {
                   setShowComponentEdit(false)
                   setSelectedComponentId(null)
                   setSelectedOptions({})
+                  setIncludedOptions([])
                   setEditingComponentWidth('')
                   setEditingComponentHeight('')
                   setCurrentPanelId(null)
@@ -1661,7 +1698,8 @@ export default function ProjectDetailView() {
                         'Content-Type': 'application/json',
                       },
                       body: JSON.stringify({
-                        subOptionSelections: selectedOptions
+                        subOptionSelections: selectedOptions,
+                        includedOptions: includedOptions
                       })
                     })
 

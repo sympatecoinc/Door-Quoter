@@ -19,7 +19,7 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { subOptionSelections } = body
+    const { subOptionSelections, includedOptions } = body
 
     if (!subOptionSelections || typeof subOptionSelections !== 'object') {
       return NextResponse.json(
@@ -28,12 +28,20 @@ export async function PATCH(
       )
     }
 
+    // Build update data object
+    const updateData: any = {
+      subOptionSelections: JSON.stringify(subOptionSelections)
+    }
+
+    // Add includedOptions if provided
+    if (includedOptions !== undefined) {
+      updateData.includedOptions = JSON.stringify(includedOptions)
+    }
+
     // Update the component instance with the new option selections
     const updatedComponent = await prisma.componentInstance.update({
       where: { id: componentId },
-      data: {
-        subOptionSelections: JSON.stringify(subOptionSelections)
-      }
+      data: updateData
     })
 
     return NextResponse.json(updatedComponent)

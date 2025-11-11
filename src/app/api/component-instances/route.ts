@@ -31,10 +31,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { 
-      panelId, 
-      productId, 
-      subOptionSelections = {} 
+    const {
+      panelId,
+      productId,
+      subOptionSelections = {},
+      includedOptions = [] // Array of option IDs to mark as included (no charge)
     } = await request.json()
 
     if (!panelId || !productId) {
@@ -84,7 +85,8 @@ export async function POST(request: NextRequest) {
       data: {
         panelId: parseInt(panelId),
         productId: parseInt(productId),
-        subOptionSelections: JSON.stringify(subOptionSelections)
+        subOptionSelections: JSON.stringify(subOptionSelections),
+        includedOptions: JSON.stringify(includedOptions)
       },
       include: {
         product: true,

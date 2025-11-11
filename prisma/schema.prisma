@@ -186,6 +186,7 @@ model ComponentInstance {
   panelId             Int      @unique
   productId           Int
   subOptionSelections String
+  includedOptions     String   @default("[]") // JSON array: [optionId1, optionId2, ...] - options marked as included (no charge)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   product             Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
