@@ -35,16 +35,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const instanceId = parseInt(id)
-    const { productId, subOptionSelections } = await request.json()
+    const { productId, subOptionSelections, includedOptions } = await request.json()
 
     const updateData: any = {}
-    
+
     if (productId !== undefined) {
       updateData.productId = parseInt(productId)
     }
-    
+
     if (subOptionSelections !== undefined) {
       updateData.subOptionSelections = JSON.stringify(subOptionSelections)
+    }
+
+    if (includedOptions !== undefined) {
+      updateData.includedOptions = JSON.stringify(includedOptions)
     }
 
     const componentInstance = await prisma.componentInstance.update({
