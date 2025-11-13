@@ -30,22 +30,47 @@ function evaluateFormula(formula: string, variables: Record<string, number>): nu
 }
 
 // Function to find the best stock length rule for extrusions based on calculated part length from ProductBOM formula
-function findBestStockLengthRule(rules: any[], requiredLength: number): any | null {
-  const applicableRules = rules.filter(rule => {
-    // Check if rule applies to the required part length
-    // Note: StockLengthRules now work based on the calculated part length from ProductBOM formulas
-    const matchesLength = (rule.minHeight === null || requiredLength >= rule.minHeight) && 
+function findBestStockLengthRule(rules: any[], requiredLength: number, finishColor?: string): any | null {
+  // Find matching rules based on length only
+  const matchingRules = rules.filter(rule => {
+    const matchesLength = (rule.minHeight === null || requiredLength >= rule.minHeight) &&
                          (rule.maxHeight === null || requiredLength <= rule.maxHeight)
-    
-    return rule.isActive && matchesLength
+    return matchesLength && rule.isActive
   })
-  
-  // Return the rule with the most restrictive constraints (most specific)
-  return applicableRules.sort((a, b) => {
+
+  if (matchingRules.length === 0) return null
+
+  // Sort by specificity (tightest range first)
+  const bestRule = matchingRules.sort((a, b) => {
     const aSpecificity = (a.minHeight !== null ? 1 : 0) + (a.maxHeight !== null ? 1 : 0)
     const bSpecificity = (b.minHeight !== null ? 1 : 0) + (b.maxHeight !== null ? 1 : 0)
     return bSpecificity - aSpecificity
-  })[0] || null
+  })[0]
+
+  // Select the correct price based on finish color and isMillFinish
+  if (bestRule) {
+    let priceToUse = bestRule.basePrice // Fallback price
+
+    // Mill finish parts always use basePrice regardless of finish color
+    if (bestRule.isMillFinish) {
+      priceToUse = bestRule.basePrice
+    } else {
+      // Non-mill finish: use color-specific pricing
+      if (finishColor === 'Black' && bestRule.basePriceBlack !== null && bestRule.basePriceBlack !== undefined) {
+        priceToUse = bestRule.basePriceBlack
+      } else if (finishColor === 'Clear' && bestRule.basePriceClear !== null && bestRule.basePriceClear !== undefined) {
+        priceToUse = bestRule.basePriceClear
+      }
+    }
+
+    // Return rule with selected price as basePrice for backwards compatibility
+    return {
+      ...bestRule,
+      basePrice: priceToUse
+    }
+  }
+
+  return null
 }
 
 function calculateRequiredPartLength(bom: any, variables: any): number {
@@ -174,7 +199,7 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
           // Calculate the required part length from the ProductBOM formula
           const requiredLength = calculateRequiredPartLength(bom, variables)
 
-          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
+          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength, finishColor)
           if (bestRule) {
             // Check if this part is excluded from FULL_STOCK rule
             // Need to check both exact match and base part number (without finish codes)

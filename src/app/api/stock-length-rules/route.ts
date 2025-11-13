@@ -39,29 +39,47 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { 
-      name, 
-      minHeight, 
-      maxHeight, 
+    const {
+      name,
+      minHeight,
+      maxHeight,
       stockLength,
-      appliesTo, 
-      partType, 
+      appliesTo,
+      partType,
       isActive,
+      isMillFinish,
       basePrice,
+      basePriceBlack,
+      basePriceClear,
       masterPartId
     } = body
 
     if (!name || !masterPartId) {
-      return NextResponse.json({ 
-        error: 'Name and master part ID are required' 
+      return NextResponse.json({
+        error: 'Name and master part ID are required'
       }, { status: 400 })
     }
 
     // Validate that stockLength is provided
     if (!stockLength) {
-      return NextResponse.json({ 
-        error: 'Stock length is required' 
+      return NextResponse.json({
+        error: 'Stock length is required'
       }, { status: 400 })
+    }
+
+    // Validate pricing based on isMillFinish
+    if (isMillFinish) {
+      if (!basePrice) {
+        return NextResponse.json({
+          error: 'Base price is required for mill finish extrusions'
+        }, { status: 400 })
+      }
+    } else {
+      if (!basePriceBlack && !basePriceClear) {
+        return NextResponse.json({
+          error: 'At least one color price (Black or Clear) is required for non-mill finish extrusions'
+        }, { status: 400 })
+      }
     }
 
     const newRule = await prisma.stockLengthRule.create({
@@ -73,7 +91,10 @@ export async function POST(request: NextRequest) {
         appliesTo: appliesTo || 'height',
         partType: partType || 'Extrusion',
         isActive: isActive !== false,
+        isMillFinish: isMillFinish || false,
         basePrice: basePrice ? Number(basePrice) : null,
+        basePriceBlack: basePriceBlack ? Number(basePriceBlack) : null,
+        basePriceClear: basePriceClear ? Number(basePriceClear) : null,
         masterPartId: Number(masterPartId)
       },
       include: {

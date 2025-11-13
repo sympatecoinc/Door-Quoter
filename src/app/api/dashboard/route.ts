@@ -61,14 +61,21 @@ async function calculateProjectSalePrice(projectId: number, costPrice: number, p
 
 export async function GET() {
   try {
-    // Get total projects
-    const totalProjects = await prisma.project.count()
+    // Get total projects (excluding Draft and Archive)
+    const totalProjects = await prisma.project.count({
+      where: {
+        status: { notIn: ['Archive', 'Draft'] }
+      }
+    })
 
     // Get total openings
     const totalOpenings = await prisma.opening.count()
 
-    // Get all projects with pricing modes to calculate total portfolio value
+    // Get all projects with pricing modes to calculate total portfolio value (excluding Draft and Archive)
     const allProjects = await prisma.project.findMany({
+      where: {
+        status: { notIn: ['Archive', 'Draft'] }
+      },
       include: {
         openings: true,
         pricingMode: true
@@ -83,8 +90,11 @@ export async function GET() {
       totalValue += saleValue
     }
 
-    // Get recent projects with their openings and pricing modes
+    // Get active projects with their openings and pricing modes (excluding Draft and Archive)
     const recentProjects = await prisma.project.findMany({
+      where: {
+        status: { notIn: ['Archive', 'Draft'] }
+      },
       take: 5,
       orderBy: {
         updatedAt: 'desc'

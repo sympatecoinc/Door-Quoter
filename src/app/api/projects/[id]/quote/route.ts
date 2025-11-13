@@ -49,6 +49,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           orderBy: { id: 'asc' },
           include: {
             panels: {
+              orderBy: { id: 'asc' },
               include: {
                 componentInstance: {
                   include: {

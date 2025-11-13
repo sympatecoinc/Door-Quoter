@@ -48,11 +48,14 @@ export async function GET(request: NextRequest) {
       'partType',
       'isOption',
       // Stock length rule fields (for extrusions)
+      'stockRule_isMillFinish',
       'stockRule_minHeight',
       'stockRule_maxHeight',
       'stockRule_stockLength',
       'stockRule_piecesPerUnit',
       'stockRule_basePrice',
+      'stockRule_basePriceBlack',
+      'stockRule_basePriceClear',
       'stockRule_formula',
       // Pricing rule fields (for other parts)
       'pricingRule_basePrice',
@@ -71,7 +74,7 @@ export async function GET(request: NextRequest) {
           part.cost?.toString() || '',
           part.partType,
           part.isOption ? 'TRUE' : 'FALSE',
-          '', '', '', '', '', '', // Stock rule fields
+          '', '', '', '', '', '', '', '', '', // Stock rule fields (added isMillFinish, basePriceBlack, basePriceClear)
           '', '' // Pricing rule fields
         ].map(v => escapeCsvValue(v)).join(','))
       }
@@ -88,11 +91,14 @@ export async function GET(request: NextRequest) {
             part.partType,
             part.isOption ? 'TRUE' : 'FALSE',
             // Stock length rule fields
+            rule.isMillFinish ? 'TRUE' : 'FALSE',
             rule.minHeight?.toString() || '',
             rule.maxHeight?.toString() || '',
             rule.stockLength?.toString() || '',
             rule.piecesPerUnit?.toString() || '',
             rule.basePrice?.toString() || '',
+            rule.basePriceBlack?.toString() || '',
+            rule.basePriceClear?.toString() || '',
             rule.formula || '',
             '', '' // Pricing rule fields (empty for stock rules)
           ].map(v => escapeCsvValue(v)).join(','))
@@ -110,7 +116,7 @@ export async function GET(request: NextRequest) {
             part.cost?.toString() || '',
             part.partType,
             part.isOption ? 'TRUE' : 'FALSE',
-            '', '', '', '', '', '', // Stock rule fields (empty for pricing rules)
+            '', '', '', '', '', '', '', '', '', // Stock rule fields (empty for pricing rules, added isMillFinish, basePriceBlack, basePriceClear)
             // Pricing rule fields
             rule.basePrice?.toString() || '',
             rule.formula || ''

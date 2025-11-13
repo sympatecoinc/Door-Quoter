@@ -7,7 +7,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 const SWING_DIRECTIONS = ["Left In", "Right In", "Left Out", "Right Out"]
 const SLIDING_DIRECTIONS = ["Left", "Right"]
 const CORNER_DIRECTIONS = ["Up", "Down"]
-import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download } from 'lucide-react'
+import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
@@ -112,6 +112,7 @@ export default function ProjectDetailView() {
   const [loading, setLoading] = useState(true)
   const [calculatingPrices, setCalculatingPrices] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [showArchiveModal, setShowArchiveModal] = useState(false)
   const [editName, setEditName] = useState('')
   const [editStatus, setEditStatus] = useState('')
   const [editExtrusionCostingMethod, setEditExtrusionCostingMethod] = useState('FULL_STOCK')
@@ -122,6 +123,13 @@ export default function ProjectDetailView() {
   const [showExcludedPartsModal, setShowExcludedPartsModal] = useState(false)
   const [projectParts, setProjectParts] = useState<any[]>([])
   const [loadingParts, setLoadingParts] = useState(false)
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false)
+  const [duplicatingOpeningId, setDuplicatingOpeningId] = useState<number | null>(null)
+  const [duplicatingOpeningName, setDuplicatingOpeningName] = useState('')
+  const [duplicateNewName, setDuplicateNewName] = useState('')
+  const [duplicateCount, setDuplicateCount] = useState('1')
+  const [isDuplicating, setIsDuplicating] = useState(false)
+  const [autoIncrement, setAutoIncrement] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showAddOpening, setShowAddOpening] = useState(false)
   const [addingOpening, setAddingOpening] = useState(false)
@@ -164,8 +172,10 @@ export default function ProjectDetailView() {
   useEffect(() => {
     if (project) {
       const details: string[] = []
-      const affectedOpenings = new Set<string>()
-      const affectedProducts = new Set<string>()
+      const affectedOpenings = new Map<string, Set<string>>() // opening name -> Set of change reasons
+      const changedMasterParts = new Set<string>()
+      const changedProducts = new Set<string>()
+      const changedFormulas = new Set<string>()
       let hasNeverCalculated = false
 
       const needsSyncCheck = project.openings.some(opening => {
@@ -175,53 +185,125 @@ export default function ProjectDetailView() {
         // If never calculated, needs sync
         if (!opening.priceCalculatedAt) {
           hasNeverCalculated = true
-          affectedOpenings.add(opening.name)
+          if (!affectedOpenings.has(opening.name)) {
+            affectedOpenings.set(opening.name, new Set())
+          }
+          affectedOpenings.get(opening.name)!.add('never priced')
           return true
         }
 
-        // Check if any component's product BOM has been updated after price calculation
         const priceCalcTime = new Date(opening.priceCalculatedAt).getTime()
+        let openingNeedsSync = false
 
         for (const panel of opening.panels) {
           if (!panel.componentInstance) continue
 
           const product = panel.componentInstance.product
 
-          // Check if product BOMs were updated after price calculation
+          // Check 1: Product BOM updates
           const hasStaleProductBOM = product.productBOMs?.some((bom: any) => {
             const bomUpdateTime = new Date(bom.updatedAt).getTime()
             return bomUpdateTime > priceCalcTime
           })
 
           if (hasStaleProductBOM) {
-            affectedOpenings.add(opening.name)
-            affectedProducts.add(product.name)
-            return true
+            openingNeedsSync = true
+            changedProducts.add(product.name)
+            if (!affectedOpenings.has(opening.name)) {
+              affectedOpenings.set(opening.name, new Set())
+            }
+            affectedOpenings.get(opening.name)!.add(`${product.name} BOM updated`)
+          }
+
+          // Check 2: Master part pricing changes
+          if ((project as any)._syncInfo?.masterParts) {
+            const bomPartNumbers = product.productBOMs?.map((bom: any) => bom.partNumber).filter(Boolean) || []
+
+            for (const partNumber of bomPartNumbers) {
+              const masterPartInfo = (project as any)._syncInfo.masterParts.find(
+                (mp: any) => mp.partNumber === partNumber
+              )
+
+              if (masterPartInfo) {
+                // Check if pricing rules were updated
+                if (masterPartInfo.latestPricingRuleUpdate) {
+                  const pricingUpdateTime = new Date(masterPartInfo.latestPricingRuleUpdate).getTime()
+                  if (pricingUpdateTime > priceCalcTime) {
+                    openingNeedsSync = true
+                    changedMasterParts.add(`${masterPartInfo.baseName} (${partNumber})`)
+                    if (!affectedOpenings.has(opening.name)) {
+                      affectedOpenings.set(opening.name, new Set())
+                    }
+                    affectedOpenings.get(opening.name)!.add(`pricing updated for ${masterPartInfo.baseName}`)
+                  }
+                }
+
+                // Check if stock length rules were updated (affects extrusion formulas)
+                if (masterPartInfo.latestStockLengthRuleUpdate) {
+                  const stockUpdateTime = new Date(masterPartInfo.latestStockLengthRuleUpdate).getTime()
+                  if (stockUpdateTime > priceCalcTime) {
+                    openingNeedsSync = true
+                    changedFormulas.add(`${masterPartInfo.baseName} (${partNumber})`)
+                    if (!affectedOpenings.has(opening.name)) {
+                      affectedOpenings.set(opening.name, new Set())
+                    }
+                    affectedOpenings.get(opening.name)!.add(`formula updated for ${masterPartInfo.baseName}`)
+                  }
+                }
+              }
+            }
           }
         }
 
-        return false
+        return openingNeedsSync
       })
 
       // Build detailed sync messages
-      if (hasNeverCalculated && affectedOpenings.size > 0) {
-        details.push(`${affectedOpenings.size} opening${affectedOpenings.size > 1 ? 's have' : ' has'} never been priced`)
+      if (hasNeverCalculated) {
+        const neverPricedOpenings = Array.from(affectedOpenings.entries())
+          .filter(([_, reasons]) => reasons.has('never priced'))
+          .map(([name, _]) => name)
+
+        if (neverPricedOpenings.length > 0) {
+          details.push(`🆕 ${neverPricedOpenings.length} opening${neverPricedOpenings.length > 1 ? 's have' : ' has'} never been priced`)
+        }
       }
 
-      if (affectedProducts.size > 0) {
-        details.push(`Product pricing updated for: ${Array.from(affectedProducts).join(', ')}`)
+      if (changedMasterParts.size > 0) {
+        const partsList = Array.from(changedMasterParts).slice(0, 3).join(', ')
+        const remaining = changedMasterParts.size - 3
+        details.push(
+          `💰 Master part pricing updated: ${partsList}${remaining > 0 ? ` and ${remaining} more` : ''}`
+        )
       }
 
+      if (changedFormulas.size > 0) {
+        const formulaList = Array.from(changedFormulas).slice(0, 3).join(', ')
+        const remaining = changedFormulas.size - 3
+        details.push(
+          `📏 Extrusion formulas updated: ${formulaList}${remaining > 0 ? ` and ${remaining} more` : ''}`
+        )
+      }
+
+      if (changedProducts.size > 0) {
+        const productList = Array.from(changedProducts).slice(0, 3).join(', ')
+        const remaining = changedProducts.size - 3
+        details.push(
+          `🔧 Product BOMs updated: ${productList}${remaining > 0 ? ` and ${remaining} more` : ''}`
+        )
+      }
+
+      // Add affected openings summary
       if (affectedOpenings.size > 0 && !hasNeverCalculated) {
-        const openingsList = Array.from(affectedOpenings).slice(0, 3).join(', ')
+        const openingsList = Array.from(affectedOpenings.keys()).slice(0, 3).join(', ')
         const remaining = affectedOpenings.size - 3
         details.push(
-          `Affected openings: ${openingsList}${remaining > 0 ? ` and ${remaining} more` : ''}`
+          `📍 Affected openings: ${openingsList}${remaining > 0 ? ` and ${remaining} more` : ''}`
         )
       }
 
       setNeedsSync(needsSyncCheck)
-      setSyncDetails(details.length > 0 ? details : ['Product BOMs or pricing have been updated'])
+      setSyncDetails(details.length > 0 ? details : ['Pricing data has been updated'])
     }
   }, [project])
 
@@ -368,26 +450,36 @@ export default function ProjectDetailView() {
     }
   }
 
-  async function handleDeleteProject() {
-    if (!selectedProjectId) return
+  function handleArchiveProject() {
+    setShowArchiveModal(true)
+  }
 
-    const confirmed = confirm(`Are you sure you want to delete the project "${project?.name}"? This action cannot be undone and will delete all openings and components.`)
-    if (!confirmed) return
+  async function confirmArchiveProject() {
+    if (!selectedProjectId || !project) return
 
+    setShowArchiveModal(false)
+    setSaving(true)
     try {
       const response = await fetch(`/api/projects/${selectedProjectId}`, {
-        method: 'DELETE'
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: project.name,
+          status: 'Archive'
+        })
       })
 
       if (response.ok) {
-        alert('Project deleted successfully!')
+        showSuccess('Project archived successfully!')
         setSelectedProjectId(null) // Navigate back to projects list
       } else {
-        alert('Error deleting project')
+        showError('Failed to archive project')
       }
     } catch (error) {
-      console.error('Error deleting project:', error)
-      alert('Error deleting project')
+      console.error('Error archiving project:', error)
+      showError('Error archiving project')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -542,6 +634,102 @@ export default function ProjectDetailView() {
     setSelectedDrawingOpeningId(openingId)
     setSelectedDrawingOpeningNumber(name)
     setShowDrawingViewer(true)
+  }
+
+  async function handleShowDuplicateModal(openingId: number, openingName: string) {
+    setDuplicatingOpeningId(openingId)
+    setDuplicatingOpeningName(openingName)
+    setDuplicateNewName(openingName) // Default to original name
+    setDuplicateCount('1')
+    setAutoIncrement(false)
+    setShowDuplicateModal(true)
+  }
+
+  // Helper function to safely parse and validate duplicate count
+  function getSafeDuplicateCount(): number {
+    const count = parseInt(duplicateCount)
+    if (isNaN(count) || count < 1 || count > 50) {
+      return 0 // Return 0 for invalid values (will prevent array creation)
+    }
+    return count
+  }
+
+  async function handleDuplicateOpening() {
+    if (!duplicatingOpeningId) return
+
+    if (!duplicateNewName.trim()) {
+      showError('Please enter a base name for the opening(s)')
+      return
+    }
+
+    // Validate count
+    const count = parseInt(duplicateCount)
+    if (isNaN(count) || count < 1 || count > 50) {
+      showError('Count must be between 1 and 50')
+      return
+    }
+
+    setIsDuplicating(true)
+
+    try {
+      const response = await fetch(`/api/openings/${duplicatingOpeningId}/duplicate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          baseName: duplicateNewName.trim(),
+          count: count,
+          autoIncrement: autoIncrement
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to duplicate opening')
+      }
+
+      const result = await response.json()
+
+      // Close modal and reset state
+      setShowDuplicateModal(false)
+      setDuplicatingOpeningId(null)
+      setDuplicatingOpeningName('')
+      setDuplicateNewName('')
+      setDuplicateCount('1')
+      setAutoIncrement(false)
+
+      // Refresh project data
+      await fetchProject()
+
+      const message = autoIncrement
+        ? `Successfully created ${count} duplicate(s) and renamed original`
+        : `Successfully created ${count} duplicate(s)`
+      showSuccess(message)
+
+      // Auto-calculate prices for all created openings
+      if (result.openings && result.openings.length > 0) {
+        try {
+          for (const opening of result.openings) {
+            if (opening.panels && opening.panels.length > 0) {
+              await fetch(`/api/openings/${opening.id}/calculate-price`, {
+                method: 'POST'
+              })
+            }
+          }
+          // Refresh once after all calculations
+          await fetchProject()
+        } catch (calcError) {
+          console.error('Error calculating prices:', calcError)
+          showError('Openings duplicated but some price calculations failed')
+        }
+      }
+    } catch (error: any) {
+      console.error('Error duplicating opening:', error)
+      showError(error.message || 'Failed to duplicate opening')
+    } finally {
+      setIsDuplicating(false)
+    }
   }
 
   async function handleShowAddComponent(openingId: number) {
@@ -850,7 +1038,7 @@ export default function ProjectDetailView() {
       return o
     })
 
-    setProject({ ...project, openings: updatedOpenings })
+    setProject(prev => prev ? { ...prev, openings: updatedOpenings } : null)
 
     // Send update to server
     try {
@@ -942,11 +1130,15 @@ export default function ProjectDetailView() {
             </div>
             <div className="flex items-center mt-2">
               <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                project.status === 'Draft' 
+                project.status === 'Draft'
                   ? 'bg-gray-100 text-gray-800'
                   : project.status === 'In Progress'
                   ? 'bg-blue-100 text-blue-800'
-                  : 'bg-green-100 text-green-800'
+                  : project.status === 'Completed'
+                  ? 'bg-green-100 text-green-800'
+                  : project.status === 'Archive'
+                  ? 'bg-orange-100 text-orange-800'
+                  : 'bg-gray-100 text-gray-800'
               }`}>
                 {project.status}
               </span>
@@ -1038,6 +1230,14 @@ export default function ProjectDetailView() {
                       >
                         <FileText className="w-4 h-4 mr-1" />
                         Shop Drawings
+                      </button>
+                      <button
+                        onClick={() => handleShowDuplicateModal(opening.id, opening.name)}
+                        className="px-3 py-1.5 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center text-sm font-medium shadow-sm transition-colors"
+                        title="Duplicate this opening with all components"
+                      >
+                        <Copy className="w-4 h-4 mr-1" />
+                        Duplicate
                       </button>
                     </div>
                   </div>
@@ -1907,11 +2107,12 @@ export default function ProjectDetailView() {
 
             <div className="flex justify-between items-center pt-6 mt-4 border-t border-gray-200">
               <button
-                onClick={handleDeleteProject}
-                className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                title="Delete Project"
+                onClick={handleArchiveProject}
+                className="p-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
+                title="Archive Project"
+                disabled={saving}
               >
-                <Trash2 className="w-4 h-4" />
+                <Archive className="w-4 h-4" />
               </button>
               <div className="flex space-x-3">
                 <button
@@ -1948,10 +2149,9 @@ export default function ProjectDetailView() {
             {syncDetails.length > 0 && (
               <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
                 <h3 className="text-sm font-semibold text-amber-900 mb-2">What changed:</h3>
-                <ul className="text-sm text-amber-800 space-y-1">
+                <ul className="text-sm text-amber-800 space-y-2">
                   {syncDetails.map((detail, index) => (
                     <li key={index} className="flex items-start">
-                      <span className="mr-2">•</span>
                       <span>{detail}</span>
                     </li>
                   ))}
@@ -2277,6 +2477,182 @@ export default function ProjectDetailView() {
             setSelectedDrawingOpeningNumber('')
           }}
         />
+      )}
+
+      {/* Duplicate Opening Modal */}
+      {showDuplicateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              Duplicate Opening
+            </h3>
+
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-4">
+                This will create {getSafeDuplicateCount() > 1 ? 'copies' : 'a copy'} of "{duplicatingOpeningName}" with all components and settings.
+              </p>
+
+              {/* Count Input */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Number of Duplicates <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={duplicateCount}
+                  onChange={(e) => setDuplicateCount(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="Enter number of duplicates"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Maximum 50 duplicates at once
+                </p>
+              </div>
+
+              {/* Auto-Increment Toggle */}
+              <div className="mb-4">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoIncrement}
+                    onChange={(e) => setAutoIncrement(e.target.checked)}
+                    className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Auto-Increment Names</span>
+                </label>
+                <p className="mt-1 text-xs text-gray-500">
+                  {autoIncrement
+                    ? 'Original opening will be renamed, and duplicates will be numbered sequentially'
+                    : 'Duplicates will be created with "(Copy)" appended to the name'}
+                </p>
+              </div>
+
+              {/* Base Name Input */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {autoIncrement ? 'Base Name' : 'New Opening Name'} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={duplicateNewName}
+                  onChange={(e) => setDuplicateNewName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder={autoIncrement ? "Enter base name for numbered openings" : "Enter name for duplicated opening"}
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !isDuplicating) {
+                      handleDuplicateOpening()
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Preview */}
+              {duplicateNewName.trim() && (() => {
+                const safeCount = getSafeDuplicateCount()
+                return safeCount > 0 ? (
+                  <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-xs font-medium text-gray-700 mb-2">Preview:</p>
+                    {autoIncrement ? (
+                      <div className="text-xs text-gray-600">
+                        <p className="mb-1">• {duplicateNewName.trim()} 1 (original renamed)</p>
+                        {[...Array(Math.min(3, safeCount))].map((_, i) => (
+                          <p key={i} className="mb-1">• {duplicateNewName.trim()} {i + 2}</p>
+                        ))}
+                        {safeCount > 3 && (
+                          <p className="mb-1">• ...</p>
+                        )}
+                        {safeCount > 3 && (
+                          <p className="mb-1">• {duplicateNewName.trim()} {safeCount + 1} (last)</p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-gray-600">
+                        {safeCount === 1 ? (
+                          <p>• {duplicateNewName.trim()}</p>
+                        ) : (
+                          <>
+                            {[...Array(Math.min(3, safeCount))].map((_, i) => (
+                              <p key={i} className="mb-1">• {duplicateNewName.trim()} {i + 1}</p>
+                            ))}
+                            {safeCount > 3 && (
+                              <p className="mb-1">• ...</p>
+                            )}
+                            {safeCount > 3 && (
+                              <p className="mb-1">• {duplicateNewName.trim()} {safeCount} (last)</p>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : null
+              })()}
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDuplicateModal(false)
+                  setDuplicatingOpeningId(null)
+                  setDuplicatingOpeningName('')
+                  setDuplicateNewName('')
+                  setDuplicateCount('1')
+                  setAutoIncrement(false)
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                disabled={isDuplicating}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDuplicateOpening}
+                disabled={isDuplicating || !duplicateNewName.trim() || getSafeDuplicateCount() < 1}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+              >
+                {isDuplicating ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    Duplicating...
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 mr-2" />
+                    Duplicate
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive Confirmation Modal */}
+      {showArchiveModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Archive Project?</h2>
+            <p className="text-gray-700 mb-6">
+              This project will be hidden from the main projects list but will remain accessible in the customer view and can be restored later.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowArchiveModal(false)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmArchiveProject}
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+              >
+                Archive Project
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
