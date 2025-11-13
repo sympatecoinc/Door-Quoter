@@ -1038,7 +1038,15 @@ export default function ProjectDetailView() {
       return o
     })
 
-    setProject(prev => prev ? { ...prev, openings: updatedOpenings } : null)
+    // Sort panels by displayOrder to ensure UI updates immediately
+    const sortedOpenings = updatedOpenings.map(opening => ({
+      ...opening,
+      panels: [...opening.panels].sort((a, b) =>
+        (a.displayOrder ?? 0) - (b.displayOrder ?? 0)
+      )
+    }))
+
+    setProject(prev => prev ? { ...prev, openings: sortedOpenings } : null)
 
     // Send update to server
     try {
