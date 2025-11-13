@@ -11,7 +11,7 @@ datasource db {
 model Project {
   id                     Int                @id @default(autoincrement())
   name                   String
-  status                 String             @default("Draft")
+  status                 ProjectStatus      @default(STAGING)
   customerId             Int
   pricingModeId          Int?
   extrusionCostingMethod String             @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED"
@@ -28,10 +28,23 @@ model Project {
   boms                   BOM[]
   openings               Opening[]
   quoteAttachments       QuoteAttachment[]
+  statusHistory          ProjectStatusHistory[]
   customer               Customer           @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: Restrict)
   pricingMode            PricingMode?       @relation(fields: [pricingModeId], references: [id], onDelete: SetNull)
 
   @@map("Projects")
+}
+
+model ProjectStatusHistory {
+  id        Int           @id @default(autoincrement())
+  projectId Int
+  status    ProjectStatus
+  changedBy String?
+  notes     String?
+  changedAt DateTime      @default(now())
+  project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("ProjectStatusHistory")
 }
 
 model Opening {
@@ -75,6 +88,16 @@ model Panel {
   opening             Opening            @relation(fields: [openingId], references: [id], onDelete: Cascade)
 
   @@map("Panels")
+}
+
+enum ProjectStatus {
+  STAGING        @map("Staging")
+  APPROVED       @map("Approved")
+  REVISE         @map("Revise")
+  QUOTE_SENT     @map("Quote Sent")
+  QUOTE_ACCEPTED @map("Quote Accepted")
+  ACTIVE         @map("Active")
+  COMPLETE       @map("Complete")
 }
 
 enum ProductType {

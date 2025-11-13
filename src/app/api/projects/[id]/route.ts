@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ProjectStatus } from '@prisma/client'
 
 export async function GET(
   request: NextRequest,
@@ -178,11 +179,19 @@ export async function PUT(
       )
     }
 
-    const { name, status, dueDate, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost } = await request.json()
+    const { name, status, statusNotes, dueDate, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost } = await request.json()
 
     if (!name) {
       return NextResponse.json(
         { error: 'Project name is required' },
+        { status: 400 }
+      )
+    }
+
+    // Validate status if provided
+    if (status && !Object.values(ProjectStatus).includes(status)) {
+      return NextResponse.json(
+        { error: 'Invalid project status' },
         { status: 400 }
       )
     }
@@ -225,10 +234,35 @@ export async function PUT(
     if (manualInstallationCost !== undefined) {
       updateData.manualInstallationCost = manualInstallationCost
     }
+    if (statusNotes !== undefined) {
+      updateData.statusNotes = statusNotes
+    }
 
-    const updatedProject = await prisma.project.update({
-      where: { id: projectId },
-      data: updateData
+    // Update project and track status change in a transaction
+    const updatedProject = await prisma.$transaction(async (tx) => {
+      // Check if status changed
+      const currentProject = await tx.project.findUnique({
+        where: { id: projectId },
+        select: { status: true }
+      })
+
+      const project = await tx.project.update({
+        where: { id: projectId },
+        data: updateData
+      })
+
+      // Record status change if status was updated
+      if (status && currentProject && currentProject.status !== status) {
+        await tx.projectStatusHistory.create({
+          data: {
+            projectId: projectId,
+            status: status,
+            notes: statusNotes || null
+          }
+        })
+      }
+
+      return project
     })
 
     return NextResponse.json(updatedProject)

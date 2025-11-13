@@ -23,7 +23,6 @@ import {
 const menuItems = [
   { id: 'dashboard' as MenuOption, label: 'Dashboard', icon: Home },
   { id: 'projects' as MenuOption, label: 'Projects', icon: Folder },
-  { id: 'crm' as MenuOption, label: 'Customers', icon: Users },
   { id: 'products' as MenuOption, label: 'Products', icon: Package },
   { id: 'masterParts' as MenuOption, label: 'Master Parts', icon: Database },
   { id: 'quoteDocuments' as MenuOption, label: 'Quote Settings', icon: FileText },

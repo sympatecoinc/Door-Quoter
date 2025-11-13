@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ProjectStatus } from '@prisma/client'
 
 export async function GET() {
   try {
@@ -48,7 +49,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, status = 'Draft', dueDate, pricingModeId, customerId } = await request.json()
+    const { name, status = ProjectStatus.STAGING, dueDate, pricingModeId, customerId } = await request.json()
 
     if (!name) {
       return NextResponse.json(
@@ -64,6 +65,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate status if provided
+    if (status && !Object.values(ProjectStatus).includes(status)) {
+      return NextResponse.json(
+        { error: 'Invalid project status' },
+        { status: 400 }
+      )
+    }
+
     const projectData: any = { name, status, customerId }
     if (dueDate) {
       projectData.dueDate = new Date(dueDate)
@@ -72,14 +81,28 @@ export async function POST(request: NextRequest) {
       projectData.pricingModeId = pricingModeId
     }
 
-    const project = await prisma.project.create({
-      data: projectData,
-      include: {
-        openings: {
-          orderBy: { id: 'asc' },
-          select: { id: true, name: true, price: true }
+    // Create project and initial status history record in a transaction
+    const project = await prisma.$transaction(async (tx) => {
+      const newProject = await tx.project.create({
+        data: projectData,
+        include: {
+          openings: {
+            orderBy: { id: 'asc' },
+            select: { id: true, name: true, price: true }
+          }
         }
-      }
+      })
+
+      // Create initial status history record
+      await tx.projectStatusHistory.create({
+        data: {
+          projectId: newProject.id,
+          status: newProject.status,
+          notes: 'Project created'
+        }
+      })
+
+      return newProject
     })
 
     return NextResponse.json(project, { status: 201 })

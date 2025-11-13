@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ProjectStatus } from '@prisma/client'
 import { calculateTotalMarkedUpPrice, estimateCostBreakdown, type PricingMode } from '@/lib/pricing'
 
 // Helper function to calculate sale price with category-specific markup/discount
@@ -61,20 +62,20 @@ async function calculateProjectSalePrice(projectId: number, costPrice: number, p
 
 export async function GET() {
   try {
-    // Get total projects (excluding Draft and Archive)
+    // Get total projects (excluding Staging)
     const totalProjects = await prisma.project.count({
       where: {
-        status: { notIn: ['Archive', 'Draft'] }
+        status: { notIn: [ProjectStatus.STAGING] }
       }
     })
 
     // Get total openings
     const totalOpenings = await prisma.opening.count()
 
-    // Get all projects with pricing modes to calculate total portfolio value (excluding Draft and Archive)
+    // Get all projects with pricing modes to calculate total portfolio value (excluding Staging)
     const allProjects = await prisma.project.findMany({
       where: {
-        status: { notIn: ['Archive', 'Draft'] }
+        status: { notIn: [ProjectStatus.STAGING] }
       },
       include: {
         openings: true,

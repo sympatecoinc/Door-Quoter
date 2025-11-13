@@ -1,12 +1,86 @@
+export enum ProjectStatus {
+  STAGING = 'STAGING',
+  APPROVED = 'APPROVED',
+  REVISE = 'REVISE',
+  QUOTE_SENT = 'QUOTE_SENT',
+  QUOTE_ACCEPTED = 'QUOTE_ACCEPTED',
+  ACTIVE = 'ACTIVE',
+  COMPLETE = 'COMPLETE'
+}
+
 export interface Project {
   id: number
   name: string
-  status: string
+  status: ProjectStatus
   pricingModeId?: number | null
   extrusionCostingMethod?: string // "FULL_STOCK" | "PERCENTAGE_BASED"
   excludedPartNumbers?: string[] // Part numbers to exclude from FULL_STOCK rule
   createdAt: Date
   updatedAt: Date
+}
+
+export interface ProjectStatusHistory {
+  id: number
+  projectId: number
+  status: ProjectStatus
+  changedBy?: string
+  notes?: string
+  changedAt: Date
+}
+
+export const STATUS_CONFIG: Record<ProjectStatus, {
+  label: string
+  color: string
+  bgColor: string
+  textColor: string
+}> = {
+  [ProjectStatus.STAGING]: {
+    label: 'Staging',
+    color: 'gray',
+    bgColor: 'bg-gray-100',
+    textColor: 'text-gray-800'
+  },
+  [ProjectStatus.APPROVED]: {
+    label: 'Approved',
+    color: 'green',
+    bgColor: 'bg-green-100',
+    textColor: 'text-green-800'
+  },
+  [ProjectStatus.REVISE]: {
+    label: 'Revise',
+    color: 'orange',
+    bgColor: 'bg-orange-100',
+    textColor: 'text-orange-800'
+  },
+  [ProjectStatus.QUOTE_SENT]: {
+    label: 'Quote Sent',
+    color: 'blue',
+    bgColor: 'bg-blue-100',
+    textColor: 'text-blue-800'
+  },
+  [ProjectStatus.QUOTE_ACCEPTED]: {
+    label: 'Quote Accepted',
+    color: 'emerald',
+    bgColor: 'bg-emerald-100',
+    textColor: 'text-emerald-800'
+  },
+  [ProjectStatus.ACTIVE]: {
+    label: 'Active',
+    color: 'purple',
+    bgColor: 'bg-purple-100',
+    textColor: 'text-purple-800'
+  },
+  [ProjectStatus.COMPLETE]: {
+    label: 'Complete',
+    color: 'teal',
+    bgColor: 'bg-teal-100',
+    textColor: 'text-teal-800'
+  }
+}
+
+// Helper to get display label for a status
+export function getStatusLabel(status: ProjectStatus): string {
+  return STATUS_CONFIG[status]?.label || status
 }
 
 export interface Opening {
@@ -100,7 +174,7 @@ export interface ComponentInstance {
   updatedAt: Date
 }
 
-export type MenuOption = 'dashboard' | 'projects' | 'crm' | 'products' | 'componentLibrary' | 'masterParts' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments'
+export type MenuOption = 'dashboard' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments'
 
 export interface PricingMode {
   id: number

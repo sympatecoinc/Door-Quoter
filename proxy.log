@@ -1,17 +1,31 @@
-2025/11/13 15:11:41 This is the Cloud SQL Proxy v1. It is no longer receiving active feature development. For the latest features and improvements, migrate to the v2 version of the Cloud SQL Proxy. For details, see: https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/main/migration-guide.md
-2025/11/13 15:11:41 current FDs rlimit set to 1048576, wanted limit is 8500. Nothing to do here.
-2025/11/13 15:11:44 listen tcp 127.0.0.1:5432: bind: address already in use
-door-app-staging
-2025/11/13 15:11:43 Ready for new connections
-2025/11/13 15:11:44 Generated RSA key in 128.375333ms
-2025/11/13 15:13:26 New connection for "door-quoter:us-central1:door-app-staging"
-2025/11/13 15:13:26 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
-2025/11/13 15:13:27 Scheduling refresh of ephemeral certificate in 54m59s
-2025/11/13 15:13:27 New connection for "door-quoter:us-central1:door-app-staging"
-2025/11/13 15:14:20 New connection for "door-quoter:us-central1:door-app-staging"
-2025/11/13 15:14:20 New connection for "door-quoter:us-central1:door-app-staging"
-2025/11/13 15:14:23 New connection for "door-quoter:us-central1:door-app-staging"
-2025/11/13 15:14:23 New connection for "door-quoter:us-central1:door-app-staging"
-2025/11/13 15:14:37 Client closed local connection on 127.0.0.1:5432
-2025/11/13 15:14:37 Client closed local connection on 127.0.0.1:5432
-2025/11/13 15:14:37 Client closed local connection on 127.0.0.1:5432
+2025/11/13 18:10:49 This is the Cloud SQL Proxy v1. It is no longer receiving active feature development. For the latest features and improvements, migrate to the v2 version of the Cloud SQL Proxy. For details, see: https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/main/migration-guide.md
+2025/11/13 18:10:49 current FDs rlimit set to 1048576, wanted limit is 8500. Nothing to do here.
+2025/11/13 18:10:57 Listening on 127.0.0.1:5432 for door-quoter:us-central1:door-app-staging
+2025/11/13 18:10:57 Ready for new connections
+2025/11/13 18:10:57 Generated RSA key in 434.947808ms
+2025/11/13 18:12:28 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:12:28 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
+2025/11/13 18:12:28 Scheduling refresh of ephemeral certificate in 55m0s
+2025/11/13 18:12:28 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:16:02 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:23:08 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:23:08 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:23:10 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:23:10 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:23:21 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:23:21 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:23:29 Client closed local connection on 127.0.0.1:5432
+2025/11/13 18:23:55 Client closed local connection on 127.0.0.1:5432
+2025/11/13 18:23:55 Client closed local connection on 127.0.0.1:5432
+2025/11/13 18:23:55 Client closed local connection on 127.0.0.1:5432
+2025/11/13 18:23:55 Client closed local connection on 127.0.0.1:5432
+2025/11/13 18:23:55 Client closed local connection on 127.0.0.1:5432
+2025/11/13 18:24:39 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:24:39 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:24:45 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:24:45 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:24:54 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:24:54 New connection for "door-quoter:us-central1:door-app-staging"
+2025/11/13 18:25:42 Client closed local connection on 127.0.0.1:5432
+2025/11/13 18:25:42 Client closed local connection on 127.0.0.1:5432
+2025/11/13 18:25:42 Client closed local connection on 127.0.0.1:5432

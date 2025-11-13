@@ -44,7 +44,8 @@ export async function POST(request: NextRequest) {
       swingDirection = 'None',
       slidingDirection = 'Left',
       isCorner = false,
-      cornerDirection = 'Up'
+      cornerDirection = 'Up',
+      quantity = 1
     } = await request.json()
 
     if (!openingId || !type) {
@@ -54,43 +55,58 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get the max displayOrder for this opening to append new panel at the end
+    // Validate quantity
+    const panelCount = parseInt(String(quantity)) || 1
+    if (panelCount < 1 || panelCount > 50) {
+      return NextResponse.json(
+        { error: 'Quantity must be between 1 and 50' },
+        { status: 400 }
+      )
+    }
+
+    // Get the max displayOrder for this opening to append new panels at the end
     const maxOrderPanel = await prisma.panel.findFirst({
       where: { openingId: parseInt(openingId) },
       orderBy: { displayOrder: 'desc' },
       select: { displayOrder: true }
     })
 
-    const nextDisplayOrder = (maxOrderPanel?.displayOrder ?? -1) + 1
+    let nextDisplayOrder = (maxOrderPanel?.displayOrder ?? -1) + 1
 
-    const panel = await prisma.panel.create({
-      data: {
-        openingId: parseInt(openingId),
-        type,
-        width: parseFloat(width) || 0,
-        height: parseFloat(height) || 0,
-        glassType: glassType || 'N/A',
-        locking: locking || 'N/A',
-        swingDirection,
-        slidingDirection,
-        isCorner,
-        cornerDirection,
-        displayOrder: nextDisplayOrder
-      },
-      include: {
-        componentInstance: {
-          include: {
-            product: true
+    // Create multiple panels if quantity > 1
+    const panels = []
+    for (let i = 0; i < panelCount; i++) {
+      const panel = await prisma.panel.create({
+        data: {
+          openingId: parseInt(openingId),
+          type,
+          width: parseFloat(width) || 0,
+          height: parseFloat(height) || 0,
+          glassType: glassType || 'N/A',
+          locking: locking || 'N/A',
+          swingDirection,
+          slidingDirection,
+          isCorner,
+          cornerDirection,
+          displayOrder: nextDisplayOrder + i
+        },
+        include: {
+          componentInstance: {
+            include: {
+              product: true
+            }
           }
         }
-      }
-    })
+      })
+      panels.push(panel)
+    }
 
-    return NextResponse.json(panel, { status: 201 })
+    // Return array of panels (consistent whether quantity is 1 or more)
+    return NextResponse.json(panels, { status: 201 })
   } catch (error) {
-    console.error('Error creating panel:', error)
+    console.error('Error creating panel(s):', error)
     return NextResponse.json(
-      { error: 'Failed to create panel' },
+      { error: 'Failed to create panel(s)' },
       { status: 500 }
     )
   }

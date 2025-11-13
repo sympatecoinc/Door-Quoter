@@ -5,12 +5,13 @@ import { Plus, Eye, Edit, Trash, Download } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
-import { PricingMode } from '@/types'
+import { PricingMode, ProjectStatus, STATUS_CONFIG } from '@/types'
+import StatusBadge from '@/components/projects/StatusBadge'
 
 interface Project {
   id: number
   name: string
-  status: string
+  status: ProjectStatus
   dueDate: string | null
   multiplier: number
   taxRate: number
@@ -25,7 +26,7 @@ export default function ProjectsView() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [newProjectName, setNewProjectName] = useState('')
-  const [newProjectStatus, setNewProjectStatus] = useState('Draft')
+  const [newProjectStatus, setNewProjectStatus] = useState<ProjectStatus>(ProjectStatus.STAGING)
   const [newProjectDueDate, setNewProjectDueDate] = useState('')
   const [newProjectPricingModeId, setNewProjectPricingModeId] = useState<number | null>(null)
   const [newProjectCustomerId, setNewProjectCustomerId] = useState<number | null>(null)
@@ -35,7 +36,8 @@ export default function ProjectsView() {
   const [error, setError] = useState<string | null>(null)
   const [editingProject, setEditingProject] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
-  const [editStatus, setEditStatus] = useState('')
+  const [editStatus, setEditStatus] = useState<ProjectStatus>(ProjectStatus.STAGING)
+  const [editStatusNotes, setEditStatusNotes] = useState('')
   const [editDueDate, setEditDueDate] = useState('')
   const [editTaxRate, setEditTaxRate] = useState('0')
   const [editPricingModeId, setEditPricingModeId] = useState<number | null>(null)
@@ -225,7 +227,7 @@ export default function ProjectsView() {
 
       if (response.ok) {
         setNewProjectName('')
-        setNewProjectStatus('Draft')
+        setNewProjectStatus(ProjectStatus.STAGING)
         setNewProjectDueDate('')
         setNewProjectCustomerId(null)
         setShowCreateForm(false)
@@ -260,7 +262,8 @@ export default function ProjectsView() {
   function cancelEdit() {
     setEditingProject(null)
     setEditName('')
-    setEditStatus('')
+    setEditStatus(ProjectStatus.STAGING)
+    setEditStatusNotes('')
     setEditDueDate('')
     setEditTaxRate('0')
   }
@@ -277,6 +280,7 @@ export default function ProjectsView() {
         body: JSON.stringify({
           name: editName,
           status: editStatus,
+          statusNotes: editStatusNotes,
           dueDate: editDueDate || null,
           taxRate: parseFloat(editTaxRate) || 0,
           pricingModeId: editPricingModeId
@@ -398,23 +402,6 @@ export default function ProjectsView() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Status
-                </label>
-                <select
-                  value={newProjectStatus}
-                  onChange={(e) => setNewProjectStatus(e.target.value)}
-                  disabled={creating}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
-                >
-                  <option value="Draft">Draft</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                  <option disabled>──────────</option>
-                  <option value="Archive">Archive</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Due Date
                 </label>
                 <input
@@ -453,7 +440,7 @@ export default function ProjectsView() {
                     setShowCreateForm(false)
                     setError(null)
                     setNewProjectName('')
-                    setNewProjectStatus('Draft')
+                    setNewProjectStatus(ProjectStatus.STAGING)
                     setNewProjectDueDate('')
                     setNewProjectCustomerId(null)
                   }}
@@ -504,16 +491,29 @@ export default function ProjectsView() {
                 </label>
                 <select
                   value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value)}
+                  onChange={(e) => setEditStatus(e.target.value as ProjectStatus)}
                   disabled={updating}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
                 >
-                  <option value="Draft">Draft</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                  <option disabled>──────────</option>
-                  <option value="Archive">Archive</option>
+                  {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+                    <option key={key} value={key}>
+                      {config.label}
+                    </option>
+                  ))}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Status Change Notes (Optional)
+                </label>
+                <textarea
+                  value={editStatusNotes}
+                  onChange={(e) => setEditStatusNotes(e.target.value)}
+                  disabled={updating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                  placeholder="Add notes about this status change (optional)"
+                  rows={3}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -592,19 +592,6 @@ export default function ProjectsView() {
         </div>
       )}
 
-      {/* Archive Filter Toggle */}
-      <div className="flex justify-end mb-4">
-        <label className="flex items-center text-sm text-gray-700 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showArchived}
-            onChange={(e) => setShowArchived(e.target.checked)}
-            className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          Show archived projects
-        </label>
-      </div>
-
       {/* Projects Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         {loading ? (
@@ -640,9 +627,7 @@ export default function ProjectsView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {projects
-                  .filter(project => showArchived || project.status !== 'Archive')
-                  .map((project) => (
+                {projects.map((project) => (
                   <tr key={project.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div>
@@ -652,19 +637,7 @@ export default function ProjectsView() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        project.status === 'Draft'
-                          ? 'bg-gray-100 text-gray-800'
-                          : project.status === 'In Progress'
-                          ? 'bg-blue-100 text-blue-800'
-                          : project.status === 'Completed'
-                          ? 'bg-green-100 text-green-800'
-                          : project.status === 'Archive'
-                          ? 'bg-orange-100 text-orange-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {project.status}
-                      </span>
+                      <StatusBadge status={project.status} />
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
                       {project.openingsCount}
@@ -680,14 +653,21 @@ export default function ProjectsView() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex space-x-2">
-                        <button 
+                        <button
                           onClick={() => handleViewProject(project.id)}
                           className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
                           title="View Project"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button 
+                        <button
+                          onClick={() => handleEditProject(project)}
+                          className="p-1 text-gray-400 hover:text-purple-600 transition-colors"
+                          title="Edit Project"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => handleDownloadProject(project.id)}
                           disabled={downloadingProject === project.id}
                           className="p-1 text-gray-400 hover:text-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

@@ -148,6 +148,7 @@ export default function ProjectDetailView() {
   const [slidingDirection, setSlidingDirection] = useState<string>('Left')
   const [cornerDirection, setCornerDirection] = useState<string>('Up')
   const [glassType, setGlassType] = useState<string>('Clear')
+  const [componentQuantity, setComponentQuantity] = useState<string>('1')
   const [showComponentEdit, setShowComponentEdit] = useState(false)
   const [selectedComponentId, setSelectedComponentId] = useState<number | null>(null)
   const [componentOptions, setComponentOptions] = useState<any[]>([])
@@ -787,49 +788,56 @@ export default function ProjectDetailView() {
           swingDirection: swingDirection,
           slidingDirection: slidingDirection,
           isCorner: isCorner,
-          cornerDirection: cornerDirection
+          cornerDirection: cornerDirection,
+          quantity: parseInt(componentQuantity) || 1
         })
       })
 
       if (panelResponse.ok) {
-        const panelData = await panelResponse.json()
-        
-        // Then create the component instance
-        const componentResponse = await fetch('/api/component-instances', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            panelId: panelData.id,
-            productId: selectedProductId,
-            subOptionSelections: {}
-          })
-        })
+        const panelsData = await panelResponse.json()  // Now an array
 
-        if (componentResponse.ok) {
-          setShowAddComponent(false)
-          setSelectedOpeningId(null)
-          setSelectedProductId(null)
-          setComponentWidth('')
-          setComponentHeight('')
-          setSwingDirection('Right In')
-          setSlidingDirection('Left')
-          setGlassType('Clear')
-          
-          // Recalculate opening price
-          if (selectedOpeningId) {
-            try {
-              await fetch(`/api/openings/${selectedOpeningId}/calculate-price`, {
-                method: 'POST'
-              })
-            } catch (error) {
-              console.error('Error recalculating opening price:', error)
-            }
+        // Create component instances for all panels
+        for (const panelData of panelsData) {
+          const componentResponse = await fetch('/api/component-instances', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              panelId: panelData.id,
+              productId: selectedProductId,
+              subOptionSelections: {}
+            })
+          })
+
+          if (!componentResponse.ok) {
+            console.error('Error creating component instance for panel:', panelData.id)
           }
-          
-          await fetchProject()
         }
+
+        // Reset form and close modal
+        setShowAddComponent(false)
+        setSelectedOpeningId(null)
+        setSelectedProductId(null)
+        setComponentWidth('')
+        setComponentHeight('')
+        setComponentQuantity('1')
+        setSwingDirection('Right In')
+        setSlidingDirection('Left')
+        setGlassType('Clear')
+
+        // Recalculate opening price
+        if (selectedOpeningId) {
+          try {
+            await fetch(`/api/openings/${selectedOpeningId}/calculate-price`, {
+              method: 'POST'
+            })
+          } catch (error) {
+            console.error('Error recalculating opening price:', error)
+          }
+        }
+
+        await fetchProject()
       }
     } catch (error) {
       console.error('Error adding component:', error)
@@ -1609,7 +1617,40 @@ export default function ProjectDetailView() {
                   </div>
                 )
               })()}
-              
+
+              {/* Quantity field - show for all non-corner components */}
+              {(() => {
+                const selectedProduct = products.find(p => p.id === selectedProductId)
+                const isCornerProduct = selectedProduct?.productType === 'CORNER_90'
+
+                if (isCornerProduct) return null
+
+                return (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                    <input
+                      type="number"
+                      value={componentQuantity}
+                      onChange={(e) => setComponentQuantity(e.target.value)}
+                      placeholder="Enter quantity"
+                      step="1"
+                      min="1"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
+                        componentQuantity && parseInt(componentQuantity) <= 0
+                          ? 'border-red-300 bg-red-50'
+                          : 'border-gray-300'
+                      }`}
+                    />
+                    {componentQuantity && parseInt(componentQuantity) <= 0 && (
+                      <p className="text-red-500 text-xs mt-1">Quantity must be at least 1</p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Number of identical components to add
+                    </p>
+                  </div>
+                )
+              })()}
+
               {/* Direction Selection - Show for Swing, Sliding, and Corner */}
               {selectedProductId && (() => {
                 const selectedProduct = products.find(p => p.id === selectedProductId)
@@ -1715,6 +1756,7 @@ export default function ProjectDetailView() {
                   setSelectedProductId(null)
                   setComponentWidth('')
                   setComponentHeight('')
+                  setComponentQuantity('1')
                   setSwingDirection('Right In')
                   setSlidingDirection('Left')
                   setGlassType('Clear')
@@ -1729,12 +1771,16 @@ export default function ProjectDetailView() {
                   if (!selectedProductId) return true
                   const selectedProduct = products.find(p => p.id === selectedProductId)
                   const isCorner = selectedProduct?.productType === 'CORNER_90'
-                  
+
                   // For corner components, only product selection is required
                   if (isCorner) return false
-                  
-                  // For other components, dimensions are required
-                  return !componentWidth || !componentHeight || parseFloat(componentWidth) <= 0 || parseFloat(componentHeight) <= 0
+
+                  // For other components, dimensions and valid quantity are required
+                  const quantityValue = parseInt(componentQuantity)
+                  return !componentWidth || !componentHeight ||
+                         parseFloat(componentWidth) <= 0 ||
+                         parseFloat(componentHeight) <= 0 ||
+                         !quantityValue || quantityValue <= 0
                 })()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
