@@ -30,6 +30,7 @@ interface StockLengthRule {
   id: number
   name: string
   description?: string
+  isMillFinish?: boolean
   minHeight?: number
   maxHeight?: number
   minWidth?: number
@@ -42,6 +43,8 @@ interface StockLengthRule {
   partType: string
   isActive: boolean
   basePrice?: number
+  basePriceBlack?: number
+  basePriceClear?: number
   formula?: string
   minQuantity?: number
   maxQuantity?: number
@@ -137,7 +140,10 @@ export default function MasterPartsView() {
   // Pricing Rule Form State - Hardware parts use direct cost from master part
   const [pricingName, setPricingName] = useState('')
   const [pricingDescription, setPricingDescription] = useState('')
+  const [isMillFinish, setIsMillFinish] = useState(false)
   const [basePrice, setBasePrice] = useState('')
+  const [basePriceBlack, setBasePriceBlack] = useState('')
+  const [basePriceClear, setBasePriceClear] = useState('')
   const [formula, setFormula] = useState('')
   const [minQuantity, setMinQuantity] = useState('')
   const [maxQuantity, setMaxQuantity] = useState('')
@@ -422,7 +428,10 @@ export default function MasterPartsView() {
           stockLength: stockLength ? parseFloat(stockLength) : null,
           partType: rulePartType,
           isActive,
+          isMillFinish,
           basePrice: basePrice ? parseFloat(basePrice) : null,
+          basePriceBlack: basePriceBlack ? parseFloat(basePriceBlack) : null,
+          basePriceClear: basePriceClear ? parseFloat(basePriceClear) : null,
           masterPartId: selectedMasterPartId
         })
       })
@@ -466,7 +475,10 @@ export default function MasterPartsView() {
           stockLength: stockLength ? parseFloat(stockLength) : null,
           partType: rulePartType,
           isActive,
+          isMillFinish,
           basePrice: basePrice ? parseFloat(basePrice) : null,
+          basePriceBlack: basePriceBlack ? parseFloat(basePriceBlack) : null,
+          basePriceClear: basePriceClear ? parseFloat(basePriceClear) : null,
           masterPartId: selectedMasterPartId
         })
       })
@@ -514,7 +526,10 @@ export default function MasterPartsView() {
     setStockLength(rule.stockLength?.toString() || '')
     setRulePartType(rule.partType)
     setIsActive(rule.isActive)
+    setIsMillFinish(rule.isMillFinish || false)
     setBasePrice(rule.basePrice?.toString() || '')
+    setBasePriceBlack(rule.basePriceBlack?.toString() || '')
+    setBasePriceClear(rule.basePriceClear?.toString() || '')
     setFormula(rule.formula || '')
     setMinQuantity(rule.minQuantity?.toString() || '')
     setMaxQuantity(rule.maxQuantity?.toString() || '')
@@ -525,10 +540,13 @@ export default function MasterPartsView() {
     setMinHeight('')
     setMaxHeight('')
     setStockLength('')
-    
+
     setRulePartType('Extrusion')
     setIsActive(true)
+    setIsMillFinish(false)
     setBasePrice('')
+    setBasePriceBlack('')
+    setBasePriceClear('')
     setFormula('')
     setMinQuantity('')
     setMaxQuantity('')
@@ -1088,22 +1106,51 @@ export default function MasterPartsView() {
                               )}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-900">
-                              {rule.basePrice && (
-                                <div className="space-y-1">
-                                  <div>Base: <span className="font-medium">${rule.basePrice}</span></div>
-                                  {rule.formula && (
-                                    <div className="text-xs text-gray-600 font-mono">
-                                      {rule.formula}
+                              <div className="space-y-1">
+                                {rule.isMillFinish ? (
+                                  // Mill Finish: Show single price with badge
+                                  <>
+                                    <div className="flex items-center gap-2">
+                                      <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded bg-green-100 text-green-800">Mill Finish</span>
+                                      <span className="font-medium">${rule.basePrice || 0}</span>
                                     </div>
-                                  )}
-                                  {(rule.minQuantity || rule.maxQuantity) && (
-                                    <div className="text-xs text-gray-600">
-                                      Qty: {rule.minQuantity || '∞'} - {rule.maxQuantity || '∞'}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              {!rule.basePrice && '-'}
+                                    <p className="text-xs text-gray-500">Applies to all colors</p>
+                                  </>
+                                ) : (
+                                  // Non-Mill Finish: Show color-specific prices
+                                  <>
+                                    {rule.basePriceBlack && (
+                                      <div className="flex items-center gap-2">
+                                        <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded bg-gray-800 text-white">Black</span>
+                                        <span className="font-medium">${rule.basePriceBlack}</span>
+                                      </div>
+                                    )}
+                                    {rule.basePriceClear && (
+                                      <div className="flex items-center gap-2">
+                                        <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded bg-blue-100 text-blue-800">Clear</span>
+                                        <span className="font-medium">${rule.basePriceClear}</span>
+                                      </div>
+                                    )}
+                                    {!rule.basePriceBlack && !rule.basePriceClear && rule.basePrice && (
+                                      <div className="flex items-center gap-2">
+                                        <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded bg-gray-200 text-gray-700">Fallback</span>
+                                        <span className="font-medium">${rule.basePrice}</span>
+                                      </div>
+                                    )}
+                                    {!rule.basePrice && !rule.basePriceBlack && !rule.basePriceClear && '-'}
+                                  </>
+                                )}
+                                {rule.formula && (
+                                  <div className="text-xs text-gray-600 font-mono mt-1">
+                                    {rule.formula}
+                                  </div>
+                                )}
+                                {(rule.minQuantity || rule.maxQuantity) && (
+                                  <div className="text-xs text-gray-600">
+                                    Qty: {rule.minQuantity || '∞'} - {rule.maxQuantity || '∞'}
+                                  </div>
+                                )}
+                              </div>
                             </td>
                             <td className="px-6 py-4">
                               <span className={`px-2 py-1 text-xs rounded-full ${
@@ -1558,19 +1605,86 @@ export default function MasterPartsView() {
                 />
               </div>
 
-              {/* Price field */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Price ($) *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={basePrice}
-                  onChange={(e) => setBasePrice(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="e.g., 25.00"
-                  required
-                />
+              {/* Is Mill Finish Checkbox */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="isMillFinish"
+                    checked={isMillFinish}
+                    onChange={(e) => setIsMillFinish(e.target.checked)}
+                    className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="isMillFinish" className="ml-2 block text-sm font-medium text-gray-700">
+                    Is Mill Finish
+                  </label>
+                </div>
+                <p className="mt-1 ml-6 text-xs text-gray-500">
+                  Check this if the extrusion has no color variation (mill finish only)
+                </p>
               </div>
+
+              {/* Price fields - Conditional based on isMillFinish */}
+              {isMillFinish ? (
+                // Mill Finish: Single price field
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Price ($) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="e.g., 25.00"
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Mill finish price (applies to all colors)</p>
+                </div>
+              ) : (
+                // Non-Mill Finish: Color-specific price fields
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Black Price ($) <span className="text-xs text-gray-500">(optional)</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={basePriceBlack}
+                        onChange={(e) => setBasePriceBlack(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="e.g., 30.00"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">For Black finish</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Clear Price ($) <span className="text-xs text-gray-500">(optional)</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={basePriceClear}
+                        onChange={(e) => setBasePriceClear(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="e.g., 27.00"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">For Clear finish</p>
+                    </div>
+                  </div>
+
+                  {/* Note about pricing */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-xs text-blue-800">
+                      <strong>Note:</strong> At least one color price (Black or Clear) must be specified for non-mill finish extrusions.
+                    </p>
+                  </div>
+                </>
+              )}
 
               <div className="flex items-center">
                 <input

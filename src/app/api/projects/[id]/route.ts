@@ -47,6 +47,8 @@ export async function GET(
                         productBOMs: {
                           select: {
                             id: true,
+                            partNumber: true,
+                            formula: true,
                             updatedAt: true
                           }
                         },
@@ -84,53 +86,78 @@ export async function GET(
       )
     }
 
+    // Collect all unique part numbers from product BOMs across all components
+    const allPartNumbers = new Set<string>()
+
+    project.openings.forEach(opening => {
+      opening.panels.forEach(panel => {
+        if (panel.componentInstance?.product?.productBOMs) {
+          panel.componentInstance.product.productBOMs.forEach((bom: any) => {
+            if (bom.partNumber) {
+              allPartNumbers.add(bom.partNumber)
+            }
+          })
+        }
+      })
+    })
+
+    // Fetch master parts with their latest pricing rule update times
+    if (allPartNumbers.size > 0) {
+      const masterParts = await prisma.masterPart.findMany({
+        where: {
+          partNumber: {
+            in: Array.from(allPartNumbers)
+          }
+        },
+        select: {
+          partNumber: true,
+          baseName: true,
+          updatedAt: true,
+          pricingRules: {
+            select: {
+              id: true,
+              updatedAt: true
+            },
+            orderBy: {
+              updatedAt: 'desc'
+            },
+            take: 1
+          },
+          stockLengthRules: {
+            select: {
+              id: true,
+              updatedAt: true
+            },
+            orderBy: {
+              updatedAt: 'desc'
+            },
+            take: 1
+          }
+        }
+      })
+
+      // Attach master parts info to response
+      const projectWithSync = {
+        ...project,
+        _syncInfo: {
+          masterParts: masterParts.map(mp => ({
+            partNumber: mp.partNumber,
+            baseName: mp.baseName,
+            masterPartUpdatedAt: mp.updatedAt,
+            latestPricingRuleUpdate: mp.pricingRules[0]?.updatedAt || null,
+            latestStockLengthRuleUpdate: mp.stockLengthRules[0]?.updatedAt || null
+          }))
+        }
+      }
+
+      return NextResponse.json(projectWithSync)
+    }
+
     return NextResponse.json(project)
   } catch (error) {
     console.error('Error fetching project:', error)
     return NextResponse.json(
       { error: 'Failed to fetch project' },
-      { status: 500 }
-    )
-  }
-}
-
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const resolvedParams = await params
-    const projectId = parseInt(resolvedParams.id)
-    
-    if (isNaN(projectId)) {
-      return NextResponse.json(
-        { error: 'Invalid project ID' },
-        { status: 400 }
-      )
-    }
-
-    // Check if project exists
-    const project = await prisma.project.findUnique({
-      where: { id: projectId }
-    })
-
-    if (!project) {
-      return NextResponse.json(
-        { error: 'Project not found' },
-        { status: 404 }
-      )
-    }
-
-    // Delete the project (cascade will handle related records)
-    await prisma.project.delete({
-      where: { id: projectId }
-    })
-
-    return NextResponse.json({ message: 'Project deleted successfully' })
-  } catch (error) {
-    console.error('Error deleting project:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete project' },
       { status: 500 }
     )
   }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Edit, Eye, Calendar, DollarSign, Briefcase, CheckCircle, Clock, AlertCircle } from 'lucide-react'
+import { Plus, Edit, Eye, Calendar, DollarSign, Briefcase, CheckCircle, Clock, AlertCircle, Archive } from 'lucide-react'
 
 interface Project {
   id: number
@@ -120,9 +120,11 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
     const colors: { [key: string]: string } = {
       'Draft': 'bg-gray-100 text-gray-800',
       'Active': 'bg-blue-100 text-blue-800',
+      'In Progress': 'bg-blue-100 text-blue-800',
       'On Hold': 'bg-yellow-100 text-yellow-800',
       'Completed': 'bg-green-100 text-green-800',
-      'Cancelled': 'bg-red-100 text-red-800'
+      'Cancelled': 'bg-red-100 text-red-800',
+      'Archive': 'bg-orange-100 text-orange-800'
     }
     return colors[status] || 'bg-gray-100 text-gray-800'
   }
@@ -132,9 +134,12 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
       case 'Completed':
         return <CheckCircle className="w-4 h-4 text-green-600" />
       case 'Active':
+      case 'In Progress':
         return <Clock className="w-4 h-4 text-blue-600" />
       case 'On Hold':
         return <AlertCircle className="w-4 h-4 text-yellow-600" />
+      case 'Archive':
+        return <Archive className="w-4 h-4 text-orange-600" />
       default:
         return <Briefcase className="w-4 h-4 text-gray-600" />
     }
@@ -275,7 +280,9 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
       <div className="space-y-4">
         {projects.length > 0 ? (
           projects.map((project) => (
-            <div key={project.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div key={project.id} className={`bg-white rounded-xl shadow-sm border border-gray-200 p-6 ${
+              project.status === 'Archive' ? 'opacity-60 bg-gray-50' : ''
+            }`}>
               <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">

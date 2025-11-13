@@ -84,12 +84,19 @@ Present the plan to the user and get confirmation before proceeding.
 
 Follow the workflow from CLAUDE.md:
 
-### Update Status
+**6.1 Update Status & Start Time Tracking**
 
-Set the CUrrent ClickUp Task Status to "DEVELOPMENT"
+Set the current ClickUp task status to "DEVELOPMENT" and record the start time:
 
-### Track Time
-Start Time to Track Time
+```bash
+# Update status to development
+node scripts/clickup-helper.js status <TASK_ID> development
+```
+
+**IMPORTANT - Record Start Time:**
+Note the current time when you begin implementation. You'll use this to calculate total time spent.
+
+Example: "Starting implementation at [TIME]"
 
 **For each task in your plan:**
 1. Mark as in_progress in TodoWrite
@@ -201,7 +208,34 @@ node scripts/clickup-helper.js update <TASK_ID> --append-description "[SUMMARY_F
 
 This will append the summary to the existing description without overwriting.
 
-### Step 9: Update Task Status
+### Step 9: Update Task Status & Track Time
+
+**9.1 Calculate Time Spent**
+
+Calculate the elapsed time from when you started implementation (Step 6) to now.
+
+Example calculation:
+- Start time: 2:00 PM
+- End time: 3:30 PM
+- Duration: 1.5 hours
+
+**9.2 Track Time in ClickUp**
+
+Record the time spent on this task:
+
+```bash
+# Track time spent on implementation and testing
+node scripts/clickup-helper.js track-time <TASK_ID> <HOURS> "Task implementation and testing via /runtask"
+```
+
+Replace `<HOURS>` with the calculated duration as a decimal (e.g., 1.5 for 1 hour 30 minutes, 0.5 for 30 minutes).
+
+**Important Notes:**
+- Be accurate with time tracking - include analysis, implementation, and testing
+- Round to nearest 0.25 hours (15 min increments) for cleaner tracking
+- Examples: 0.25, 0.5, 0.75, 1, 1.5, 2, etc.
+
+**9.3 Update Task Status**
 
 Mark the task as "testing" and ensure all subtasks are complete:
 
@@ -236,6 +270,7 @@ Provide a summary to the user:
 ### Summary
 - ✅ Implementation completed
 - ✅ Testing passed via Playwright
+- ✅ Time tracked: [X] hours
 - ✅ ClickUp task updated with summary
 - ✅ Task status set to "testing"
 
@@ -276,6 +311,12 @@ Note: These subtasks are functionally complete; only the ClickUp status sync fai
 1. Document the error
 2. Provide the summary to user manually
 3. Ask user to update ClickUp or provide alternative approach
+
+**If time tracking fails:**
+1. Note the error in your final report
+2. Provide the calculated hours to the user
+3. User can manually track time in ClickUp UI
+4. Continue with the workflow - time tracking failure should not block completion
 
 **If subtask marking fails:**
 Common issues and solutions:

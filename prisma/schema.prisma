@@ -218,6 +218,7 @@ model StockLengthRule {
   id             Int        @id @default(autoincrement())
   name           String
   description    String?
+  isMillFinish   Boolean    @default(false) // True if this is a mill finish extrusion (no color variation)
   minHeight      Float?
   maxHeight      Float?
   minWidth       Float?
@@ -230,7 +231,9 @@ model StockLengthRule {
   partType       String     @default("Extrusion")
   isActive       Boolean    @default(true)
   // Pricing fields for extrusions (pricing based on stock length)
-  basePrice      Float?     // Base price for extrusions
+  basePrice      Float?     // For mill finish OR fallback price if color-specific prices not set
+  basePriceBlack Float?     // Price for Black (BL) finish extrusions (only used if isMillFinish = false)
+  basePriceClear Float?     // Price for Clear (CL) finish extrusions (only used if isMillFinish = false)
   formula        String?    // e.g., "basePrice * (stockLength / 96)" or "basePrice * quantity"
   minQuantity    Float?
   maxQuantity    Float?

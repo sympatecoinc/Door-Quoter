@@ -127,12 +127,14 @@ export async function POST(request: NextRequest) {
                 const r = entry.row
                 console.log(`  Entry stockLength: "${r.stockRule_stockLength}"`)
                 if (r.stockRule_stockLength && r.stockRule_stockLength.trim() !== '') {
-                  console.log(`  Creating rule with stockLength: ${r.stockRule_stockLength}`)
+                  const isMillFinish = r.stockRule_isMillFinish === 'TRUE' || r.stockRule_isMillFinish === 'true'
+                  console.log(`  Creating rule with stockLength: ${r.stockRule_stockLength}${isMillFinish ? ' (Mill Finish)' : ''}`)
                   await tx.stockLengthRule.create({
                     data: {
                       masterPartId: masterPart.id,
-                      name: `${partNumber} - ${r.stockRule_stockLength}" stock`,
+                      name: `${partNumber} - ${r.stockRule_stockLength}" stock${isMillFinish ? ' (Mill Finish)' : ''}`,
                       description: null,
+                      isMillFinish: isMillFinish,
                       minHeight: r.stockRule_minHeight ? parseFloat(r.stockRule_minHeight) : null,
                       maxHeight: r.stockRule_maxHeight ? parseFloat(r.stockRule_maxHeight) : null,
                       minWidth: null,
@@ -145,6 +147,8 @@ export async function POST(request: NextRequest) {
                       partType: 'Extrusion',
                       isActive: true,
                       basePrice: r.stockRule_basePrice ? parseFloat(r.stockRule_basePrice) : null,
+                      basePriceBlack: r.stockRule_basePriceBlack ? parseFloat(r.stockRule_basePriceBlack) : null,
+                      basePriceClear: r.stockRule_basePriceClear ? parseFloat(r.stockRule_basePriceClear) : null,
                       formula: r.stockRule_formula || null,
                       minQuantity: null,
                       maxQuantity: null
