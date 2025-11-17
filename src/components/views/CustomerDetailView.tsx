@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Edit, Mail, Phone, MapPin, Building, Calendar, Tag, FileText, Users, Briefcase, TrendingUp } from 'lucide-react'
+import { X, Edit, Mail, Phone, MapPin, Building, Calendar, Tag, FileText, Users, Briefcase, TrendingUp } from 'lucide-react'
 import CustomerNotes from '../crm/CustomerNotes'
 import CustomerFiles from '../crm/CustomerFiles'
 import CustomerLeads from '../crm/CustomerLeads'
 import CustomerProjects from '../crm/CustomerProjects'
 import CustomerForm from '../crm/CustomerForm'
+import { useAppStore } from '@/stores/appStore'
 
 interface Customer {
   id: number
@@ -36,9 +37,9 @@ interface CustomerDetailViewProps {
 }
 
 export default function CustomerDetailView({ customerId, onBack }: CustomerDetailViewProps) {
+  const { customerDetailTab, setCustomerDetailTab } = useAppStore()
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'overview' | 'notes' | 'files' | 'leads' | 'projects'>('overview')
   const [showEditForm, setShowEditForm] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -99,7 +100,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const renderTabContent = () => {
     if (!customer) return null
 
-    switch (activeTab) {
+    switch (customerDetailTab) {
       case 'notes':
         return <CustomerNotes customerId={customerId} />
       case 'files':
@@ -111,6 +112,9 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       default:
         return (
           <div className="space-y-6">
+            {/* Projects Section */}
+            <CustomerProjects customerId={customerId} customer={customer} />
+
             {/* Customer Information */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="flex justify-between items-start mb-6">
@@ -277,86 +281,95 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     }
   }
 
-  if (loading) {
-    return (
-      <div className="p-8">
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!customer) {
-    return (
-      <div className="p-8">
-        <div className="text-center py-8 text-gray-500">
-          Customer not found
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center mb-4">
-          <button
-            onClick={onBack}
-            className="flex items-center text-gray-600 hover:text-gray-900 mr-4"
-          >
-            <ArrowLeft className="w-5 h-5 mr-1" />
-            Back to Customers
-          </button>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-8 z-50">
+      <div className="bg-white rounded-xl shadow-2xl w-full h-full max-w-7xl flex flex-col">
+        {/* Modal Header */}
+        <div className="px-8 py-6 border-b border-gray-200 flex-shrink-0">
+          <div className="flex justify-between items-start">
+            <div className="flex-1">
+              {loading ? (
+                <div className="h-8 bg-gray-200 animate-pulse rounded w-48"></div>
+              ) : customer ? (
+                <>
+                  <h1 className="text-2xl font-bold text-gray-900">{customer.companyName}</h1>
+                  {customer.contactName && (
+                    <p className="text-gray-600 mt-1">Contact: {customer.contactName}</p>
+                  )}
+                </>
+              ) : (
+                <h1 className="text-2xl font-bold text-gray-900">Customer Details</h1>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              {customer && (
+                <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusBadge(customer.status)}`}>
+                  {customer.status}
+                </span>
+              )}
+              <button
+                onClick={onBack}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* Tab Navigation */}
+          {customer && (
+            <div className="border-b border-gray-200 -mb-px mt-6">
+              <nav className="-mb-px flex space-x-8">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => setCustomerDetailTab(tab.key as any)}
+                      className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
+                        customerDetailTab === tab.key
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 mr-2" />
+                      {tab.label}
+                    </button>
+                  )
+                })}
+              </nav>
+            </div>
+          )}
         </div>
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">{customer.companyName}</h1>
-            {customer.contactName && (
-              <p className="text-gray-600 mt-1">Contact: {customer.contactName}</p>
+
+        {/* Modal Content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-8">
+            {loading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+              </div>
+            ) : !customer ? (
+              <div className="text-center py-12 text-gray-500">
+                Customer not found
+              </div>
+            ) : (
+              renderTabContent()
             )}
           </div>
-          <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusBadge(customer.status)}`}>
-            {customer.status}
-          </span>
         </div>
+
+        {/* Edit Form Modal */}
+        {customer && (
+          <CustomerForm
+            isOpen={showEditForm}
+            onClose={() => setShowEditForm(false)}
+            onSubmit={handleCustomerUpdate}
+            customer={customer}
+            mode="edit"
+          />
+        )}
       </div>
-
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200 mb-8">
-        <nav className="-mb-px flex space-x-8">
-          {tabs.map((tab) => {
-            const Icon = tab.icon
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key as any)}
-                className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === tab.key
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <Icon className="w-4 h-4 mr-2" />
-                {tab.label}
-              </button>
-            )
-          })}
-        </nav>
-      </div>
-
-      {/* Tab Content */}
-      {renderTabContent()}
-
-      {/* Edit Form Modal */}
-      <CustomerForm
-        isOpen={showEditForm}
-        onClose={() => setShowEditForm(false)}
-        onSubmit={handleCustomerUpdate}
-        customer={customer}
-        mode="edit"
-      />
     </div>
   )
 }

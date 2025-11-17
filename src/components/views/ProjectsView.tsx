@@ -414,7 +414,7 @@ export default function ProjectsView() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Pricing Mode (Optional)
+                  Pricing Mode
                 </label>
                 <select
                   value={newProjectPricingModeId || ''}
@@ -422,15 +422,19 @@ export default function ProjectsView() {
                   disabled={creating}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
                 >
-                  <option value="">No pricing mode</option>
+                  <option value="">
+                    {pricingModes.find(m => m.isDefault)
+                      ? `Use Default (${pricingModes.find(m => m.isDefault)!.name})`
+                      : 'Use Default'}
+                  </option>
                   {pricingModes.map((mode) => (
                     <option key={mode.id} value={mode.id}>
-                      {mode.name} {mode.isDefault ? '(Default)' : ''}
+                      {mode.name} {mode.isDefault ? '✓ Default' : ''}
                     </option>
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Select a pricing mode to apply pre-configured markup and discount rules
+                  Pre-configured markup and discount rules. Leave blank to use default pricing mode.
                 </p>
               </div>
               <div className="flex justify-end space-x-3 pt-4">
@@ -548,7 +552,7 @@ export default function ProjectsView() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Pricing Mode (Optional)
+                  Pricing Mode
                 </label>
                 <select
                   value={editPricingModeId || ''}
@@ -556,15 +560,19 @@ export default function ProjectsView() {
                   disabled={updating}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
                 >
-                  <option value="">No pricing mode</option>
+                  <option value="">
+                    {pricingModes.find(m => m.isDefault)
+                      ? `Use Default (${pricingModes.find(m => m.isDefault)!.name})`
+                      : 'Use Default'}
+                  </option>
                   {pricingModes.map((mode) => (
                     <option key={mode.id} value={mode.id}>
-                      {mode.name} {mode.isDefault ? '(Default)' : ''}
+                      {mode.name} {mode.isDefault ? '✓ Default' : ''}
                     </option>
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Select a pricing mode to apply pre-configured markup and discount rules
+                  Pre-configured markup and discount rules. Leave blank to use default pricing mode.
                 </p>
               </div>
               <div className="flex justify-end space-x-3 pt-4">

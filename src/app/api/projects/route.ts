@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ProjectStatus } from '@prisma/client'
+import { ensureProjectPricingMode } from '@/lib/pricing-mode'
 
 export async function GET() {
   try {
@@ -73,12 +74,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const projectData: any = { name, status, customerId }
+    // Ensure pricing mode is set (apply default if not provided)
+    const finalPricingModeId = await ensureProjectPricingMode(pricingModeId, prisma)
+
+    const projectData: any = {
+      name,
+      status,
+      customerId,
+      pricingModeId: finalPricingModeId
+    }
     if (dueDate) {
       projectData.dueDate = new Date(dueDate)
-    }
-    if (pricingModeId !== undefined) {
-      projectData.pricingModeId = pricingModeId
     }
 
     // Create project and initial status history record in a transaction

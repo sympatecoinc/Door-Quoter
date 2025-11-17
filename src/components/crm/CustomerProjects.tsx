@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Edit, Eye, Calendar, DollarSign, Briefcase, CheckCircle, Clock, AlertCircle, Archive } from 'lucide-react'
+import { Plus, Edit, Eye, Calendar, DollarSign, Briefcase, CheckCircle, Clock, AlertCircle, Archive, FileText } from 'lucide-react'
+import { ProjectStatus, STATUS_CONFIG } from '@/types'
+import { useAppStore } from '@/stores/appStore'
 
 interface Project {
   id: number
@@ -11,10 +13,14 @@ interface Project {
   createdAt: string
   updatedAt: string
   dueDate?: string
+  taxRate?: number
+  pricingModeId?: number | null
   openings: {
     id: number
     name: string
     price: number
+    roughWidth: number
+    roughHeight: number
   }[]
 }
 
@@ -30,6 +36,7 @@ interface CustomerProjectsProps {
 }
 
 export default function CustomerProjects({ customerId, customer }: CustomerProjectsProps) {
+  const { setSelectedProjectId, setCurrentMenu, setCustomerDetailTab, setAutoOpenAddOpening } = useAppStore()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -37,8 +44,31 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
   const [newProjectDueDate, setNewProjectDueDate] = useState('')
   const [creating, setCreating] = useState(false)
 
+
+  // Edit modal state
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editStatus, setEditStatus] = useState('')
+  const [editStatusNotes, setEditStatusNotes] = useState('')
+  const [editDueDate, setEditDueDate] = useState('')
+  const [editTaxRate, setEditTaxRate] = useState('0')
+  const [editPricingModeId, setEditPricingModeId] = useState<number | null>(null)
+  const [updating, setUpdating] = useState(false)
+
+  // Pricing modes
+  const [pricingModes, setPricingModes] = useState<any[]>([])
+
+  // Status change confirmation
+  const [statusChangeConfirm, setStatusChangeConfirm] = useState<{
+    projectId: number
+    projectName: string
+    newStatus: string
+    newStatusLabel: string
+  } | null>(null)
+
   useEffect(() => {
     fetchProjects()
+    fetchPricingModes()
   }, [customerId])
 
   const fetchProjects = async () => {
@@ -58,6 +88,18 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
     }
   }
 
+  const fetchPricingModes = async () => {
+    try {
+      const response = await fetch('/api/pricing-modes')
+      if (response.ok) {
+        const modesData = await response.json()
+        setPricingModes(modesData)
+      }
+    } catch (error) {
+      console.error('Error fetching pricing modes:', error)
+    }
+  }
+
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return
 
@@ -72,7 +114,7 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
           name: newProjectName,
           customerId: customerId,
           dueDate: newProjectDueDate || null,
-          status: 'Draft'
+          status: ProjectStatus.STAGING
         }),
       })
 
@@ -92,6 +134,41 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
     }
   }
 
+  const handleStatusButtonClick = (projectId: number, projectName: string, newStatus: string) => {
+    const statusLabel = getStatusLabel(newStatus)
+    setStatusChangeConfirm({
+      projectId,
+      projectName,
+      newStatus,
+      newStatusLabel: statusLabel
+    })
+  }
+
+  const handleConfirmStatusChange = async () => {
+    if (!statusChangeConfirm) return
+
+    try {
+      const response = await fetch(`/api/projects/${statusChangeConfirm.projectId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: statusChangeConfirm.newStatus
+        }),
+      })
+
+      if (response.ok) {
+        fetchProjects() // Refresh entire list to get updated data
+        setStatusChangeConfirm(null)
+      } else {
+        console.error('Failed to update project status')
+      }
+    } catch (error) {
+      console.error('Error updating project status:', error)
+    }
+  }
+
   const handleUpdateProjectStatus = async (projectId: number, newStatus: string) => {
     try {
       const response = await fetch(`/api/projects/${projectId}`, {
@@ -105,9 +182,7 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
       })
 
       if (response.ok) {
-        setProjects(prev => prev.map(project =>
-          project.id === projectId ? { ...project, status: newStatus } : project
-        ))
+        fetchProjects() // Refresh entire list to get updated data
       } else {
         console.error('Failed to update project status')
       }
@@ -116,17 +191,98 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
     }
   }
 
+  const handleViewOpenings = (projectId: number, autoOpenModal: boolean = false) => {
+    // Set the project ID and navigate to project detail view
+    setCustomerDetailTab('projects') // Remember we're on the Projects tab
+    setSelectedProjectId(projectId)
+    setCurrentMenu('projects')
+    if (autoOpenModal) {
+      setAutoOpenAddOpening(true)
+    }
+  }
+
+  const handleViewQuote = (projectId: number) => {
+    // Set the project ID and navigate to quote view
+    setCustomerDetailTab('projects') // Remember we're on the Projects tab
+    setSelectedProjectId(projectId)
+    setCurrentMenu('quote')
+  }
+
+  const openEditModal = (project: Project) => {
+    setEditingProject(project)
+    setEditName(project.name)
+    setEditStatus(project.status)
+    setEditStatusNotes('')
+    setEditDueDate(project.dueDate || '')
+    setEditTaxRate(project.taxRate?.toString() || '0')
+    setEditPricingModeId(project.pricingModeId || null)
+  }
+
+  const cancelEdit = () => {
+    setEditingProject(null)
+    setEditName('')
+    setEditStatus('')
+    setEditStatusNotes('')
+    setEditDueDate('')
+    setEditTaxRate('0')
+    setEditPricingModeId(null)
+  }
+
+  const handleUpdateProject = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingProject) return
+
+    setUpdating(true)
+    try {
+      const response = await fetch(`/api/projects/${editingProject.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: editName,
+          status: editStatus,
+          dueDate: editDueDate || null,
+          taxRate: parseFloat(editTaxRate),
+          pricingModeId: editPricingModeId,
+          statusNotes: editStatusNotes || undefined
+        }),
+      })
+
+      if (response.ok) {
+        fetchProjects() // Refresh projects list
+        cancelEdit()
+      } else {
+        console.error('Failed to update project')
+      }
+    } catch (error) {
+      console.error('Error updating project:', error)
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   const getStatusColor = (status: string) => {
+    const statusConfig = STATUS_CONFIG[status as ProjectStatus]
+    if (statusConfig) {
+      return `${statusConfig.bgColor} ${statusConfig.textColor}`
+    }
+    // Fallback for legacy statuses not in ProjectStatus enum
     const colors: { [key: string]: string } = {
       'Draft': 'bg-gray-100 text-gray-800',
-      'Active': 'bg-blue-100 text-blue-800',
+      'Active': 'bg-purple-100 text-purple-800',
       'In Progress': 'bg-blue-100 text-blue-800',
       'On Hold': 'bg-yellow-100 text-yellow-800',
-      'Completed': 'bg-green-100 text-green-800',
+      'Completed': 'bg-teal-100 text-teal-800',
       'Cancelled': 'bg-red-100 text-red-800',
       'Archive': 'bg-orange-100 text-orange-800'
     }
     return colors[status] || 'bg-gray-100 text-gray-800'
+  }
+
+  const getStatusLabel = (status: string) => {
+    const statusConfig = STATUS_CONFIG[status as ProjectStatus]
+    return statusConfig ? statusConfig.label : status
   }
 
   const getStatusIcon = (status: string) => {
@@ -151,6 +307,7 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
     }
     return project.openings.reduce((sum, opening) => sum + opening.price, 0)
   }
+
 
   if (loading) {
     return (
@@ -289,7 +446,7 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
                     {getStatusIcon(project.status)}
                     <h3 className="text-lg font-medium text-gray-900">{project.name}</h3>
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(project.status)}`}>
-                      {project.status}
+                      {getStatusLabel(project.status)}
                     </span>
                   </div>
 
@@ -315,17 +472,36 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
+                  {project.openings.length === 0 ? (
+                    <button
+                      onClick={() => handleViewOpenings(project.id, true)}
+                      className="flex items-center px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200"
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Add Openings
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleViewOpenings(project.id, false)}
+                        className="flex items-center px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200"
+                      >
+                        <Briefcase className="w-4 h-4 mr-1" />
+                        View Openings
+                      </button>
+                      <button
+                        onClick={() => handleViewQuote(project.id)}
+                        className="flex items-center px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg border border-green-200"
+                      >
+                        <FileText className="w-4 h-4 mr-1" />
+                        View Quote
+                      </button>
+                    </>
+                  )}
                   <button
-                    onClick={() => window.open(`/projects/${project.id}`, '_blank')}
-                    className="text-blue-600 hover:text-blue-800"
-                    title="View project details"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => window.open(`/projects/${project.id}/edit`, '_blank')}
-                    className="text-yellow-600 hover:text-yellow-800"
+                    onClick={() => openEditModal(project)}
+                    className="text-gray-600 hover:text-gray-800"
                     title="Edit project"
                   >
                     <Edit className="w-4 h-4" />
@@ -333,47 +509,29 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
                 </div>
               </div>
 
-              {/* Openings List */}
-              {project.openings.length > 0 && (
-                <div className="border-t border-gray-200 pt-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Openings:</h4>
-                  <div className="space-y-2">
-                    {project.openings.map((opening) => (
-                      <div key={opening.id} className="flex justify-between items-center text-sm">
-                        <span className="text-gray-900">{opening.name}</span>
-                        <span className="text-gray-600">${opening.price.toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </div>
+              {/* Status Hot Buttons */}
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(STATUS_CONFIG)
+                    .filter(([key]) => key !== ProjectStatus.REVISE && key !== ProjectStatus.QUOTE_ACCEPTED)
+                    .map(([key, config]) => {
+                      const isActive = project.status === key
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => handleStatusButtonClick(project.id, project.name, key)}
+                          className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${
+                            isActive
+                              ? `${config.bgColor} ${config.textColor} ring-2 ring-offset-1 ring-${config.textColor.replace('text-', '')}`
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+                          }`}
+                          title={`Set status to ${config.label}`}
+                        >
+                          {config.label}
+                        </button>
+                      )
+                    })}
                 </div>
-              )}
-
-              {/* Status Update Buttons */}
-              <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-200">
-                {project.status !== 'Active' && (
-                  <button
-                    onClick={() => handleUpdateProjectStatus(project.id, 'Active')}
-                    className="text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200"
-                  >
-                    Mark Active
-                  </button>
-                )}
-                {project.status !== 'On Hold' && project.status !== 'Completed' && (
-                  <button
-                    onClick={() => handleUpdateProjectStatus(project.id, 'On Hold')}
-                    className="text-xs px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full hover:bg-yellow-200"
-                  >
-                    Put On Hold
-                  </button>
-                )}
-                {project.status !== 'Completed' && (
-                  <button
-                    onClick={() => handleUpdateProjectStatus(project.id, 'Completed')}
-                    className="text-xs px-3 py-1 bg-green-100 text-green-700 rounded-full hover:bg-green-200"
-                  >
-                    Mark Completed
-                  </button>
-                )}
               </div>
             </div>
           ))
@@ -396,6 +554,161 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
           </div>
         )}
       </div>
+
+      {/* Status Change Confirmation Dialog */}
+      {statusChangeConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Confirm Status Change
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to change the status of <strong>{statusChangeConfirm.projectName}</strong> to <strong>{statusChangeConfirm.newStatusLabel}</strong>?
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setStatusChangeConfirm(null)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmStatusChange}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Project Modal */}
+      {editingProject && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Edit Project</h2>
+            <form onSubmit={handleUpdateProject} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Project Name
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  disabled={updating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                  placeholder="Enter project name"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Status
+                </label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  disabled={updating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                >
+                  {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+                    <option key={key} value={key}>
+                      {config.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Status Change Notes (Optional)
+                </label>
+                <textarea
+                  value={editStatusNotes}
+                  onChange={(e) => setEditStatusNotes(e.target.value)}
+                  disabled={updating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                  placeholder="Add notes about this status change (optional)"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Due Date
+                </label>
+                <input
+                  type="date"
+                  value={editDueDate}
+                  onChange={(e) => setEditDueDate(e.target.value)}
+                  disabled={updating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tax Rate
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="1"
+                  value={editTaxRate}
+                  onChange={(e) => setEditTaxRate(e.target.value)}
+                  disabled={updating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                  placeholder="0.08"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter 0.08 for 8% tax, 0.065 for 6.5% tax, etc.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Pricing Mode (Optional)
+                </label>
+                <select
+                  value={editPricingModeId || ''}
+                  onChange={(e) => setEditPricingModeId(e.target.value ? parseInt(e.target.value) : null)}
+                  disabled={updating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                >
+                  <option value="">No pricing mode</option>
+                  {pricingModes.map((mode) => (
+                    <option key={mode.id} value={mode.id}>
+                      {mode.name} {mode.isDefault ? '(Default)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Select a pricing mode to apply pre-configured markup and discount rules
+                </p>
+              </div>
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  disabled={updating}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating || !editName.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {updating && (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  )}
+                  {updating ? 'Updating...' : 'Update Project'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -134,6 +134,35 @@ export async function DELETE(
       )
     }
 
+    // Check if the pricing mode exists and get its details
+    const mode = await prisma.pricingMode.findUnique({
+      where: { id }
+    })
+
+    if (!mode) {
+      return NextResponse.json(
+        { error: 'Pricing mode not found' },
+        { status: 404 }
+      )
+    }
+
+    // Prevent deletion of default pricing mode
+    if (mode.isDefault) {
+      return NextResponse.json(
+        { error: 'Cannot delete the default pricing mode. Please set another pricing mode as default first.' },
+        { status: 400 }
+      )
+    }
+
+    // Prevent deletion of last pricing mode
+    const totalModes = await prisma.pricingMode.count()
+    if (totalModes <= 1) {
+      return NextResponse.json(
+        { error: 'Cannot delete the last pricing mode. At least one pricing mode must exist.' },
+        { status: 400 }
+      )
+    }
+
     // Check if any projects are using this mode
     const projectCount = await prisma.project.count({
       where: { pricingModeId: id }

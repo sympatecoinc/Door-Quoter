@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Trash2 } from 'lucide-react'
 
 interface Customer {
   id: number
@@ -9,15 +9,31 @@ interface Customer {
   contactName?: string
 }
 
+interface Lead {
+  id: number
+  customerId?: number
+  title: string
+  description?: string
+  value?: number
+  probability: number
+  stage: string
+  source?: string
+  expectedCloseDate?: string
+}
+
 interface LeadFormProps {
   isOpen: boolean
   onClose: () => void
   onSubmit: (leadData: any) => Promise<void>
+  onDelete?: (leadId: number) => Promise<void>
   defaultStage?: string
   customerId?: number // Optional: pre-set customer ID (hides customer selector)
+  lead?: Lead // Optional: existing lead data for edit mode
 }
 
-export default function LeadForm({ isOpen, onClose, onSubmit, defaultStage = 'New', customerId }: LeadFormProps) {
+export default function LeadForm({ isOpen, onClose, onSubmit, onDelete, defaultStage = 'New', customerId, lead }: LeadFormProps) {
+  const isEditMode = !!lead
+
   const [formData, setFormData] = useState({
     customerId: customerId ? String(customerId) : '',
     title: '',
@@ -30,7 +46,24 @@ export default function LeadForm({ isOpen, onClose, onSubmit, defaultStage = 'Ne
   })
   const [customers, setCustomers] = useState<Customer[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [loadingCustomers, setLoadingCustomers] = useState(false)
+
+  // Initialize form data when lead is provided (edit mode)
+  useEffect(() => {
+    if (lead) {
+      setFormData({
+        customerId: lead.customerId ? String(lead.customerId) : '',
+        title: lead.title || '',
+        description: lead.description || '',
+        value: lead.value ? String(lead.value) : '',
+        probability: String(lead.probability),
+        stage: lead.stage,
+        source: lead.source || '',
+        expectedCloseDate: lead.expectedCloseDate ? lead.expectedCloseDate.split('T')[0] : ''
+      })
+    }
+  }, [lead])
 
   useEffect(() => {
     if (isOpen && !customerId) {
@@ -93,13 +126,34 @@ export default function LeadForm({ isOpen, onClose, onSubmit, defaultStage = 'Ne
     }
   }
 
+  const handleDelete = async () => {
+    if (!lead || !onDelete) return
+
+    if (!confirm(`Are you sure you want to delete the lead "${lead.title}"? This action cannot be undone.`)) {
+      return
+    }
+
+    setIsDeleting(true)
+    try {
+      await onDelete(lead.id)
+      onClose()
+    } catch (error) {
+      console.error('Error deleting lead:', error)
+      alert('Failed to delete lead. Please try again.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">Add New Lead</h2>
+          <h2 className="text-xl font-semibold text-gray-900">
+            {isEditMode ? 'Edit Lead' : 'Add New Lead'}
+          </h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
@@ -259,21 +313,40 @@ export default function LeadForm({ isOpen, onClose, onSubmit, defaultStage = 'Ne
           </div>
 
           {/* Form Actions */}
-          <div className="flex justify-end space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || !formData.title.trim() || (!customerId && !formData.customerId)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? 'Creating...' : 'Create Lead'}
-            </button>
+          <div className="flex justify-between pt-4">
+            {/* Delete icon (left side, only in edit mode) */}
+            <div>
+              {isEditMode && onDelete && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isDeleting || isSubmitting}
+                  className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Delete lead"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            {/* Cancel and Submit buttons (right side) */}
+            <div className="flex space-x-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                disabled={isSubmitting || isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting || isDeleting || !formData.title.trim() || (!customerId && !formData.customerId)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? (isEditMode ? 'Updating...' : 'Creating...') : (isEditMode ? 'Update Lead' : 'Create Lead')}
+              </button>
+            </div>
           </div>
         </form>
       </div>

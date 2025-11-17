@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ProjectStatus } from '@prisma/client'
+import { ensureProjectPricingMode } from '@/lib/pricing-mode'
 
 export async function GET(
   request: NextRequest,
@@ -181,13 +182,6 @@ export async function PUT(
 
     const { name, status, statusNotes, dueDate, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost } = await request.json()
 
-    if (!name) {
-      return NextResponse.json(
-        { error: 'Project name is required' },
-        { status: 400 }
-      )
-    }
-
     // Validate status if provided
     if (status && !Object.values(ProjectStatus).includes(status)) {
       return NextResponse.json(
@@ -206,7 +200,13 @@ export async function PUT(
       )
     }
 
-    const updateData: any = { name, status }
+    const updateData: any = {}
+    if (name !== undefined) {
+      updateData.name = name
+    }
+    if (status !== undefined) {
+      updateData.status = status
+    }
     if (dueDate !== undefined) {
       updateData.dueDate = dueDate ? new Date(dueDate) : null
     }
@@ -219,8 +219,10 @@ export async function PUT(
     if (taxRate !== undefined) {
       updateData.taxRate = taxRate
     }
+    // Ensure pricing mode is set (apply default if null/undefined provided)
     if (pricingModeId !== undefined) {
-      updateData.pricingModeId = pricingModeId
+      const finalPricingModeId = await ensureProjectPricingMode(pricingModeId, prisma)
+      updateData.pricingMode = { connect: { id: finalPricingModeId } }
     }
     if (installationCost !== undefined) {
       updateData.installationCost = installationCost
@@ -234,9 +236,7 @@ export async function PUT(
     if (manualInstallationCost !== undefined) {
       updateData.manualInstallationCost = manualInstallationCost
     }
-    if (statusNotes !== undefined) {
-      updateData.statusNotes = statusNotes
-    }
+    // Note: statusNotes is not part of Project model, only used for status history
 
     // Update project and track status change in a transaction
     const updatedProject = await prisma.$transaction(async (tx) => {

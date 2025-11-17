@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Download, FileText, Printer, Ruler, Palette, Eye, Wrench, DollarSign, Paperclip } from 'lucide-react'
+import { ArrowLeft, Download, FileText, Printer, Ruler, Palette, Eye, Wrench, DollarSign, Paperclip, Settings } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
@@ -31,6 +31,8 @@ interface QuoteData {
     installationMethod: 'MANUAL' | 'PER_PRODUCT_TOTAL'
     installationComplexity: 'SIMPLE' | 'STANDARD' | 'COMPLEX' | 'VERY_COMPLEX'
     manualInstallationCost: number
+    extrusionCostingMethod?: 'FULL_STOCK' | 'PERCENTAGE_BASED'
+    excludedPartNumbers?: string[]
     pricingMode?: {
       name: string
       markup: number
@@ -49,7 +51,7 @@ interface QuoteData {
 }
 
 export default function QuoteView() {
-  const { selectedProjectId, setSelectedProjectId, setCurrentMenu } = useAppStore()
+  const { selectedProjectId, setSelectedProjectId, setCurrentMenu, selectedCustomerId, customerDetailView } = useAppStore()
   const { toasts, removeToast, showSuccess, showError } = useToast()
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -61,18 +63,37 @@ export default function QuoteView() {
   const [installationComplexity, setInstallationComplexity] = useState<'SIMPLE' | 'STANDARD' | 'COMPLEX' | 'VERY_COMPLEX'>('STANDARD')
   const [manualInstallationCost, setManualInstallationCost] = useState<number>(0)
 
+  // Extrusion costing state
+  const [extrusionCostingMethod, setExtrusionCostingMethod] = useState<'FULL_STOCK' | 'PERCENTAGE_BASED'>('FULL_STOCK')
+  const [excludedPartNumbers, setExcludedPartNumbers] = useState<string[]>([])
+  const [showExcludedPartsModal, setShowExcludedPartsModal] = useState(false)
+  const [projectParts, setProjectParts] = useState<any[]>([])
+  const [loadingParts, setLoadingParts] = useState(false)
+
+  // Handle back navigation
+  const handleBack = () => {
+    // If we came from customer detail view, go back to dashboard (which shows customer detail)
+    if (selectedCustomerId && customerDetailView) {
+      setCurrentMenu('dashboard')
+    } else {
+      setCurrentMenu('projects')
+    }
+  }
+
   useEffect(() => {
     if (selectedProjectId) {
       fetchQuoteData()
     }
   }, [selectedProjectId])
 
-  // Initialize installation state from quote data
+  // Initialize installation and costing state from quote data
   useEffect(() => {
     if (quoteData?.project) {
       setInstallationMethod(quoteData.project.installationMethod)
       setInstallationComplexity(quoteData.project.installationComplexity)
       setManualInstallationCost(quoteData.project.manualInstallationCost)
+      setExtrusionCostingMethod(quoteData.project.extrusionCostingMethod || 'FULL_STOCK')
+      setExcludedPartNumbers(quoteData.project.excludedPartNumbers || [])
     }
   }, [quoteData])
 
@@ -134,6 +155,73 @@ export default function QuoteView() {
     } catch (error) {
       console.error('Error updating installation:', error)
       showError('Failed to update installation settings')
+    }
+  }
+
+  const fetchProjectParts = async () => {
+    if (!selectedProjectId) return
+
+    setLoadingParts(true)
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}/bom`)
+      if (response.ok) {
+        const data = await response.json()
+
+        // Get unique extrusion parts from BOM
+        const uniqueParts = new Map()
+        data.bomItems?.forEach((item: any) => {
+          if (item.partType === 'Extrusion' && item.partNumber) {
+            const partNumber = item.partNumber
+            if (!uniqueParts.has(partNumber)) {
+              uniqueParts.set(partNumber, {
+                partNumber: partNumber,
+                partName: item.partName,
+                partType: item.partType
+              })
+            }
+          }
+        })
+
+        setProjectParts(Array.from(uniqueParts.values()))
+      }
+    } catch (error) {
+      console.error('Error fetching project parts:', error)
+      showError('Failed to load project parts')
+    } finally {
+      setLoadingParts(false)
+    }
+  }
+
+  const updateExtrusionCosting = async (
+    method: 'FULL_STOCK' | 'PERCENTAGE_BASED',
+    excludedParts: string[]
+  ) => {
+    if (!selectedProjectId || !quoteData) return
+
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: quoteData.project.name,
+          status: quoteData.project.status,
+          extrusionCostingMethod: method,
+          excludedPartNumbers: excludedParts,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update extrusion costing settings')
+      }
+
+      // Refresh quote to recalculate prices with new costing method
+      await fetchQuoteData()
+      showSuccess('Extrusion costing settings updated and prices recalculated')
+    } catch (error) {
+      console.error('Error updating extrusion costing:', error)
+      showError('Failed to update extrusion costing settings')
     }
   }
 
@@ -223,9 +311,7 @@ export default function QuoteView() {
       <div className="p-8 text-center">
         <p className="text-gray-500">Failed to generate quote</p>
         <button
-          onClick={() => {
-            setCurrentMenu('projects')
-          }}
+          onClick={handleBack}
           className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           Back to Projects
@@ -242,7 +328,7 @@ export default function QuoteView() {
       <div className="flex items-center justify-between mb-6 print:hidden">
         <div className="flex items-center space-x-4">
           <button
-            onClick={() => setCurrentMenu('projects')}
+            onClick={handleBack}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -272,6 +358,62 @@ export default function QuoteView() {
             )}
             <span>{isDownloading ? 'Generating...' : 'Download PDF'}</span>
           </button>
+        </div>
+      </div>
+
+      {/* Extrusion Costing Settings */}
+      <div className="mb-6 print:hidden">
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
+          <div className="flex items-center space-x-2 mb-4">
+            <Ruler className="w-5 h-5 text-gray-700" />
+            <h2 className="text-lg font-semibold text-gray-900">Extrusion Costing Settings</h2>
+          </div>
+
+          <div className="space-y-4">
+            {/* Extrusion Costing Method Dropdown */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Costing Method
+              </label>
+              <select
+                value={extrusionCostingMethod}
+                onChange={(e) => {
+                  const method = e.target.value as 'FULL_STOCK' | 'PERCENTAGE_BASED'
+                  setExtrusionCostingMethod(method)
+                  updateExtrusionCosting(method, excludedPartNumbers)
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="FULL_STOCK">Full Stock Cost</option>
+                <option value="PERCENTAGE_BASED">Percentage-Based Cost</option>
+              </select>
+              <p className="mt-2 text-sm text-gray-500">
+                {extrusionCostingMethod === 'PERCENTAGE_BASED'
+                  ? 'Only charge for % of stock used when >50% remains unused'
+                  : 'Always charge for the full stock length'}
+              </p>
+            </div>
+
+            {/* Exclude Parts Button (only shown for FULL_STOCK method) */}
+            {extrusionCostingMethod === 'FULL_STOCK' && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowExcludedPartsModal(true)
+                    fetchProjectParts()
+                  }}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center space-x-2"
+                >
+                  <Settings className="w-4 h-4" />
+                  <span>Exclude Expensive Parts ({excludedPartNumbers.length})</span>
+                </button>
+                <p className="mt-2 text-sm text-gray-500">
+                  Select specific parts to use percentage-based costing even when using Full Stock method
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -560,6 +702,82 @@ export default function QuoteView() {
           </div>
         </div>
       </div>
+
+      {/* Excluded Parts Modal */}
+      {showExcludedPartsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Exclude Expensive Parts from Full Stock Cost</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Select parts that should use percentage-based costing even when the project uses "Full Stock Cost" method.
+              This is useful for expensive extrusions where you want to charge only for the percentage used.
+            </p>
+
+            <div className="flex-1 overflow-y-auto border border-gray-200 rounded-lg">
+              {loadingParts ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : projectParts.length > 0 ? (
+                <div className="divide-y divide-gray-200">
+                  {projectParts.map((part) => {
+                    const isExcluded = excludedPartNumbers.includes(part.partNumber)
+                    return (
+                      <div key={part.partNumber} className="p-4 hover:bg-gray-50 flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="font-mono text-sm font-medium text-gray-900">{part.partNumber}</div>
+                          <div className="text-sm text-gray-600">{part.partName}</div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const newExcluded = isExcluded
+                              ? excludedPartNumbers.filter(p => p !== part.partNumber)
+                              : [...excludedPartNumbers, part.partNumber]
+                            setExcludedPartNumbers(newExcluded)
+                          }}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                            isExcluded ? 'bg-blue-600' : 'bg-gray-200'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              isExcluded ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="p-4 text-center text-gray-500">
+                  No extrusion parts found in this project.
+                  <br />
+                  <span className="text-xs">Add components to your openings to see parts here.</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-4 pt-4 border-t border-gray-200">
+              <button
+                onClick={() => setShowExcludedPartsModal(false)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  updateExtrusionCosting(extrusionCostingMethod, excludedPartNumbers)
+                  setShowExcludedPartsModal(false)
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Apply Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Print Styles */}
       <style jsx>{`

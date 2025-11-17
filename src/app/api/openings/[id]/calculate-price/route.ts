@@ -89,7 +89,12 @@ function calculateRequiredPartLength(bom: any, variables: any): number {
 }
 
 // Helper function to get finish suffix for extrusion part numbers
-function getFinishSuffix(finishColor: string): string {
+function getFinishSuffix(finishColor: string, isMillFinish?: boolean): string {
+  // Mill finish parts should not have finish codes appended
+  if (isMillFinish) {
+    return ''
+  }
+
   switch (finishColor) {
     case 'Black': return '-BL'
     case 'Clear': return '-C2'
@@ -99,17 +104,22 @@ function getFinishSuffix(finishColor: string): string {
 }
 
 // Helper function to apply finish code to part number, avoiding duplicates
-function applyFinishCode(partNumber: string, finishColor: string): string {
+function applyFinishCode(partNumber: string, finishColor: string, isMillFinish?: boolean): string {
   if (!partNumber || !finishColor) return partNumber
-  
-  const finishSuffix = getFinishSuffix(finishColor)
+
+  // Skip finish codes for mill finish parts
+  if (isMillFinish) {
+    return partNumber
+  }
+
+  const finishSuffix = getFinishSuffix(finishColor, isMillFinish)
   if (!finishSuffix) return partNumber
-  
+
   // If the part number already ends with the desired suffix, don't add it again
   if (partNumber.endsWith(finishSuffix)) {
     return partNumber
   }
-  
+
   // If the part number ends with a different finish code, replace it
   const finishCodes = ['-BL', '-C2', '-AL']
   for (const code of finishCodes) {
@@ -117,7 +127,7 @@ function applyFinishCode(partNumber: string, finishColor: string): string {
       return partNumber.slice(0, -code.length) + finishSuffix
     }
   }
-  
+
   // Otherwise, just append the finish code
   return partNumber + finishSuffix
 }
@@ -132,8 +142,32 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
 
   // Apply finish code to extrusion part numbers
   let effectivePartNumber = bom.partNumber
+  let isMillFinish = false
+
+  // For extrusions, check if part is mill finish before applying finish code
   if (bom.partType === 'Extrusion' && bom.partNumber && finishColor) {
-    effectivePartNumber = applyFinishCode(bom.partNumber, finishColor)
+    // Need to check stock rules to determine if this is a mill finish part
+    try {
+      const masterPart = await prisma.masterPart.findUnique({
+        where: { partNumber: bom.partNumber },
+        include: {
+          stockLengthRules: { where: { isActive: true } }
+        }
+      })
+
+      if (masterPart && masterPart.stockLengthRules.length > 0) {
+        const requiredLength = calculateRequiredPartLength(bom, variables)
+        const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength, finishColor)
+
+        if (bestRule) {
+          isMillFinish = bestRule.isMillFinish || false
+        }
+      }
+    } catch (error) {
+      console.error(`Error checking mill finish status for ${bom.partNumber}:`, error)
+    }
+
+    effectivePartNumber = applyFinishCode(bom.partNumber, finishColor, isMillFinish)
   }
 
   let cost = 0

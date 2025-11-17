@@ -76,17 +76,37 @@ export async function PUT(
       lostReason
     } = body
 
-    const updateData = {
-      customerId: customerId ? parseInt(customerId) : null,
-      title,
-      description,
-      value: value ? parseFloat(value) : null,
-      probability: probability ? parseInt(probability) : undefined,
-      stage,
-      source,
-      expectedCloseDate: expectedCloseDate ? new Date(expectedCloseDate) : null,
-      actualCloseDate: actualCloseDate ? new Date(actualCloseDate) : null,
-      lostReason: stage === 'Lost' ? lostReason : null
+    const updateData: any = {}
+
+    if (customerId !== undefined) {
+      updateData.customerId = customerId ? parseInt(customerId) : null
+    }
+    if (title !== undefined) {
+      updateData.title = title
+    }
+    if (description !== undefined) {
+      updateData.description = description
+    }
+    if (value !== undefined) {
+      updateData.value = value ? parseFloat(value) : null
+    }
+    if (probability !== undefined) {
+      updateData.probability = parseInt(probability)
+    }
+    if (stage !== undefined) {
+      updateData.stage = stage
+      if (stage === 'Lost') {
+        updateData.lostReason = lostReason || null
+      }
+    }
+    if (source !== undefined) {
+      updateData.source = source
+    }
+    if (expectedCloseDate !== undefined) {
+      updateData.expectedCloseDate = expectedCloseDate ? new Date(expectedCloseDate) : null
+    }
+    if (actualCloseDate !== undefined) {
+      updateData.actualCloseDate = actualCloseDate ? new Date(actualCloseDate) : null
     }
 
     // If marking as Won, set actual close date to now if not provided

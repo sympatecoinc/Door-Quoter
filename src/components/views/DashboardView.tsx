@@ -59,7 +59,7 @@ export default function DashboardView() {
     }
   })
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'leads'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'leads'>('overview')
   const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [showLeadForm, setShowLeadForm] = useState(false)
   const [leadFormStage, setLeadFormStage] = useState('New')
@@ -172,7 +172,7 @@ export default function DashboardView() {
   const handleBackToCustomers = () => {
     setSelectedCustomerId(null)
     setCustomerDetailView(false)
-    setActiveTab('customers')
+    setActiveTab('overview')
     setRefreshKey(prev => prev + 1)
   }
 
@@ -196,32 +196,11 @@ export default function DashboardView() {
 
   const tabs = [
     { key: 'overview', label: 'Overview' },
-    { key: 'customers', label: 'Customers' },
     { key: 'leads', label: 'Leads' }
   ]
 
   const renderCRMContent = () => {
-    // Show customer detail view if selected
-    if (customerDetailView && selectedCustomerId) {
-      return (
-        <CustomerDetailView
-          customerId={selectedCustomerId}
-          onBack={handleBackToCustomers}
-        />
-      )
-    }
-
     switch (activeTab) {
-      case 'customers':
-        return (
-          <CustomerList
-            key={refreshKey}
-            onAddCustomer={handleAddCustomer}
-            onEditCustomer={handleEditCustomer}
-            onDeleteCustomer={handleDeleteCustomer}
-            onViewCustomer={handleViewCustomer}
-          />
-        )
       case 'leads':
         return <LeadPipeline key={refreshKey} onAddLead={(stage) => {
           setLeadFormStage(stage || 'New')
@@ -283,6 +262,13 @@ export default function DashboardView() {
               </div>
             </div>
 
+            {/* Customers Section */}
+            <CustomerList
+              key={refreshKey}
+              onAddCustomer={handleAddCustomer}
+              onViewCustomer={handleViewCustomer}
+            />
+
             {/* Quick Actions */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
@@ -330,6 +316,38 @@ export default function DashboardView() {
 
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+        <p className="text-gray-600 mt-2">Customers, Projects and Leads</p>
+      </div>
+
+      {/* CRM Section */}
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200 mb-8">
+        <nav className="-mb-px flex space-x-8">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key as any)}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === tab.key
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* CRM Content */}
+      {renderCRMContent()}
+
+      {/* Section Divider */}
+      <div className="my-12 border-t-2 border-gray-200"></div>
+
+      {/* Projects Overview Section */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-gray-900">Projects Overview</h2>
         <p className="text-gray-600 mt-2">Overview of your quoting projects</p>
       </div>
 
@@ -414,38 +432,6 @@ export default function DashboardView() {
         </div>
       </div>
 
-      {/* CRM Section */}
-      {!customerDetailView && (
-        <>
-          <div className="mb-8 mt-8">
-            <h2 className="text-2xl font-bold text-gray-900">Customer Relationship Management</h2>
-            <p className="text-gray-600 mt-2">Manage your customers, leads, and sales pipeline</p>
-          </div>
-
-          {/* Tab Navigation */}
-          <div className="border-b border-gray-200 mb-8">
-            <nav className="-mb-px flex space-x-8">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key as any)}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === tab.key
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
-          </div>
-        </>
-      )}
-
-      {/* CRM Content */}
-      {renderCRMContent()}
-
       {/* Modals */}
       <CustomerForm
         isOpen={showCustomerForm}
@@ -464,6 +450,14 @@ export default function DashboardView() {
         onSubmit={handleLeadSubmit}
         defaultStage={leadFormStage}
       />
+
+      {/* Customer Detail Modal */}
+      {customerDetailView && selectedCustomerId && (
+        <CustomerDetailView
+          customerId={selectedCustomerId}
+          onBack={handleBackToCustomers}
+        />
+      )}
     </div>
   )
 }

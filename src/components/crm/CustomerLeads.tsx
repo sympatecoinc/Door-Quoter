@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, DollarSign, Calendar, TrendingUp, Target, Tag, Eye } from 'lucide-react'
+import { Plus, Edit, DollarSign, Calendar, TrendingUp, Target, Tag, Eye } from 'lucide-react'
 import LeadForm from './LeadForm'
+import { ProjectStatus } from '@/types'
 
 interface Lead {
   id: number
@@ -38,6 +39,12 @@ export default function CustomerLeads({ customerId, customer }: CustomerLeadsPro
   const [showLeadForm, setShowLeadForm] = useState(false)
   const [editingLead, setEditingLead] = useState<Lead | null>(null)
   const [showDetails, setShowDetails] = useState<number | null>(null)
+  const [wonLeadConfirm, setWonLeadConfirm] = useState<{
+    leadId: number
+    leadTitle: string
+  } | null>(null)
+  const [creatingProject, setCreatingProject] = useState(false)
+  const [projectDueDate, setProjectDueDate] = useState('')
 
   useEffect(() => {
     fetchLeads()
@@ -79,6 +86,25 @@ export default function CustomerLeads({ customerId, customer }: CustomerLeadsPro
     fetchLeads()
   }
 
+  const handleEditLead = async (leadData: any) => {
+    if (!editingLead) return
+
+    const response = await fetch(`/api/leads/${editingLead.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(leadData),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to update lead')
+    }
+
+    fetchLeads()
+    setEditingLead(null)
+  }
+
   const handleUpdateLead = async (leadId: number, updates: Partial<Lead>) => {
     try {
       const response = await fetch(`/api/leads/${leadId}`, {
@@ -100,8 +126,6 @@ export default function CustomerLeads({ customerId, customer }: CustomerLeadsPro
   }
 
   const handleDeleteLead = async (leadId: number) => {
-    if (!confirm('Are you sure you want to delete this lead?')) return
-
     try {
       const response = await fetch(`/api/leads/${leadId}`, {
         method: 'DELETE',
@@ -109,11 +133,65 @@ export default function CustomerLeads({ customerId, customer }: CustomerLeadsPro
 
       if (response.ok) {
         setLeads(prev => prev.filter(lead => lead.id !== leadId))
+        setEditingLead(null)
       } else {
         console.error('Failed to delete lead')
+        throw new Error('Failed to delete lead')
       }
     } catch (error) {
       console.error('Error deleting lead:', error)
+      throw error
+    }
+  }
+
+  const handleMarkWon = (leadId: number, leadTitle: string) => {
+    setWonLeadConfirm({ leadId, leadTitle })
+  }
+
+  const handleConfirmWon = async (createProject: boolean) => {
+    if (!wonLeadConfirm) return
+
+    try {
+      // Mark lead as Won
+      await handleUpdateLead(wonLeadConfirm.leadId, { stage: 'Won' })
+
+      // If user wants to create a project
+      if (createProject) {
+        // Validate due date is provided
+        if (!projectDueDate) {
+          alert('Please select a due date for the project.')
+          return
+        }
+
+        setCreatingProject(true)
+        const response = await fetch('/api/projects', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: wonLeadConfirm.leadTitle,
+            customerId: customerId,
+            status: ProjectStatus.STAGING,
+            dueDate: projectDueDate
+          }),
+        })
+
+        if (response.ok) {
+          const newProject = await response.json()
+          alert(`Project "${newProject.name}" created successfully!`)
+        } else {
+          console.error('Failed to create project')
+          alert('Lead marked as Won, but failed to create project.')
+        }
+        setCreatingProject(false)
+      }
+
+      setWonLeadConfirm(null)
+      setProjectDueDate('')
+    } catch (error) {
+      console.error('Error handling won lead:', error)
+      setCreatingProject(false)
     }
   }
 
@@ -268,13 +346,6 @@ export default function CustomerLeads({ customerId, customer }: CustomerLeadsPro
                   >
                     <Edit className="w-4 h-4" />
                   </button>
-                  <button
-                    onClick={() => handleDeleteLead(lead.id)}
-                    className="text-red-600 hover:text-red-800"
-                    title="Delete lead"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
                 </div>
               </div>
 
@@ -306,7 +377,7 @@ export default function CustomerLeads({ customerId, customer }: CustomerLeadsPro
                     </button>
                   )}
                   <button
-                    onClick={() => handleUpdateLead(lead.id, { stage: 'Won' })}
+                    onClick={() => handleMarkWon(lead.id, lead.title)}
                     className="text-xs px-3 py-1 bg-green-100 text-green-700 rounded-full hover:bg-green-200"
                   >
                     Mark Won
@@ -384,7 +455,7 @@ export default function CustomerLeads({ customerId, customer }: CustomerLeadsPro
         )}
       </div>
 
-      {/* Lead Form Modal */}
+      {/* Lead Form Modal - Create */}
       <LeadForm
         isOpen={showLeadForm}
         onClose={() => setShowLeadForm(false)}
@@ -392,6 +463,82 @@ export default function CustomerLeads({ customerId, customer }: CustomerLeadsPro
         defaultStage="New"
         customerId={customerId}
       />
+
+      {/* Lead Form Modal - Edit */}
+      {editingLead && (
+        <LeadForm
+          isOpen={!!editingLead}
+          onClose={() => setEditingLead(null)}
+          onSubmit={handleEditLead}
+          onDelete={handleDeleteLead}
+          customerId={customerId}
+          lead={editingLead}
+        />
+      )}
+
+      {/* Won Lead Confirmation Dialog */}
+      {wonLeadConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Mark Lead as Won
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Congratulations! You're marking <strong>{wonLeadConfirm.leadTitle}</strong> as Won.
+              <br /><br />
+              Would you like to create a project for this lead?
+            </p>
+
+            {/* Due Date Input */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Project Due Date <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={projectDueDate}
+                onChange={(e) => setProjectDueDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                disabled={creatingProject}
+                min={new Date().toISOString().split('T')[0]}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Required if creating a project
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setWonLeadConfirm(null)
+                  setProjectDueDate('')
+                }}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                disabled={creatingProject}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleConfirmWon(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                disabled={creatingProject}
+              >
+                Mark Won Only
+              </button>
+              <button
+                onClick={() => handleConfirmWon(true)}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"
+                disabled={creatingProject}
+              >
+                {creatingProject && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                )}
+                {creatingProject ? 'Creating...' : 'Create Project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

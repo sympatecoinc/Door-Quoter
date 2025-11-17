@@ -3,7 +3,14 @@
     "playwright": {
       "command": "npx",
       "args": [
-        "@playwright/mcp@latest"
+        "@playwright/mcp@latest",
+        "--browser",
+        "chromium",
+        "--executable-path",
+        "/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome",
+        "--headless",
+        "--isolated",
+        "--no-sandbox"
       ]
     }
   }

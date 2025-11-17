@@ -1,0 +1,5 @@
+{
+  "dev.containers.defaultExtensions": [],
+  "remote.containers.defaultExtensions": [],
+  "remote.autoForwardPorts": false
+}

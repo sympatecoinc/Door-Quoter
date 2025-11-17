@@ -91,10 +91,10 @@ export async function GET() {
       totalValue += saleValue
     }
 
-    // Get active projects with their openings and pricing modes (excluding Draft and Archive)
+    // Get active projects with their openings and pricing modes (excluding Staging)
     const recentProjects = await prisma.project.findMany({
       where: {
-        status: { notIn: ['Archive', 'Draft'] }
+        status: { notIn: [ProjectStatus.STAGING] }
       },
       take: 5,
       orderBy: {

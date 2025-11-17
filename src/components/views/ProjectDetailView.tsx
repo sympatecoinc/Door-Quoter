@@ -106,7 +106,7 @@ function getColorStyling(color: string) {
 }
 
 export default function ProjectDetailView() {
-  const { selectedProjectId, setSelectedProjectId } = useAppStore()
+  const { selectedProjectId, setSelectedProjectId, selectedCustomerId, customerDetailView, setCurrentMenu, autoOpenAddOpening, setAutoOpenAddOpening } = useAppStore()
   const { toasts, removeToast, showSuccess, showError } = useToast()
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
@@ -115,14 +115,9 @@ export default function ProjectDetailView() {
   const [showArchiveModal, setShowArchiveModal] = useState(false)
   const [editName, setEditName] = useState('')
   const [editStatus, setEditStatus] = useState('')
-  const [editExtrusionCostingMethod, setEditExtrusionCostingMethod] = useState('FULL_STOCK')
-  const [editExcludedPartNumbers, setEditExcludedPartNumbers] = useState<string[]>([])
   const [editTaxRate, setEditTaxRate] = useState('0')
   const [editPricingModeId, setEditPricingModeId] = useState<number | null>(null)
   const [pricingModes, setPricingModes] = useState<any[]>([])
-  const [showExcludedPartsModal, setShowExcludedPartsModal] = useState(false)
-  const [projectParts, setProjectParts] = useState<any[]>([])
-  const [loadingParts, setLoadingParts] = useState(false)
   const [showDuplicateModal, setShowDuplicateModal] = useState(false)
   const [duplicatingOpeningId, setDuplicatingOpeningId] = useState<number | null>(null)
   const [duplicatingOpeningName, setDuplicatingOpeningName] = useState('')
@@ -168,6 +163,16 @@ export default function ProjectDetailView() {
   const [showSyncConfirmation, setShowSyncConfirmation] = useState(false)
   const [syncingPrices, setSyncingPrices] = useState(false)
   const [syncDetails, setSyncDetails] = useState<string[]>([])
+
+  // Handle back navigation
+  const handleBack = () => {
+    setSelectedProjectId(null)
+    // If we came from customer detail view, go back to dashboard (which shows customer detail)
+    if (selectedCustomerId && customerDetailView) {
+      setCurrentMenu('dashboard')
+    }
+    // Otherwise stay on projects menu (will show projects list)
+  }
 
   // Check if pricing needs sync and generate details
   useEffect(() => {
@@ -314,6 +319,14 @@ export default function ProjectDetailView() {
     }
   }, [selectedProjectId])
 
+  // Auto-open Add Opening modal when navigating from "Add Openings" button
+  useEffect(() => {
+    if (autoOpenAddOpening && project) {
+      setShowAddOpening(true)
+      setAutoOpenAddOpening(false) // Reset the flag
+    }
+  }, [autoOpenAddOpening, project, setAutoOpenAddOpening])
+
   useEffect(() => {
     fetchGlassTypes()
     fetchPricingModes()
@@ -403,11 +416,6 @@ export default function ProjectDetailView() {
   async function handleSaveProject() {
     if (!selectedProjectId || !editName.trim()) return
 
-    // Check if costing method or excluded parts changed (which requires price recalculation)
-    const costingMethodChanged = project?.extrusionCostingMethod !== editExtrusionCostingMethod
-    const excludedPartsChanged = JSON.stringify(project?.excludedPartNumbers || []) !== JSON.stringify(editExcludedPartNumbers)
-    const needsPriceRecalculation = costingMethodChanged || excludedPartsChanged
-
     setSaving(true)
     try {
       const response = await fetch(`/api/projects/${selectedProjectId}`, {
@@ -418,29 +426,14 @@ export default function ProjectDetailView() {
         body: JSON.stringify({
           name: editName,
           status: editStatus,
-          extrusionCostingMethod: editExtrusionCostingMethod,
-          excludedPartNumbers: editExcludedPartNumbers,
           pricingModeId: editPricingModeId,
           taxRate: parseFloat(editTaxRate)
         })
       })
 
       if (response.ok) {
-        if (needsPriceRecalculation) {
-          // Fetch the updated project data first
-          const projectResponse = await fetch(`/api/projects/${selectedProjectId}`)
-          if (projectResponse.ok) {
-            const updatedProject = await projectResponse.json()
-
-            // Recalculate all opening prices with the new settings
-            await calculateAllOpeningPrices(updatedProject)
-
-            showSuccess('Project updated and prices recalculated!')
-          }
-        } else {
-          await fetchProject()
-          showSuccess('Project updated successfully!')
-        }
+        await fetchProject()
+        showSuccess('Project updated successfully!')
         setShowEditModal(false)
       }
     } catch (error) {
@@ -520,41 +513,6 @@ export default function ProjectDetailView() {
     } catch (error) {
       console.error('Error updating extrusion costing method:', error)
       showError('Network error. Please try again.')
-    }
-  }
-
-  async function fetchProjectParts() {
-    if (!selectedProjectId) return
-
-    setLoadingParts(true)
-    try {
-      const response = await fetch(`/api/projects/${selectedProjectId}/bom`)
-      if (response.ok) {
-        const data = await response.json()
-
-        // Get unique extrusion parts from BOM
-        const uniqueParts = new Map()
-        data.bomItems?.forEach((item: any) => {
-          if (item.partType === 'Extrusion' && item.partNumber) {
-            // Use the part number as-is from the BOM (it should already be the base part number without finish codes)
-            const partNumber = item.partNumber
-            if (!uniqueParts.has(partNumber)) {
-              uniqueParts.set(partNumber, {
-                partNumber: partNumber,
-                partName: item.partName,
-                partType: item.partType
-              })
-            }
-          }
-        })
-
-        setProjectParts(Array.from(uniqueParts.values()))
-      }
-    } catch (error) {
-      console.error('Error fetching project parts:', error)
-      showError('Failed to load project parts')
-    } finally {
-      setLoadingParts(false)
     }
   }
 
@@ -1102,7 +1060,7 @@ export default function ProjectDetailView() {
       <div className="p-8 text-center">
         <p className="text-gray-500">Project not found</p>
         <button
-          onClick={() => setSelectedProjectId(null)}
+          onClick={handleBack}
           className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           Back to Projects
@@ -1117,7 +1075,7 @@ export default function ProjectDetailView() {
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center">
           <button
-            onClick={() => setSelectedProjectId(null)}
+            onClick={handleBack}
             className="mr-4 p-2 text-gray-400 hover:text-gray-600 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -1169,8 +1127,6 @@ export default function ProjectDetailView() {
             onClick={() => {
               setEditName(project.name)
               setEditStatus(project.status)
-              setEditExtrusionCostingMethod(project.extrusionCostingMethod || 'FULL_STOCK')
-              setEditExcludedPartNumbers(project.excludedPartNumbers || [])
               setEditPricingModeId(project.pricingModeId || null)
               setEditTaxRate((project.taxRate || 0).toString())
               setShowEditModal(true)
@@ -2048,7 +2004,11 @@ export default function ProjectDetailView() {
                   disabled={saving}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
                 >
-                  <option value="">No pricing mode</option>
+                  <option value="">
+                    {pricingModes.find(m => m.isDefault)
+                      ? `Use Default (${pricingModes.find(m => m.isDefault)!.name})`
+                      : 'Use Default'}
+                  </option>
                   {pricingModes.map((mode) => {
                     // Build description based on what markups are set
                     const parts = []
@@ -2064,15 +2024,16 @@ export default function ProjectDetailView() {
                     if (mode.discount > 0) parts.push(`-${mode.discount}%`)
 
                     const description = parts.length > 0 ? ` (${parts.join(', ')})` : ''
+                    const defaultIndicator = mode.isDefault ? ' ✓ Default' : ''
                     return (
                       <option key={mode.id} value={mode.id}>
-                        {mode.name}{description}
+                        {mode.name}{description}{defaultIndicator}
                       </option>
                     )
                   })}
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
-                  Pricing mode applies markup and discount to quotes
+                  Pre-configured markup and discount rules. Leave blank to use default pricing mode.
                 </p>
               </div>
 
@@ -2094,39 +2055,6 @@ export default function ProjectDetailView() {
                 <p className="mt-1 text-xs text-gray-500">
                   Pre-populated based on delivery address, but can be overwritten
                 </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Extrusion Costing Method
-                </label>
-                <select
-                  value={editExtrusionCostingMethod}
-                  onChange={(e) => setEditExtrusionCostingMethod(e.target.value)}
-                  disabled={saving}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
-                >
-                  <option value="FULL_STOCK">Full Stock Cost</option>
-                  <option value="PERCENTAGE_BASED">Percentage-Based Cost</option>
-                </select>
-                <p className="mt-1 text-xs text-gray-500">
-                  {editExtrusionCostingMethod === 'PERCENTAGE_BASED'
-                    ? 'Only charge for % of stock used when >50% remains unused'
-                    : 'Always charge for the full stock length'}
-                </p>
-                {editExtrusionCostingMethod === 'FULL_STOCK' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowExcludedPartsModal(true)
-                      fetchProjectParts()
-                    }}
-                    disabled={saving}
-                    className="mt-2 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50"
-                  >
-                    Exclude Parts ({editExcludedPartNumbers.length})
-                  </button>
-                )}
               </div>
 
               {/* Openings Management */}
@@ -2261,74 +2189,6 @@ export default function ProjectDetailView() {
                 ) : (
                   'Yes, Sync Now'
                 )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Excluded Parts Modal */}
-      {showExcludedPartsModal && project && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Exclude Expensive Parts from Full Stock Cost</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Select parts that should use percentage-based costing even when the project uses "Full Stock Cost" method.
-              This is useful for expensive extrusions where you want to charge only for the percentage used.
-            </p>
-
-            <div className="flex-1 overflow-y-auto border border-gray-200 rounded-lg">
-              {loadingParts ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                </div>
-              ) : projectParts.length > 0 ? (
-                <div className="divide-y divide-gray-200">
-                  {projectParts.map((part) => {
-                    const isExcluded = editExcludedPartNumbers.includes(part.partNumber)
-                    return (
-                      <div key={part.partNumber} className="p-4 hover:bg-gray-50 flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="font-mono text-sm font-medium text-gray-900">{part.partNumber}</div>
-                          <div className="text-sm text-gray-600">{part.partName}</div>
-                        </div>
-                        <button
-                          onClick={() => {
-                            if (isExcluded) {
-                              setEditExcludedPartNumbers(editExcludedPartNumbers.filter(p => p !== part.partNumber))
-                            } else {
-                              setEditExcludedPartNumbers([...editExcludedPartNumbers, part.partNumber])
-                            }
-                          }}
-                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                            isExcluded ? 'bg-blue-600' : 'bg-gray-200'
-                          }`}
-                        >
-                          <span
-                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                              isExcluded ? 'translate-x-5' : 'translate-x-0'
-                            }`}
-                          />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="p-4 text-center text-gray-500">
-                  No extrusion parts found in this project.
-                  <br />
-                  <span className="text-xs">Add components to your openings to see parts here.</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end space-x-3 mt-4 pt-4 border-t border-gray-200">
-              <button
-                onClick={() => setShowExcludedPartsModal(false)}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Done
               </button>
             </div>
           </div>
