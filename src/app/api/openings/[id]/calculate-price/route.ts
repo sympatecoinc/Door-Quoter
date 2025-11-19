@@ -30,7 +30,7 @@ function evaluateFormula(formula: string, variables: Record<string, number>): nu
 }
 
 // Function to find the best stock length rule for extrusions based on calculated part length from ProductBOM formula
-function findBestStockLengthRule(rules: any[], requiredLength: number, finishColor?: string): any | null {
+function findBestStockLengthRule(rules: any[], requiredLength: number): any | null {
   // Find matching rules based on length only
   const matchingRules = rules.filter(rule => {
     const matchesLength = (rule.minHeight === null || requiredLength >= rule.minHeight) &&
@@ -47,30 +47,7 @@ function findBestStockLengthRule(rules: any[], requiredLength: number, finishCol
     return bSpecificity - aSpecificity
   })[0]
 
-  // Select the correct price based on finish color and isMillFinish
-  if (bestRule) {
-    let priceToUse = bestRule.basePrice // Fallback price
-
-    // Mill finish parts always use basePrice regardless of finish color
-    if (bestRule.isMillFinish) {
-      priceToUse = bestRule.basePrice
-    } else {
-      // Non-mill finish: use color-specific pricing
-      if (finishColor === 'Black' && bestRule.basePriceBlack !== null && bestRule.basePriceBlack !== undefined) {
-        priceToUse = bestRule.basePriceBlack
-      } else if (finishColor === 'Clear' && bestRule.basePriceClear !== null && bestRule.basePriceClear !== undefined) {
-        priceToUse = bestRule.basePriceClear
-      }
-    }
-
-    // Return rule with selected price as basePrice for backwards compatibility
-    return {
-      ...bestRule,
-      basePrice: priceToUse
-    }
-  }
-
-  return null
+  return bestRule
 }
 
 function calculateRequiredPartLength(bom: any, variables: any): number {
@@ -88,92 +65,17 @@ function calculateRequiredPartLength(bom: any, variables: any): number {
   return bom.quantity || 0
 }
 
-// Helper function to get finish suffix for extrusion part numbers
-function getFinishSuffix(finishColor: string, isMillFinish?: boolean): string {
-  // Mill finish parts should not have finish codes appended
-  if (isMillFinish) {
-    return ''
-  }
-
-  switch (finishColor) {
-    case 'Black': return '-BL'
-    case 'Clear': return '-C2'
-    case 'Other': return '-AL' // Default for other finishes
-    default: return ''
-  }
-}
-
-// Helper function to apply finish code to part number, avoiding duplicates
-function applyFinishCode(partNumber: string, finishColor: string, isMillFinish?: boolean): string {
-  if (!partNumber || !finishColor) return partNumber
-
-  // Skip finish codes for mill finish parts
-  if (isMillFinish) {
-    return partNumber
-  }
-
-  const finishSuffix = getFinishSuffix(finishColor, isMillFinish)
-  if (!finishSuffix) return partNumber
-
-  // If the part number already ends with the desired suffix, don't add it again
-  if (partNumber.endsWith(finishSuffix)) {
-    return partNumber
-  }
-
-  // If the part number ends with a different finish code, replace it
-  const finishCodes = ['-BL', '-C2', '-AL']
-  for (const code of finishCodes) {
-    if (partNumber.endsWith(code)) {
-      return partNumber.slice(0, -code.length) + finishSuffix
-    }
-  }
-
-  // Otherwise, just append the finish code
-  return partNumber + finishSuffix
-}
-
 // Function to calculate the price of a single BOM item using component dimensions
-async function calculateBOMItemPrice(bom: any, componentWidth: number, componentHeight: number, finishColor?: string, extrusionCostingMethod?: string, excludedPartNumbers?: string[]): Promise<{cost: number, breakdown: any}> {
+async function calculateBOMItemPrice(bom: any, componentWidth: number, componentHeight: number, extrusionCostingMethod?: string, excludedPartNumbers?: string[], finishColor?: string | null): Promise<{cost: number, breakdown: any}> {
   const variables = {
     width: componentWidth || 0,
     height: componentHeight || 0,
     quantity: bom.quantity || 1
   }
 
-  // Apply finish code to extrusion part numbers
-  let effectivePartNumber = bom.partNumber
-  let isMillFinish = false
-
-  // For extrusions, check if part is mill finish before applying finish code
-  if (bom.partType === 'Extrusion' && bom.partNumber && finishColor) {
-    // Need to check stock rules to determine if this is a mill finish part
-    try {
-      const masterPart = await prisma.masterPart.findUnique({
-        where: { partNumber: bom.partNumber },
-        include: {
-          stockLengthRules: { where: { isActive: true } }
-        }
-      })
-
-      if (masterPart && masterPart.stockLengthRules.length > 0) {
-        const requiredLength = calculateRequiredPartLength(bom, variables)
-        const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength, finishColor)
-
-        if (bestRule) {
-          isMillFinish = bestRule.isMillFinish || false
-        }
-      }
-    } catch (error) {
-      console.error(`Error checking mill finish status for ${bom.partNumber}:`, error)
-    }
-
-    effectivePartNumber = applyFinishCode(bom.partNumber, finishColor, isMillFinish)
-  }
-
   let cost = 0
   const breakdown = {
-    partNumber: effectivePartNumber,
-    originalPartNumber: bom.partNumber, // Keep original for reference
+    partNumber: bom.partNumber,
     partName: bom.partName,
     partType: bom.partType,
     quantity: bom.quantity || 1,
@@ -181,7 +83,8 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
     details: '',
     unitCost: 0,
     totalCost: 0,
-    finishColor: bom.partType === 'Extrusion' ? finishColor : undefined
+    finishCost: 0,
+    finishDetails: ''
   }
 
   // Method 1: Direct cost from ProductBOM
@@ -233,7 +136,7 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
           // Calculate the required part length from the ProductBOM formula
           const requiredLength = calculateRequiredPartLength(bom, variables)
 
-          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength, finishColor)
+          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
           if (bestRule) {
             // Check if this part is excluded from FULL_STOCK rule
             // Need to check both exact match and base part number (without finish codes)
@@ -286,6 +189,31 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
             }
             breakdown.unitCost = cost / (bom.quantity || 1)
             breakdown.totalCost = cost
+
+            // Calculate finish cost for extrusions if finish color is specified and NOT mill finish
+            // Check isMillFinish from the MasterPart - if true, this extrusion never gets finish codes/costs
+            if (finishColor && finishColor !== 'Mill Finish' && !masterPart.isMillFinish) {
+              try {
+                const finishPricing = await prisma.extrusionFinishPricing.findUnique({
+                  where: { finishType: finishColor, isActive: true }
+                })
+
+                if (finishPricing && finishPricing.costPerFoot > 0) {
+                  const cutLengthInches = requiredLength
+                  const cutLengthFeet = cutLengthInches / 12
+                  const finishCostPerPiece = cutLengthFeet * finishPricing.costPerFoot
+                  const totalFinishCost = finishCostPerPiece * (bom.quantity || 1)
+
+                  breakdown.finishCost = totalFinishCost
+                  breakdown.finishDetails = `${finishColor} finish: ${cutLengthFeet.toFixed(2)}' × $${finishPricing.costPerFoot}/ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
+                  cost += totalFinishCost
+                  breakdown.totalCost = cost
+                }
+              } catch (error) {
+                console.error('Error calculating finish cost:', error)
+              }
+            }
+
             return { cost, breakdown }
           }
         }
@@ -417,9 +345,9 @@ export async function POST(
           bom,
           panel.width,
           panel.height,
-          opening.finishColor || '',
           opening.project.extrusionCostingMethod || 'FULL_STOCK',
-          opening.project.excludedPartNumbers || []
+          opening.project.excludedPartNumbers || [],
+          opening.finishColor
         )
         componentBreakdown.bomCosts.push(breakdown)
         componentBreakdown.totalBOMCost += cost

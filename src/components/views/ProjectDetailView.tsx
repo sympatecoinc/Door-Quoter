@@ -38,7 +38,6 @@ interface Opening {
   roughHeight?: number
   finishedWidth?: number
   finishedHeight?: number
-  finishColor?: string
   price: number
   multiplier: number
   priceCalculatedAt?: string | null
@@ -133,6 +132,7 @@ export default function ProjectDetailView() {
     quantity: '1',
     finishColor: ''
   })
+  const [finishTypes, setFinishTypes] = useState<any[]>([])
   const [showAddComponent, setShowAddComponent] = useState(false)
   const [selectedOpeningId, setSelectedOpeningId] = useState<number | null>(null)
   const [products, setProducts] = useState<any[]>([])
@@ -330,6 +330,7 @@ export default function ProjectDetailView() {
   useEffect(() => {
     fetchGlassTypes()
     fetchPricingModes()
+    fetchFinishTypes()
   }, [])
 
   async function fetchProject() {
@@ -360,6 +361,27 @@ export default function ProjectDetailView() {
       }
     } catch (error) {
       console.error('Error fetching glass types:', error)
+    }
+  }
+
+  async function fetchFinishTypes() {
+    try {
+      const response = await fetch('/api/settings/extrusion-finish-pricing')
+      if (response.ok) {
+        const data = await response.json()
+        const activeFinishes = data.filter((f: any) => f.isActive)
+        setFinishTypes(activeFinishes)
+
+        // Set default finish color to first available finish type if not already set
+        if (activeFinishes.length > 0 && (!newOpening.finishColor || newOpening.finishColor === 'Mill Finish')) {
+          setNewOpening(prev => ({
+            ...prev,
+            finishColor: activeFinishes[0].finishType
+          }))
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching finish types:', error)
     }
   }
 
@@ -517,8 +539,8 @@ export default function ProjectDetailView() {
   }
 
   async function handleAddOpening() {
-    if (!selectedProjectId || !newOpening.name.trim() || !newOpening.finishColor) {
-      showError('Opening number and finish color are required')
+    if (!selectedProjectId || !newOpening.name.trim()) {
+      showError('Opening number is required')
       return
     }
     
@@ -542,7 +564,7 @@ export default function ProjectDetailView() {
         setNewOpening({
           name: '',
           quantity: '1',
-          finishColor: ''
+          finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : ''
         })
         setShowAddOpening(false)
         
@@ -1414,20 +1436,20 @@ export default function ProjectDetailView() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Finish Color *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Extrusion Finish</label>
                 <select
                   value={newOpening.finishColor}
                   onChange={(e) => setNewOpening({...newOpening, finishColor: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                  required
                 >
-                  <option value="">Select finish color</option>
-                  <option value="Black">Black (-BL)</option>
-                  <option value="Clear">Clear (-C2)</option>
-                  <option value="Other">Other</option>
+                  {finishTypes.map((finish) => (
+                    <option key={finish.id} value={finish.finishType}>
+                      {finish.finishType} {finish.costPerFoot > 0 ? `(+$${finish.costPerFoot.toFixed(2)}/ft)` : ''}
+                    </option>
+                  ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Used for extrusion part number suffixes in BOMs
+                  This finish will apply to all extrusions in this opening
                 </p>
               </div>
             </div>
@@ -1439,7 +1461,7 @@ export default function ProjectDetailView() {
                     setNewOpening({
                       name: '',
                       quantity: '1',
-                      finishColor: ''
+                      finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : ''
                     })
                   }
                 }}
@@ -1450,7 +1472,7 @@ export default function ProjectDetailView() {
               </button>
               <button
                 onClick={handleAddOpening}
-                disabled={addingOpening || !newOpening.name.trim() || !newOpening.finishColor}
+                disabled={addingOpening || !newOpening.name.trim()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {addingOpening && (
@@ -2294,7 +2316,6 @@ export default function ProjectDetailView() {
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Cut Length</th>
                                           <th className="border border-gray-200 px-3 py-2 text-center text-sm font-medium text-gray-900">% of Stock</th>
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Unit</th>
-                                          <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Color</th>
                                           <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium text-gray-900">Description</th>
                                         </tr>
                                       </thead>
@@ -2333,19 +2354,6 @@ export default function ProjectDetailView() {
                                               )}
                                             </td>
                                             <td className="border border-gray-200 px-3 py-2 text-sm text-gray-900">{item.unit}</td>
-                                            <td className="border border-gray-200 px-3 py-2 text-sm">
-                                              <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                                                item.color === 'Black' 
-                                                  ? 'bg-gray-800 text-white'
-                                                  : item.color === 'Clear'
-                                                  ? 'bg-blue-100 text-blue-800'
-                                                  : item.color === 'Other'
-                                                  ? 'bg-gray-100 text-gray-800'
-                                                  : 'bg-gray-50 text-gray-600'
-                                              }`}>
-                                                {item.color}
-                                              </span>
-                                            </td>
                                             <td className="border border-gray-200 px-3 py-2 text-sm text-gray-500">{item.description}</td>
                                           </tr>
                                         ))}

@@ -33,9 +33,10 @@ interface Customer {
 interface CustomerProjectsProps {
   customerId: number
   customer: Customer
+  onProjectClick?: (projectId: number) => void
 }
 
-export default function CustomerProjects({ customerId, customer }: CustomerProjectsProps) {
+export default function CustomerProjects({ customerId, customer, onProjectClick }: CustomerProjectsProps) {
   const { setSelectedProjectId, setCurrentMenu, setCustomerDetailTab, setAutoOpenAddOpening } = useAppStore()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -437,9 +438,13 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
       <div className="space-y-4">
         {projects.length > 0 ? (
           projects.map((project) => (
-            <div key={project.id} className={`bg-white rounded-xl shadow-sm border border-gray-200 p-6 ${
-              project.status === 'Archive' ? 'opacity-60 bg-gray-50' : ''
-            }`}>
+            <div
+              key={project.id}
+              onClick={() => onProjectClick?.(project.id)}
+              className={`bg-white rounded-xl shadow-sm border border-gray-200 p-6 ${
+                project.status === 'Archive' ? 'opacity-60 bg-gray-50' : ''
+              } ${onProjectClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+            >
               <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">
@@ -475,7 +480,10 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
                 <div className="flex items-center space-x-3">
                   {project.openings.length === 0 ? (
                     <button
-                      onClick={() => handleViewOpenings(project.id, true)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleViewOpenings(project.id, true)
+                      }}
                       className="flex items-center px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200"
                     >
                       <Plus className="w-4 h-4 mr-1" />
@@ -484,14 +492,20 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
                   ) : (
                     <>
                       <button
-                        onClick={() => handleViewOpenings(project.id, false)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleViewOpenings(project.id, false)
+                        }}
                         className="flex items-center px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200"
                       >
                         <Briefcase className="w-4 h-4 mr-1" />
                         View Openings
                       </button>
                       <button
-                        onClick={() => handleViewQuote(project.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleViewQuote(project.id)
+                        }}
                         className="flex items-center px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg border border-green-200"
                       >
                         <FileText className="w-4 h-4 mr-1" />
@@ -500,7 +514,10 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
                     </>
                   )}
                   <button
-                    onClick={() => openEditModal(project)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openEditModal(project)
+                    }}
                     className="text-gray-600 hover:text-gray-800"
                     title="Edit project"
                   >
@@ -519,7 +536,10 @@ export default function CustomerProjects({ customerId, customer }: CustomerProje
                       return (
                         <button
                           key={key}
-                          onClick={() => handleStatusButtonClick(project.id, project.name, key)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleStatusButtonClick(project.id, project.name, key)
+                          }}
                           className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${
                             isActive
                               ? `${config.bgColor} ${config.textColor} ring-2 ring-offset-1 ring-${config.textColor.replace('text-', '')}`

@@ -92,6 +92,7 @@ export interface Opening {
   finishedWidth: number
   finishedHeight: number
   price: number
+  finishColor?: string | null
   createdAt: Date
   updatedAt: Date
 }

@@ -6,7 +6,9 @@ import CustomerNotes from '../crm/CustomerNotes'
 import CustomerFiles from '../crm/CustomerFiles'
 import CustomerLeads from '../crm/CustomerLeads'
 import CustomerProjects from '../crm/CustomerProjects'
+import CustomerContacts from '../crm/CustomerContacts'
 import CustomerForm from '../crm/CustomerForm'
+import ProjectDetailModal from './ProjectDetailModal'
 import { useAppStore } from '@/stores/appStore'
 
 interface Customer {
@@ -42,6 +44,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [loading, setLoading] = useState(true)
   const [showEditForm, setShowEditForm] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
 
   useEffect(() => {
     fetchCustomer()
@@ -91,8 +94,9 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
   const tabs = [
     { key: 'overview', label: 'Overview', icon: Building },
+    { key: 'contacts', label: 'Contacts', icon: Users },
     { key: 'notes', label: 'Notes', icon: FileText },
-    { key: 'files', label: 'Files', icon: Users },
+    { key: 'files', label: 'Files', icon: Tag },
     { key: 'leads', label: 'Leads', icon: TrendingUp },
     { key: 'projects', label: 'Projects', icon: Briefcase }
   ]
@@ -101,6 +105,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     if (!customer) return null
 
     switch (customerDetailTab) {
+      case 'contacts':
+        return <CustomerContacts customerId={customerId} customer={customer} />
       case 'notes':
         return <CustomerNotes customerId={customerId} />
       case 'files':
@@ -108,12 +114,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       case 'leads':
         return <CustomerLeads customerId={customerId} customer={customer} />
       case 'projects':
-        return <CustomerProjects customerId={customerId} customer={customer} />
+        return <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} />
       default:
         return (
           <div className="space-y-6">
             {/* Projects Section */}
-            <CustomerProjects customerId={customerId} customer={customer} />
+            <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} />
 
             {/* Customer Information */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -129,48 +135,30 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">Company Name</label>
-                    <p className="text-gray-900 mt-1">{customer.companyName}</p>
+                {/* Company Information Section */}
+                <div className="space-y-4 bg-blue-50 p-4 rounded-lg border border-blue-100">
+                  <div className="flex items-center mb-3">
+                    <Building className="w-5 h-5 text-blue-600 mr-2" />
+                    <h3 className="text-base font-semibold text-blue-900">Company Information</h3>
                   </div>
-                  {customer.contactName && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Contact Name</label>
-                      <p className="text-gray-900 mt-1">{customer.contactName}</p>
+                  <div>
+                    <label className="text-sm font-medium text-blue-700">Company Name</label>
+                    <p className="text-gray-900 mt-1 font-medium">{customer.companyName}</p>
+                  </div>
+                  {customer.address && (
+                    <div className="flex items-start text-gray-700">
+                      <MapPin className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-blue-600" />
+                      <div>
+                        <div>{customer.address}</div>
+                        {(customer.city || customer.state || customer.zipCode) && (
+                          <div>{customer.city}, {customer.state} {customer.zipCode}</div>
+                        )}
+                        {customer.country && <div>{customer.country}</div>}
+                      </div>
                     </div>
                   )}
-                  <div className="space-y-2">
-                    {customer.email && (
-                      <div className="flex items-center text-gray-600">
-                        <Mail className="w-4 h-4 mr-2" />
-                        <span>{customer.email}</span>
-                      </div>
-                    )}
-                    {customer.phone && (
-                      <div className="flex items-center text-gray-600">
-                        <Phone className="w-4 h-4 mr-2" />
-                        <span>{customer.phone}</span>
-                      </div>
-                    )}
-                    {customer.address && (
-                      <div className="flex items-start text-gray-600">
-                        <MapPin className="w-4 h-4 mr-2 mt-0.5" />
-                        <div>
-                          <div>{customer.address}</div>
-                          {(customer.city || customer.state || customer.zipCode) && (
-                            <div>{customer.city}, {customer.state} {customer.zipCode}</div>
-                          )}
-                          {customer.country && <div>{customer.country}</div>}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Status</label>
+                    <label className="text-sm font-medium text-blue-700">Status</label>
                     <div className="mt-1">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(customer.status)}`}>
                         {customer.status}
@@ -179,25 +167,58 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                   </div>
                   {customer.source && (
                     <div>
-                      <label className="text-sm font-medium text-gray-500">Source</label>
-                      <div className="flex items-center mt-1 text-gray-600">
-                        <Tag className="w-4 h-4 mr-2" />
+                      <label className="text-sm font-medium text-blue-700">Source</label>
+                      <div className="flex items-center mt-1 text-gray-700">
+                        <Tag className="w-4 h-4 mr-2 text-blue-600" />
                         <span>{customer.source}</span>
                       </div>
                     </div>
                   )}
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">Created</label>
-                    <div className="flex items-center mt-1 text-gray-600">
-                      <Calendar className="w-4 h-4 mr-2" />
-                      <span>{new Date(customer.createdAt).toLocaleDateString()}</span>
-                    </div>
+                </div>
+
+                {/* Primary Contact Information Section */}
+                <div className="space-y-4 bg-green-50 p-4 rounded-lg border border-green-100">
+                  <div className="flex items-center mb-3">
+                    <Users className="w-5 h-5 text-green-600 mr-2" />
+                    <h3 className="text-base font-semibold text-green-900">Primary Contact</h3>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">Last Updated</label>
-                    <div className="flex items-center mt-1 text-gray-600">
-                      <Calendar className="w-4 h-4 mr-2" />
-                      <span>{new Date(customer.updatedAt).toLocaleDateString()}</span>
+                  {!customer.contactName && !customer.email && !customer.phone && (
+                    <p className="text-gray-500 italic text-sm">No primary contact assigned</p>
+                  )}
+                  {customer.contactName && (
+                    <div>
+                      <label className="text-sm font-medium text-green-700">Contact Name</label>
+                      <p className="text-gray-900 mt-1 font-medium">{customer.contactName}</p>
+                    </div>
+                  )}
+                  {customer.email && (
+                    <div className="flex items-center text-gray-700">
+                      <Mail className="w-4 h-4 mr-2 text-green-600" />
+                      <span>{customer.email}</span>
+                    </div>
+                  )}
+                  {customer.phone && (
+                    <div className="flex items-center text-gray-700">
+                      <Phone className="w-4 h-4 mr-2 text-green-600" />
+                      <span>{customer.phone}</span>
+                    </div>
+                  )}
+                  <div className="pt-3 border-t border-green-200">
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-sm font-medium text-green-700">Created</label>
+                        <div className="flex items-center mt-1 text-gray-700">
+                          <Calendar className="w-4 h-4 mr-2 text-green-600" />
+                          <span>{new Date(customer.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-green-700">Last Updated</label>
+                        <div className="flex items-center mt-1 text-gray-700">
+                          <Calendar className="w-4 h-4 mr-2 text-green-600" />
+                          <span>{new Date(customer.updatedAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -367,6 +388,14 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             onSubmit={handleCustomerUpdate}
             customer={customer}
             mode="edit"
+          />
+        )}
+
+        {/* Project Detail Modal */}
+        {selectedProjectId && (
+          <ProjectDetailModal
+            projectId={selectedProjectId}
+            onBack={() => setSelectedProjectId(null)}
           />
         )}
       </div>

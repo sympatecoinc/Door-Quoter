@@ -185,25 +185,46 @@ export default function CustomerList({ onAddCustomer, onViewCustomer }: Customer
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
-                          {customer.contactName && (
-                            <div className="text-sm font-medium text-gray-900">
-                              {customer.contactName}
-                            </div>
-                          )}
-                          <div className="text-sm text-gray-500 space-y-1">
-                            {customer.email && (
+                          {customer.contacts && customer.contacts.length > 0 && (() => {
+                            const primaryContact = customer.contacts.find(c => c.isPrimary) || customer.contacts[0]
+                            return (
+                              <>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {primaryContact.firstName} {primaryContact.lastName}
+                                </div>
+                                <div className="text-sm text-gray-500 space-y-1">
+                                  {primaryContact.email && (
+                                    <div className="flex items-center">
+                                      <Mail className="w-3 h-3 mr-1" />
+                                      {primaryContact.email}
+                                    </div>
+                                  )}
+                                  {primaryContact.phone && (
+                                    <div className="flex items-center">
+                                      <Phone className="w-3 h-3 mr-1" />
+                                      {primaryContact.phone}
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )
+                          })()}
+                          {(!customer.contacts || customer.contacts.length === 0) && customer.email && (
+                            <div className="text-sm text-gray-500 space-y-1">
                               <div className="flex items-center">
                                 <Mail className="w-3 h-3 mr-1" />
                                 {customer.email}
                               </div>
-                            )}
-                            {customer.phone && (
+                            </div>
+                          )}
+                          {(!customer.contacts || customer.contacts.length === 0) && customer.phone && (
+                            <div className="text-sm text-gray-500 space-y-1">
                               <div className="flex items-center">
                                 <Phone className="w-3 h-3 mr-1" />
                                 {customer.phone}
                               </div>
-                            )}
-                          </div>
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

@@ -25,18 +25,16 @@ function evaluateFormula(formula: string, variables: Record<string, number>): nu
   }
 }
 
-// Helper function to get finish suffix for part numbers
-function getFinishSuffix(finishColor: string, isMillFinish?: boolean): string {
-  // Mill finish parts should not have finish codes appended
-  if (isMillFinish) {
+// Helper function to get finish code from database
+async function getFinishCode(finishType: string): Promise<string> {
+  try {
+    const finish = await prisma.extrusionFinishPricing.findUnique({
+      where: { finishType }
+    })
+    return finish?.finishCode ? `-${finish.finishCode}` : ''
+  } catch (error) {
+    console.error('Error fetching finish code:', error)
     return ''
-  }
-
-  switch (finishColor) {
-    case 'Black': return '-BL'
-    case 'Clear': return '-C2'
-    case 'Other': return '-AL'
-    default: return ''
   }
 }
 
@@ -81,7 +79,7 @@ function findBestStockLengthRule(rules: any[], requiredLength: number): any | nu
 }
 
 // Helper function to find stock length for extrusions using the new formula-based approach
-async function findStockLength(partNumber: string, bom: any, variables: Record<string, number>): Promise<{ stockLength: number | null; isMillFinish: boolean }> {
+async function findStockLength(partNumber: string, bom: any, variables: Record<string, number>): Promise<{ stockLength: number | null, isMillFinish: boolean }> {
   try {
     const masterPart = await prisma.masterPart.findUnique({
       where: { partNumber },
@@ -98,12 +96,12 @@ async function findStockLength(partNumber: string, bom: any, variables: Record<s
       if (bestRule) {
         return {
           stockLength: bestRule.stockLength || null,
-          isMillFinish: bestRule.isMillFinish || false
+          isMillFinish: masterPart.isMillFinish || false
         }
       }
     }
 
-    return { stockLength: null, isMillFinish: false }
+    return { stockLength: null, isMillFinish: masterPart?.isMillFinish || false }
   } catch (error) {
     console.error(`Error finding stock length for ${partNumber}:`, error)
     return { stockLength: null, isMillFinish: false }
@@ -189,18 +187,18 @@ export async function GET(
           let isMillFinish = false
 
           if (bom.partType === 'Extrusion' && fullPartNumber) {
-            // Find stock length for extrusions first
+            // Find stock length and isMillFinish flag for extrusions from MasterPart
             if (bom.partNumber) {
               const stockInfo = await findStockLength(bom.partNumber, bom, variables)
               stockLength = stockInfo.stockLength
               isMillFinish = stockInfo.isMillFinish
             }
 
-            // Only append finish color code if NOT mill finish
+            // Only append finish color code if NOT mill finish (using masterPart.isMillFinish)
             if (opening.finishColor && !isMillFinish) {
-              const finishSuffix = getFinishSuffix(opening.finishColor, isMillFinish)
-              if (finishSuffix) {
-                fullPartNumber = `${fullPartNumber}${finishSuffix}`
+              const finishCode = await getFinishCode(opening.finishColor)
+              if (finishCode) {
+                fullPartNumber = `${fullPartNumber}${finishCode}`
               }
             }
 

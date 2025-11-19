@@ -72,6 +72,18 @@ export async function GET(
           }
         },
         boms: true,
+        projectContacts: {
+          orderBy: { createdAt: 'asc' }
+        },
+        projectNotes: {
+          orderBy: { createdAt: 'desc' }
+        },
+        primaryContact: true,
+        customer: {
+          include: {
+            contacts: true
+          }
+        },
         _count: {
           select: {
             openings: true,
@@ -180,7 +192,7 @@ export async function PUT(
       )
     }
 
-    const { name, status, statusNotes, dueDate, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost } = await request.json()
+    const { name, status, statusNotes, dueDate, shipDate, shippingAddress, shippingCity, shippingState, shippingZipCode, primaryContactId, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost } = await request.json()
 
     // Validate status if provided
     if (status && !Object.values(ProjectStatus).includes(status)) {
@@ -209,6 +221,24 @@ export async function PUT(
     }
     if (dueDate !== undefined) {
       updateData.dueDate = dueDate ? new Date(dueDate) : null
+    }
+    if (shipDate !== undefined) {
+      updateData.shipDate = shipDate ? new Date(shipDate) : null
+    }
+    if (shippingAddress !== undefined) {
+      updateData.shippingAddress = shippingAddress
+    }
+    if (shippingCity !== undefined) {
+      updateData.shippingCity = shippingCity
+    }
+    if (shippingState !== undefined) {
+      updateData.shippingState = shippingState
+    }
+    if (shippingZipCode !== undefined) {
+      updateData.shippingZipCode = shippingZipCode
+    }
+    if (primaryContactId !== undefined) {
+      updateData.primaryContactId = primaryContactId
     }
     if (extrusionCostingMethod !== undefined) {
       updateData.extrusionCostingMethod = extrusionCostingMethod

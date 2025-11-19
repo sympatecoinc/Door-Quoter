@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "docker compose up -d postgres && next dev",
     "dev:vm": "bash start-proxy.sh && next dev",
     "build": "prisma generate && next build",
     "start": "next start",

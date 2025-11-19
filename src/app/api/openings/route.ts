@@ -48,9 +48,9 @@ export async function POST(request: NextRequest) {
       finishedHeight,
       width, // Support the form field name
       height, // Support the form field name
-      finishColor,
       price = 0,
-      multiplier
+      multiplier,
+      finishColor
     } = await request.json()
 
     // Use name if provided, otherwise use openingNumber
@@ -59,14 +59,6 @@ export async function POST(request: NextRequest) {
     if (!projectId || !openingName) {
       return NextResponse.json(
         { error: 'Project ID and opening name are required' },
-        { status: 400 }
-      )
-    }
-
-    // Validate finish color - required field with specific values
-    if (!finishColor || !['Black', 'Clear', 'Other'].includes(finishColor)) {
-      return NextResponse.json(
-        { error: 'Finish color is required and must be Black, Clear, or Other' },
         { status: 400 }
       )
     }
@@ -90,12 +82,15 @@ export async function POST(request: NextRequest) {
     const openingData: any = {
       projectId: parseInt(projectId),
       name: openingName,
-      finishColor: finishColor,
       price: parseFloat(price) || 0
     }
 
     if (multiplier !== undefined) {
       openingData.multiplier = parseFloat(multiplier) || 1.0
+    }
+
+    if (finishColor) {
+      openingData.finishColor = finishColor
     }
 
     // Add size fields only if they have values

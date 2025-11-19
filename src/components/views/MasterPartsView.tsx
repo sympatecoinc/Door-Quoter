@@ -115,6 +115,7 @@ export default function MasterPartsView() {
   const [weightPerUnit, setWeightPerUnit] = useState('')
   const [partType, setPartType] = useState('')
   const [isOption, setIsOption] = useState(false)
+  const [isMillFinish, setIsMillFinish] = useState(false)
 
   // Stock Rules State
   const [stockRules, setStockRules] = useState<StockLengthRule[]>([])
@@ -142,7 +143,6 @@ export default function MasterPartsView() {
   const [pricingName, setPricingName] = useState('')
   const [pricingDescription, setPricingDescription] = useState('')
   const [basePrice, setBasePrice] = useState('')
-  const [weightPerFootState, setWeightPerFootState] = useState('')
   const [formula, setFormula] = useState('')
   const [minQuantity, setMinQuantity] = useState('')
   const [maxQuantity, setMaxQuantity] = useState('')
@@ -278,6 +278,7 @@ export default function MasterPartsView() {
     setWeightPerUnit('')
     setPartType('')
     setIsOption(false)
+    setIsMillFinish(false)
   }
 
   async function handleCreateMasterPart(e: React.FormEvent) {
@@ -305,7 +306,8 @@ export default function MasterPartsView() {
           weightPerUnit: weightPerUnit ? parseFloat(weightPerUnit) : null,
           weightPerFoot: weightPerUnit ? parseFloat(weightPerUnit) : null,
           partType,
-          isOption: partType === 'Hardware' ? isOption : false
+          isOption: partType === 'Hardware' ? isOption : false,
+          isMillFinish: partType === 'Extrusion' ? isMillFinish : false
         })
       })
 
@@ -351,7 +353,8 @@ export default function MasterPartsView() {
           weightPerUnit: weightPerUnit ? parseFloat(weightPerUnit) : null,
           weightPerFoot: weightPerUnit ? parseFloat(weightPerUnit) : null,
           partType,
-          isOption: partType === 'Hardware' ? isOption : false
+          isOption: partType === 'Hardware' ? isOption : false,
+          isMillFinish: partType === 'Extrusion' ? isMillFinish : false
         })
       })
 
@@ -402,6 +405,7 @@ export default function MasterPartsView() {
     setWeightPerUnit((part.partType === 'Hardware' ? part.weightPerUnit : part.weightPerFoot)?.toString() || '')
     setPartType(part.partType)
     setIsOption(part.isOption || false)
+    setIsMillFinish(part.isMillFinish || false)
   }
 
   function viewMasterPartRules(part: MasterPart) {
@@ -435,7 +439,6 @@ export default function MasterPartsView() {
           partType: rulePartType,
           isActive,
           basePrice: basePrice ? parseFloat(basePrice) : null,
-          weightPerFoot: weightPerFootState ? parseFloat(weightPerFootState) : null,
           masterPartId: selectedMasterPartId
         })
       })
@@ -480,7 +483,6 @@ export default function MasterPartsView() {
           partType: rulePartType,
           isActive,
           basePrice: basePrice ? parseFloat(basePrice) : null,
-          weightPerFoot: weightPerFootState ? parseFloat(weightPerFootState) : null,
           masterPartId: selectedMasterPartId
         })
       })
@@ -529,7 +531,6 @@ export default function MasterPartsView() {
     setRulePartType(rule.partType)
     setIsActive(rule.isActive)
     setBasePrice(rule.basePrice?.toString() || '')
-    setWeightPerFootState(rule.weightPerFoot?.toString() || '')
     setFormula(rule.formula || '')
     setMinQuantity(rule.minQuantity?.toString() || '')
     setMaxQuantity(rule.maxQuantity?.toString() || '')
@@ -543,7 +544,6 @@ export default function MasterPartsView() {
     setRulePartType('Extrusion')
     setIsActive(true)
     setBasePrice('')
-    setWeightPerFootState('')
     setFormula('')
     setMinQuantity('')
     setMaxQuantity('')
@@ -1503,10 +1503,11 @@ export default function MasterPartsView() {
 
                   {/* Extrusion specific fields */}
                   {partType === 'Extrusion' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Weight (oz/ft)
-                        <span className="text-xs text-gray-500 ml-1">(Optional)</span>
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Weight (oz/ft)
+                          <span className="text-xs text-gray-500 ml-1">(Optional)</span>
                       </label>
                       <input
                         type="number"
@@ -1517,7 +1518,25 @@ export default function MasterPartsView() {
                         placeholder="e.g., 2.5"
                       />
                       <p className="mt-1 text-xs text-gray-500">Weight in ounces per linear foot</p>
-                    </div>
+                      </div>
+
+                      {/* Is Mill Finish checkbox for extrusions */}
+                      <div className="flex items-center mt-3">
+                        <input
+                          type="checkbox"
+                          id="isMillFinish"
+                          checked={isMillFinish}
+                          onChange={(e) => setIsMillFinish(e.target.checked)}
+                          className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="isMillFinish" className="text-sm font-medium text-gray-700">
+                          Mill Finish
+                        </label>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (No finish codes like -BL, -C2, -AL will be added to part numbers)
+                        </span>
+                      </div>
+                    </>
                   )}
 
                 </>
@@ -1570,102 +1589,73 @@ export default function MasterPartsView() {
             </div>
 
             <form onSubmit={editingRule ? handleUpdateStockRule : handleCreateStockRule} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-                <input
-                  type="text"
-                  value={ruleName}
-                  onChange={(e) => setRuleName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="e.g., Standard Height Rule"
-                  required
-                />
-              </div>
-
-              {/* Description field removed for extrusions - not needed */}
-
-              {/* Part Length Rule Info */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> Stock length rules now work with calculated part lengths from ProductBOM formulas, 
-                  not component dimensions. Set length ranges below based on the actual part lengths your formulas will calculate.
-                </p>
-              </div>
-
-              {/* Part Length Range */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Min Part Length (inches)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={minHeight}
-                      onChange={(e) => setMinHeight(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="e.g., 84"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Max Part Length (inches)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={maxHeight}
-                      onChange={(e) => setMaxHeight(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="e.g., 96"
-                      required
-                    />
-                  </div>
+              {/* Name and Price on same row - Name takes 2/3, Price takes 1/3 */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                  <input
+                    type="text"
+                    value={ruleName}
+                    onChange={(e) => setRuleName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="e.g., Standard Height Rule"
+                    required
+                  />
                 </div>
-
-              {/* Stock Length field */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Stock Length *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={stockLength}
-                  onChange={(e) => setStockLength(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="e.g., 96"
-                  required
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Price ($) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="e.g., 25.00"
+                    required
+                  />
+                </div>
               </div>
 
-              {/* Price field */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Price ($) *
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={basePrice}
-                  onChange={(e) => setBasePrice(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="e.g., 25.00"
-                  required
-                />
-                <p className="mt-1 text-xs text-gray-500">Base price for this stock length</p>
-              </div>
-
-              {/* Weight per foot field */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Weight (oz/ft)
-                  <span className="text-xs text-gray-500 ml-1">(Optional)</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={weightPerFootState}
-                  onChange={(e) => setWeightPerFootState(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="e.g., 2.5"
-                />
-                <p className="mt-1 text-xs text-gray-500">Weight in ounces per linear foot</p>
+              {/* All three length fields on same row */}
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Min Part Length (inches) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={minHeight}
+                    onChange={(e) => setMinHeight(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="e.g., 84"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Max Part Length (inches) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={maxHeight}
+                    onChange={(e) => setMaxHeight(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="e.g., 96"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Stock Length (inches) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={stockLength}
+                    onChange={(e) => setStockLength(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="e.g., 96"
+                    required
+                  />
+                </div>
               </div>
 
               <div className="flex items-center">

@@ -106,7 +106,35 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    return NextResponse.json(customer, { status: 201 })
+    // If contactName provided, create initial primary contact
+    if (contactName && contactName.trim()) {
+      const nameParts = contactName.trim().split(' ')
+      const firstName = nameParts[0]
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : firstName
+
+      await prisma.contact.create({
+        data: {
+          customerId: customer.id,
+          firstName,
+          lastName,
+          email: email || null,
+          phone: phone || null,
+          isPrimary: true
+        }
+      })
+    }
+
+    // Fetch updated customer with the newly created contact
+    const updatedCustomer = await prisma.customer.findUnique({
+      where: { id: customer.id },
+      include: {
+        contacts: true,
+        leads: true,
+        projects: true
+      }
+    })
+
+    return NextResponse.json(updatedCustomer, { status: 201 })
   } catch (error) {
     console.error('Error creating customer:', error)
 
