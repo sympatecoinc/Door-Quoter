@@ -67,6 +67,8 @@ model Opening {
   price             Float     @default(0)
   multiplier        Float     @default(1.0) // Price multiplier/markup for this opening (e.g., 1.2 = 20% markup)
   priceCalculatedAt DateTime? // Track when price was last calculated
+  finishColor       String?   // Finish type for extrusions (e.g., "Mill Finish", "Powder Coated", "Anodized")
+  isMillFinish      Boolean   @default(true) // If true, no finish codes (-BL, -C2) are added to part numbers and no finish costs applied
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -263,6 +265,7 @@ model StockLengthRule {
   isActive       Boolean    @default(true)
   // Pricing fields for extrusions (pricing based on stock length)
   basePrice      Float?     // Base price for extrusions
+  weightPerFoot  Float?     // Weight in ounces per linear foot for extrusions
   formula        String?    // e.g., "basePrice * (stockLength / 96)" or "basePrice * quantity"
   minQuantity    Float?
   maxQuantity    Float?
@@ -569,4 +572,16 @@ model ProductQuoteDocument {
 
   @@unique([productId, quoteDocumentId])
   @@map("ProductQuoteDocuments")
+}
+
+// Extrusion Finish Pricing - Global settings for finish costs per foot
+model ExtrusionFinishPricing {
+  id              Int      @id @default(autoincrement())
+  finishType      String   @unique // e.g., "Mill Finish", "Powder Coated", "Anodized"
+  costPerFoot     Float    @default(0) // Additional cost per foot of extrusion
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("ExtrusionFinishPricing")
 }

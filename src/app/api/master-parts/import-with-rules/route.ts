@@ -148,6 +148,7 @@ export async function POST(request: NextRequest) {
                       partType: 'Extrusion',
                       isActive: true,
                       basePrice: r.stockRule_basePrice ? parseFloat(r.stockRule_basePrice) : null,
+                      weightPerFoot: r.stockRule_weightPerFoot ? parseFloat(r.stockRule_weightPerFoot) : null,
                       basePriceBlack: r.stockRule_basePriceBlack ? parseFloat(r.stockRule_basePriceBlack) : null,
                       basePriceClear: r.stockRule_basePriceClear ? parseFloat(r.stockRule_basePriceClear) : null,
                       formula: r.stockRule_formula || null,

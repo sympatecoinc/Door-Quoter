@@ -43,6 +43,7 @@ interface StockLengthRule {
   partType: string
   isActive: boolean
   basePrice?: number
+  weightPerFoot?: number
   formula?: string
   minQuantity?: number
   maxQuantity?: number
@@ -140,6 +141,7 @@ export default function MasterPartsView() {
   const [pricingName, setPricingName] = useState('')
   const [pricingDescription, setPricingDescription] = useState('')
   const [basePrice, setBasePrice] = useState('')
+  const [weightPerFootState, setWeightPerFootState] = useState('')
   const [formula, setFormula] = useState('')
   const [minQuantity, setMinQuantity] = useState('')
   const [maxQuantity, setMaxQuantity] = useState('')
@@ -429,6 +431,7 @@ export default function MasterPartsView() {
           partType: rulePartType,
           isActive,
           basePrice: basePrice ? parseFloat(basePrice) : null,
+          weightPerFoot: weightPerFootState ? parseFloat(weightPerFootState) : null,
           masterPartId: selectedMasterPartId
         })
       })
@@ -473,6 +476,7 @@ export default function MasterPartsView() {
           partType: rulePartType,
           isActive,
           basePrice: basePrice ? parseFloat(basePrice) : null,
+          weightPerFoot: weightPerFootState ? parseFloat(weightPerFootState) : null,
           masterPartId: selectedMasterPartId
         })
       })
@@ -521,6 +525,7 @@ export default function MasterPartsView() {
     setRulePartType(rule.partType)
     setIsActive(rule.isActive)
     setBasePrice(rule.basePrice?.toString() || '')
+    setWeightPerFootState(rule.weightPerFoot?.toString() || '')
     setFormula(rule.formula || '')
     setMinQuantity(rule.minQuantity?.toString() || '')
     setMaxQuantity(rule.maxQuantity?.toString() || '')
@@ -534,6 +539,7 @@ export default function MasterPartsView() {
     setRulePartType('Extrusion')
     setIsActive(true)
     setBasePrice('')
+    setWeightPerFootState('')
     setFormula('')
     setMinQuantity('')
     setMaxQuantity('')
@@ -1621,6 +1627,23 @@ export default function MasterPartsView() {
                   required
                 />
                 <p className="mt-1 text-xs text-gray-500">Base price for this stock length</p>
+              </div>
+
+              {/* Weight per foot field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Weight (oz/ft)
+                  <span className="text-xs text-gray-500 ml-1">(Optional)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={weightPerFootState}
+                  onChange={(e) => setWeightPerFootState(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  placeholder="e.g., 2.5"
+                />
+                <p className="mt-1 text-xs text-gray-500">Weight in ounces per linear foot</p>
               </div>
 
               <div className="flex items-center">

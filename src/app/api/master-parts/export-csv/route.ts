@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
       'stockRule_stockLength',
       'stockRule_piecesPerUnit',
       'stockRule_basePrice',
+      'stockRule_weightPerFoot',
       'stockRule_basePriceBlack',
       'stockRule_basePriceClear',
       'stockRule_formula',
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
           part.weightPerUnit?.toString() || '',
           part.partType,
           part.isOption ? 'TRUE' : 'FALSE',
-          '', '', '', '', '', '', '', '', '', // Stock rule fields (added isMillFinish, basePriceBlack, basePriceClear)
+          '', '', '', '', '', '', '', '', '', '', // Stock rule fields (added weightPerFoot)
           '', '' // Pricing rule fields
         ].map(v => escapeCsvValue(v)).join(','))
       }
@@ -100,6 +101,7 @@ export async function GET(request: NextRequest) {
             rule.stockLength?.toString() || '',
             rule.piecesPerUnit?.toString() || '',
             rule.basePrice?.toString() || '',
+            rule.weightPerFoot?.toString() || '',
             rule.basePriceBlack?.toString() || '',
             rule.basePriceClear?.toString() || '',
             rule.formula || '',
@@ -120,7 +122,7 @@ export async function GET(request: NextRequest) {
             part.weightPerUnit?.toString() || '',
             part.partType,
             part.isOption ? 'TRUE' : 'FALSE',
-            '', '', '', '', '', '', '', '', '', // Stock rule fields (empty for pricing rules, added isMillFinish, basePriceBlack, basePriceClear)
+            '', '', '', '', '', '', '', '', '', '', // Stock rule fields (empty for pricing rules, added weightPerFoot)
             // Pricing rule fields
             rule.basePrice?.toString() || '',
             rule.formula || ''
