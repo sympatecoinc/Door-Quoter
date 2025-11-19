@@ -1,10 +1,1 @@
-2025/10/15 13:59:50 This is the Cloud SQL Proxy v1. It is no longer receiving active feature development. For the latest features and improvements, migrate to the v2 version of the Cloud SQL Proxy. For details, see: https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/main/migration-guide.md
-2025/10/15 13:59:50 current FDs rlimit set to 524288, wanted limit is 8500. Nothing to do here.
-2025/10/15 13:59:58 Listening on 127.0.0.1:5432 for door-quoter:us-central1:door-app-staging
-2025/10/15 13:59:58 Ready for new connections
-2025/10/15 13:59:59 Generated RSA key in 703.45187ms
-2025/10/15 14:01:34 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/15 14:01:34 refreshing ephemeral certificate for instance door-quoter:us-central1:door-app-staging
-2025/10/15 14:01:35 Scheduling refresh of ephemeral certificate in 54m59s
-2025/10/15 14:01:35 New connection for "door-quoter:us-central1:door-app-staging"
-2025/10/15 14:01:35 New connection for "door-quoter:us-central1:door-app-staging"
+nohup: failed to run command '/root/cloud_sql_proxy': No such file or directory
