@@ -116,6 +116,7 @@ export async function POST(request: NextRequest) {
                 unit: row.partType === 'Extrusion' ? 'IN' : (row.unit || null),
                 cost: row.partType === 'Extrusion' ? null : (row.cost ? parseFloat(row.cost) : null),
                 weightPerUnit: row.partType === 'Hardware' && row.weightPerUnit ? parseFloat(row.weightPerUnit) : null,
+                weightPerFoot: row.partType === 'Extrusion' && row.weightPerFoot ? parseFloat(row.weightPerFoot) : null,
                 partType: row.partType,
                 isOption: row.partType === 'Hardware' ? (row.isOption === 'TRUE' || row.isOption === 'true') : false
               }
@@ -248,6 +249,7 @@ export async function POST(request: NextRequest) {
               unit: row.partType === 'Extrusion' ? 'IN' : (row.unit || null),
               cost: row.partType === 'Extrusion' ? null : (row.cost ? parseFloat(row.cost) : null),
               weightPerUnit: row.partType === 'Hardware' && row.weightPerUnit ? parseFloat(row.weightPerUnit) : null,
+              weightPerFoot: row.partType === 'Extrusion' && row.weightPerFoot ? parseFloat(row.weightPerFoot) : null,
               partType: row.partType,
               isOption: row.partType === 'Hardware' ? (row.isOption === 'TRUE' || row.isOption === 'true') : false
             }

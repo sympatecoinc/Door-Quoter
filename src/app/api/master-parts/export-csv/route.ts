@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
       'unit',
       'cost',
       'weightPerUnit',
+      'weightPerFoot',
       'partType',
       'isOption',
       // Stock length rule fields (for extrusions)
@@ -75,6 +76,7 @@ export async function GET(request: NextRequest) {
           part.unit || '',
           part.cost?.toString() || '',
           part.weightPerUnit?.toString() || '',
+          part.weightPerFoot?.toString() || '',
           part.partType,
           part.isOption ? 'TRUE' : 'FALSE',
           '', '', '', '', '', '', '', '', '', '', // Stock rule fields (added weightPerFoot)
@@ -92,6 +94,7 @@ export async function GET(request: NextRequest) {
             part.unit || '',
             part.cost?.toString() || '',
             part.weightPerUnit?.toString() || '',
+            part.weightPerFoot?.toString() || '',
             part.partType,
             part.isOption ? 'TRUE' : 'FALSE',
             // Stock length rule fields
@@ -120,6 +123,7 @@ export async function GET(request: NextRequest) {
             part.unit || '',
             part.cost?.toString() || '',
             part.weightPerUnit?.toString() || '',
+            part.weightPerFoot?.toString() || '',
             part.partType,
             part.isOption ? 'TRUE' : 'FALSE',
             '', '', '', '', '', '', '', '', '', '', // Stock rule fields (empty for pricing rules, added weightPerFoot)

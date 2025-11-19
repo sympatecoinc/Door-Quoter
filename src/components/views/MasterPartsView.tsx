@@ -13,6 +13,7 @@ interface MasterPart {
   unit?: string
   cost?: number
   weightPerUnit?: number
+  weightPerFoot?: number
   partType: string
   isOption?: boolean
   createdAt: string
@@ -302,6 +303,7 @@ export default function MasterPartsView() {
           unit,
           cost: cost ? parseFloat(cost) : null,
           weightPerUnit: weightPerUnit ? parseFloat(weightPerUnit) : null,
+          weightPerFoot: weightPerUnit ? parseFloat(weightPerUnit) : null,
           partType,
           isOption: partType === 'Hardware' ? isOption : false
         })
@@ -347,6 +349,7 @@ export default function MasterPartsView() {
           unit,
           cost: cost ? parseFloat(cost) : null,
           weightPerUnit: weightPerUnit ? parseFloat(weightPerUnit) : null,
+          weightPerFoot: weightPerUnit ? parseFloat(weightPerUnit) : null,
           partType,
           isOption: partType === 'Hardware' ? isOption : false
         })
@@ -395,7 +398,8 @@ export default function MasterPartsView() {
     setDescription(part.description || '')
     setUnit(part.unit || '')
     setCost(part.cost?.toString() || '')
-    setWeightPerUnit(part.weightPerUnit?.toString() || '')
+    // For hardware use weightPerUnit, for extrusions use weightPerFoot (both stored in same input field)
+    setWeightPerUnit((part.partType === 'Hardware' ? part.weightPerUnit : part.weightPerFoot)?.toString() || '')
     setPartType(part.partType)
     setIsOption(part.isOption || false)
   }
@@ -1497,6 +1501,24 @@ export default function MasterPartsView() {
                     </>
                   )}
 
+                  {/* Extrusion specific fields */}
+                  {partType === 'Extrusion' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Weight (oz/ft)
+                        <span className="text-xs text-gray-500 ml-1">(Optional)</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={weightPerUnit}
+                        onChange={(e) => setWeightPerUnit(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="e.g., 2.5"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">Weight in ounces per linear foot</p>
+                    </div>
+                  )}
 
                 </>
               )}

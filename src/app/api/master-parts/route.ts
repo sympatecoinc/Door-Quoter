@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { partNumber, baseName, description, unit, cost, weightPerUnit, partType, isOption } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, partType, isOption } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({
@@ -146,6 +146,7 @@ export async function POST(request: NextRequest) {
         unit: (partType === 'Extrusion') ? 'IN' : unit, // Always set unit to 'IN' for extrusions
         cost: (partType === 'Extrusion') ? null : (cost ? parseFloat(cost) : null),
         weightPerUnit: (partType === 'Hardware' && weightPerUnit) ? parseFloat(weightPerUnit) : null,
+        weightPerFoot: (partType === 'Extrusion' && weightPerFoot) ? parseFloat(weightPerFoot) : null,
         partType: partType || 'Hardware',
         isOption: (partType === 'Hardware') ? (isOption || false) : false // Only hardware can be options
       }

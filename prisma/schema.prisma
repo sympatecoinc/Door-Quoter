@@ -68,7 +68,6 @@ model Opening {
   multiplier        Float     @default(1.0) // Price multiplier/markup for this opening (e.g., 1.2 = 20% markup)
   priceCalculatedAt DateTime? // Track when price was last calculated
   finishColor       String?   // Finish type for extrusions (e.g., "Mill Finish", "Powder Coated", "Anodized")
-  isMillFinish      Boolean   @default(true) // If true, no finish codes (-BL, -C2) are added to part numbers and no finish costs applied
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -236,7 +235,9 @@ model MasterPart {
   unit                    String?
   cost                    Float?
   weightPerUnit           Float?             // Weight in ounces for Hardware parts
+  weightPerFoot           Float?             // Weight in ounces per linear foot for Extrusion parts
   partType                String             @default("Hardware")
+  isMillFinish            Boolean            @default(false) // If true (for Extrusions), no finish codes (-BL, -C2, -AL) will be appended to part numbers
   isOption                Boolean            @default(false) // True if this hardware part can be used as a category option
   optionImagePath         String?            // Path to uploaded image for category options (relative to public/)
   optionImageOriginalName String?            // Original filename of uploaded image
