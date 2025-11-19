@@ -2,29 +2,37 @@ version: '3.8'
 
 services:
   app:
-    build: .
+    image: node:18-slim
+    working_dir: /app
+    command: bash -c "npm install && npx prisma generate && npx next dev"
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=postgresql://postgres:DoorQuoter2024!@cloud-sql-proxy:5432/door_quoter?sslmode=require
+      - DATABASE_URL=postgresql://postgres:DoorQuoter2024!@postgres:5432/door_quoter
     depends_on:
-      - cloud-sql-proxy
+      postgres:
+        condition: service_healthy
     volumes:
       - .:/app
       - /app/node_modules
+      - /app/.next
 
-  cloud-sql-proxy:
-    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.2
-    command: [
-      "/cloud-sql-proxy",
-      "door-quoter:us-central1:door-quoter-db",
-      "--port=5432",
-      "--private-ip"
-    ]
+  postgres:
+    image: postgres:16-alpine
     ports:
-      - "5433:5432"
-    volumes:
-      - ~/.config/gcloud:/gcp/config:ro
+      - "5432:5432"
     environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=DoorQuoter2024!
+      - POSTGRES_DB=door_quoter
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
