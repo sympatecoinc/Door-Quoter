@@ -25,12 +25,21 @@ model Project {
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
   dueDate                DateTime?
+  shipDate               DateTime?          // Expected ship/delivery date
+  shippingAddress        String?            // Shipping street address
+  shippingCity           String?            // Shipping city
+  shippingState          String?            // Shipping state
+  shippingZipCode        String?            // Shipping zip code
+  primaryContactId       Int?               // Primary contact from customer's contacts
   boms                   BOM[]
   openings               Opening[]
   quoteAttachments       QuoteAttachment[]
   statusHistory          ProjectStatusHistory[]
+  projectContacts        ProjectContact[]   // Project-specific contacts (architect, GC, etc.)
+  projectNotes           ProjectNote[]      // Project notes
   customer               Customer           @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: Restrict)
   pricingMode            PricingMode?       @relation(fields: [pricingModeId], references: [id], onDelete: SetNull)
+  primaryContact         Contact?           @relation("ProjectPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
 
   @@map("Projects")
 }
@@ -55,7 +64,6 @@ model Opening {
   roughHeight       Float?
   finishedWidth     Float?
   finishedHeight    Float?
-  finishColor       String?  // Black, Clear, Other - used for extrusion part number suffixes
   price             Float     @default(0)
   multiplier        Float     @default(1.0) // Price multiplier/markup for this opening (e.g., 1.2 = 20% markup)
   priceCalculatedAt DateTime? // Track when price was last calculated
@@ -225,6 +233,7 @@ model MasterPart {
   description             String?
   unit                    String?
   cost                    Float?
+  weightPerUnit           Float?             // Weight in ounces for Hardware parts
   partType                String             @default("Hardware")
   isOption                Boolean            @default(false) // True if this hardware part can be used as a category option
   optionImagePath         String?            // Path to uploaded image for category options (relative to public/)
@@ -241,7 +250,6 @@ model StockLengthRule {
   id             Int        @id @default(autoincrement())
   name           String
   description    String?
-  isMillFinish   Boolean    @default(false) // True if this is a mill finish extrusion (no color variation)
   minHeight      Float?
   maxHeight      Float?
   minWidth       Float?
@@ -254,9 +262,7 @@ model StockLengthRule {
   partType       String     @default("Extrusion")
   isActive       Boolean    @default(true)
   // Pricing fields for extrusions (pricing based on stock length)
-  basePrice      Float?     // For mill finish OR fallback price if color-specific prices not set
-  basePriceBlack Float?     // Price for Black (BL) finish extrusions (only used if isMillFinish = false)
-  basePriceClear Float?     // Price for Clear (CL) finish extrusions (only used if isMillFinish = false)
+  basePrice      Float?     // Base price for extrusions
   formula        String?    // e.g., "basePrice * (stockLength / 96)" or "basePrice * quantity"
   minQuantity    Float?
   maxQuantity    Float?
@@ -314,17 +320,18 @@ model Customer {
 }
 
 model Contact {
-  id         Int      @id @default(autoincrement())
+  id         Int       @id @default(autoincrement())
   customerId Int
   firstName  String
   lastName   String
   email      String?
   phone      String?
   title      String?
-  isPrimary  Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  isPrimary  Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  projects   Project[] @relation("ProjectPrimaryContact")
 
   @@map("Contacts")
 }
@@ -396,6 +403,37 @@ model QuoteAttachment {
   project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("QuoteAttachments")
+}
+
+// Project Contacts - Architects, GCs, and other project-specific contacts
+model ProjectContact {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  contactType String   // "ARCHITECT" | "GENERAL_CONTRACTOR" | "OTHER"
+  companyName String?
+  name        String
+  email       String?
+  phone       String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("ProjectContacts")
+}
+
+// Project Notes - Notes specific to a project
+model ProjectNote {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  content   String   @db.Text
+  createdBy String?  // User who created the note
+  updatedBy String?  // User who last updated the note
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("ProjectNotes")
 }
 
 // Component Library for SHOPGEN Integration

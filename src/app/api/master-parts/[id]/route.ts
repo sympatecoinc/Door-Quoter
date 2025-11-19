@@ -43,26 +43,32 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
     }
 
-    const { partNumber, baseName, description, unit, cost, partType, isOption } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, partType, isOption } = body
 
     if (!partNumber || !baseName) {
-      return NextResponse.json({ 
-        error: 'Part number and base name are required' 
+      return NextResponse.json({
+        error: 'Part number and base name are required'
       }, { status: 400 })
     }
 
     // Prevent glass from being created as a master part
     if (partType === 'Glass') {
-      return NextResponse.json({ 
-        error: 'Glass cannot be created as a master part as it is not a stocked item' 
+      return NextResponse.json({
+        error: 'Glass cannot be created as a master part as it is not a stocked item'
       }, { status: 400 })
     }
 
     // Validate cost requirements: Hardware parts require cost, Extrusions don't
     if (partType === 'Hardware') {
       if (!cost || isNaN(parseFloat(cost.toString()))) {
-        return NextResponse.json({ 
-          error: 'Hardware parts require a valid cost' 
+        return NextResponse.json({
+          error: 'Hardware parts require a valid cost'
+        }, { status: 400 })
+      }
+      // Validate weight if provided
+      if (weightPerUnit && isNaN(parseFloat(weightPerUnit.toString()))) {
+        return NextResponse.json({
+          error: 'Weight must be a valid number'
         }, { status: 400 })
       }
     }
@@ -95,6 +101,7 @@ export async function PUT(
         description,
         unit: (partType === 'Extrusion') ? 'IN' : unit, // Always set unit to 'IN' for extrusions
         cost: (partType === 'Extrusion') ? null : (cost ? parseFloat(cost) : null),
+        weightPerUnit: (partType === 'Hardware' && weightPerUnit) ? parseFloat(weightPerUnit) : null,
         partType: partType || 'Hardware',
         isOption: (partType === 'Hardware') ? (isOption || false) : false // Only hardware can be options
       }

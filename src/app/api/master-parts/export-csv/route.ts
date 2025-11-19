@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
       'description',
       'unit',
       'cost',
+      'weightPerUnit',
       'partType',
       'isOption',
       // Stock length rule fields (for extrusions)
@@ -72,6 +73,7 @@ export async function GET(request: NextRequest) {
           part.description || '',
           part.unit || '',
           part.cost?.toString() || '',
+          part.weightPerUnit?.toString() || '',
           part.partType,
           part.isOption ? 'TRUE' : 'FALSE',
           '', '', '', '', '', '', '', '', '', // Stock rule fields (added isMillFinish, basePriceBlack, basePriceClear)
@@ -88,6 +90,7 @@ export async function GET(request: NextRequest) {
             part.description || '',
             part.unit || '',
             part.cost?.toString() || '',
+            part.weightPerUnit?.toString() || '',
             part.partType,
             part.isOption ? 'TRUE' : 'FALSE',
             // Stock length rule fields
@@ -114,6 +117,7 @@ export async function GET(request: NextRequest) {
             part.description || '',
             part.unit || '',
             part.cost?.toString() || '',
+            part.weightPerUnit?.toString() || '',
             part.partType,
             part.isOption ? 'TRUE' : 'FALSE',
             '', '', '', '', '', '', '', '', '', // Stock rule fields (empty for pricing rules, added isMillFinish, basePriceBlack, basePriceClear)
