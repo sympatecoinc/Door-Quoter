@@ -104,19 +104,29 @@ ALU-003,1,width + 1`
   }
 
   const downloadMasterPartsTemplate = () => {
-    const csvContent = `partNumber,baseName,partType,description,unit,cost,isOption
-HW-001,Phillips Head Screws,Hardware,Stainless steel screws for general assembly,EA,0.25,FALSE
-HW-002,Door Hinges,Hardware,Heavy duty hinges for door mounting,EA,12.50,TRUE
-HW-003,Lever Handle,Hardware,Premium lever handle for interior doors,EA,45.00,TRUE
-ALU-001,Glass Stop Extrusion,Extrusion,Glazing bead extrusion for glass retention,IN,,FALSE
-ALU-002,Door Stile Extrusion,Extrusion,Vertical door frame extrusion,IN,,FALSE
-ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,FALSE
+    const csvContent = `partNumber,baseName,partType,description,unit,cost,weightPerUnit,weightPerFoot,isMillFinish,isOption,stockRule_stockLength,stockRule_minHeight,stockRule_maxHeight,stockRule_basePrice
+HW-001,Phillips Head Screws,Hardware,Stainless steel screws for general assembly,EA,0.25,0.5,,,FALSE,,,,
+HW-002,Door Hinges,Hardware,Heavy duty hinges for door mounting,EA,12.50,8.0,,,TRUE,,,,
+HW-003,Lever Handle,Hardware,Premium lever handle for interior doors,EA,45.00,12.0,,,TRUE,,,,
+ALU-001,Glass Stop Extrusion,Extrusion,Glazing bead extrusion for glass retention,IN,,,2.5,FALSE,FALSE,96,,96,45.00
+ALU-001,Glass Stop Extrusion,Extrusion,Glazing bead extrusion for glass retention,IN,,,2.5,FALSE,FALSE,144,,144,65.00
+ALU-002,Door Stile Extrusion,Extrusion,Vertical door frame extrusion,IN,,,4.8,FALSE,FALSE,192,,192,120.00
+ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,,3.2,TRUE,FALSE,96,,96,38.00
 
 # Notes:
+# - BASIC FORMAT: One row per part (no stock rules) - detected when stockRule_ columns are empty
+# - ENHANCED FORMAT: Multiple rows per part with stock rules - detected when stockRule_ columns have values
 # - Cost is REQUIRED for Hardware parts and OPTIONAL for Extrusions
-# - Extrusions use Stock Length Rules for pricing instead of direct cost
+# - weightPerUnit: Weight in ounces for Hardware parts
+# - weightPerFoot: Weight in ounces per linear foot for Extrusion parts
+# - isMillFinish: TRUE for Extrusions that are mill finish only (no finish codes like -BL, -C2 appended to part numbers)
+# - Extrusions use Stock Length Rules for pricing (stockRule_* columns)
+# - stockRule_stockLength: Stock length in inches (e.g., 96, 144, 192)
+# - stockRule_minHeight/maxHeight: Dimension constraints for rule application
+# - stockRule_basePrice: Base price for this stock length
 # - Unit should be 'IN' for Extrusions and varies for Hardware (EA, LF, SF, etc.)
 # - isOption: TRUE allows Hardware to be used in Product sub-option categories
+# - For Extrusions with multiple stock lengths, repeat the part row with different stockRule_ values
 # - Duplicate part numbers will be SKIPPED (not updated) during import`
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })

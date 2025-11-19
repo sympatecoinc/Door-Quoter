@@ -15,7 +15,8 @@ export async function GET(request: NextRequest) {
       const parts = await prisma.masterPart.findMany({
         where: {
           partNumber: {
-            contains: partNumber
+            contains: partNumber,
+            mode: 'insensitive'
           }
         },
         orderBy: { partNumber: 'asc' }
@@ -28,22 +29,26 @@ export async function GET(request: NextRequest) {
           OR: [
             {
               partNumber: {
-                contains: search
+                contains: search,
+                mode: 'insensitive'
               }
             },
             {
               baseName: {
-                contains: search
+                contains: search,
+                mode: 'insensitive'
               }
             },
             {
               description: {
-                contains: search
+                contains: search,
+                mode: 'insensitive'
               }
             },
             {
               partType: {
-                contains: search
+                contains: search,
+                mode: 'insensitive'
               }
             }
           ]

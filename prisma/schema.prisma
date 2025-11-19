@@ -31,6 +31,7 @@ model Project {
   shippingState          String?            // Shipping state
   shippingZipCode        String?            // Shipping zip code
   primaryContactId       Int?               // Primary contact from customer's contacts
+  primaryProjectContactId Int?              // Primary contact from project contacts
   boms                   BOM[]
   openings               Opening[]
   quoteAttachments       QuoteAttachment[]
@@ -40,6 +41,7 @@ model Project {
   customer               Customer           @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: Restrict)
   pricingMode            PricingMode?       @relation(fields: [pricingModeId], references: [id], onDelete: SetNull)
   primaryContact         Contact?           @relation("ProjectPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+  primaryProjectContact  ProjectContact?    @relation("ProjectPrimaryProjectContact", fields: [primaryProjectContactId], references: [id], onDelete: SetNull)
 
   @@map("Projects")
 }
@@ -411,17 +413,18 @@ model QuoteAttachment {
 
 // Project Contacts - Architects, GCs, and other project-specific contacts
 model ProjectContact {
-  id          Int      @id @default(autoincrement())
-  projectId   Int
-  contactType String   // "ARCHITECT" | "GENERAL_CONTRACTOR" | "OTHER"
-  companyName String?
-  name        String
-  email       String?
-  phone       String?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id               Int       @id @default(autoincrement())
+  projectId        Int
+  contactType      String    // "ARCHITECT" | "GENERAL_CONTRACTOR" | "OTHER"
+  companyName      String?
+  name             String
+  email            String?
+  phone            String?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  primaryForProjects Project[] @relation("ProjectPrimaryProjectContact")
 
   @@map("ProjectContacts")
 }

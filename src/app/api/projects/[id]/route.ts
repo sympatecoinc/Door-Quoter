@@ -79,6 +79,7 @@ export async function GET(
           orderBy: { createdAt: 'desc' }
         },
         primaryContact: true,
+        primaryProjectContact: true,
         customer: {
           include: {
             contacts: true
@@ -192,7 +193,7 @@ export async function PUT(
       )
     }
 
-    const { name, status, statusNotes, dueDate, shipDate, shippingAddress, shippingCity, shippingState, shippingZipCode, primaryContactId, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost } = await request.json()
+    const { name, status, statusNotes, dueDate, shipDate, shippingAddress, shippingCity, shippingState, shippingZipCode, primaryContactId, primaryProjectContactId, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost } = await request.json()
 
     // Validate status if provided
     if (status && !Object.values(ProjectStatus).includes(status)) {
@@ -239,6 +240,9 @@ export async function PUT(
     }
     if (primaryContactId !== undefined) {
       updateData.primaryContactId = primaryContactId
+    }
+    if (primaryProjectContactId !== undefined) {
+      updateData.primaryProjectContactId = primaryProjectContactId
     }
     if (extrusionCostingMethod !== undefined) {
       updateData.extrusionCostingMethod = extrusionCostingMethod

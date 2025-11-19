@@ -16,6 +16,7 @@ interface Project {
   shippingState: string | null
   shippingZipCode: string | null
   primaryContactId: number | null
+  primaryProjectContactId: number | null
   createdAt: string
   updatedAt: string
   customer: {
@@ -24,6 +25,8 @@ interface Project {
     contacts: Contact[]
   }
   primaryContact: Contact | null
+  primaryProjectContact: ProjectContact | null
+  projectContacts: ProjectContact[]
 }
 
 interface Contact {
@@ -34,6 +37,17 @@ interface Contact {
   phone: string | null
   title: string | null
   isPrimary: boolean
+}
+
+interface ProjectContact {
+  id: number
+  projectId: number
+  contactType: 'ARCHITECT' | 'GENERAL_CONTRACTOR' | 'OTHER'
+  companyName: string | null
+  name: string
+  email: string | null
+  phone: string | null
+  notes: string | null
 }
 
 interface ProjectDetailModalProps {
@@ -52,7 +66,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
 
   // Overview tab state
   const [shipDate, setShipDate] = useState<string>('')
-  const [primaryContactId, setPrimaryContactId] = useState<number | null>(null)
+  const [selectedContactValue, setSelectedContactValue] = useState<string>('')
 
   // Shipping tab state
   const [shippingAddress, setShippingAddress] = useState<string>('')
@@ -76,7 +90,15 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
 
       // Set form values
       setShipDate(data.shipDate ? data.shipDate.split('T')[0] : '')
-      setPrimaryContactId(data.primaryContactId)
+
+      // Set selected contact (either customer contact or project contact)
+      if (data.primaryContactId) {
+        setSelectedContactValue(`customer-${data.primaryContactId}`)
+      } else if (data.primaryProjectContactId) {
+        setSelectedContactValue(`project-${data.primaryProjectContactId}`)
+      } else {
+        setSelectedContactValue('')
+      }
 
       // Set shipping form values
       setShippingAddress(data.shippingAddress || '')
@@ -123,11 +145,26 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
     try {
       setSaving(true)
       setError(null)
+
+      // Parse the selected contact value
+      let primaryContactId = null
+      let primaryProjectContactId = null
+
+      if (selectedContactValue) {
+        const [type, id] = selectedContactValue.split('-')
+        if (type === 'customer') {
+          primaryContactId = parseInt(id)
+        } else if (type === 'project') {
+          primaryProjectContactId = parseInt(id)
+        }
+      }
+
       const response = await fetch(`/api/projects/${projectId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          primaryContactId: primaryContactId
+          primaryContactId,
+          primaryProjectContactId
         })
       })
 
@@ -365,18 +402,41 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                 </label>
                 <div className="flex gap-2">
                   <select
-                    value={primaryContactId || ''}
-                    onChange={(e) => setPrimaryContactId(e.target.value ? parseInt(e.target.value) : null)}
+                    value={selectedContactValue}
+                    onChange={(e) => setSelectedContactValue(e.target.value)}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     disabled={saving}
                   >
                     <option value="">No primary contact</option>
-                    {project.customer.contacts.map((contact) => (
-                      <option key={contact.id} value={contact.id}>
-                        {contact.firstName} {contact.lastName}
-                        {contact.title ? ` - ${contact.title}` : ''}
-                      </option>
-                    ))}
+
+                    {/* Customer Contacts */}
+                    {project.customer.contacts.length > 0 && (
+                      <optgroup label="Company Contacts">
+                        {project.customer.contacts.map((contact) => (
+                          <option key={`customer-${contact.id}`} value={`customer-${contact.id}`}>
+                            {contact.firstName} {contact.lastName}
+                            {contact.title ? ` - ${contact.title}` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+
+                    {/* Divider between contact types */}
+                    {project.projectContacts && project.projectContacts.length > 0 && (
+                      <optgroup label="──────────────────────"></optgroup>
+                    )}
+
+                    {/* Project Contacts */}
+                    {project.projectContacts && project.projectContacts.length > 0 && (
+                      <optgroup label="Project Contacts">
+                        {project.projectContacts.map((contact) => (
+                          <option key={`project-${contact.id}`} value={`project-${contact.id}`}>
+                            {contact.name}
+                            {contact.companyName ? ` - ${contact.companyName}` : ` - ${contact.contactType.replace('_', ' ')}`}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                   <button
                     onClick={handleSavePrimaryContact}
@@ -386,10 +446,12 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                     {saving ? 'Saving...' : 'Save'}
                   </button>
                 </div>
-                {project.primaryContact && (
+                {(project.primaryContact || project.primaryProjectContact) && (
                   <div className="mt-2 text-sm text-gray-600">
-                    Current: {project.primaryContact.firstName} {project.primaryContact.lastName}
-                    {project.primaryContact.email && ` (${project.primaryContact.email})`}
+                    Current: {project.primaryContact
+                      ? `${project.primaryContact.firstName} ${project.primaryContact.lastName}${project.primaryContact.email ? ` (${project.primaryContact.email})` : ''}`
+                      : `${project.primaryProjectContact?.name}${project.primaryProjectContact?.email ? ` (${project.primaryProjectContact.email})` : ''}`
+                    }
                   </div>
                 )}
               </div>

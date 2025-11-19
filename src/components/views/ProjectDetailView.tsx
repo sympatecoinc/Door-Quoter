@@ -635,6 +635,46 @@ export default function ProjectDetailView() {
     return count
   }
 
+  // Helper function to check if any of the generated names already exist
+  function getNameConflicts(): string[] {
+    if (!project || !duplicateNewName.trim()) return []
+
+    const trimmedBaseName = duplicateNewName.trim()
+    const safeCount = getSafeDuplicateCount()
+    if (safeCount < 1) return []
+
+    const namesToCheck: string[] = []
+
+    if (autoIncrement) {
+      // Auto-increment: check "{baseName} 1", "{baseName} 2", etc.
+      for (let i = 1; i <= safeCount + 1; i++) {
+        namesToCheck.push(`${trimmedBaseName} ${i}`)
+      }
+    } else {
+      // Non-auto-increment: check exact name or numbered names
+      if (safeCount === 1) {
+        namesToCheck.push(trimmedBaseName)
+      } else {
+        for (let i = 1; i <= safeCount; i++) {
+          namesToCheck.push(`${trimmedBaseName} ${i}`)
+        }
+      }
+    }
+
+    // Find which names already exist (excluding the opening being duplicated if auto-increment)
+    const existingNames = project.openings
+      .filter(opening => {
+        // In auto-increment mode, the original will be renamed, so don't count it as a conflict
+        if (autoIncrement && opening.id === duplicatingOpeningId) {
+          return false
+        }
+        return namesToCheck.includes(opening.name)
+      })
+      .map(opening => opening.name)
+
+    return existingNames
+  }
+
   async function handleDuplicateOpening() {
     if (!duplicatingOpeningId) return
 
@@ -2464,15 +2504,36 @@ export default function ProjectDetailView() {
                   placeholder={autoIncrement ? "Enter base name for numbered openings" : "Enter name for duplicated opening"}
                   autoFocus
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !isDuplicating) {
+                    if (e.key === 'Enter' && !isDuplicating && duplicateNewName.trim() && getSafeDuplicateCount() >= 1 && getNameConflicts().length === 0) {
                       handleDuplicateOpening()
                     }
                   }}
                 />
               </div>
 
+              {/* Name Conflict Warning */}
+              {(() => {
+                const conflicts = getNameConflicts()
+                return conflicts.length > 0 ? (
+                  <div className="mb-4 p-3 bg-red-50 rounded-lg border border-red-200">
+                    <p className="text-sm font-medium text-red-800 mb-2">⚠️ Name Conflict</p>
+                    <p className="text-xs text-red-700 mb-2">
+                      The following opening name(s) already exist:
+                    </p>
+                    <div className="text-xs text-red-700">
+                      {conflicts.map((name, i) => (
+                        <p key={i} className="mb-1">• {name}</p>
+                      ))}
+                    </div>
+                    <p className="text-xs text-red-700 mt-2">
+                      Please choose a different name to continue.
+                    </p>
+                  </div>
+                ) : null
+              })()}
+
               {/* Preview */}
-              {duplicateNewName.trim() && (() => {
+              {duplicateNewName.trim() && getNameConflicts().length === 0 && (() => {
                 const safeCount = getSafeDuplicateCount()
                 return safeCount > 0 ? (
                   <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
@@ -2531,7 +2592,7 @@ export default function ProjectDetailView() {
               </button>
               <button
                 onClick={handleDuplicateOpening}
-                disabled={isDuplicating || !duplicateNewName.trim() || getSafeDuplicateCount() < 1}
+                disabled={isDuplicating || !duplicateNewName.trim() || getSafeDuplicateCount() < 1 || getNameConflicts().length > 0}
                 className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {isDuplicating ? (

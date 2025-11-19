@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
                 weightPerUnit: row.partType === 'Hardware' && row.weightPerUnit ? parseFloat(row.weightPerUnit) : null,
                 weightPerFoot: row.partType === 'Extrusion' && row.weightPerFoot ? parseFloat(row.weightPerFoot) : null,
                 partType: row.partType,
+                isMillFinish: row.partType === 'Extrusion' ? (row.isMillFinish === 'TRUE' || row.isMillFinish === 'true') : false,
                 isOption: row.partType === 'Hardware' ? (row.isOption === 'TRUE' || row.isOption === 'true') : false
               }
             })
@@ -129,14 +130,12 @@ export async function POST(request: NextRequest) {
                 const r = entry.row
                 console.log(`  Entry stockLength: "${r.stockRule_stockLength}"`)
                 if (r.stockRule_stockLength && r.stockRule_stockLength.trim() !== '') {
-                  const isMillFinish = r.stockRule_isMillFinish === 'TRUE' || r.stockRule_isMillFinish === 'true'
-                  console.log(`  Creating rule with stockLength: ${r.stockRule_stockLength}${isMillFinish ? ' (Mill Finish)' : ''}`)
+                  console.log(`  Creating rule with stockLength: ${r.stockRule_stockLength}`)
                   await tx.stockLengthRule.create({
                     data: {
                       masterPartId: masterPart.id,
-                      name: `${partNumber} - ${r.stockRule_stockLength}" stock${isMillFinish ? ' (Mill Finish)' : ''}`,
+                      name: `${partNumber} - ${r.stockRule_stockLength}" stock`,
                       description: null,
-                      isMillFinish: isMillFinish,
                       minHeight: r.stockRule_minHeight ? parseFloat(r.stockRule_minHeight) : null,
                       maxHeight: r.stockRule_maxHeight ? parseFloat(r.stockRule_maxHeight) : null,
                       minWidth: null,
@@ -149,9 +148,9 @@ export async function POST(request: NextRequest) {
                       partType: 'Extrusion',
                       isActive: true,
                       basePrice: r.stockRule_basePrice ? parseFloat(r.stockRule_basePrice) : null,
-                      weightPerFoot: r.stockRule_weightPerFoot ? parseFloat(r.stockRule_weightPerFoot) : null,
                       basePriceBlack: r.stockRule_basePriceBlack ? parseFloat(r.stockRule_basePriceBlack) : null,
                       basePriceClear: r.stockRule_basePriceClear ? parseFloat(r.stockRule_basePriceClear) : null,
+                      weightPerFoot: r.stockRule_weightPerFoot ? parseFloat(r.stockRule_weightPerFoot) : null,
                       formula: r.stockRule_formula || null,
                       minQuantity: null,
                       maxQuantity: null
@@ -251,6 +250,7 @@ export async function POST(request: NextRequest) {
               weightPerUnit: row.partType === 'Hardware' && row.weightPerUnit ? parseFloat(row.weightPerUnit) : null,
               weightPerFoot: row.partType === 'Extrusion' && row.weightPerFoot ? parseFloat(row.weightPerFoot) : null,
               partType: row.partType,
+              isMillFinish: row.partType === 'Extrusion' ? (row.isMillFinish === 'TRUE' || row.isMillFinish === 'true') : false,
               isOption: row.partType === 'Hardware' ? (row.isOption === 'TRUE' || row.isOption === 'true') : false
             }
           })

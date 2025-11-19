@@ -48,9 +48,9 @@ export async function GET(request: NextRequest) {
       'weightPerUnit',
       'weightPerFoot',
       'partType',
+      'isMillFinish',
       'isOption',
       // Stock length rule fields (for extrusions)
-      'stockRule_isMillFinish',
       'stockRule_minHeight',
       'stockRule_maxHeight',
       'stockRule_stockLength',
@@ -78,8 +78,9 @@ export async function GET(request: NextRequest) {
           part.weightPerUnit?.toString() || '',
           part.weightPerFoot?.toString() || '',
           part.partType,
+          part.isMillFinish ? 'TRUE' : 'FALSE',
           part.isOption ? 'TRUE' : 'FALSE',
-          '', '', '', '', '', '', '', '', '', '', // Stock rule fields (added weightPerFoot)
+          '', '', '', '', '', '', '', '', '', // Stock rule fields (9 fields)
           '', '' // Pricing rule fields
         ].map(v => escapeCsvValue(v)).join(','))
       }
@@ -96,9 +97,9 @@ export async function GET(request: NextRequest) {
             part.weightPerUnit?.toString() || '',
             part.weightPerFoot?.toString() || '',
             part.partType,
+            part.isMillFinish ? 'TRUE' : 'FALSE',
             part.isOption ? 'TRUE' : 'FALSE',
             // Stock length rule fields
-            rule.isMillFinish ? 'TRUE' : 'FALSE',
             rule.minHeight?.toString() || '',
             rule.maxHeight?.toString() || '',
             rule.stockLength?.toString() || '',
@@ -125,8 +126,9 @@ export async function GET(request: NextRequest) {
             part.weightPerUnit?.toString() || '',
             part.weightPerFoot?.toString() || '',
             part.partType,
+            part.isMillFinish ? 'TRUE' : 'FALSE',
             part.isOption ? 'TRUE' : 'FALSE',
-            '', '', '', '', '', '', '', '', '', '', // Stock rule fields (empty for pricing rules, added weightPerFoot)
+            '', '', '', '', '', '', '', '', '', // Stock rule fields (9 fields)
             // Pricing rule fields
             rule.basePrice?.toString() || '',
             rule.formula || ''
