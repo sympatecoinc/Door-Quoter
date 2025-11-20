@@ -58,10 +58,11 @@ export default function ProductsView() {
   const [updating, setUpdating] = useState(false)
   const [showArchiveDialog, setShowArchiveDialog] = useState<{product: Product, projects: string[]} | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
 
   useEffect(() => {
     loadData()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showArchived]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadData() {
     setLoading(true)
@@ -74,7 +75,8 @@ export default function ProductsView() {
 
   async function fetchProducts() {
     try {
-      const response = await fetch('/api/products')
+      const url = showArchived ? '/api/products?includeArchived=true' : '/api/products'
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
         setProducts(data)
@@ -288,6 +290,8 @@ export default function ProductsView() {
                   setEditProductInstallationPrice={setEditProductInstallationPrice}
                   showCreateForm={showCreateForm}
                   setShowCreateForm={setShowCreateForm}
+                  showArchived={showArchived}
+                  setShowArchived={setShowArchived}
                 />
               )
             )}
@@ -358,7 +362,9 @@ function ProductsTab({
   setEditProductDescription,
   setEditProductInstallationPrice,
   showCreateForm,
-  setShowCreateForm
+  setShowCreateForm,
+  showArchived,
+  setShowArchived
 }: {
   products: Product[],
   onRefresh: () => void,
@@ -377,7 +383,9 @@ function ProductsTab({
   setEditProductDescription: (description: string) => void,
   setEditProductInstallationPrice: (price: string) => void,
   showCreateForm: boolean,
-  setShowCreateForm: (show: boolean) => void
+  setShowCreateForm: (show: boolean) => void,
+  showArchived: boolean,
+  setShowArchived: (show: boolean) => void
 }) {
   const [newProductName, setNewProductName] = useState('')
   const [newProductDescription, setNewProductDescription] = useState('')
@@ -510,12 +518,17 @@ function ProductsTab({
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-medium text-gray-900">{product.name}</h3>
                         <span className={`px-2 py-1 text-xs rounded-full ${
-                          product.withTrim === 'With Trim' 
-                            ? 'bg-purple-100 text-purple-700' 
+                          product.withTrim === 'With Trim'
+                            ? 'bg-purple-100 text-purple-700'
                             : 'bg-gray-100 text-gray-700'
                         }`}>
                           {product.withTrim}
                         </span>
+                        {product.archived && (
+                          <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">
+                            Archived
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-gray-600 mt-1">{product.description || 'No description'}</p>
                     </div>
@@ -557,6 +570,22 @@ function ProductsTab({
           No products created yet. Create your first product template!
         </div>
       )}
+
+      {/* Show Archived Toggle */}
+      <div className="mt-6 pt-6 border-t border-gray-200">
+        <button
+          onClick={() => setShowArchived(!showArchived)}
+          className="flex items-center text-sm text-gray-600 hover:text-gray-900"
+        >
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={() => setShowArchived(!showArchived)}
+            className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+          />
+          Show archived products
+        </button>
+      </div>
 
       {/* Create Product Modal */}
       {showCreateForm && (

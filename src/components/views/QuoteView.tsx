@@ -69,6 +69,7 @@ export default function QuoteView() {
   const [showExcludedPartsModal, setShowExcludedPartsModal] = useState(false)
   const [projectParts, setProjectParts] = useState<any[]>([])
   const [loadingParts, setLoadingParts] = useState(false)
+  const [isUpdatingCosting, setIsUpdatingCosting] = useState(false)
 
   // Handle back navigation
   const handleBack = () => {
@@ -88,7 +89,7 @@ export default function QuoteView() {
 
   // Initialize installation and costing state from quote data
   useEffect(() => {
-    if (quoteData?.project) {
+    if (quoteData?.project && !isUpdatingCosting) {
       setInstallationMethod(quoteData.project.installationMethod)
       setInstallationComplexity(quoteData.project.installationComplexity)
       setManualInstallationCost(quoteData.project.manualInstallationCost)
@@ -198,6 +199,12 @@ export default function QuoteView() {
   ) => {
     if (!selectedProjectId || !quoteData) return
 
+    // Store old values for rollback on error
+    const oldMethod = extrusionCostingMethod
+    const oldExcludedParts = excludedPartNumbers
+
+    setIsUpdatingCosting(true)
+
     try {
       const response = await fetch(`/api/projects/${selectedProjectId}`, {
         method: 'PUT',
@@ -222,6 +229,11 @@ export default function QuoteView() {
     } catch (error) {
       console.error('Error updating extrusion costing:', error)
       showError('Failed to update extrusion costing settings')
+      // Rollback optimistic update on error
+      setExtrusionCostingMethod(oldMethod)
+      setExcludedPartNumbers(oldExcludedParts)
+    } finally {
+      setIsUpdatingCosting(false)
     }
   }
 
@@ -372,17 +384,18 @@ export default function QuoteView() {
           <div className="space-y-4">
             {/* Extrusion Costing Method Dropdown */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="extrusionCostingMethod" className="block text-sm font-medium text-gray-700 mb-2">
                 Costing Method
               </label>
               <select
+                id="extrusionCostingMethod"
                 value={extrusionCostingMethod}
                 onChange={(e) => {
                   const method = e.target.value as 'FULL_STOCK' | 'PERCENTAGE_BASED'
                   setExtrusionCostingMethod(method)
                   updateExtrusionCosting(method, excludedPartNumbers)
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer relative z-10"
               >
                 <option value="FULL_STOCK">Full Stock Cost</option>
                 <option value="PERCENTAGE_BASED">Percentage-Based Cost</option>

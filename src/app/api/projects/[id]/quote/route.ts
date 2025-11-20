@@ -317,6 +317,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         installationMethod: project.installationMethod,
         installationComplexity: project.installationComplexity,
         manualInstallationCost: project.manualInstallationCost,
+        extrusionCostingMethod: project.extrusionCostingMethod,
+        excludedPartNumbers: project.excludedPartNumbers,
         pricingMode: project.pricingMode ? {
           name: project.pricingMode.name,
           markup: project.pricingMode.markup,

@@ -51,7 +51,6 @@ model ProjectStatusHistory {
   projectId Int
   status    ProjectStatus
   changedBy String?
-  notes     String?
   changedAt DateTime      @default(now())
   project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
 

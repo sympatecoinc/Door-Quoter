@@ -921,6 +921,9 @@ export default function MasterPartsView() {
                         Unit
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Weight
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Cost
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -942,7 +945,7 @@ export default function MasterPartsView() {
                         </td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            part.partType === 'Hardware' 
+                            part.partType === 'Hardware'
                               ? 'bg-green-100 text-green-800'
                               : 'bg-blue-100 text-blue-800'
                           }`}>
@@ -951,6 +954,13 @@ export default function MasterPartsView() {
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900">
                           {part.unit || '-'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900">
+                          {part.partType === 'Hardware' && part.weightPerUnit
+                            ? `${part.weightPerUnit} oz`
+                            : part.partType === 'Extrusion' && part.weightPerFoot
+                            ? `${part.weightPerFoot} oz/ft`
+                            : '-'}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900">
                           {getPriceDisplay(part)}

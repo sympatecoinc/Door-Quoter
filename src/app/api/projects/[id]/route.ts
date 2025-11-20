@@ -193,7 +193,7 @@ export async function PUT(
       )
     }
 
-    const { name, status, statusNotes, dueDate, shipDate, shippingAddress, shippingCity, shippingState, shippingZipCode, primaryContactId, primaryProjectContactId, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost } = await request.json()
+    const { name, status, dueDate, shipDate, shippingAddress, shippingCity, shippingState, shippingZipCode, primaryContactId, primaryProjectContactId, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost } = await request.json()
 
     // Validate status if provided
     if (status && !Object.values(ProjectStatus).includes(status)) {
@@ -270,7 +270,6 @@ export async function PUT(
     if (manualInstallationCost !== undefined) {
       updateData.manualInstallationCost = manualInstallationCost
     }
-    // Note: statusNotes is not part of Project model, only used for status history
 
     // Update project and track status change in a transaction
     const updatedProject = await prisma.$transaction(async (tx) => {
@@ -290,8 +289,7 @@ export async function PUT(
         await tx.projectStatusHistory.create({
           data: {
             projectId: projectId,
-            status: status,
-            notes: statusNotes || null
+            status: status
           }
         })
       }

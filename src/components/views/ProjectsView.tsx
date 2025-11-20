@@ -37,7 +37,6 @@ export default function ProjectsView() {
   const [editingProject, setEditingProject] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
   const [editStatus, setEditStatus] = useState<ProjectStatus>(ProjectStatus.STAGING)
-  const [editStatusNotes, setEditStatusNotes] = useState('')
   const [editDueDate, setEditDueDate] = useState('')
   const [editTaxRate, setEditTaxRate] = useState('0')
   const [editPricingModeId, setEditPricingModeId] = useState<number | null>(null)
@@ -263,7 +262,6 @@ export default function ProjectsView() {
     setEditingProject(null)
     setEditName('')
     setEditStatus(ProjectStatus.STAGING)
-    setEditStatusNotes('')
     setEditDueDate('')
     setEditTaxRate('0')
   }
@@ -280,7 +278,6 @@ export default function ProjectsView() {
         body: JSON.stringify({
           name: editName,
           status: editStatus,
-          statusNotes: editStatusNotes,
           dueDate: editDueDate || null,
           taxRate: parseFloat(editTaxRate) || 0,
           pricingModeId: editPricingModeId
@@ -505,19 +502,6 @@ export default function ProjectsView() {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Status Change Notes (Optional)
-                </label>
-                <textarea
-                  value={editStatusNotes}
-                  onChange={(e) => setEditStatusNotes(e.target.value)}
-                  disabled={updating}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
-                  placeholder="Add notes about this status change (optional)"
-                  rows={3}
-                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

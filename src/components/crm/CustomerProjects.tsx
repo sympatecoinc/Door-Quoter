@@ -50,7 +50,6 @@ export default function CustomerProjects({ customerId, customer, onProjectClick 
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [editName, setEditName] = useState('')
   const [editStatus, setEditStatus] = useState('')
-  const [editStatusNotes, setEditStatusNotes] = useState('')
   const [editDueDate, setEditDueDate] = useState('')
   const [editTaxRate, setEditTaxRate] = useState('0')
   const [editPricingModeId, setEditPricingModeId] = useState<number | null>(null)
@@ -213,7 +212,6 @@ export default function CustomerProjects({ customerId, customer, onProjectClick 
     setEditingProject(project)
     setEditName(project.name)
     setEditStatus(project.status)
-    setEditStatusNotes('')
     setEditDueDate(project.dueDate || '')
     setEditTaxRate(project.taxRate?.toString() || '0')
     setEditPricingModeId(project.pricingModeId || null)
@@ -223,7 +221,6 @@ export default function CustomerProjects({ customerId, customer, onProjectClick 
     setEditingProject(null)
     setEditName('')
     setEditStatus('')
-    setEditStatusNotes('')
     setEditDueDate('')
     setEditTaxRate('0')
     setEditPricingModeId(null)
@@ -245,8 +242,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick 
           status: editStatus,
           dueDate: editDueDate || null,
           taxRate: parseFloat(editTaxRate),
-          pricingModeId: editPricingModeId,
-          statusNotes: editStatusNotes || undefined
+          pricingModeId: editPricingModeId
         }),
       })
 
@@ -639,19 +635,6 @@ export default function CustomerProjects({ customerId, customer, onProjectClick 
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Status Change Notes (Optional)
-                </label>
-                <textarea
-                  value={editStatusNotes}
-                  onChange={(e) => setEditStatusNotes(e.target.value)}
-                  disabled={updating}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
-                  placeholder="Add notes about this status change (optional)"
-                  rows={3}
-                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
