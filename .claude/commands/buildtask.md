@@ -524,6 +524,16 @@ I've broken down this feature into **X actionable subtasks** with detailed promp
 All subtasks are ready to be worked on sequentially!
 ```
 
+### Step 9: Update Task Status to Staging
+
+After successfully creating all subtasks and adding the summary comment, update the parent task status to "Staging":
+
+```bash
+node scripts/clickup-helper.js status <TASK_ID> staging
+```
+
+This indicates that the task has been fully planned and is ready for implementation.
+
 ## Important Notes
 
 - Be thorough in your analysis before creating the plan

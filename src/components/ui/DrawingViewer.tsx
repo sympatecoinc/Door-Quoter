@@ -301,7 +301,7 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                             }
 
                             return rows.map((row, rowIndex) => (
-                              <div key={rowIndex} className="flex items-end justify-center" style={{ minHeight: '400px' }}>
+                              <div key={rowIndex} className="flex items-center justify-center" style={{ minHeight: '400px' }}>
                                 {row.map((img, imgIndex) => {
                                   // Server-side rendering handles all SVG processing (SHOPGEN approach)
                                   const imageSrc = getImageDataUrl(img.imageData)
