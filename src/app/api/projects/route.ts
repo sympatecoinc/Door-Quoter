@@ -103,8 +103,7 @@ export async function POST(request: NextRequest) {
       await tx.projectStatusHistory.create({
         data: {
           projectId: newProject.id,
-          status: newProject.status,
-          notes: 'Project created'
+          status: newProject.status
         }
       })
 

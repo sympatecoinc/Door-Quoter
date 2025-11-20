@@ -48,10 +48,10 @@ export default function StatusHistoryPanel({ projectId }: StatusHistoryPanelProp
                   <span className="text-sm text-gray-500">
                     {new Date(entry.changedAt).toLocaleString()}
                   </span>
+                  {entry.changedBy && (
+                    <span className="text-sm text-gray-500">by {entry.changedBy}</span>
+                  )}
                 </div>
-                {entry.notes && (
-                  <p className="text-sm text-gray-600 mt-1">{entry.notes}</p>
-                )}
               </div>
             </div>
           ))}

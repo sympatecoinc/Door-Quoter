@@ -24,7 +24,6 @@ export interface ProjectStatusHistory {
   projectId: number
   status: ProjectStatus
   changedBy?: string
-  notes?: string
   changedAt: Date
 }
 
