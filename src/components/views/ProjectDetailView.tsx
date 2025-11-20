@@ -129,7 +129,6 @@ export default function ProjectDetailView() {
   const [addingOpening, setAddingOpening] = useState(false)
   const [newOpening, setNewOpening] = useState({
     name: '',
-    quantity: '1',
     finishColor: ''
   })
   const [finishTypes, setFinishTypes] = useState<any[]>([])
@@ -554,7 +553,6 @@ export default function ProjectDetailView() {
         body: JSON.stringify({
           projectId: selectedProjectId,
           name: newOpening.name,
-          quantity: parseInt(newOpening.quantity) || 1,
           finishColor: newOpening.finishColor
         })
       })
@@ -563,7 +561,6 @@ export default function ProjectDetailView() {
         // Reset form and close modal first
         setNewOpening({
           name: '',
-          quantity: '1',
           finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : ''
         })
         setShowAddOpening(false)
@@ -1092,6 +1089,8 @@ export default function ProjectDetailView() {
       }
 
       console.log('Panels reordered successfully:', panelOrders)
+      // Refetch to ensure UI is in sync with database
+      await fetchProject()
     } catch (error) {
       console.error('Error reordering panels:', error)
       showError('Failed to reorder components')
@@ -1466,16 +1465,6 @@ export default function ProjectDetailView() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={newOpening.quantity}
-                  onChange={(e) => setNewOpening({...newOpening, quantity: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                />
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Extrusion Finish</label>
                 <select
                   value={newOpening.finishColor}
@@ -1500,7 +1489,6 @@ export default function ProjectDetailView() {
                     setShowAddOpening(false)
                     setNewOpening({
                       name: '',
-                      quantity: '1',
                       finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : ''
                     })
                   }
