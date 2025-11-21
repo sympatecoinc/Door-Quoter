@@ -1166,6 +1166,19 @@ export default function ProjectDetailView() {
           <div>
             <div className="flex items-center">
               <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
+              <button
+                onClick={() => {
+                  setEditName(project.name)
+                  setEditStatus(project.status)
+                  setEditPricingModeId(project.pricingModeId || null)
+                  setEditTaxRate((project.taxRate || 0).toString())
+                  setShowEditModal(true)
+                }}
+                className="ml-3 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                title="Edit Project"
+              >
+                <Edit className="w-4 h-4" />
+              </button>
               {needsSync && !calculatingPrices && (
                 <button
                   onClick={() => setShowSyncConfirmation(true)}
@@ -1205,47 +1218,13 @@ export default function ProjectDetailView() {
             </div>
           </div>
         </div>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => {
-              setEditName(project.name)
-              setEditStatus(project.status)
-              setEditPricingModeId(project.pricingModeId || null)
-              setEditTaxRate((project.taxRate || 0).toString())
-              setShowEditModal(true)
-            }}
-            className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            title="Edit Project"
-          >
-            <Edit className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleShowBOM}
-            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-            title="View Bill of Materials"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            View BOM
-          </button>
-          <button
-            onClick={() => {
-              const { setCurrentMenu } = useAppStore.getState()
-              setCurrentMenu('quote')
-            }}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            title="Generate Quote"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Generate Quote
-          </button>
-          <button
-            onClick={() => setShowAddOpening(true)}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Add Opening
-          </button>
-        </div>
+        <button
+          onClick={() => setShowAddOpening(true)}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          <Plus className="w-5 h-5 mr-2" />
+          Add Opening
+        </button>
       </div>
 
       {/* Openings Section */}
@@ -1273,26 +1252,25 @@ export default function ProjectDetailView() {
                     </div>
                     <div className="flex space-x-2">
                       <button
+                        onClick={() => handleShowDrawings(opening.id, opening.name)}
+                        className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Shop Drawings"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleShowDuplicateModal(opening.id, opening.name)}
+                        className="p-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors"
+                        title="Duplicate this opening with all components"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => handleShowAddComponent(opening.id)}
                         className="px-3 py-1.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center text-sm font-medium shadow-sm transition-colors"
                       >
                         <Plus className="w-4 h-4 mr-1" />
                         Add Component
-                      </button>
-                      <button
-                        onClick={() => handleShowDrawings(opening.id, opening.name)}
-                        className="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center text-sm font-medium shadow-sm transition-colors"
-                      >
-                        <FileText className="w-4 h-4 mr-1" />
-                        Shop Drawings
-                      </button>
-                      <button
-                        onClick={() => handleShowDuplicateModal(opening.id, opening.name)}
-                        className="px-3 py-1.5 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center text-sm font-medium shadow-sm transition-colors"
-                        title="Duplicate this opening with all components"
-                      >
-                        <Copy className="w-4 h-4 mr-1" />
-                        Duplicate
                       </button>
                     </div>
                   </div>

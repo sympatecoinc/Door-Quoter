@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, ChevronDown, Sparkles } from 'lucide-react'
+import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, ChevronDown, Sparkles, Brush } from 'lucide-react'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 
@@ -90,7 +90,7 @@ interface GlassType {
 
 export default function MasterPartsView() {
   const { toasts, removeToast, showSuccess, showError } = useToast()
-  const [activeTab, setActiveTab] = useState<'masterParts' | 'partRules' | 'glass'>('masterParts')
+  const [activeTab, setActiveTab] = useState<'masterParts' | 'partRules' | 'glass' | 'finishes'>('masterParts')
   
   // Current master part for viewing rules
   const [selectedMasterPartId, setSelectedMasterPartId] = useState<number | null>(null)
@@ -162,6 +162,18 @@ export default function MasterPartsView() {
   const [glassDescription, setGlassDescription] = useState('')
   const [glassPricePerSqFt, setGlassPricePerSqFt] = useState('')
 
+  // Extrusion Finish Pricing State
+  const [finishPricing, setFinishPricing] = useState<any[]>([])
+  const [loadingFinishPricing, setLoadingFinishPricing] = useState(false)
+  const [editingFinishId, setEditingFinishId] = useState<number | null>(null)
+  const [editingFinishType, setEditingFinishType] = useState('')
+  const [editingFinishCode, setEditingFinishCode] = useState('')
+  const [editingCostPerFoot, setEditingCostPerFoot] = useState('')
+  const [showAddFinish, setShowAddFinish] = useState(false)
+  const [newFinishType, setNewFinishType] = useState('')
+  const [newFinishCode, setNewFinishCode] = useState('')
+  const [newCostPerFoot, setNewCostPerFoot] = useState('')
+
   // Filter and sort master parts
   const filteredMasterParts = masterParts
     .filter(part => {
@@ -197,6 +209,7 @@ export default function MasterPartsView() {
 
   useEffect(() => {
     fetchMasterParts()
+    fetchFinishPricing()
   }, [])
 
   // Function to calculate price range from pricing rules  
@@ -780,6 +793,121 @@ export default function MasterPartsView() {
     setGlassPricePerSqFt('')
   }
 
+  // Extrusion Finish Pricing functions
+  async function fetchFinishPricing() {
+    setLoadingFinishPricing(true)
+    try {
+      const response = await fetch('/api/settings/extrusion-finish-pricing')
+      if (response.ok) {
+        const data = await response.json()
+        setFinishPricing(data)
+      }
+    } catch (error) {
+      console.error('Error fetching finish pricing:', error)
+      showError('Error fetching finish pricing')
+    } finally {
+      setLoadingFinishPricing(false)
+    }
+  }
+
+  async function handleAddFinish() {
+    if (!newFinishType.trim()) {
+      showError('Please enter a finish type')
+      return
+    }
+
+    if (!newFinishCode.trim()) {
+      showError('Please enter a finish code')
+      return
+    }
+
+    if (!newCostPerFoot.trim() || isNaN(parseFloat(newCostPerFoot))) {
+      showError('Please enter a valid cost per foot')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/settings/extrusion-finish-pricing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          finishType: newFinishType,
+          finishCode: newFinishCode.trim(),
+          costPerFoot: parseFloat(newCostPerFoot)
+        })
+      })
+
+      if (response.ok) {
+        await fetchFinishPricing()
+        setShowAddFinish(false)
+        setNewFinishType('')
+        setNewFinishCode('')
+        setNewCostPerFoot('')
+        showSuccess('Finish type added successfully!')
+      } else {
+        const error = await response.json()
+        showError(error.error || 'Failed to add finish type')
+      }
+    } catch (error) {
+      console.error('Error adding finish type:', error)
+      showError('Error adding finish type')
+    }
+  }
+
+  async function handleUpdateFinish(id: number) {
+    try {
+      const response = await fetch(`/api/settings/extrusion-finish-pricing/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          finishType: editingFinishType,
+          finishCode: editingFinishCode.trim() || null,
+          costPerFoot: parseFloat(editingCostPerFoot) || 0
+        })
+      })
+
+      if (response.ok) {
+        await fetchFinishPricing()
+        setEditingFinishId(null)
+        showSuccess('Finish pricing updated successfully!')
+      } else {
+        showError('Failed to update finish pricing')
+      }
+    } catch (error) {
+      console.error('Error updating finish pricing:', error)
+      showError('Error updating finish pricing')
+    }
+  }
+
+  async function handleDeleteFinish(id: number) {
+    if (!confirm('Are you sure you want to delete this finish type?')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/settings/extrusion-finish-pricing/${id}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        await fetchFinishPricing()
+        showSuccess('Finish type deleted successfully!')
+      } else {
+        showError('Failed to delete finish type')
+      }
+    } catch (error) {
+      console.error('Error deleting finish type:', error)
+      showError('Error deleting finish type')
+    }
+  }
+
+  function startEditFinish(finish: any) {
+    setEditingFinishId(finish.id)
+    setEditingFinishType(finish.finishType)
+    setEditingFinishCode(finish.finishCode || '')
+    setEditingCostPerFoot(finish.costPerFoot.toString())
+  }
+
   // Fetch glass types when glass tab is opened
   useEffect(() => {
     if (activeTab === 'glass') {
@@ -833,6 +961,17 @@ export default function MasterPartsView() {
           >
             <Sparkles className="w-5 h-5 inline-block mr-2" />
             Glass ({glassTypes.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('finishes')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'finishes'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <Brush className="w-5 h-5 inline-block mr-2" />
+            Finishes ({finishPricing.length})
           </button>
         </nav>
       </div>
@@ -1355,6 +1494,196 @@ export default function MasterPartsView() {
                 Add Your First Glass Type
               </button>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Finishes Tab */}
+      {activeTab === 'finishes' && (
+        <div>
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Extrusion Finish Pricing</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Configure per-foot costs for different extrusion finishes
+              </p>
+            </div>
+          </div>
+
+          {loadingFinishPricing ? (
+            <div className="flex justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : (
+            <>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Finish Type
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Finish Code
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Cost Per Foot
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {finishPricing.map((finish) => (
+                      <tr key={finish.id}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {editingFinishId === finish.id ? (
+                            <input
+                              type="text"
+                              value={editingFinishType}
+                              onChange={(e) => setEditingFinishType(e.target.value)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-gray-900"
+                            />
+                          ) : (
+                            <span className="text-sm text-gray-900">{finish.finishType}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {editingFinishId === finish.id ? (
+                            <input
+                              type="text"
+                              value={editingFinishCode}
+                              onChange={(e) => setEditingFinishCode(e.target.value)}
+                              placeholder="e.g., BL"
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-gray-900"
+                            />
+                          ) : (
+                            <span className="text-sm text-gray-900 font-mono">{finish.finishCode || '-'}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {editingFinishId === finish.id ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editingCostPerFoot}
+                              onChange={(e) => setEditingCostPerFoot(e.target.value)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-gray-900"
+                            />
+                          ) : (
+                            <span className="text-sm text-gray-900">${finish.costPerFoot.toFixed(2)}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {editingFinishId === finish.id ? (
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => handleUpdateFinish(finish.id)}
+                                className="text-green-600 hover:text-green-900"
+                              >
+                                <Save className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setEditingFinishId(null)}
+                                className="text-gray-600 hover:text-gray-900"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => startEditFinish(finish)}
+                                className="text-blue-600 hover:text-blue-900"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteFinish(finish.id)}
+                                className="text-red-600 hover:text-red-900"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {showAddFinish ? (
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <h3 className="text-sm font-medium text-gray-900 mb-3">Add New Finish Type</h3>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-700 mb-1">Finish Type *</label>
+                      <input
+                        type="text"
+                        value={newFinishType}
+                        onChange={(e) => setNewFinishType(e.target.value)}
+                        placeholder="e.g., Powder Coated Black"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-700 mb-1">Finish Code *</label>
+                      <input
+                        type="text"
+                        value={newFinishCode}
+                        onChange={(e) => setNewFinishCode(e.target.value)}
+                        placeholder="e.g., BL"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Part number suffix</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-700 mb-1">Cost Per Foot ($) *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={newCostPerFoot}
+                        onChange={(e) => setNewCostPerFoot(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end space-x-2 mt-3">
+                    <button
+                      onClick={() => {
+                        setShowAddFinish(false)
+                        setNewFinishType('')
+                        setNewFinishCode('')
+                        setNewCostPerFoot('')
+                      }}
+                      className="px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddFinish}
+                      className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      Add Finish
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAddFinish(true)}
+                  className="mt-4 flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Finish Type
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

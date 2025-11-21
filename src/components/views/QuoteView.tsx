@@ -224,7 +224,22 @@ export default function QuoteView() {
         throw new Error('Failed to update extrusion costing settings')
       }
 
-      // Refresh quote to recalculate prices with new costing method
+      // Recalculate all opening prices with the new costing method
+      const recalcResults = await Promise.allSettled(
+        quoteData.quoteItems.map(item =>
+          fetch(`/api/openings/${item.openingId}/calculate-price`, {
+            method: 'POST'
+          })
+        )
+      )
+
+      // Check if any recalculations failed
+      const failedRecalcs = recalcResults.filter(r => r.status === 'rejected')
+      if (failedRecalcs.length > 0) {
+        console.warn('Some price recalculations failed:', failedRecalcs)
+      }
+
+      // Refresh quote to show updated prices
       await fetchQuoteData()
       showSuccess('Extrusion costing settings updated and prices recalculated')
     } catch (error) {

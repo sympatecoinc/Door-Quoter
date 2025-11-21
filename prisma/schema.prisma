@@ -108,6 +108,7 @@ enum ProjectStatus {
   QUOTE_ACCEPTED @map("Quote Accepted")
   ACTIVE         @map("Active")
   COMPLETE       @map("Complete")
+  ARCHIVE        @map("Archive")
 }
 
 enum ProductType {
