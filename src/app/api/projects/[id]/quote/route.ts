@@ -1,6 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// Helper to convert panel directions to abbreviations
+function convertDirectionToAbbreviation(direction: string, panelType: string): string {
+  // Swing door directions
+  if (panelType === 'SWING_DOOR') {
+    const swingAbbreviations: Record<string, string> = {
+      'Left In': 'ILH',
+      'Right In': 'IRH',
+      'Left Out': 'LH',
+      'Right Out': 'RH',
+      'None': '',
+      'N/A': ''
+    }
+    return swingAbbreviations[direction] || ''
+  }
+
+  // Sliding door directions
+  if (panelType === 'SLIDING_DOOR') {
+    const slidingAbbreviations: Record<string, string> = {
+      'Left': 'SL',
+      'Right': 'SR',
+      'None': '',
+      'N/A': ''
+    }
+    return slidingAbbreviations[direction] || ''
+  }
+
+  // Corner directions
+  if (panelType === 'CORNER_90') {
+    const cornerAbbreviations: Record<string, string> = {
+      'Up': 'CU',
+      'Down': 'CD',
+      'None': '',
+      'N/A': ''
+    }
+    return cornerAbbreviations[direction] || ''
+  }
+
+  return ''
+}
+
 // Helper function to calculate price with category-specific markup
 function calculateMarkupPrice(
   baseCost: number,
@@ -229,9 +269,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           })
           .join(', ')
 
+        // Extract opening directions from panels
+        const openingDirections: string[] = []
+        for (const panel of opening.panels) {
+          if (panel.componentInstance) {
+            const productType = panel.componentInstance.product.productType
+
+            // Get the appropriate direction based on panel type
+            let direction = ''
+            if (productType === 'SWING_DOOR' && panel.swingDirection) {
+              direction = panel.swingDirection
+            } else if (productType === 'SLIDING_DOOR' && panel.slidingDirection) {
+              direction = panel.slidingDirection
+            } else if (productType === 'CORNER_90' && panel.cornerDirection) {
+              direction = panel.cornerDirection
+            }
+
+            // Convert to abbreviation if direction exists and is not None/N/A
+            if (direction && direction !== 'None' && direction !== 'N/A') {
+              const abbreviated = convertDirectionToAbbreviation(direction, productType)
+              if (abbreviated) {
+                openingDirections.push(abbreviated)
+              }
+            }
+          }
+        }
+
         return {
           openingId: opening.id,
           name: opening.name,
+          openingDirections: openingDirections,
           description: description || 'Custom Opening',
           dimensions: `${totalWidth}" W × ${maxHeight}" H`,
           color: opening.finishColor || 'Standard',

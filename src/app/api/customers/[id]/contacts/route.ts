@@ -129,8 +129,17 @@ export async function POST(
       )
     }
 
+    // Check if this is the first contact for the customer
+    const existingContactsCount = await prisma.contact.count({
+      where: { customerId }
+    })
+
+    // Determine if this contact should be primary
+    // If it's the first contact, automatically make it primary
+    const shouldBePrimary = existingContactsCount === 0 ? true : (isPrimary || false)
+
     // If setting as primary, unset all other contacts' isPrimary
-    if (isPrimary) {
+    if (shouldBePrimary) {
       await prisma.contact.updateMany({
         where: { customerId },
         data: { isPrimary: false }
@@ -146,7 +155,7 @@ export async function POST(
         email: email?.trim() || null,
         phone: phone?.trim() || null,
         title: title?.trim() || null,
-        isPrimary: isPrimary || false
+        isPrimary: shouldBePrimary
       }
     })
 

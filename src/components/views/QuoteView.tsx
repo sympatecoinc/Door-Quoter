@@ -10,6 +10,7 @@ import QuoteAttachmentsManager from '../quote/QuoteAttachmentsManager'
 interface QuoteItem {
   openingId: number
   name: string
+  openingDirections?: string[] // Array of opening direction abbreviations (e.g., ['LH', 'RH'])
   description: string
   dimensions: string
   color: string
@@ -609,6 +610,11 @@ export default function QuoteView() {
                       <div className="flex items-center space-x-3">
                         <h3 className="text-lg font-medium text-gray-900">
                           {item.name}
+                          {item.openingDirections && item.openingDirections.length > 0 && (
+                            <span className="text-gray-600 font-normal ml-2">
+                              ({item.openingDirections.join(', ')})
+                            </span>
+                          )}
                         </h3>
                         <span className="print:hidden">
                           {getColorPill(item.color)}

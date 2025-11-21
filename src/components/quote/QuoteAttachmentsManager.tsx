@@ -11,6 +11,7 @@ interface QuoteAttachment {
   size: number
   type: string
   displayOrder: number
+  position: string
   description: string | null
   createdAt: string
   updatedAt: string
@@ -26,6 +27,7 @@ export default function QuoteAttachmentsManager({ projectId, onAttachmentsChange
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [dragActive, setDragActive] = useState(false)
+  const [selectedPosition, setSelectedPosition] = useState<'before' | 'after'>('after')
   const [previewAttachment, setPreviewAttachment] = useState<QuoteAttachment | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -59,6 +61,7 @@ export default function QuoteAttachmentsManager({ projectId, onAttachmentsChange
         const formData = new FormData()
         formData.append('file', file)
         formData.append('type', 'custom')
+        formData.append('position', selectedPosition)
 
         const response = await fetch(`/api/projects/${projectId}/quote-attachments`, {
           method: 'POST',
@@ -208,6 +211,23 @@ export default function QuoteAttachmentsManager({ projectId, onAttachmentsChange
           <p className="text-xs text-gray-500">
             PNG, JPG, or PDF (Max 10MB per file)
           </p>
+          <div className="mt-3">
+            <label className="text-sm font-medium text-gray-700 block mb-1">
+              Position in Quote
+            </label>
+            <select
+              value={selectedPosition}
+              onChange={(e) => setSelectedPosition(e.target.value as 'before' | 'after')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={uploading}
+            >
+              <option value="before">Before product documents</option>
+              <option value="after">After quote page (before product documents)</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Choose where this attachment appears in the quote PDF
+            </p>
+          </div>
           {uploading && (
             <div className="mt-3 flex items-center justify-center text-blue-600">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>

@@ -1525,7 +1525,7 @@ export default function ProductDetailView({
               <div className="text-center py-8 text-gray-500">
                 <ImageIcon className="w-8 h-8 mx-auto mb-2" />
                 <p>No plan views defined for this product yet.</p>
-                <p className="text-sm mt-2">Plan views will be used as swing direction options (e.g., Right-In, Right-Out).</p>
+                <p className="text-sm mt-2">Plan views will be used as opening direction options (e.g., Right-In, Right-Out).</p>
               </div>
             )}
           </div>
@@ -2123,7 +2123,7 @@ export default function ProductDetailView({
                   required
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  This name will appear as a swing direction option when adding the product to an opening.
+                  This name will appear as an opening direction option when adding the product to an opening.
                 </p>
               </div>
 
