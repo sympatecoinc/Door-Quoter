@@ -11,6 +11,7 @@ import { ensurePngDataUrl, isSvgDataUrl } from './svg-to-png'
 export interface QuoteItem {
   openingId: number
   name: string
+  openingDirections?: string[] // Array of opening direction abbreviations (e.g., ['LH', 'RH'])
   description: string
   dimensions: string
   color: string
@@ -53,6 +54,7 @@ export interface QuoteAttachment {
   mimeType: string
   type: string
   displayOrder: number
+  position?: string
   description?: string | null
 }
 
@@ -74,31 +76,49 @@ export async function createQuotePDF(
   // Page 1: Quote details with pricing
   await addQuotePage(pdf, quoteData)
 
-  // Separate PDF attachments from image attachments
-  const imageAttachments = attachments.filter(a => a.mimeType.startsWith('image/'))
-  const pdfAttachments = attachments.filter(a => a.mimeType === 'application/pdf')
+  // Separate attachments by position (before/after persistent docs)
+  const beforeAttachments = attachments.filter(a => a.position === 'before')
+  const afterAttachments = attachments.filter(a => a.position !== 'before') // Default to 'after'
 
-  // Add image attachment pages to jsPDF
-  if (imageAttachments.length > 0) {
-    for (const attachment of imageAttachments) {
+  // Further separate by type for 'before' attachments
+  const beforeImages = beforeAttachments.filter(a => a.mimeType.startsWith('image/'))
+  const beforePdfs = beforeAttachments.filter(a => a.mimeType === 'application/pdf')
+
+  // Further separate by type for 'after' attachments
+  const afterImages = afterAttachments.filter(a => a.mimeType.startsWith('image/'))
+  const afterPdfs = afterAttachments.filter(a => a.mimeType === 'application/pdf')
+
+  // Add 'before' image attachment pages to jsPDF (right after quote page)
+  if (beforeImages.length > 0) {
+    for (const attachment of beforeImages) {
       pdf.addPage()
       await addAttachmentPage(pdf, attachment, quoteData.project.id)
     }
   }
 
-  // If no PDF attachments, return jsPDF as buffer directly
-  if (pdfAttachments.length === 0) {
+  // If no PDF attachments at all, just add 'after' images and return
+  if (beforePdfs.length === 0 && afterPdfs.length === 0) {
+    // Add 'after' image attachments
+    if (afterImages.length > 0) {
+      for (const attachment of afterImages) {
+        pdf.addPage()
+        await addAttachmentPage(pdf, attachment, quoteData.project.id)
+      }
+    }
     return Buffer.from(pdf.output('arraybuffer'))
   }
 
-  // If there are PDF attachments, merge them using pdf-lib
+  // We have PDF attachments, so we need to use pdf-lib to merge everything
   try {
     // Convert jsPDF to pdf-lib PDFDocument
+    // At this point, the PDF contains:
+    // - Quote page(s) with grand total
+    // - 'before' image attachments (if any)
     const mainPdfBytes = pdf.output('arraybuffer')
     let finalPdf = await PDFDocument.load(mainPdfBytes)
 
-    // Merge each PDF attachment
-    for (const attachment of pdfAttachments) {
+    // Helper function to merge a single PDF attachment
+    async function mergePdfAttachment(attachment: QuoteAttachment, finalPdf: PDFDocument) {
       const attachmentPath = resolveAttachmentPath(attachment, quoteData.project.id)
 
       if (!fs.existsSync(attachmentPath)) {
@@ -123,18 +143,14 @@ export async function createQuotePDF(
         const placeholderBytes = placeholderPdf.output('arraybuffer')
         const placeholderPdfDoc = await PDFDocument.load(placeholderBytes)
         const pages = await finalPdf.copyPages(placeholderPdfDoc, placeholderPdfDoc.getPageIndices())
-        pages.forEach(page => finalPdf.addPage(page))
-        continue
+        return pages
       }
 
       try {
-        // Read and merge the PDF attachment
         const attachmentBytes = await fs.promises.readFile(attachmentPath)
         const attachmentPdf = await PDFDocument.load(attachmentBytes)
-
-        // Copy all pages from the attachment to the final PDF
         const pages = await finalPdf.copyPages(attachmentPdf, attachmentPdf.getPageIndices())
-        pages.forEach(page => finalPdf.addPage(page))
+        return pages
       } catch (error) {
         console.error(`Error loading PDF attachment ${attachmentPath}:`, error)
         // Add error placeholder page
@@ -157,8 +173,44 @@ export async function createQuotePDF(
         const errorBytes = errorPdf.output('arraybuffer')
         const errorPdfDoc = await PDFDocument.load(errorBytes)
         const pages = await finalPdf.copyPages(errorPdfDoc, errorPdfDoc.getPageIndices())
-        pages.forEach(page => finalPdf.addPage(page))
+        return pages
       }
+    }
+
+    // Merge 'before' PDF attachments
+    for (const attachment of beforePdfs) {
+      const pages = await mergePdfAttachment(attachment, finalPdf)
+      pages.forEach(page => finalPdf.addPage(page))
+    }
+
+    // Add 'after' image attachments as new jsPDF pages, then merge
+    if (afterImages.length > 0) {
+      const afterImagesPdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'letter'
+      })
+
+      // Add first image to the initial page
+      await addAttachmentPage(afterImagesPdf, afterImages[0], quoteData.project.id)
+
+      // Add remaining images as new pages
+      for (let i = 1; i < afterImages.length; i++) {
+        afterImagesPdf.addPage()
+        await addAttachmentPage(afterImagesPdf, afterImages[i], quoteData.project.id)
+      }
+
+      // Convert to pdf-lib and merge
+      const afterImagesBytes = afterImagesPdf.output('arraybuffer')
+      const afterImagesPdfDoc = await PDFDocument.load(afterImagesBytes)
+      const afterImagesPages = await finalPdf.copyPages(afterImagesPdfDoc, afterImagesPdfDoc.getPageIndices())
+      afterImagesPages.forEach(page => finalPdf.addPage(page))
+    }
+
+    // Merge 'after' PDF attachments
+    for (const attachment of afterPdfs) {
+      const pages = await mergePdfAttachment(attachment, finalPdf)
+      pages.forEach(page => finalPdf.addPage(page))
     }
 
     // Save and return the merged PDF
@@ -444,7 +496,11 @@ async function addQuoteItemsTable(
     // Column 2: Opening name and description
     pdf.setFontSize(10)
     pdf.setFont('helvetica', 'bold')
-    const openingNameLines = pdf.splitTextToSize(item.name, colOpening - 2 * cellPadding)
+    let openingNameText = item.name
+    if (item.openingDirections && item.openingDirections.length > 0) {
+      openingNameText += ` (${item.openingDirections.join(', ')})`
+    }
+    const openingNameLines = pdf.splitTextToSize(openingNameText, colOpening - 2 * cellPadding)
     pdf.text(openingNameLines, currentX + cellPadding, currentY + cellPadding + 4)
 
     pdf.setFontSize(8)

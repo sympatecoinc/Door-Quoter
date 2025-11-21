@@ -381,13 +381,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 5. Convert to array and sort by displayOrder
     const persistentDocuments = Array.from(documentMap.values()).sort((a, b) => a.displayOrder - b.displayOrder)
 
-    // 6. Combine project-specific attachments with persistent documents
-    // Project-specific attachments come first, then persistent documents
+    // 6. Combine and order attachments with proper positioning
+    // The order should be:
+    // 1. Quote page(s) with grand total (handled by createQuotePDF)
+    // 2. Custom attachments with position='before'
+    // 3. Custom attachments with position='after' (default for existing records)
+    // 4. Persistent documents (global + product-specific)
+
+    const beforeAttachments = project.quoteAttachments
+      .filter(a => a.position === 'before')
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+
+    const afterAttachments = project.quoteAttachments
+      .filter(a => a.position !== 'before') // Default to 'after' for existing records
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+
+    // Combine in the correct order for PDF generation
     const allAttachments = [
-      ...project.quoteAttachments,
+      ...beforeAttachments,
+      ...afterAttachments,
       ...persistentDocuments.map(doc => ({
         ...doc,
-        // For persistent documents, we need to map the path correctly
         isPersistent: true
       }))
     ]

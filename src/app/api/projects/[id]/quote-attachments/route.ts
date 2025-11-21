@@ -48,6 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const file = formData.get('file') as File
     const type = formData.get('type') as string || 'custom'
     const description = formData.get('description') as string || null
+    const position = formData.get('position') as string || 'after'
 
     if (!file) {
       return NextResponse.json(
@@ -70,6 +71,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (file.size > maxSize) {
       return NextResponse.json(
         { error: 'File size exceeds 10MB limit' },
+        { status: 400 }
+      )
+    }
+
+    // Validate position
+    if (position !== 'before' && position !== 'after') {
+      return NextResponse.json(
+        { error: 'Invalid position value. Must be "before" or "after".' },
         { status: 400 }
       )
     }
@@ -109,6 +118,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         size: file.size,
         type,
         displayOrder: nextOrder,
+        position,
         description
       }
     })

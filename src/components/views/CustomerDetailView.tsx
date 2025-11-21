@@ -11,6 +11,16 @@ import CustomerForm from '../crm/CustomerForm'
 import ProjectDetailModal from './ProjectDetailModal'
 import { useAppStore } from '@/stores/appStore'
 
+interface Contact {
+  id: number
+  firstName: string
+  lastName: string
+  email: string | null
+  phone: string | null
+  title: string | null
+  isPrimary: boolean
+}
+
 interface Customer {
   id: number
   companyName: string
@@ -27,7 +37,7 @@ interface Customer {
   notes?: string
   createdAt: string
   updatedAt: string
-  contacts: any[]
+  contacts: Contact[]
   leads: any[]
   projects: any[]
   activities: any[]
@@ -103,6 +113,9 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
   const renderTabContent = () => {
     if (!customer) return null
+
+    // Find the primary contact
+    const primaryContact = customer.contacts.find(contact => contact.isPrimary)
 
     switch (customerDetailTab) {
       case 'contacts':
@@ -182,26 +195,35 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                     <Users className="w-5 h-5 text-green-600 mr-2" />
                     <h3 className="text-base font-semibold text-green-900">Primary Contact</h3>
                   </div>
-                  {!customer.contactName && !customer.email && !customer.phone && (
+                  {!primaryContact ? (
                     <p className="text-gray-500 italic text-sm">No primary contact assigned</p>
-                  )}
-                  {customer.contactName && (
-                    <div>
-                      <label className="text-sm font-medium text-green-700">Contact Name</label>
-                      <p className="text-gray-900 mt-1 font-medium">{customer.contactName}</p>
-                    </div>
-                  )}
-                  {customer.email && (
-                    <div className="flex items-center text-gray-700">
-                      <Mail className="w-4 h-4 mr-2 text-green-600" />
-                      <span>{customer.email}</span>
-                    </div>
-                  )}
-                  {customer.phone && (
-                    <div className="flex items-center text-gray-700">
-                      <Phone className="w-4 h-4 mr-2 text-green-600" />
-                      <span>{customer.phone}</span>
-                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="text-sm font-medium text-green-700">Contact Name</label>
+                        <p className="text-gray-900 mt-1 font-medium">
+                          {primaryContact.firstName} {primaryContact.lastName}
+                        </p>
+                      </div>
+                      {primaryContact.title && (
+                        <div>
+                          <label className="text-sm font-medium text-green-700">Title</label>
+                          <p className="text-gray-700 mt-1">{primaryContact.title}</p>
+                        </div>
+                      )}
+                      {primaryContact.email && (
+                        <div className="flex items-center text-gray-700">
+                          <Mail className="w-4 h-4 mr-2 text-green-600" />
+                          <span>{primaryContact.email}</span>
+                        </div>
+                      )}
+                      {primaryContact.phone && (
+                        <div className="flex items-center text-gray-700">
+                          <Phone className="w-4 h-4 mr-2 text-green-600" />
+                          <span>{primaryContact.phone}</span>
+                        </div>
+                      )}
+                    </>
                   )}
                   <div className="pt-3 border-t border-green-200">
                     <div className="space-y-2">
@@ -302,6 +324,9 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     }
   }
 
+  // Find the primary contact for header display
+  const primaryContact = customer?.contacts.find(contact => contact.isPrimary)
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-8 z-50">
       <div className="bg-white rounded-xl shadow-2xl w-full h-full max-w-7xl flex flex-col">
@@ -314,8 +339,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               ) : customer ? (
                 <>
                   <h1 className="text-2xl font-bold text-gray-900">{customer.companyName}</h1>
-                  {customer.contactName && (
-                    <p className="text-gray-600 mt-1">Contact: {customer.contactName}</p>
+                  {primaryContact && (
+                    <p className="text-gray-600 mt-1">
+                      Contact: {primaryContact.firstName} {primaryContact.lastName}
+                    </p>
                   )}
                 </>
               ) : (

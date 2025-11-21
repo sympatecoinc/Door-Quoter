@@ -402,6 +402,7 @@ model QuoteAttachment {
   size         Int      // File size in bytes
   type         String   @default("custom") // "spec_sheet", "photo", "custom"
   displayOrder Int      @default(0) // Order in the PDF
+  position     String   @default("after") // "before" or "after" - position relative to persistent documents
   description  String?  // Optional description/caption
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

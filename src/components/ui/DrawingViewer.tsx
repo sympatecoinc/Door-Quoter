@@ -301,7 +301,7 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                             }
 
                             return rows.map((row, rowIndex) => (
-                              <div key={rowIndex} className="flex items-center justify-center" style={{ minHeight: '400px' }}>
+                              <div key={rowIndex} className="flex items-start justify-center">
                                 {row.map((img, imgIndex) => {
                                   // Server-side rendering handles all SVG processing (SHOPGEN approach)
                                   const imageSrc = getImageDataUrl(img.imageData)
@@ -398,7 +398,7 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
 
                       {/* Display plan views with directional changes at corners */}
                       <div className="bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto">
-                        <div className="flex justify-center w-full" style={{ minHeight: '600px', position: 'relative' }}>
+                        <div className="flex justify-center w-full" style={{ position: 'relative' }}>
                           {(() => {
                             // Build segments: horizontal until corner, then vertical based on corner direction
                             const segments: Array<{

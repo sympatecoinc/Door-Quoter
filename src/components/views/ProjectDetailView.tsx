@@ -104,6 +104,28 @@ function getColorStyling(color: string) {
   return colorMap[color] || 'bg-gray-600 text-white border-gray-600'
 }
 
+/**
+ * Intelligently increments a base name that may contain numbers.
+ * Matches backend logic for consistent preview.
+ */
+function smartIncrementName(baseName: string, index: number): string {
+  const trimmed = baseName.trim()
+
+  if (/^\d+$/.test(trimmed)) {
+    const baseNumber = parseInt(trimmed)
+    return (baseNumber + index).toString()
+  }
+
+  const match = trimmed.match(/^(.*?)(\d+)$/)
+  if (match) {
+    const prefix = match[1]
+    const number = parseInt(match[2])
+    return `${prefix}${number + index}`
+  }
+
+  return `${trimmed} ${index}`
+}
+
 export default function ProjectDetailView() {
   const { selectedProjectId, setSelectedProjectId, selectedCustomerId, customerDetailView, setCurrentMenu, autoOpenAddOpening, setAutoOpenAddOpening } = useAppStore()
   const { toasts, removeToast, showSuccess, showError } = useToast()
@@ -643,17 +665,17 @@ export default function ProjectDetailView() {
     const namesToCheck: string[] = []
 
     if (autoIncrement) {
-      // Auto-increment: check "{baseName} 1", "{baseName} 2", etc.
-      for (let i = 1; i <= safeCount + 1; i++) {
-        namesToCheck.push(`${trimmedBaseName} ${i}`)
+      // Auto-increment: check smart incremented names
+      for (let i = 0; i <= safeCount; i++) {
+        namesToCheck.push(smartIncrementName(trimmedBaseName, i))
       }
     } else {
-      // Non-auto-increment: check exact name or numbered names
+      // Non-auto-increment: check exact name or smart incremented names
       if (safeCount === 1) {
         namesToCheck.push(trimmedBaseName)
       } else {
         for (let i = 1; i <= safeCount; i++) {
-          namesToCheck.push(`${trimmedBaseName} ${i}`)
+          namesToCheck.push(smartIncrementName(trimmedBaseName, i))
         }
       }
     }
@@ -1670,7 +1692,7 @@ export default function ProjectDetailView() {
                   }
                   return (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Swing Direction</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
                       <select
                         value={swingDirection}
                         onChange={(e) => setSwingDirection(e.target.value)}
@@ -1691,7 +1713,7 @@ export default function ProjectDetailView() {
                   }
                   return (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Sliding Direction</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
                       <select
                         value={slidingDirection}
                         onChange={(e) => setSlidingDirection(e.target.value)}
@@ -1708,7 +1730,7 @@ export default function ProjectDetailView() {
                 } else if (selectedProduct?.productType === 'CORNER_90') {
                   return (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Corner Direction</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
                       <select
                         value={cornerDirection}
                         onChange={(e) => setCornerDirection(e.target.value)}
@@ -2445,7 +2467,7 @@ export default function ProjectDetailView() {
               {/* Count Input */}
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Number of Duplicates <span className="text-red-500">*</span>
+                  Number of Additional Openings <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -2454,10 +2476,10 @@ export default function ProjectDetailView() {
                   value={duplicateCount}
                   onChange={(e) => setDuplicateCount(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder="Enter number of duplicates"
+                  placeholder="Enter number of additional openings"
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                  Maximum 50 duplicates at once
+                  Maximum 50 additional openings at once
                 </p>
               </div>
 

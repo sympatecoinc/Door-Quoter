@@ -1,6 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+/**
+ * Intelligently increments a base name that may contain numbers.
+ * - Pure numeric strings (101, 201, 1001): increment the number (102, 202, 1002)
+ * - Strings ending with numbers (Office 101): increment the trailing number (Office 102)
+ * - Non-numeric strings: append space and number (Office 1)
+ */
+function smartIncrementName(baseName: string, index: number): string {
+  const trimmed = baseName.trim()
+
+  // Check if the entire string is numeric
+  if (/^\d+$/.test(trimmed)) {
+    const baseNumber = parseInt(trimmed)
+    return (baseNumber + index).toString()
+  }
+
+  // Check if string ends with a number (e.g., "Office 101")
+  const match = trimmed.match(/^(.*?)(\d+)$/)
+  if (match) {
+    const prefix = match[1] // "Office " or ""
+    const number = parseInt(match[2]) // 101
+    return `${prefix}${number + index}`
+  }
+
+  // Non-numeric: use traditional space-separated numbering
+  return `${trimmed} ${index}`
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -57,8 +84,8 @@ export async function POST(
     if (autoIncrement) {
       // Generate all names that will be used (including original)
       const allNames = []
-      for (let i = 1; i <= duplicateCount + 1; i++) {
-        allNames.push(`${trimmedBaseName} ${i}`)
+      for (let i = 0; i <= duplicateCount; i++) {
+        allNames.push(smartIncrementName(trimmedBaseName, i))
       }
 
       // Check if any of these names already exist (excluding the original opening itself)
@@ -78,18 +105,18 @@ export async function POST(
         )
       }
 
-      // Rename the original opening to "{baseName} 1"
+      // Rename the original opening to base name (e.g., 101)
       await prisma.opening.update({
         where: { id: openingId },
-        data: { name: `${trimmedBaseName} 1` }
+        data: { name: smartIncrementName(trimmedBaseName, 0) }
       })
 
-      // Create duplicates starting from number 2
-      for (let i = 2; i <= duplicateCount + 1; i++) {
+      // Create duplicates with incremented names (e.g., 102, 103, ...)
+      for (let i = 1; i <= duplicateCount; i++) {
         const duplicatedOpening = await prisma.opening.create({
           data: {
             projectId: originalOpening.projectId,
-            name: `${trimmedBaseName} ${i}`,
+            name: smartIncrementName(trimmedBaseName, i),
             roughWidth: originalOpening.roughWidth,
             roughHeight: originalOpening.roughHeight,
             finishedWidth: originalOpening.finishedWidth,
@@ -153,9 +180,9 @@ export async function POST(
         // Single duplicate: use exact name provided
         namesToCreate.push(trimmedBaseName)
       } else {
-        // Multiple duplicates: append numbers (1, 2, 3, etc.)
+        // Multiple duplicates: use smart incrementing (1, 2, 3, etc.)
         for (let i = 1; i <= duplicateCount; i++) {
-          namesToCreate.push(`${trimmedBaseName} ${i}`)
+          namesToCreate.push(smartIncrementName(trimmedBaseName, i))
         }
       }
 
