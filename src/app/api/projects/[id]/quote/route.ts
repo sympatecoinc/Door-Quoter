@@ -196,6 +196,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           if (panel.componentInstance?.subOptionSelections) {
             try {
               const selections = JSON.parse(panel.componentInstance.subOptionSelections)
+              const includedOptions = JSON.parse(panel.componentInstance.includedOptions || '[]')
 
               // Resolve hardware options
               for (const [categoryId, optionId] of Object.entries(selections)) {
@@ -207,9 +208,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                           categoryName.includes('lock') || categoryName.includes('hinge')) {
                         for (const option of pso.category.individualOptions) {
                           if (option.id === optionId) {
+                            const isIncluded = includedOptions.includes(Number(optionId))
                             hardwareItems.push({
                               name: `${pso.category.name}: ${option.name}`,
-                              price: option.price || 0
+                              price: option.price || 0,
+                              isIncluded: isIncluded
                             })
                             totalHardwarePrice += option.price || 0
                             hardwareCost += option.price || 0 // Track option costs separately
@@ -302,7 +305,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           description: description || 'Custom Opening',
           dimensions: `${totalWidth}" W × ${maxHeight}" H`,
           color: opening.finishColor || 'Standard',
-          hardware: hardwareItems.length > 0 ? hardwareItems.map(item => `${item.name} | +$${item.price.toLocaleString()}`).join(' • ') : 'Standard',
+          hardware: hardwareItems.length > 0 ? hardwareItems.map(item => `${item.name} | +$${item.price.toLocaleString()}${item.isIncluded ? ' | STANDARD' : ''}`).join(' • ') : 'Standard',
           hardwarePrice: totalHardwarePrice,
           glassType: Array.from(glassTypes).join(', ') || 'Clear',
           costPrice: opening.price, // Internal cost (not shown to customer)

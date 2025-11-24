@@ -126,7 +126,16 @@ export async function GET(
                   include: {
                     product: {
                       include: {
-                        productBOMs: true
+                        productBOMs: true,
+                        productSubOptions: {
+                          include: {
+                            category: {
+                              include: {
+                                individualOptions: true
+                              }
+                            }
+                          }
+                        }
                       }
                     }
                   }
@@ -254,12 +263,69 @@ export async function GET(
       })
     }
 
+    // Add product options (sub-options) to BOM
+    if (panel.componentInstance.subOptionSelections) {
+      try {
+        const selections = JSON.parse(panel.componentInstance.subOptionSelections)
+        const includedOptions = JSON.parse(panel.componentInstance.includedOptions || '[]')
+
+        // Process each selected option
+        for (const [categoryIdStr, optionId] of Object.entries(selections)) {
+          if (optionId) {
+            const categoryId = parseInt(categoryIdStr)
+
+            // Find the product sub-option and individual option details
+            const productSubOption = product.productSubOptions?.find(
+              (pso: any) => pso.category.id === categoryId
+            )
+
+            if (productSubOption) {
+              const individualOption = productSubOption.category.individualOptions?.find(
+                (opt: any) => opt.id === Number(optionId)
+              )
+
+              if (individualOption) {
+                const isIncluded = includedOptions.includes(Number(optionId))
+
+                // Extract part number from description field (format: "PART-NUMBER - BASE-NAME")
+                let partNumber = `OPTION-${individualOption.id}`
+                if (individualOption.description) {
+                  // Match everything before " - " (space-dash-space)
+                  const match = individualOption.description.match(/^(.+?)\s+-\s+/)
+                  if (match) {
+                    partNumber = match[1]
+                  }
+                }
+
+                bomItems.push({
+                  openingName: opening.name,
+                  productName: product.name,
+                  panelWidth: panel.width,
+                  panelHeight: panel.height,
+                  partNumber: partNumber,
+                  partName: individualOption.name,
+                  partType: 'Option',
+                  quantity: 1,
+                  cutLength: isIncluded ? 'Included' : `$${individualOption.price.toFixed(2)}`,
+                  unit: 'EA',
+                  description: `${productSubOption.category.name}: ${individualOption.name}`,
+                  color: 'N/A'
+                })
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing product options:', error)
+      }
+    }
+
     // Sort items by part type
     const sortedBomItems = bomItems.sort((a, b) => {
-      const typeOrder = { 'Extrusion': 1, 'Hardware': 2, 'Glass': 3 }
-      const aOrder = typeOrder[a.partType as keyof typeof typeOrder] || 4
-      const bOrder = typeOrder[b.partType as keyof typeof typeOrder] || 4
-      
+      const typeOrder = { 'Extrusion': 1, 'Hardware': 2, 'Glass': 3, 'Option': 4 }
+      const aOrder = typeOrder[a.partType as keyof typeof typeOrder] || 5
+      const bOrder = typeOrder[b.partType as keyof typeof typeOrder] || 5
+
       return aOrder - bOrder
     })
 

@@ -57,6 +57,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
 
   useEffect(() => {
+    // Always reset to overview tab when component mounts or customer changes
+    setCustomerDetailTab('overview')
     fetchCustomer()
   }, [customerId, refreshKey])
 
@@ -127,12 +129,12 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       case 'leads':
         return <CustomerLeads customerId={customerId} customer={customer} />
       case 'projects':
-        return <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} />
+        return <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={true} />
       default:
         return (
-          <div className="space-y-6">
+          <div className="space-y-8">
             {/* Projects Section */}
-            <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} />
+            <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={false} />
 
             {/* Customer Information */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -331,14 +333,19 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-8 z-50">
       <div className="bg-white rounded-xl shadow-2xl w-full h-full max-w-7xl flex flex-col">
         {/* Modal Header */}
-        <div className="px-8 py-6 border-b border-gray-200 flex-shrink-0">
+        <div className="px-8 py-6 flex-shrink-0">
           <div className="flex justify-between items-start">
             <div className="flex-1">
               {loading ? (
                 <div className="h-8 bg-gray-200 animate-pulse rounded w-48"></div>
               ) : customer ? (
                 <>
-                  <h1 className="text-2xl font-bold text-gray-900">{customer.companyName}</h1>
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-2xl font-bold text-gray-900">{customer.companyName}</h1>
+                    <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusBadge(customer.status)}`}>
+                      {customer.status}
+                    </span>
+                  </div>
                   {primaryContact && (
                     <p className="text-gray-600 mt-1">
                       Contact: {primaryContact.firstName} {primaryContact.lastName}
@@ -350,11 +357,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               )}
             </div>
             <div className="flex items-center gap-3">
-              {customer && (
-                <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusBadge(customer.status)}`}>
-                  {customer.status}
-                </span>
-              )}
               <button
                 onClick={onBack}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -363,32 +365,32 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
               </button>
             </div>
           </div>
-
-          {/* Tab Navigation */}
-          {customer && (
-            <div className="border-b border-gray-200 -mb-px mt-6">
-              <nav className="-mb-px flex space-x-8">
-                {tabs.map((tab) => {
-                  const Icon = tab.icon
-                  return (
-                    <button
-                      key={tab.key}
-                      onClick={() => setCustomerDetailTab(tab.key as any)}
-                      className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
-                        customerDetailTab === tab.key
-                          ? 'border-blue-500 text-blue-600'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      }`}
-                    >
-                      <Icon className="w-4 h-4 mr-2" />
-                      {tab.label}
-                    </button>
-                  )
-                })}
-              </nav>
-            </div>
-          )}
         </div>
+
+        {/* Tab Navigation */}
+        {customer && (
+          <div className="px-8 border-b border-gray-200 flex-shrink-0">
+            <nav className="-mb-px flex space-x-8">
+              {tabs.map((tab) => {
+                const Icon = tab.icon
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setCustomerDetailTab(tab.key as any)}
+                    className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
+                      customerDetailTab === tab.key
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 mr-2" />
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
+        )}
 
         {/* Modal Content */}
         <div className="flex-1 overflow-y-auto">

@@ -589,8 +589,7 @@ export default function QuoteView() {
               <tr className="bg-black">
                 <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Elevation</th>
                 <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Opening</th>
-                <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Specs</th>
-                <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Hardware</th>
+                <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Specifications</th>
                 <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs align-middle">Price</th>
               </tr>
             </thead>
@@ -641,7 +640,7 @@ export default function QuoteView() {
                     </div>
                   </td>
 
-                  {/* Specifications */}
+                  {/* Specifications (Combined with Hardware) */}
                   <td className="py-6 px-6 min-w-0 border-r border-gray-200">
                     <div className="space-y-1 text-sm">
                       <div className="whitespace-nowrap">
@@ -656,24 +655,17 @@ export default function QuoteView() {
                         <span className="font-medium text-gray-500 uppercase tracking-wide">GLASS </span>
                         <span className="font-medium text-gray-900">{item.glassType.toUpperCase()}</span>
                       </div>
+                      {/* Hardware Options */}
+                      {item.hardware && item.hardware !== 'Standard' && (
+                        <div className="mt-2 pt-2 border-t border-gray-200">
+                          {item.hardware.split(' • ').map((hardwareItem, hardwareIndex) => (
+                            <div key={hardwareIndex} className="text-sm text-gray-700">
+                              {hardwareItem.replace(' | +', ' - ')}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </td>
-
-                  {/* Hardware */}
-                  <td className="py-6 px-6 min-w-0 border-r border-gray-200">
-                    {item.hardware && item.hardware !== 'Standard' ? (
-                      <div className="space-y-1">
-                        {item.hardware.split(' • ').map((hardwareItem, index) => (
-                          <div key={index} className="text-sm whitespace-nowrap text-gray-700">
-                            • {hardwareItem}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-gray-500 text-sm">
-                        <span>Standard Hardware</span>
-                      </div>
-                    )}
                   </td>
 
                   {/* Price */}

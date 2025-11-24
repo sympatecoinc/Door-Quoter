@@ -322,12 +322,11 @@ async function addQuoteItemsTable(
   const footerHeight = 60 // Space needed for footer with pricing
   const ITEMS_PER_PAGE = 4 // Maximum items per page
 
-  // Column widths - increased elevation column for better thumbnail visibility
+  // Column widths - optimized for content needs
   const colElevation = 60 // Doubled from 30mm to show proper door proportions
-  const colOpening = 45 // Reduced from 50mm to accommodate elevation increase
-  const colSpecs = 40 // Reduced from 45mm
-  const colHardware = 35 // Reduced from 40mm
-  const colPrice = pageWidth - 2 * marginX - colElevation - colOpening - colSpecs - colHardware
+  const colOpening = 47.25 // Adjusted to 50% wider than initial reduction
+  const colPrice = 30 // Reduced by ~50% to accommodate specs
+  const colSpecs = pageWidth - 2 * marginX - colElevation - colOpening - colPrice // Expanded to take remaining space (~102mm)
 
   const totalItems = quoteData.quoteItems.length
   let currentY = startY
@@ -371,8 +370,6 @@ async function addQuoteItemsTable(
     currentX += colOpening
     pdf.text('Specifications', currentX + colSpecs / 2, yPos + 5.5, { align: 'center' })
     currentX += colSpecs
-    pdf.text('Hardware', currentX + colHardware / 2, yPos + 5.5, { align: 'center' })
-    currentX += colHardware
     pdf.text('Price', currentX + colPrice / 2, yPos + 5.5, { align: 'center' })
 
     pdf.setTextColor(0, 0, 0)
@@ -512,40 +509,99 @@ async function addQuoteItemsTable(
     // Vertical separator
     pdf.line(currentX, currentY, currentX, currentY + rowHeight)
 
-    // Column 3: Specifications
+    // Column 3: Specifications (Combined with Hardware)
     pdf.setFontSize(8)
     let specY = currentY + cellPadding + 4
 
     pdf.setFont('helvetica', 'bold')
-    pdf.text('DIMENSIONS', currentX + cellPadding, specY)
+    pdf.text('DIMENSIONS: ', currentX + cellPadding, specY)
     pdf.setFont('helvetica', 'normal')
-    pdf.text(item.dimensions, currentX + cellPadding, specY + 4)
+    const dimWidth = pdf.getTextWidth('DIMENSIONS: ')
+    pdf.text(item.dimensions, currentX + cellPadding + dimWidth, specY)
 
     pdf.setFont('helvetica', 'bold')
-    pdf.text('COLOR', currentX + cellPadding, specY + 10)
+    pdf.text('COLOR: ', currentX + cellPadding, specY + 5)
     pdf.setFont('helvetica', 'normal')
-    pdf.text(item.color.toUpperCase(), currentX + cellPadding, specY + 14)
+    const colorWidth = pdf.getTextWidth('COLOR: ')
+    pdf.text(item.color.toUpperCase(), currentX + cellPadding + colorWidth, specY + 5)
 
     pdf.setFont('helvetica', 'bold')
-    pdf.text('GLASS', currentX + cellPadding, specY + 20)
+    pdf.text('GLASS: ', currentX + cellPadding, specY + 10)
     pdf.setFont('helvetica', 'normal')
-    pdf.text(item.glassType.toUpperCase(), currentX + cellPadding, specY + 24)
+    const glassWidth = pdf.getTextWidth('GLASS: ')
+    pdf.text(item.glassType.toUpperCase(), currentX + cellPadding + glassWidth, specY + 10)
+
+    // Add hardware options below specs if they exist
+    if (item.hardware && item.hardware !== 'Standard') {
+      specY += 13
+      // Add space above the divider line
+      specY += 3
+      // Draw a subtle separator line
+      pdf.setDrawColor(200, 200, 200)
+      pdf.setLineWidth(0.2)
+      pdf.line(currentX + cellPadding, specY, currentX + colSpecs - cellPadding, specY)
+      // Add space below the divider line
+      specY += 3
+
+      // Split hardware items and format them
+      const hardwareItems = item.hardware.split(' • ')
+      for (const hardwareItem of hardwareItems) {
+        // Check if item has STANDARD badge
+        const hasStandardBadge = hardwareItem.includes(' | STANDARD')
+        // Replace | + with - for formatting, and remove | STANDARD temporarily
+        let formattedItem = hardwareItem.replace(' | +', ' - ').replace(' | STANDARD', '')
+
+        // Capitalize and bold the category name (everything before the colon)
+        if (formattedItem.includes(':')) {
+          const colonIndex = formattedItem.indexOf(':')
+          const categoryName = formattedItem.substring(0, colonIndex).toUpperCase()
+          const remainder = formattedItem.substring(colonIndex)
+
+          // Draw category name in bold
+          pdf.setFont('helvetica', 'bold')
+          pdf.text(categoryName, currentX + cellPadding, specY)
+
+          // Draw remainder in normal font
+          pdf.setFont('helvetica', 'normal')
+          let categoryWidth = pdf.getTextWidth(categoryName)
+          const remainderLines = pdf.splitTextToSize(remainder, colSpecs - 2 * cellPadding - categoryWidth)
+          pdf.text(remainderLines, currentX + cellPadding + categoryWidth, specY)
+
+          // Add STANDARD badge if applicable
+          if (hasStandardBadge) {
+            // Calculate position after the price
+            const fullTextWidth = categoryWidth + pdf.getTextWidth(remainder)
+            const badgeX = currentX + cellPadding + fullTextWidth + 2 // 2mm spacing
+
+            // Draw badge background
+            pdf.setFillColor(220, 220, 220) // Light gray
+            const badgeWidth = pdf.getTextWidth(' STANDARD ') + 1
+            const badgeHeight = 3.5
+            pdf.roundedRect(badgeX, specY - 2.5, badgeWidth, badgeHeight, 0.5, 0.5, 'F')
+
+            // Draw badge text
+            pdf.setFont('helvetica', 'bold')
+            pdf.setFontSize(7)
+            pdf.text('STANDARD', badgeX + 0.5, specY, { baseline: 'middle' })
+            pdf.setFontSize(8)
+          }
+
+          specY += 4 * remainderLines.length
+        } else {
+          // No category, just display as normal
+          pdf.setFont('helvetica', 'normal')
+          const hardwareLines = pdf.splitTextToSize(formattedItem, colSpecs - 2 * cellPadding)
+          pdf.text(hardwareLines, currentX + cellPadding, specY)
+          specY += 4 * hardwareLines.length
+        }
+      }
+    }
     currentX += colSpecs
 
     // Vertical separator
     pdf.line(currentX, currentY, currentX, currentY + rowHeight)
 
-    // Column 4: Hardware
-    pdf.setFontSize(8)
-    const hardwareText = item.hardware && item.hardware !== 'Standard' ? item.hardware : 'Standard Hardware'
-    const hardwareLines = pdf.splitTextToSize(hardwareText, colHardware - 2 * cellPadding)
-    pdf.text(hardwareLines, currentX + cellPadding, currentY + cellPadding + 4)
-    currentX += colHardware
-
-    // Vertical separator
-    pdf.line(currentX, currentY, currentX, currentY + rowHeight)
-
-    // Column 5: Price
+    // Column 4: Price
     pdf.setFontSize(14)
     pdf.setFont('helvetica', 'bold')
     pdf.text(`$${item.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,

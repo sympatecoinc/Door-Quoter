@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, ChevronDown, Sparkles, Brush } from 'lucide-react'
+import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, ChevronDown, Sparkles, Brush, Tag } from 'lucide-react'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
+import CategoryDetailView from './CategoryDetailView'
 
 interface MasterPart {
   id: number
@@ -88,9 +89,33 @@ interface GlassType {
   updatedAt: string
 }
 
+interface Category {
+  id: number
+  name: string
+  description?: string
+  _count: {
+    individualOptions: number
+    productSubOptions: number
+  }
+  individualOptions?: IndividualOption[]
+  createdAt: string
+  updatedAt: string
+}
+
+interface IndividualOption {
+  id: number
+  categoryId: number
+  name: string
+  description?: string
+  price: number
+  category?: {
+    name: string
+  }
+}
+
 export default function MasterPartsView() {
   const { toasts, removeToast, showSuccess, showError } = useToast()
-  const [activeTab, setActiveTab] = useState<'masterParts' | 'partRules' | 'glass' | 'finishes'>('masterParts')
+  const [activeTab, setActiveTab] = useState<'masterParts' | 'partRules' | 'glass' | 'finishes' | 'categories'>('masterParts')
   
   // Current master part for viewing rules
   const [selectedMasterPartId, setSelectedMasterPartId] = useState<number | null>(null)
@@ -173,6 +198,19 @@ export default function MasterPartsView() {
   const [newFinishType, setNewFinishType] = useState('')
   const [newFinishCode, setNewFinishCode] = useState('')
   const [newCostPerFoot, setNewCostPerFoot] = useState('')
+
+  // Product Categories State
+  const [categories, setCategories] = useState<Category[]>([])
+  const [loadingCategories, setLoadingCategories] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null)
+  const [showAddCategoryForm, setShowAddCategoryForm] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<number | null>(null)
+  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [updatingCategory, setUpdatingCategory] = useState(false)
+
+  // Category Form State
+  const [categoryName, setCategoryName] = useState('')
+  const [categoryDescription, setCategoryDescription] = useState('')
 
   // Filter and sort master parts
   const filteredMasterParts = masterParts
@@ -908,10 +946,135 @@ export default function MasterPartsView() {
     setEditingCostPerFoot(finish.costPerFoot.toString())
   }
 
+  // Category Management Functions
+  async function fetchCategories() {
+    setLoadingCategories(true)
+    try {
+      const response = await fetch('/api/categories')
+      if (response.ok) {
+        const data = await response.json()
+        setCategories(data)
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error)
+      showError('Error fetching categories')
+    } finally {
+      setLoadingCategories(false)
+    }
+  }
+
+  function resetCategoryForm() {
+    setCategoryName('')
+    setCategoryDescription('')
+  }
+
+  async function handleCreateCategory(e: React.FormEvent) {
+    e.preventDefault()
+    if (!categoryName.trim()) return
+
+    setCreatingCategory(true)
+    try {
+      const response = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: categoryName,
+          description: categoryDescription
+        })
+      })
+
+      if (response.ok) {
+        resetCategoryForm()
+        setShowAddCategoryForm(false)
+        fetchCategories()
+        showSuccess('Category created successfully!')
+      } else {
+        const errorData = await response.json()
+        showError(errorData.error || 'Failed to create category')
+      }
+    } catch (error) {
+      console.error('Error creating category:', error)
+      showError('Error creating category')
+    } finally {
+      setCreatingCategory(false)
+    }
+  }
+
+  async function handleUpdateCategory(e: React.FormEvent) {
+    e.preventDefault()
+    if (!categoryName.trim() || !editingCategory) return
+
+    setUpdatingCategory(true)
+    try {
+      const response = await fetch(`/api/categories/${editingCategory}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: categoryName,
+          description: categoryDescription
+        })
+      })
+
+      if (response.ok) {
+        resetCategoryForm()
+        setEditingCategory(null)
+        fetchCategories()
+        showSuccess('Category updated successfully!')
+      } else {
+        const errorData = await response.json()
+        showError(errorData.error || 'Failed to update category')
+      }
+    } catch (error) {
+      console.error('Error updating category:', error)
+      showError('Error updating category')
+    } finally {
+      setUpdatingCategory(false)
+    }
+  }
+
+  async function handleDeleteCategory(id: number, name: string) {
+    if (!confirm(`Are you sure you want to delete the category "${name}"?`)) return
+
+    try {
+      const response = await fetch(`/api/categories/${id}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        fetchCategories()
+        showSuccess('Category deleted successfully!')
+      } else {
+        const errorData = await response.json()
+        showError(errorData.error || 'Cannot delete category that is linked to products')
+      }
+    } catch (error) {
+      console.error('Error deleting category:', error)
+      showError('Error deleting category')
+    }
+  }
+
+  function startEditCategory(category: Category) {
+    setEditingCategory(category.id)
+    setCategoryName(category.name)
+    setCategoryDescription(category.description || '')
+  }
+
+  function cancelEditCategory() {
+    setEditingCategory(null)
+    resetCategoryForm()
+  }
+
   // Fetch glass types when glass tab is opened
   useEffect(() => {
     if (activeTab === 'glass') {
       fetchGlassTypes()
+    }
+  }, [activeTab])
+
+  // Fetch categories when categories tab is opened
+  useEffect(() => {
+    if (activeTab === 'categories') {
+      fetchCategories()
     }
   }, [activeTab])
 
@@ -972,6 +1135,17 @@ export default function MasterPartsView() {
           >
             <Brush className="w-5 h-5 inline-block mr-2" />
             Finishes ({finishPricing.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('categories')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'categories'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <Tag className="w-5 h-5 inline-block mr-2" />
+            Product Categories ({categories.length})
           </button>
         </nav>
       </div>
@@ -2262,6 +2436,233 @@ export default function MasterPartsView() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Product Categories Tab */}
+      {activeTab === 'categories' && (
+        <div>
+          {selectedCategory ? (
+            <CategoryDetailView
+              category={selectedCategory}
+              onBack={() => setSelectedCategory(null)}
+              onRefresh={fetchCategories}
+            />
+          ) : (
+            <>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold text-gray-900">Product Categories</h2>
+                <button
+                  onClick={() => setShowAddCategoryForm(true)}
+                  className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  <Plus className="w-5 h-5 mr-2" />
+                  Add Category
+                </button>
+              </div>
+
+              {loadingCategories ? (
+                <div className="flex justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : categories.length > 0 ? (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Category Name
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Description
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Options
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Used in Products
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {categories.map((category) => (
+                          <tr
+                            key={category.id}
+                            className={`hover:bg-gray-50 ${editingCategory !== category.id ? 'cursor-pointer' : ''}`}
+                            onClick={() => editingCategory !== category.id && setSelectedCategory(category)}
+                          >
+                            <td className="px-6 py-4">
+                              {editingCategory === category.id ? (
+                                <form onSubmit={handleUpdateCategory} className="flex items-center space-x-2">
+                                  <input
+                                    type="text"
+                                    value={categoryName}
+                                    onChange={(e) => setCategoryName(e.target.value)}
+                                    className="px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Category name"
+                                    required
+                                    autoFocus
+                                  />
+                                  <button
+                                    type="submit"
+                                    disabled={updatingCategory}
+                                    className="p-1 text-green-600 hover:text-green-700"
+                                    title="Save"
+                                  >
+                                    <Save className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={cancelEditCategory}
+                                    className="p-1 text-gray-600 hover:text-gray-700"
+                                    title="Cancel"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </form>
+                              ) : (
+                                <div className="text-sm font-medium text-blue-600">
+                                  {category.name}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              {editingCategory === category.id ? (
+                                <input
+                                  type="text"
+                                  value={categoryDescription}
+                                  onChange={(e) => setCategoryDescription(e.target.value)}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="Description (optional)"
+                                />
+                              ) : (
+                                <div className="text-sm text-gray-600">
+                                  {category.description || '-'}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm text-gray-900">
+                                {category._count.individualOptions} option{category._count.individualOptions !== 1 ? 's' : ''}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm text-gray-900">
+                                {category._count.productSubOptions} product{category._count.productSubOptions !== 1 ? 's' : ''}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex justify-end space-x-2">
+                                {editingCategory !== category.id && (
+                                  <>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        startEditCategory(category)
+                                      }}
+                                      className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                                      title="Edit category"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleDeleteCategory(category.id, category.name)
+                                      }}
+                                      className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                      title="Delete category"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+                  <Tag className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Product Categories Yet</h3>
+                  <p className="text-gray-600 mb-6">
+                    Create categories to organize hardware options for your products.
+                  </p>
+                  <button
+                    onClick={() => setShowAddCategoryForm(true)}
+                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    <Plus className="w-5 h-5 mr-2" />
+                    Create First Category
+                  </button>
+                </div>
+              )}
+
+              {/* Add Category Modal */}
+              {showAddCategoryForm && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-xl p-6 w-full max-w-md">
+                    <h2 className="text-xl font-bold text-gray-900 mb-4">Create Product Category</h2>
+                    <form onSubmit={handleCreateCategory} className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Category Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={categoryName}
+                          onChange={(e) => setCategoryName(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                          placeholder="e.g., Handle Type, Lock Type"
+                          required
+                          autoFocus
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Description
+                        </label>
+                        <textarea
+                          value={categoryDescription}
+                          onChange={(e) => setCategoryDescription(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                          placeholder="Optional description"
+                          rows={3}
+                        />
+                      </div>
+                      <div className="flex justify-end space-x-3 pt-4">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAddCategoryForm(false)
+                            resetCategoryForm()
+                          }}
+                          className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={creatingCategory}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {creatingCategory ? 'Creating...' : 'Create Category'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 

@@ -40,7 +40,7 @@ export default function CategoryDetailView({
   const [availableMasterParts, setAvailableMasterParts] = useState<any[]>([])
   const [filteredMasterParts, setFilteredMasterParts] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedMasterPart, setSelectedMasterPart] = useState<any>(null)
+  const [selectedMasterParts, setSelectedMasterParts] = useState<any[]>([])
   const [creating, setCreating] = useState(false)
   const [editingOption, setEditingOption] = useState<number | null>(null)
   const [editOptionName, setEditOptionName] = useState('')
@@ -91,23 +91,29 @@ export default function CategoryDetailView({
 
   async function handleAddOption(e: React.FormEvent) {
     e.preventDefault()
-    if (!selectedMasterPart) return
+    if (selectedMasterParts.length === 0) return
 
     setCreating(true)
     try {
-      const response = await fetch('/api/options', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          categoryId: category.id,
-          name: selectedMasterPart.baseName,
-          description: selectedMasterPart.description || `${selectedMasterPart.partNumber} - ${selectedMasterPart.baseName}`,
-          price: selectedMasterPart.cost || 0
+      // Create options for all selected master parts
+      const promises = selectedMasterParts.map(masterPart =>
+        fetch('/api/options', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            categoryId: category.id,
+            name: masterPart.baseName,
+            description: masterPart.description || `${masterPart.partNumber} - ${masterPart.baseName}`,
+            price: masterPart.cost || 0
+          })
         })
-      })
+      )
 
-      if (response.ok) {
-        setSelectedMasterPart(null)
+      const responses = await Promise.all(promises)
+
+      // Check if all requests were successful
+      if (responses.every(res => res.ok)) {
+        setSelectedMasterParts([])
         setSearchTerm('')
         setShowAddOptionForm(false)
         onRefresh()
@@ -119,8 +125,8 @@ export default function CategoryDetailView({
         }
       }
     } catch (error) {
-      console.error('Error adding option:', error)
-      alert('Error adding option')
+      console.error('Error adding options:', error)
+      alert('Error adding options')
     } finally {
       setCreating(false)
     }
@@ -375,38 +381,52 @@ export default function CategoryDetailView({
                 {availableMasterParts.length > 0 ? (
                   <div className="space-y-2 max-h-64 overflow-y-auto border border-gray-300 rounded-lg">
                     {filteredMasterParts.length > 0 ? (
-                      filteredMasterParts.map((part) => (
-                        <div key={part.id} 
-                             className={`p-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${selectedMasterPart?.id === part.id ? 'bg-blue-50 border-blue-200' : ''}`}
-                             onClick={() => setSelectedMasterPart(part)}>
-                          <div className="flex items-center">
-                            <input
-                              type="radio"
-                              name="masterPart"
-                              value={part.id}
-                              checked={selectedMasterPart?.id === part.id}
-                              onChange={() => setSelectedMasterPart(part)}
-                              className="mr-3 text-blue-600"
-                            />
-                            <div className="flex-1">
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <p className="font-medium text-gray-900">{part.baseName}</p>
-                                  <p className="text-sm text-gray-600">Part #: {part.partNumber}</p>
-                                  {part.description && (
-                                    <p className="text-xs text-gray-500 mt-1">{part.description}</p>
-                                  )}
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-sm font-medium text-green-600">
-                                    ${part.cost ? part.cost.toFixed(2) : '0.00'}
-                                  </p>
+                      filteredMasterParts.map((part) => {
+                        const isSelected = selectedMasterParts.some(p => p.id === part.id)
+                        return (
+                          <div key={part.id}
+                               className={`p-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${isSelected ? 'bg-blue-50 border-blue-200' : ''}`}
+                               onClick={() => {
+                                 if (isSelected) {
+                                   setSelectedMasterParts(selectedMasterParts.filter(p => p.id !== part.id))
+                                 } else {
+                                   setSelectedMasterParts([...selectedMasterParts, part])
+                                 }
+                               }}>
+                            <div className="flex items-center">
+                              <input
+                                type="checkbox"
+                                value={part.id}
+                                checked={isSelected}
+                                onChange={() => {
+                                  if (isSelected) {
+                                    setSelectedMasterParts(selectedMasterParts.filter(p => p.id !== part.id))
+                                  } else {
+                                    setSelectedMasterParts([...selectedMasterParts, part])
+                                  }
+                                }}
+                                className="mr-3 text-blue-600 h-4 w-4"
+                              />
+                              <div className="flex-1">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="font-medium text-gray-900">{part.baseName}</p>
+                                    <p className="text-sm text-gray-600">Part #: {part.partNumber}</p>
+                                    {part.description && (
+                                      <p className="text-xs text-gray-500 mt-1">{part.description}</p>
+                                    )}
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-sm font-medium text-green-600">
+                                      ${part.cost ? part.cost.toFixed(2) : '0.00'}
+                                    </p>
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))
+                        )
+                      })
                     ) : (
                       <div className="text-center py-8 text-gray-500">
                         <Search className="w-8 h-8 mx-auto mb-2 text-gray-400" />
@@ -425,14 +445,18 @@ export default function CategoryDetailView({
                 )}
               </div>
               
-              {selectedMasterPart && (
+              {selectedMasterParts.length > 0 && (
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-gray-900 mb-2">Selected Option Preview:</h4>
-                  <div className="space-y-1 text-sm">
-                    <p><span className="font-medium">Name:</span> {selectedMasterPart.baseName}</p>
-                    <p><span className="font-medium">Part Number:</span> {selectedMasterPart.partNumber}</p>
-                    <p><span className="font-medium">Description:</span> {selectedMasterPart.description || `${selectedMasterPart.partNumber} - ${selectedMasterPart.baseName}`}</p>
-                    <p><span className="font-medium">Price:</span> ${selectedMasterPart.cost ? selectedMasterPart.cost.toFixed(2) : '0.00'}</p>
+                  <h4 className="font-medium text-gray-900 mb-2">
+                    Selected Options ({selectedMasterParts.length}):
+                  </h4>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {selectedMasterParts.map((part) => (
+                      <div key={part.id} className="text-sm bg-white p-2 rounded border border-gray-200">
+                        <p className="font-medium">{part.baseName}</p>
+                        <p className="text-xs text-gray-600">Part #: {part.partNumber} • ${part.cost ? part.cost.toFixed(2) : '0.00'}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -442,7 +466,7 @@ export default function CategoryDetailView({
                   type="button"
                   onClick={() => {
                     setShowAddOptionForm(false)
-                    setSelectedMasterPart(null)
+                    setSelectedMasterParts([])
                     setSearchTerm('')
                   }}
                   className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -451,10 +475,10 @@ export default function CategoryDetailView({
                 </button>
                 <button
                   type="submit"
-                  disabled={creating || !selectedMasterPart}
+                  disabled={creating || selectedMasterParts.length === 0}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {creating ? 'Adding...' : 'Add Option'}
+                  {creating ? 'Adding...' : `Add ${selectedMasterParts.length} Option${selectedMasterParts.length !== 1 ? 's' : ''}`}
                 </button>
               </div>
             </form>
