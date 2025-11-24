@@ -125,7 +125,7 @@ function smartIncrementName(baseName: string, index: number): string {
     return `${prefix}${number + index}`
   }
 
-  return `${trimmed} ${index}`
+  return `${trimmed}${index}`
 }
 
 export default function ProjectDetailView() {

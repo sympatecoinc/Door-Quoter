@@ -66,8 +66,20 @@ export default function DashboardView() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [editingCustomer, setEditingCustomer] = useState(null)
   const [customerFormMode, setCustomerFormMode] = useState('create')
+  const [showCRMStats, setShowCRMStats] = useState(true)
 
   useEffect(() => {
+    // Load CRM stats visibility setting
+    try {
+      const savedSettings = localStorage.getItem('appSettings')
+      if (savedSettings) {
+        const settings = JSON.parse(savedSettings)
+        setShowCRMStats(settings.showDashboardCRMStats !== undefined ? settings.showDashboardCRMStats : true)
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error)
+    }
+
     async function fetchDashboardData() {
       try {
         const response = await fetch('/api/dashboard')
@@ -227,57 +239,59 @@ export default function DashboardView() {
         return (
           <div className="space-y-6">
             {/* CRM Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center">
-                  <div className="p-3 bg-blue-100 rounded-lg">
-                    <Users className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Total Customers</p>
-                    <p className="text-2xl font-bold text-gray-900">{data.crmStats.totalCustomers}</p>
+            {showCRMStats && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center">
+                    <div className="p-3 bg-blue-100 rounded-lg">
+                      <Users className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-600">Total Customers</p>
+                      <p className="text-2xl font-bold text-gray-900">{data.crmStats.totalCustomers}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center">
-                  <div className="p-3 bg-green-100 rounded-lg">
-                    <TrendingUp className="w-6 h-6 text-green-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Active Leads</p>
-                    <p className="text-2xl font-bold text-gray-900">{data.crmStats.activeLeads}</p>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center">
+                    <div className="p-3 bg-green-100 rounded-lg">
+                      <TrendingUp className="w-6 h-6 text-green-600" />
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-600">Active Leads</p>
+                      <p className="text-2xl font-bold text-gray-900">{data.crmStats.activeLeads}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center">
-                  <div className="p-3 bg-purple-100 rounded-lg">
-                    <DollarSign className="w-6 h-6 text-purple-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Pipeline Value</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      ${data.crmStats.pipelineValue.toLocaleString()}
-                    </p>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center">
+                    <div className="p-3 bg-purple-100 rounded-lg">
+                      <DollarSign className="w-6 h-6 text-purple-600" />
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-600">Pipeline Value</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        ${data.crmStats.pipelineValue.toLocaleString()}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center">
-                  <div className="p-3 bg-orange-100 rounded-lg">
-                    <Activity className="w-6 h-6 text-orange-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Conversion Rate</p>
-                    <p className="text-2xl font-bold text-gray-900">{data.crmStats.conversionRate}%</p>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center">
+                    <div className="p-3 bg-orange-100 rounded-lg">
+                      <Activity className="w-6 h-6 text-orange-600" />
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-600">Conversion Rate</p>
+                      <p className="text-2xl font-bold text-gray-900">{data.crmStats.conversionRate}%</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Customers Section */}
             <CustomerList
