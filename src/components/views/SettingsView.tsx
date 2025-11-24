@@ -10,6 +10,7 @@ export default function SettingsView() {
   const [defaultCurrency, setDefaultCurrency] = useState('USD')
   const [unitSystem, setUnitSystem] = useState('imperial')
   const [precision, setPrecision] = useState('2')
+  const [showDashboardCRMStats, setShowDashboardCRMStats] = useState(true)
   const [saving, setSaving] = useState(false)
 
   // Import/Export state
@@ -27,6 +28,7 @@ export default function SettingsView() {
         setDefaultCurrency(settings.defaultCurrency || 'USD')
         setUnitSystem(settings.unitSystem || 'imperial')
         setPrecision(settings.precision || '2')
+        setShowDashboardCRMStats(settings.showDashboardCRMStats !== undefined ? settings.showDashboardCRMStats : true)
       }
     } catch (error) {
       console.error('Error loading settings:', error)
@@ -57,7 +59,8 @@ export default function SettingsView() {
         companyName,
         defaultCurrency,
         unitSystem,
-        precision
+        precision,
+        showDashboardCRMStats
       }
 
       localStorage.setItem('appSettings', JSON.stringify(settings))
@@ -237,7 +240,7 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,,3.2,TRUE,
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Default Unit System
               </label>
-              <select 
+              <select
                 value={unitSystem}
                 onChange={(e) => setUnitSystem(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
@@ -250,7 +253,7 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,,3.2,TRUE,
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Precision (Decimal Places)
               </label>
-              <select 
+              <select
                 value={precision}
                 onChange={(e) => setPrecision(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
@@ -259,6 +262,35 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,,3.2,TRUE,
                 <option value="2">2 decimal places</option>
                 <option value="3">3 decimal places</option>
               </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Dashboard Settings */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Dashboard Settings</h2>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Show CRM Statistics
+                </label>
+                <p className="text-xs text-gray-500 mt-1">
+                  Display customer stats, active leads, pipeline value, and conversion rate on the dashboard
+                </p>
+              </div>
+              <button
+                onClick={() => setShowDashboardCRMStats(!showDashboardCRMStats)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  showDashboardCRMStats ? 'bg-blue-600' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    showDashboardCRMStats ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
             </div>
           </div>
         </div>

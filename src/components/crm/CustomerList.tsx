@@ -43,8 +43,9 @@ export default function CustomerList({ onAddCustomer, onViewCustomer }: Customer
   })
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+  const [statusFilters, setStatusFilters] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(1)
+  const [searchExpanded, setSearchExpanded] = useState(false)
 
   const fetchCustomers = async () => {
     setLoading(true)
@@ -53,8 +54,12 @@ export default function CustomerList({ onAddCustomer, onViewCustomer }: Customer
         page: currentPage.toString(),
         limit: '10',
         ...(searchTerm && { search: searchTerm }),
-        ...(statusFilter && { status: statusFilter })
       })
+
+      // Add multiple status filters if any are selected
+      if (statusFilters.length > 0) {
+        params.append('status', statusFilters.join(','))
+      }
 
       const response = await fetch(`/api/customers?${params}`)
       if (response.ok) {
@@ -70,12 +75,15 @@ export default function CustomerList({ onAddCustomer, onViewCustomer }: Customer
 
   useEffect(() => {
     fetchCustomers()
-  }, [currentPage, searchTerm, statusFilter])
+  }, [currentPage, searchTerm, statusFilters])
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
+  const toggleStatusFilter = (status: string) => {
+    setStatusFilters(prev =>
+      prev.includes(status)
+        ? prev.filter(s => s !== status)
+        : [...prev, status]
+    )
     setCurrentPage(1)
-    fetchCustomers()
   }
 
   const getStatusBadge = (status: string) => {
@@ -87,47 +95,89 @@ export default function CustomerList({ onAddCustomer, onViewCustomer }: Customer
     return colors[status] || 'bg-gray-100 text-gray-800'
   }
 
+  const statuses = ['Active', 'Inactive', 'Prospect']
+
   return (
     <div className="space-y-6">
       {/* Header Actions */}
-      <div className="flex justify-between items-center">
-        <div className="flex space-x-4">
-          {/* Search */}
-          <form onSubmit={handleSearch} className="flex">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search customers..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-l-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
+      <div className="flex justify-between items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          {/* Expandable Search Bar */}
+          <div className="relative flex items-center">
             <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700"
+              onClick={() => setSearchExpanded(true)}
+              className={`p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200 ${searchExpanded ? 'opacity-0 pointer-events-none absolute' : ''}`}
+              title="Search customers"
             >
-              Search
+              <Search className="w-4 h-4" />
             </button>
-          </form>
+            {searchExpanded && (
+              <div className="relative animate-expand-search">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search customers..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value)
+                    setCurrentPage(1)
+                  }}
+                  onBlur={() => {
+                    if (!searchTerm) {
+                      setSearchExpanded(false)
+                    }
+                  }}
+                  autoFocus
+                  className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm text-gray-900 placeholder-gray-400 w-64"
+                />
+              </div>
+            )}
+          </div>
 
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="">All Status</option>
-            <option value="Active">Active</option>
-            <option value="Inactive">Inactive</option>
-            <option value="Prospect">Prospect</option>
-          </select>
+          {/* Status Filter Buttons */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-600">Filter by status:</span>
+            {statuses.map((status) => {
+              const isActive = statusFilters.includes(status)
+              const colorClasses = {
+                'Active': isActive
+                  ? 'bg-green-100 text-green-800 hover:bg-green-200 hover:text-green-900'
+                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
+                'Inactive': isActive
+                  ? 'bg-gray-600 text-white hover:bg-gray-700 hover:text-white'
+                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
+                'Prospect': isActive
+                  ? 'bg-blue-100 text-blue-800 hover:bg-blue-200 hover:text-blue-900'
+                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+              }[status]
+
+              return (
+                <button
+                  key={status}
+                  onClick={() => toggleStatusFilter(status)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${colorClasses}`}
+                >
+                  {status}
+                </button>
+              )
+            })}
+            {statusFilters.length > 0 && (
+              <button
+                onClick={() => {
+                  setStatusFilters([])
+                  setCurrentPage(1)
+                }}
+                className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 underline"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
         </div>
 
         <button
           onClick={onAddCustomer}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition-colors flex-shrink-0"
         >
           <Plus className="w-4 h-4 mr-2" />
           Add Customer

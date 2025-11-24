@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
  * Intelligently increments a base name that may contain numbers.
  * - Pure numeric strings (101, 201, 1001): increment the number (102, 202, 1002)
  * - Strings ending with numbers (Office 101): increment the trailing number (Office 102)
- * - Non-numeric strings: append space and number (Office 1)
+ * - Non-numeric strings: append number without space (Office1)
  */
 function smartIncrementName(baseName: string, index: number): string {
   const trimmed = baseName.trim()
@@ -24,8 +24,8 @@ function smartIncrementName(baseName: string, index: number): string {
     return `${prefix}${number + index}`
   }
 
-  // Non-numeric: use traditional space-separated numbering
-  return `${trimmed} ${index}`
+  // Non-numeric: append number directly without space
+  return `${trimmed}${index}`
 }
 
 export async function POST(

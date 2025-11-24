@@ -11,6 +11,9 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * limit
 
+    // Parse status filter - support comma-separated values for multiple statuses
+    const statusFilters = status ? status.split(',').filter(Boolean) : []
+
     const where = {
       ...(search && {
         OR: [
@@ -19,7 +22,9 @@ export async function GET(request: NextRequest) {
           { email: { contains: search, mode: 'insensitive' as const } }
         ]
       }),
-      ...(status && { status })
+      ...(statusFilters.length > 0 && {
+        status: { in: statusFilters }
+      })
     }
 
     const [customers, total] = await Promise.all([
