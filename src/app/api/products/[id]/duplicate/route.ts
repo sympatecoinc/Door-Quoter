@@ -35,7 +35,6 @@ export async function POST(
         description: originalProduct.description,
         type: originalProduct.type,
         archived: false, // New products should not be archived
-        withTrim: originalProduct.withTrim,
         // Duplicate all BOM parts
         productBOMs: {
           create: originalProduct.productBOMs.map(bom => ({

@@ -125,7 +125,6 @@ model Product {
   type                 String                 @default("Product")
   productType          ProductType            @default(SWING_DOOR)
   archived             Boolean                @default(false)
-  withTrim             String                 @default("Without Trim")
   glassWidthFormula    String?
   glassHeightFormula   String?
   glassQuantityFormula String?
@@ -206,11 +205,12 @@ model ProductBOM {
   unit        String?
   quantity    Float?
   stockLength Float?
-  partNumber  String?
-  cost        Float?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  partNumber            String?
+  cost                  Float?
+  addFinishToPartNumber Boolean  @default(false) // When true, append finish color code to hardware part number in BOM
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  product               Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("ProductBOMs")
 }

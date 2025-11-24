@@ -24,7 +24,6 @@ async function main() {
       description: 'Standard 90-degree corner for directional transitions',
       type: 'Product',
       productType: 'CORNER_90',
-      withTrim: 'Without Trim',
       archived: false
     }
   })

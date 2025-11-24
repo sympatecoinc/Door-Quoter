@@ -49,7 +49,6 @@ export async function POST(request: NextRequest) {
       description,
       type = 'Product',
       productType = 'SWING_DOOR',
-      withTrim = 'Without Trim',
       elevationImageData,
       planImageData,
       elevationFileName,
@@ -78,8 +77,7 @@ export async function POST(request: NextRequest) {
         name,
         description,
         type,
-        productType,
-        withTrim
+        productType
       }
     })
 

@@ -40,7 +40,6 @@ export async function GET(
                         type: true,
                         productType: true,
                         archived: true,
-                        withTrim: true,
                         glassWidthFormula: true,
                         glassHeightFormula: true,
                         glassQuantityFormula: true,

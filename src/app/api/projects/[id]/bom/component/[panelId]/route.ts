@@ -199,6 +199,11 @@ export async function GET(
         fullPartNumber = `${fullPartNumber}-${stockLength}`
       }
 
+      // Apply finish code for Hardware parts with addFinishToPartNumber flag
+      if (bom.partType === 'Hardware' && fullPartNumber && bom.addFinishToPartNumber && opening.finishColor) {
+        fullPartNumber = applyFinishCode(fullPartNumber, opening.finishColor)
+      }
+
       bomItems.push({
         openingName: opening.name,
         productName: product.name,
