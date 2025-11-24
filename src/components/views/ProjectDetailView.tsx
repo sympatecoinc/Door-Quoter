@@ -2671,15 +2671,15 @@ export default function ProjectDetailView() {
                     <p className="text-xs font-medium text-gray-700 mb-2">Preview:</p>
                     {autoIncrement ? (
                       <div className="text-xs text-gray-600">
-                        <p className="mb-1">• {duplicateNewName.trim()} 1 (original renamed)</p>
+                        <p className="mb-1">• {smartIncrementName(duplicateNewName, 0)} (original renamed)</p>
                         {[...Array(Math.min(3, safeCount))].map((_, i) => (
-                          <p key={i} className="mb-1">• {duplicateNewName.trim()} {i + 2}</p>
+                          <p key={i} className="mb-1">• {smartIncrementName(duplicateNewName, i + 1)}</p>
                         ))}
                         {safeCount > 3 && (
                           <p className="mb-1">• ...</p>
                         )}
                         {safeCount > 3 && (
-                          <p className="mb-1">• {duplicateNewName.trim()} {safeCount + 1} (last)</p>
+                          <p className="mb-1">• {smartIncrementName(duplicateNewName, safeCount)} (last)</p>
                         )}
                       </div>
                     ) : (
@@ -2689,13 +2689,13 @@ export default function ProjectDetailView() {
                         ) : (
                           <>
                             {[...Array(Math.min(3, safeCount))].map((_, i) => (
-                              <p key={i} className="mb-1">• {duplicateNewName.trim()} {i + 1}</p>
+                              <p key={i} className="mb-1">• {smartIncrementName(duplicateNewName, i + 1)}</p>
                             ))}
                             {safeCount > 3 && (
                               <p className="mb-1">• ...</p>
                             )}
                             {safeCount > 3 && (
-                              <p className="mb-1">• {duplicateNewName.trim()} {safeCount} (last)</p>
+                              <p className="mb-1">• {smartIncrementName(duplicateNewName, safeCount)} (last)</p>
                             )}
                           </>
                         )}
