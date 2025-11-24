@@ -46,6 +46,7 @@ export default function CustomerList({ onAddCustomer, onViewCustomer }: Customer
   const [statusFilters, setStatusFilters] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [searchExpanded, setSearchExpanded] = useState(false)
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
 
   const fetchCustomers = async () => {
     setLoading(true)
@@ -136,42 +137,55 @@ export default function CustomerList({ onAddCustomer, onViewCustomer }: Customer
 
           {/* Status Filter Buttons */}
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-600">Filter by status:</span>
-            {statuses.map((status) => {
-              const isActive = statusFilters.includes(status)
-              const colorClasses = {
-                'Active': isActive
-                  ? 'bg-green-100 text-green-800 hover:bg-green-200 hover:text-green-900'
-                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
-                'Inactive': isActive
-                  ? 'bg-gray-600 text-white hover:bg-gray-700 hover:text-white'
-                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
-                'Prospect': isActive
-                  ? 'bg-blue-100 text-blue-800 hover:bg-blue-200 hover:text-blue-900'
-                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
-              }[status]
+            <button
+              onClick={() => setFiltersExpanded(!filtersExpanded)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${
+                filtersExpanded || statusFilters.length > 0
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Filter {statusFilters.length > 0 && `(${statusFilters.length})`}
+            </button>
+            <div className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out ${
+              filtersExpanded ? 'max-w-[400px] opacity-100' : 'max-w-0 opacity-0'
+            }`}>
+              {statuses.map((status) => {
+                const isActive = statusFilters.includes(status)
+                const colorClasses = {
+                  'Active': isActive
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
+                  'Inactive': isActive
+                    ? 'bg-gray-600 text-white'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
+                  'Prospect': isActive
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+                }[status]
 
-              return (
+                return (
+                  <button
+                    key={status}
+                    onClick={() => toggleStatusFilter(status)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 whitespace-nowrap ${colorClasses}`}
+                  >
+                    {status}
+                  </button>
+                )
+              })}
+              {statusFilters.length > 0 && (
                 <button
-                  key={status}
-                  onClick={() => toggleStatusFilter(status)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${colorClasses}`}
+                  onClick={() => {
+                    setStatusFilters([])
+                    setCurrentPage(1)
+                  }}
+                  className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap"
                 >
-                  {status}
+                  Clear
                 </button>
-              )
-            })}
-            {statusFilters.length > 0 && (
-              <button
-                onClick={() => {
-                  setStatusFilters([])
-                  setCurrentPage(1)
-                }}
-                className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 underline"
-              >
-                Clear filters
-              </button>
-            )}
+              )}
+            </div>
           </div>
         </div>
 

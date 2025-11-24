@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Edit, Calendar, DollarSign, Briefcase, CheckCircle, Clock, AlertCircle, Archive, FileText, X, Download, List } from 'lucide-react'
+import { Plus, Edit, Calendar, DollarSign, Briefcase, CheckCircle, Clock, AlertCircle, Archive, FileText, X, Download, List, Search, Trash2 } from 'lucide-react'
 import { ProjectStatus, STATUS_CONFIG } from '@/types'
 import { useAppStore } from '@/stores/appStore'
 
@@ -73,6 +73,16 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   const [loadingBOM, setLoadingBOM] = useState(false)
   const [bomProjectId, setBomProjectId] = useState<number | null>(null)
   const [bomProjectName, setBomProjectName] = useState<string>('')
+
+  // Search and filter state
+  const [searchTerm, setSearchTerm] = useState('')
+  const [searchExpanded, setSearchExpanded] = useState(false)
+  const [statusFilters, setStatusFilters] = useState<string[]>([])
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
+
+  // Delete confirmation state
+  const [deleteConfirm, setDeleteConfirm] = useState<{ projectId: number; projectName: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     fetchProjects()
@@ -378,6 +388,75 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
     }
   }
 
+  const handleDeleteProject = async () => {
+    if (!deleteConfirm) return
+
+    setDeleting(true)
+    try {
+      const response = await fetch(`/api/projects/${deleteConfirm.projectId}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        await fetchProjects()
+        setDeleteConfirm(null)
+        cancelEdit()
+      } else {
+        console.error('Failed to delete project')
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleArchiveProject = async (projectId: number) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: ProjectStatus.ARCHIVE })
+      })
+
+      if (response.ok) {
+        await fetchProjects()
+        cancelEdit()
+      } else {
+        console.error('Failed to archive project')
+      }
+    } catch (error) {
+      console.error('Error archiving project:', error)
+    }
+  }
+
+  const toggleStatusFilter = (status: string) => {
+    setStatusFilters(prev =>
+      prev.includes(status)
+        ? prev.filter(s => s !== status)
+        : [...prev, status]
+    )
+  }
+
+  // Filter projects based on search and status
+  const filteredProjects = projects.filter(project => {
+    // Search filter
+    const matchesSearch = searchTerm === '' ||
+      project.name.toLowerCase().includes(searchTerm.toLowerCase())
+
+    // Status filter - hide archived by default unless Archive filter is selected
+    const isArchived = project.status === ProjectStatus.ARCHIVE
+    const archiveFilterSelected = statusFilters.includes(ProjectStatus.ARCHIVE)
+
+    // If no filters selected: show all except archived
+    // If filters selected: show only matching statuses (including archive if selected)
+    const matchesStatus = statusFilters.length === 0
+      ? !isArchived
+      : statusFilters.includes(project.status)
+
+    return matchesSearch && matchesStatus
+  })
+
 
   if (loading) {
     return (
@@ -405,6 +484,79 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
             </button>
           </div>
 
+          {/* Search and Filter Controls */}
+          <div className="flex items-center gap-4 flex-wrap mb-4">
+            {/* Expandable Search Bar */}
+            <div className="relative flex items-center">
+              <button
+                onClick={() => setSearchExpanded(true)}
+                className={`p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200 ${searchExpanded ? 'opacity-0 pointer-events-none absolute' : ''}`}
+                title="Search projects"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+              {searchExpanded && (
+                <div className="relative animate-expand-search">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search projects..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onBlur={() => {
+                      if (!searchTerm) {
+                        setSearchExpanded(false)
+                      }
+                    }}
+                    autoFocus
+                    className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm text-gray-900 placeholder-gray-400 w-64"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Status Filter Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setFiltersExpanded(!filtersExpanded)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${
+                  filtersExpanded || statusFilters.length > 0
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Filter {statusFilters.length > 0 && `(${statusFilters.length})`}
+              </button>
+              <div className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out ${
+                filtersExpanded ? 'max-w-[800px] opacity-100' : 'max-w-0 opacity-0'
+              }`}>
+                {Object.entries(STATUS_CONFIG).map(([key, config]) => {
+                  const isActive = statusFilters.includes(key)
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => toggleStatusFilter(key)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 whitespace-nowrap ${
+                        isActive
+                          ? `${config.bgColor} ${config.textColor}`
+                          : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+                      }`}
+                    >
+                      {config.label}
+                    </button>
+                  )
+                })}
+                {statusFilters.length > 0 && (
+                  <button
+                    onClick={() => setStatusFilters([])}
+                    className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
 
           {/* Quick Stats */}
           {projects.length > 0 && (
@@ -460,7 +612,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-semibold text-gray-900 flex items-center">
               <Briefcase className="w-5 h-5 mr-2" />
-              Projects ({projects.length})
+              Projects ({filteredProjects.length}{statusFilters.length > 0 || searchTerm ? ` of ${projects.length}` : ''})
             </h2>
             <button
               onClick={() => setShowCreateForm(!showCreateForm)}
@@ -471,13 +623,86 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
             </button>
           </div>
 
+          {/* Search and Filter Controls */}
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Expandable Search Bar */}
+            <div className="relative flex items-center">
+              <button
+                onClick={() => setSearchExpanded(true)}
+                className={`p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200 ${searchExpanded ? 'opacity-0 pointer-events-none absolute' : ''}`}
+                title="Search projects"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+              {searchExpanded && (
+                <div className="relative animate-expand-search">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search projects..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onBlur={() => {
+                      if (!searchTerm) {
+                        setSearchExpanded(false)
+                      }
+                    }}
+                    autoFocus
+                    className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm text-gray-900 placeholder-gray-400 w-64"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Status Filter Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setFiltersExpanded(!filtersExpanded)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${
+                  filtersExpanded || statusFilters.length > 0
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Filter {statusFilters.length > 0 && `(${statusFilters.length})`}
+              </button>
+              <div className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out ${
+                filtersExpanded ? 'max-w-[800px] opacity-100' : 'max-w-0 opacity-0'
+              }`}>
+                {Object.entries(STATUS_CONFIG).map(([key, config]) => {
+                  const isActive = statusFilters.includes(key)
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => toggleStatusFilter(key)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 whitespace-nowrap ${
+                        isActive
+                          ? `${config.bgColor} ${config.textColor}`
+                          : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+                      }`}
+                    >
+                      {config.label}
+                    </button>
+                  )
+                })}
+                {statusFilters.length > 0 && (
+                  <button
+                    onClick={() => setStatusFilters([])}
+                    className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </>
       )}
 
       {/* Projects List */}
       <div className="space-y-4">
-        {projects.length > 0 ? (
-          projects.map((project) => (
+        {filteredProjects.length > 0 ? (
+          filteredProjects.map((project) => (
             <div
               key={project.id}
               onClick={() => onProjectClick?.(project.id)}
@@ -488,11 +713,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
               <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">
-                    {getStatusIcon(project.status)}
                     <h3 className="text-lg font-medium text-gray-900">{project.name}</h3>
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(project.status)}`}>
-                      {getStatusLabel(project.status)}
-                    </span>
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600">
@@ -509,10 +730,6 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                     <div className="flex items-center">
                       <Briefcase className="w-4 h-4 mr-1" />
                       <span>{project.openings.length} openings</span>
-                    </div>
-                    <div className="flex items-center">
-                      <DollarSign className="w-4 h-4 mr-1" />
-                      <span>${calculateProjectValue(project).toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
@@ -580,7 +797,6 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
               <div className="mt-4 pt-4 border-t border-gray-200">
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(STATUS_CONFIG)
-                    .filter(([key]) => key !== ProjectStatus.REVISE && key !== ProjectStatus.QUOTE_ACCEPTED)
                     .map(([key, config]) => {
                       const isActive = project.status === key
                       return (
@@ -618,7 +834,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                 className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mx-auto"
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Create First Project
+                Create Project
               </button>
             </div>
           </div>
@@ -742,6 +958,33 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                   Select a pricing mode to apply pre-configured markup and discount rules
                 </p>
               </div>
+              {/* Delete/Archive Actions */}
+              <div className="border-t border-gray-200 pt-4 mt-4">
+                <p className="text-sm font-medium text-gray-700 mb-3">Project Actions</p>
+                <div className="flex gap-2">
+                  {editingProject.status !== ProjectStatus.ARCHIVE && (
+                    <button
+                      type="button"
+                      onClick={() => handleArchiveProject(editingProject.id)}
+                      disabled={updating}
+                      className="flex items-center px-3 py-2 text-sm text-orange-600 border border-orange-300 rounded-lg hover:bg-orange-50 disabled:opacity-50"
+                    >
+                      <Archive className="w-4 h-4 mr-1" />
+                      Archive
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirm({ projectId: editingProject.id, projectName: editingProject.name })}
+                    disabled={updating}
+                    className="flex items-center px-3 py-2 text-sm text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Delete
+                  </button>
+                </div>
+              </div>
+
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
@@ -763,6 +1006,44 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Delete Project
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to permanently delete <strong>{deleteConfirm.projectName}</strong>? This action cannot be undone and will remove all associated openings, panels, and data.
+            </p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-red-700">
+                Consider archiving the project instead if you may need to reference it later.
+              </p>
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteProject}
+                disabled={deleting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center"
+              >
+                {deleting && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                )}
+                {deleting ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
           </div>
         </div>
       )}
