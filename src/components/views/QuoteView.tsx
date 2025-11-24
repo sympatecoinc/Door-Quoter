@@ -599,15 +599,15 @@ export default function QuoteView() {
                   {/* Elevation Thumbnails - All Panels Side by Side */}
                   <td className="py-6 px-6 w-56 border-r border-gray-200">
                     {item.elevationImages && item.elevationImages.length > 0 ? (
-                      <div className="flex items-center justify-center h-40">
+                      <div className="flex items-center justify-center h-40 gap-0">
                         {item.elevationImages.map((elevationImage, imgIndex) => (
-                          <div key={imgIndex} className="flex-1 h-full flex items-center justify-center">
-                            <img
-                              src={elevationImage.startsWith('data:') ? elevationImage : `data:image/png;base64,${elevationImage}`}
-                              alt={`Opening ${item.name} panel ${imgIndex + 1}`}
-                              className="max-w-full max-h-full object-contain"
-                            />
-                          </div>
+                          <img
+                            key={imgIndex}
+                            src={elevationImage.startsWith('data:') ? elevationImage : `data:image/png;base64,${elevationImage}`}
+                            alt={`Opening ${item.name} panel ${imgIndex + 1}`}
+                            className="h-full object-contain"
+                            style={{ width: `${100 / item.elevationImages.length}%` }}
+                          />
                         ))}
                       </div>
                     ) : (

@@ -66,9 +66,9 @@ export async function createQuotePDF(
   quoteData: QuoteData,
   attachments: QuoteAttachment[] = []
 ): Promise<Buffer> {
-  // Create PDF in landscape mode, letter size
+  // Create PDF in portrait mode, letter size
   const pdf = new jsPDF({
-    orientation: 'landscape',
+    orientation: 'portrait',
     unit: 'mm',
     format: 'letter'
   })
@@ -125,7 +125,7 @@ export async function createQuotePDF(
         console.error(`PDF attachment not found: ${attachmentPath}`)
         // Add a placeholder page for the missing PDF
         const placeholderPdf = new jsPDF({
-          orientation: 'landscape',
+          orientation: 'portrait',
           unit: 'mm',
           format: 'letter'
         })
@@ -155,7 +155,7 @@ export async function createQuotePDF(
         console.error(`Error loading PDF attachment ${attachmentPath}:`, error)
         // Add error placeholder page
         const errorPdf = new jsPDF({
-          orientation: 'landscape',
+          orientation: 'portrait',
           unit: 'mm',
           format: 'letter'
         })
@@ -186,7 +186,7 @@ export async function createQuotePDF(
     // Add 'after' image attachments as new jsPDF pages, then merge
     if (afterImages.length > 0) {
       const afterImagesPdf = new jsPDF({
-        orientation: 'landscape',
+        orientation: 'portrait',
         unit: 'mm',
         format: 'letter'
       })
@@ -316,17 +316,16 @@ async function addQuoteItemsTable(
 ): Promise<void> {
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
-  const marginX = 20
+  const marginX = 15 // Reduced from 20mm to maximize width for portrait layout
   const cellPadding = 3
   const rowHeight = 45 // Height for rows with images (increased for better door proportions)
   const footerHeight = 60 // Space needed for footer with pricing
   const ITEMS_PER_PAGE = 4 // Maximum items per page
 
-  // Column widths - optimized for content needs
-  const colElevation = 60 // Doubled from 30mm to show proper door proportions
-  const colOpening = 47.25 // Adjusted to 50% wider than initial reduction
-  const colPrice = 30 // Reduced by ~50% to accommodate specs
-  const colSpecs = pageWidth - 2 * marginX - colElevation - colOpening - colPrice // Expanded to take remaining space (~102mm)
+  // Column widths - optimized for portrait layout
+  const colElevation = 53 // 33% wider than previous 40mm for better elevation visibility
+  const colOpening = 105 // Combined Opening + Specifications column
+  const colPrice = 28 // Narrower price column as requested
 
   const totalItems = quoteData.quoteItems.length
   let currentY = startY
@@ -368,8 +367,6 @@ async function addQuoteItemsTable(
     currentX += colElevation
     pdf.text('Opening', currentX + colOpening / 2, yPos + 5.5, { align: 'center' })
     currentX += colOpening
-    pdf.text('Specifications', currentX + colSpecs / 2, yPos + 5.5, { align: 'center' })
-    currentX += colSpecs
     pdf.text('Price', currentX + colPrice / 2, yPos + 5.5, { align: 'center' })
 
     pdf.setTextColor(0, 0, 0)
@@ -446,9 +443,9 @@ async function addQuoteItemsTable(
       )
       const panelHeight = Math.min(availableHeight, panelWidth * assumedAspectRatio)
 
-      // Center the group of panels horizontally in the column
+      // Position panels side-by-side starting from left (no gap between panels)
       const totalPanelsWidth = panelWidth * numPanels
-      const startX = currentX + cellPadding + (availableWidth - totalPanelsWidth) / 2
+      const startX = currentX + cellPadding
 
       for (let i = 0; i < numPanels; i++) {
         try {
@@ -474,14 +471,14 @@ async function addQuoteItemsTable(
             format = 'JPEG'
           }
 
-          pdf.addImage(imgData, format, imgX, imgY, panelWidth - 0.5, panelHeight)
+          pdf.addImage(imgData, format, imgX, imgY, panelWidth, panelHeight)
         } catch (error) {
           console.error('Error adding elevation image:', error)
           // Draw a placeholder box instead
           const imgX = startX + (i * panelWidth)
           const imgY = currentY + cellPadding + (availableHeight - panelHeight) / 2
           pdf.setDrawColor(200, 200, 200)
-          pdf.rect(imgX, imgY, panelWidth - 0.5, panelHeight)
+          pdf.rect(imgX, imgY, panelWidth, panelHeight)
         }
       }
     }
@@ -490,7 +487,10 @@ async function addQuoteItemsTable(
     // Vertical separator
     pdf.line(currentX, currentY, currentX, currentY + rowHeight)
 
-    // Column 2: Opening name and description
+    // Column 2: Combined Opening and Specifications
+    let contentY = currentY + cellPadding + 4
+
+    // Opening name with direction
     pdf.setFontSize(10)
     pdf.setFont('helvetica', 'bold')
     let openingNameText = item.name
@@ -498,50 +498,48 @@ async function addQuoteItemsTable(
       openingNameText += ` (${item.openingDirections.join(', ')})`
     }
     const openingNameLines = pdf.splitTextToSize(openingNameText, colOpening - 2 * cellPadding)
-    pdf.text(openingNameLines, currentX + cellPadding, currentY + cellPadding + 4)
+    pdf.text(openingNameLines, currentX + cellPadding, contentY)
+    contentY += 5 * openingNameLines.length
 
+    // Opening type (description - e.g., "1 Sliding Door")
     pdf.setFontSize(8)
     pdf.setFont('helvetica', 'normal')
     const descLines = pdf.splitTextToSize(item.description, colOpening - 2 * cellPadding)
-    pdf.text(descLines, currentX + cellPadding, currentY + cellPadding + 10)
-    currentX += colOpening
+    pdf.text(descLines, currentX + cellPadding, contentY)
+    contentY += 4 * descLines.length + 2
 
-    // Vertical separator
-    pdf.line(currentX, currentY, currentX, currentY + rowHeight)
-
-    // Column 3: Specifications (Combined with Hardware)
+    // Door specifications
     pdf.setFontSize(8)
-    let specY = currentY + cellPadding + 4
-
     pdf.setFont('helvetica', 'bold')
-    pdf.text('DIMENSIONS: ', currentX + cellPadding, specY)
+    pdf.text('DIMENSIONS: ', currentX + cellPadding, contentY)
     pdf.setFont('helvetica', 'normal')
     const dimWidth = pdf.getTextWidth('DIMENSIONS: ')
-    pdf.text(item.dimensions, currentX + cellPadding + dimWidth, specY)
+    pdf.text(item.dimensions, currentX + cellPadding + dimWidth, contentY)
+    contentY += 4
 
     pdf.setFont('helvetica', 'bold')
-    pdf.text('COLOR: ', currentX + cellPadding, specY + 5)
+    pdf.text('COLOR: ', currentX + cellPadding, contentY)
     pdf.setFont('helvetica', 'normal')
     const colorWidth = pdf.getTextWidth('COLOR: ')
-    pdf.text(item.color.toUpperCase(), currentX + cellPadding + colorWidth, specY + 5)
+    pdf.text(item.color.toUpperCase(), currentX + cellPadding + colorWidth, contentY)
+    contentY += 4
 
     pdf.setFont('helvetica', 'bold')
-    pdf.text('GLASS: ', currentX + cellPadding, specY + 10)
+    pdf.text('GLASS: ', currentX + cellPadding, contentY)
     pdf.setFont('helvetica', 'normal')
     const glassWidth = pdf.getTextWidth('GLASS: ')
-    pdf.text(item.glassType.toUpperCase(), currentX + cellPadding + glassWidth, specY + 10)
+    pdf.text(item.glassType.toUpperCase(), currentX + cellPadding + glassWidth, contentY)
+    contentY += 4
 
-    // Add hardware options below specs if they exist
+    // Add hardware options if they exist
     if (item.hardware && item.hardware !== 'Standard') {
-      specY += 13
-      // Add space above the divider line
-      specY += 3
+      // Add space before hardware section
+      contentY += 1
       // Draw a subtle separator line
       pdf.setDrawColor(200, 200, 200)
       pdf.setLineWidth(0.2)
-      pdf.line(currentX + cellPadding, specY, currentX + colSpecs - cellPadding, specY)
-      // Add space below the divider line
-      specY += 3
+      pdf.line(currentX + cellPadding, contentY, currentX + colOpening - cellPadding, contentY)
+      contentY += 5
 
       // Split hardware items and format them
       const hardwareItems = item.hardware.split(' • ')
@@ -559,13 +557,13 @@ async function addQuoteItemsTable(
 
           // Draw category name in bold
           pdf.setFont('helvetica', 'bold')
-          pdf.text(categoryName, currentX + cellPadding, specY)
+          pdf.text(categoryName, currentX + cellPadding, contentY)
 
           // Draw remainder in normal font
           pdf.setFont('helvetica', 'normal')
           let categoryWidth = pdf.getTextWidth(categoryName)
-          const remainderLines = pdf.splitTextToSize(remainder, colSpecs - 2 * cellPadding - categoryWidth)
-          pdf.text(remainderLines, currentX + cellPadding + categoryWidth, specY)
+          const remainderLines = pdf.splitTextToSize(remainder, colOpening - 2 * cellPadding - categoryWidth)
+          pdf.text(remainderLines, currentX + cellPadding + categoryWidth, contentY)
 
           // Add STANDARD badge if applicable
           if (hasStandardBadge) {
@@ -577,26 +575,26 @@ async function addQuoteItemsTable(
             pdf.setFillColor(220, 220, 220) // Light gray
             const badgeWidth = pdf.getTextWidth(' STANDARD ') + 1
             const badgeHeight = 3.5
-            pdf.roundedRect(badgeX, specY - 2.5, badgeWidth, badgeHeight, 0.5, 0.5, 'F')
+            pdf.roundedRect(badgeX, contentY - 2.5, badgeWidth, badgeHeight, 0.5, 0.5, 'F')
 
             // Draw badge text
             pdf.setFont('helvetica', 'bold')
             pdf.setFontSize(7)
-            pdf.text('STANDARD', badgeX + 0.5, specY, { baseline: 'middle' })
+            pdf.text('STANDARD', badgeX + 0.5, contentY, { baseline: 'middle' })
             pdf.setFontSize(8)
           }
 
-          specY += 4 * remainderLines.length
+          contentY += 4 * remainderLines.length
         } else {
           // No category, just display as normal
           pdf.setFont('helvetica', 'normal')
-          const hardwareLines = pdf.splitTextToSize(formattedItem, colSpecs - 2 * cellPadding)
-          pdf.text(hardwareLines, currentX + cellPadding, specY)
-          specY += 4 * hardwareLines.length
+          const hardwareLines = pdf.splitTextToSize(formattedItem, colOpening - 2 * cellPadding)
+          pdf.text(hardwareLines, currentX + cellPadding, contentY)
+          contentY += 4 * hardwareLines.length
         }
       }
     }
-    currentX += colSpecs
+    currentX += colOpening
 
     // Vertical separator
     pdf.line(currentX, currentY, currentX, currentY + rowHeight)

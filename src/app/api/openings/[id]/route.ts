@@ -71,8 +71,11 @@ export async function PUT(
       roughWidth: roughWidth ? parseFloat(roughWidth) : null,
       roughHeight: roughHeight ? parseFloat(roughHeight) : null,
       finishedWidth: finishedWidth ? parseFloat(finishedWidth) : null,
-      finishedHeight: finishedHeight ? parseFloat(finishedHeight) : null,
-      price: parseFloat(price) || 0
+      finishedHeight: finishedHeight ? parseFloat(finishedHeight) : null
+    }
+
+    if (price !== undefined) {
+      updateData.price = parseFloat(price) || 0
     }
 
     if (multiplier !== undefined) {

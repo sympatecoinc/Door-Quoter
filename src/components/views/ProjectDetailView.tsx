@@ -376,6 +376,7 @@ export default function ProjectDetailView() {
         setProject(projectData)
         setEditName(projectData.name)
         setEditStatus(projectData.status)
+        return projectData
       }
     } catch (error) {
       console.error('Error fetching project:', error)
@@ -678,7 +679,13 @@ export default function ProjectDetailView() {
       })
 
       if (response.ok) {
-        await fetchProject()
+        const updatedProject = await fetchProject()
+
+        // Recalculate prices since finish color affects extrusion costs
+        if (updatedProject) {
+          await calculateAllOpeningPrices(updatedProject)
+        }
+
         setShowEditOpeningModal(false)
         setEditingOpeningId(null)
         setEditingOpeningName('')

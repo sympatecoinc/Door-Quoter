@@ -168,13 +168,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                         for (const option of pso.category.individualOptions) {
                           if (option.id === optionId) {
                             const isIncluded = includedOptions.includes(Number(optionId))
+                            const optionPrice = isIncluded ? 0 : (option.price || 0)
                             hardwareItems.push({
                               name: `${pso.category.name}: ${option.name}`,
-                              price: option.price || 0,
+                              price: optionPrice,
                               isIncluded: isIncluded
                             })
-                            totalHardwarePrice += option.price || 0
-                            hardwareCost += option.price || 0
+                            totalHardwarePrice += optionPrice
+                            hardwareCost += optionPrice
                             break
                           }
                         }
