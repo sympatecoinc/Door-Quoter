@@ -7,11 +7,12 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 const SWING_DIRECTIONS = ["Left In", "Right In", "Left Out", "Right Out"]
 const SLIDING_DIRECTIONS = ["Left", "Right"]
 const CORNER_DIRECTIONS = ["Up", "Down"]
-import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive } from 'lucide-react'
+import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive, X } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 import DrawingViewer from '../ui/DrawingViewer'
+import { ProjectStatus, STATUS_CONFIG } from '@/types'
 
 interface Project {
   id: number
@@ -41,6 +42,7 @@ interface Opening {
   price: number
   multiplier: number
   priceCalculatedAt?: string | null
+  finishColor?: string
   panels: Panel[]
 }
 
@@ -146,6 +148,15 @@ export default function ProjectDetailView() {
   const [duplicateCount, setDuplicateCount] = useState('1')
   const [isDuplicating, setIsDuplicating] = useState(false)
   const [autoIncrement, setAutoIncrement] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletingOpeningId, setDeletingOpeningId] = useState<number | null>(null)
+  const [deletingOpeningName, setDeletingOpeningName] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showEditOpeningModal, setShowEditOpeningModal] = useState(false)
+  const [editingOpeningId, setEditingOpeningId] = useState<number | null>(null)
+  const [editingOpeningName, setEditingOpeningName] = useState('')
+  const [editingOpeningFinishColor, setEditingOpeningFinishColor] = useState('')
+  const [isUpdatingOpening, setIsUpdatingOpening] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showAddOpening, setShowAddOpening] = useState(false)
   const [addingOpening, setAddingOpening] = useState(false)
@@ -365,6 +376,7 @@ export default function ProjectDetailView() {
         setProject(projectData)
         setEditName(projectData.name)
         setEditStatus(projectData.status)
+        return projectData
       }
     } catch (error) {
       console.error('Error fetching project:', error)
@@ -612,21 +624,80 @@ export default function ProjectDetailView() {
     }
   }
 
-  async function handleDeleteOpening(openingId: number) {
-    if (!confirm('Are you sure you want to delete this opening? This will also delete all components in this opening.')) return
-    
+  function handleShowDeleteModal(openingId: number, openingName: string) {
+    setDeletingOpeningId(openingId)
+    setDeletingOpeningName(openingName)
+    setShowDeleteModal(true)
+  }
+
+  async function handleConfirmDelete() {
+    if (!deletingOpeningId) return
+
+    setIsDeleting(true)
     try {
-      const response = await fetch(`/api/openings/${openingId}`, {
+      const response = await fetch(`/api/openings/${deletingOpeningId}`, {
         method: 'DELETE'
       })
 
       if (response.ok) {
         await fetchProject()
-        alert('Opening deleted successfully!')
+        setShowDeleteModal(false)
+        setDeletingOpeningId(null)
+        setDeletingOpeningName('')
+      } else {
+        showError('Error deleting opening')
       }
     } catch (error) {
       console.error('Error deleting opening:', error)
-      alert('Error deleting opening')
+      showError('Error deleting opening')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  function handleShowEditOpeningModal(opening: Opening) {
+    setEditingOpeningId(opening.id)
+    setEditingOpeningName(opening.name)
+    setEditingOpeningFinishColor(opening.finishColor || '')
+    setShowEditOpeningModal(true)
+  }
+
+  async function handleUpdateOpening() {
+    if (!editingOpeningId || !editingOpeningName.trim()) return
+
+    setIsUpdatingOpening(true)
+    try {
+      const response = await fetch(`/api/openings/${editingOpeningId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: editingOpeningName,
+          finishColor: editingOpeningFinishColor || null
+        }),
+      })
+
+      if (response.ok) {
+        const updatedProject = await fetchProject()
+
+        // Recalculate prices since finish color affects extrusion costs
+        if (updatedProject) {
+          await calculateAllOpeningPrices(updatedProject)
+        }
+
+        setShowEditOpeningModal(false)
+        setEditingOpeningId(null)
+        setEditingOpeningName('')
+        setEditingOpeningFinishColor('')
+      } else {
+        showError('Error updating opening')
+      }
+    } catch (error) {
+      console.error('Error updating opening:', error)
+      showError('Error updating opening')
+    } finally {
+      setIsUpdatingOpening(false)
     }
   }
 
@@ -1240,12 +1311,16 @@ export default function ProjectDetailView() {
                 <div className="mb-3">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-3">
-                      <h3 className="font-bold text-gray-900">{opening.name}</h3>
-                      {opening.finishColor && (
-                        <span className={`px-2 py-1 text-sm font-bold rounded border ${getColorStyling(opening.finishColor)}`}>
-                          {opening.finishColor}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1">
+                        <h3 className="font-bold text-gray-900">{opening.name}</h3>
+                        <button
+                          onClick={() => handleShowEditOpeningModal(opening)}
+                          className="p-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+                          title="Edit opening name and finish"
+                        >
+                          <Settings className="w-5 h-5" />
+                        </button>
+                      </div>
                       <span className="px-2 py-1 text-sm font-bold rounded border bg-green-600 text-white border-green-600">
                         ${opening.price.toLocaleString()}
                       </span>
@@ -1274,11 +1349,21 @@ export default function ProjectDetailView() {
                       </button>
                     </div>
                   </div>
-                  {opening.roughWidth && opening.roughHeight && (
-                    <p className="text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    {opening.roughWidth && opening.roughHeight && (
+                      <span>
 {`${opening.roughWidth}" W × ${opening.roughHeight}" H (Rough)`}
-                    </p>
-                  )}
+                      </span>
+                    )}
+                    {opening.finishColor && (
+                      <>
+                        {opening.roughWidth && opening.roughHeight && <span>•</span>}
+                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                          Finish: <span className="font-medium text-gray-700">{opening.finishColor}</span>
+                        </span>
+                      </>
+                    )}
+                  </div>
                 </div>
                 
                 {/* Components */}
@@ -2038,73 +2123,12 @@ export default function ProjectDetailView() {
                   disabled={saving}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
                 >
-                  <option value="Draft">Draft</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
+                  {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+                    <option key={key} value={key}>
+                      {config.label}
+                    </option>
+                  ))}
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Pricing Mode
-                </label>
-                <select
-                  value={editPricingModeId || ''}
-                  onChange={(e) => setEditPricingModeId(e.target.value ? parseInt(e.target.value) : null)}
-                  disabled={saving}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
-                >
-                  <option value="">
-                    {pricingModes.find(m => m.isDefault)
-                      ? `Use Default (${pricingModes.find(m => m.isDefault)!.name})`
-                      : 'Use Default'}
-                  </option>
-                  {pricingModes.map((mode) => {
-                    // Build description based on what markups are set
-                    const parts = []
-                    if (mode.extrusionMarkup > 0 || mode.hardwareMarkup > 0 || mode.glassMarkup > 0) {
-                      const categoryParts = []
-                      if (mode.extrusionMarkup > 0) categoryParts.push(`E:${mode.extrusionMarkup}%`)
-                      if (mode.hardwareMarkup > 0) categoryParts.push(`H:${mode.hardwareMarkup}%`)
-                      if (mode.glassMarkup > 0) categoryParts.push(`G:${mode.glassMarkup}%`)
-                      parts.push(categoryParts.join(', '))
-                    } else if (mode.markup > 0) {
-                      parts.push(`+${mode.markup}%`)
-                    }
-                    if (mode.discount > 0) parts.push(`-${mode.discount}%`)
-
-                    const description = parts.length > 0 ? ` (${parts.join(', ')})` : ''
-                    const defaultIndicator = mode.isDefault ? ' ✓ Default' : ''
-                    return (
-                      <option key={mode.id} value={mode.id}>
-                        {mode.name}{description}{defaultIndicator}
-                      </option>
-                    )
-                  })}
-                </select>
-                <p className="mt-1 text-xs text-gray-500">
-                  Pre-configured markup and discount rules. Leave blank to use default pricing mode.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tax Rate (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
-                  value={editTaxRate}
-                  onChange={(e) => setEditTaxRate(e.target.value)}
-                  disabled={saving}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
-                  placeholder="0.00"
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  Pre-populated based on delivery address, but can be overwritten
-                </p>
               </div>
 
               {/* Openings Management */}
@@ -2123,7 +2147,7 @@ export default function ProjectDetailView() {
                           </div>
                         </div>
                         <button
-                          onClick={() => handleDeleteOpening(opening.id)}
+                          onClick={() => handleShowDeleteModal(opening.id, opening.name)}
                           className="p-1 text-red-600 hover:text-red-700 hover:bg-red-100 rounded transition-colors"
                           title="Delete Opening"
                           disabled={saving}
@@ -2427,6 +2451,125 @@ export default function ProjectDetailView() {
             setSelectedDrawingOpeningNumber('')
           }}
         />
+      )}
+
+      {/* Delete Opening Confirmation Modal */}
+      {/* Edit Opening Modal */}
+      {showEditOpeningModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold text-gray-900">Edit Opening</h3>
+              <button
+                onClick={() => {
+                  setShowEditOpeningModal(false)
+                  setEditingOpeningId(null)
+                  setEditingOpeningName('')
+                  setEditingOpeningFinishColor('')
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Opening Name *
+                </label>
+                <input
+                  type="text"
+                  value={editingOpeningName}
+                  onChange={(e) => setEditingOpeningName(e.target.value)}
+                  placeholder="Enter opening name..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Finish Color
+                </label>
+                <select
+                  value={editingOpeningFinishColor}
+                  onChange={(e) => setEditingOpeningFinishColor(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">None</option>
+                  {finishTypes.map((finish) => (
+                    <option key={finish.id} value={finish.finishType}>
+                      {finish.finishType}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 mt-6">
+              <button
+                onClick={() => {
+                  setShowEditOpeningModal(false)
+                  setEditingOpeningId(null)
+                  setEditingOpeningName('')
+                  setEditingOpeningFinishColor('')
+                }}
+                disabled={isUpdatingOpening}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateOpening}
+                disabled={isUpdatingOpening || !editingOpeningName.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+              >
+                {isUpdatingOpening && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                )}
+                {isUpdatingOpening ? 'Updating...' : 'Update Opening'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              Delete Opening
+            </h3>
+
+            <p className="text-sm text-gray-600 mb-6">
+              Are you sure you want to delete "<strong>{deletingOpeningName}</strong>"? This will also delete all components in this opening.
+            </p>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false)
+                  setDeletingOpeningId(null)
+                  setDeletingOpeningName('')
+                }}
+                disabled={isDeleting}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+              >
+                {isDeleting && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                )}
+                {isDeleting ? 'Deleting...' : 'Delete Opening'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Duplicate Opening Modal */}

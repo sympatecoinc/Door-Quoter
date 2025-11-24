@@ -117,7 +117,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const maxHeight = Math.max(...opening.panels.map(panel => panel.height), 0)
 
         // Get hardware and glass types
-        const hardwareItems: Array<{name: string, price: number}> = []
+        const hardwareItems: Array<{name: string, price: number, isIncluded: boolean}> = []
         const glassTypes = new Set<string>()
         let totalHardwarePrice = 0
 
@@ -156,6 +156,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           if (panel.componentInstance?.subOptionSelections) {
             try {
               const selections = JSON.parse(panel.componentInstance.subOptionSelections)
+              const includedOptions = JSON.parse(panel.componentInstance.includedOptions || '[]')
 
               for (const [categoryId, optionId] of Object.entries(selections)) {
                 if (optionId) {
@@ -166,12 +167,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                           categoryName.includes('lock') || categoryName.includes('hinge')) {
                         for (const option of pso.category.individualOptions) {
                           if (option.id === optionId) {
+                            const isIncluded = includedOptions.includes(Number(optionId))
+                            const optionPrice = isIncluded ? 0 : (option.price || 0)
                             hardwareItems.push({
                               name: `${pso.category.name}: ${option.name}`,
-                              price: option.price || 0
+                              price: optionPrice,
+                              isIncluded: isIncluded
                             })
-                            totalHardwarePrice += option.price || 0
-                            hardwareCost += option.price || 0
+                            totalHardwarePrice += optionPrice
+                            hardwareCost += optionPrice
                             break
                           }
                         }
@@ -232,7 +236,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           description: description || 'Custom Opening',
           dimensions: `${totalWidth}" W × ${maxHeight}" H`,
           color: opening.finishColor || 'Standard',
-          hardware: hardwareItems.length > 0 ? hardwareItems.map(item => `${item.name} | +$${item.price.toLocaleString()}`).join(' • ') : 'Standard',
+          hardware: hardwareItems.length > 0 ? hardwareItems.map(item => `${item.name} | +$${item.price.toLocaleString()}${item.isIncluded ? ' | STANDARD' : ''}`).join(' • ') : 'Standard',
           hardwarePrice: totalHardwarePrice,
           glassType: Array.from(glassTypes).join(', ') || 'Clear',
           costPrice: opening.price,

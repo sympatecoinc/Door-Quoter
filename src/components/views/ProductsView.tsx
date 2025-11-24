@@ -47,6 +47,7 @@ interface IndividualOption {
 export default function ProductsView() {
   const [activeTab, setActiveTab] = useState('products')
   const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   
@@ -67,7 +68,7 @@ export default function ProductsView() {
   async function loadData() {
     setLoading(true)
     try {
-      await fetchProducts()
+      await Promise.all([fetchProducts(), fetchCategories()])
     } finally {
       setLoading(false)
     }
@@ -83,6 +84,18 @@ export default function ProductsView() {
       }
     } catch (error) {
       console.error('Error fetching products:', error)
+    }
+  }
+
+  async function fetchCategories() {
+    try {
+      const response = await fetch('/api/categories')
+      if (response.ok) {
+        const data = await response.json()
+        setCategories(data)
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error)
     }
   }
 
@@ -263,7 +276,7 @@ export default function ProductsView() {
               selectedProduct ? (
                 <ProductDetailView
                   product={selectedProduct}
-                  categories={[]}
+                  categories={categories}
                   productBOMs={[]}
                   onBack={() => setSelectedProduct(null)}
                   onRefresh={loadData}

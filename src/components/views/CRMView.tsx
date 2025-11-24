@@ -21,7 +21,7 @@ interface CRMData {
 }
 
 export default function CRMView() {
-  const { selectedCustomerId, customerDetailView, setSelectedCustomerId, setCustomerDetailView } = useAppStore()
+  const { selectedCustomerId, customerDetailView, setSelectedCustomerId, setCustomerDetailView, setCustomerDetailTab } = useAppStore()
   const [data, setData] = useState<CRMData>({
     stats: {
       totalCustomers: 0,
@@ -143,6 +143,8 @@ export default function CRMView() {
   }
 
   const handleViewCustomer = (customer: any) => {
+    // Always reset to overview tab when opening a customer
+    setCustomerDetailTab('overview')
     setSelectedCustomerId(customer.id)
     setCustomerDetailView(true)
   }

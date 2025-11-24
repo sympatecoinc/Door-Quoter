@@ -5,7 +5,8 @@ export enum ProjectStatus {
   QUOTE_SENT = 'QUOTE_SENT',
   QUOTE_ACCEPTED = 'QUOTE_ACCEPTED',
   ACTIVE = 'ACTIVE',
-  COMPLETE = 'COMPLETE'
+  COMPLETE = 'COMPLETE',
+  ARCHIVE = 'ARCHIVE'
 }
 
 export interface Project {
@@ -74,6 +75,12 @@ export const STATUS_CONFIG: Record<ProjectStatus, {
     color: 'teal',
     bgColor: 'bg-teal-100',
     textColor: 'text-teal-800'
+  },
+  [ProjectStatus.ARCHIVE]: {
+    label: 'Archive',
+    color: 'slate',
+    bgColor: 'bg-slate-100',
+    textColor: 'text-slate-800'
   }
 }
 

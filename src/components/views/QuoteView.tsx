@@ -589,8 +589,7 @@ export default function QuoteView() {
               <tr className="bg-black">
                 <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Elevation</th>
                 <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Opening</th>
-                <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Specs</th>
-                <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Hardware</th>
+                <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Specifications</th>
                 <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs align-middle">Price</th>
               </tr>
             </thead>
@@ -600,15 +599,15 @@ export default function QuoteView() {
                   {/* Elevation Thumbnails - All Panels Side by Side */}
                   <td className="py-6 px-6 w-56 border-r border-gray-200">
                     {item.elevationImages && item.elevationImages.length > 0 ? (
-                      <div className="flex items-center justify-center h-40">
+                      <div className="flex items-center justify-center h-40 gap-0">
                         {item.elevationImages.map((elevationImage, imgIndex) => (
-                          <div key={imgIndex} className="flex-1 h-full flex items-center justify-center">
-                            <img
-                              src={elevationImage.startsWith('data:') ? elevationImage : `data:image/png;base64,${elevationImage}`}
-                              alt={`Opening ${item.name} panel ${imgIndex + 1}`}
-                              className="max-w-full max-h-full object-contain"
-                            />
-                          </div>
+                          <img
+                            key={imgIndex}
+                            src={elevationImage.startsWith('data:') ? elevationImage : `data:image/png;base64,${elevationImage}`}
+                            alt={`Opening ${item.name} panel ${imgIndex + 1}`}
+                            className="h-full object-contain"
+                            style={{ width: `${100 / item.elevationImages.length}%` }}
+                          />
                         ))}
                       </div>
                     ) : (
@@ -641,7 +640,7 @@ export default function QuoteView() {
                     </div>
                   </td>
 
-                  {/* Specifications */}
+                  {/* Specifications (Combined with Hardware) */}
                   <td className="py-6 px-6 min-w-0 border-r border-gray-200">
                     <div className="space-y-1 text-sm">
                       <div className="whitespace-nowrap">
@@ -656,24 +655,17 @@ export default function QuoteView() {
                         <span className="font-medium text-gray-500 uppercase tracking-wide">GLASS </span>
                         <span className="font-medium text-gray-900">{item.glassType.toUpperCase()}</span>
                       </div>
+                      {/* Hardware Options */}
+                      {item.hardware && item.hardware !== 'Standard' && (
+                        <div className="mt-2 pt-2 border-t border-gray-200">
+                          {item.hardware.split(' • ').map((hardwareItem, hardwareIndex) => (
+                            <div key={hardwareIndex} className="text-sm text-gray-700">
+                              {hardwareItem.replace(' | +', ' - ')}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </td>
-
-                  {/* Hardware */}
-                  <td className="py-6 px-6 min-w-0 border-r border-gray-200">
-                    {item.hardware && item.hardware !== 'Standard' ? (
-                      <div className="space-y-1">
-                        {item.hardware.split(' • ').map((hardwareItem, index) => (
-                          <div key={index} className="text-sm whitespace-nowrap text-gray-700">
-                            • {hardwareItem}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-gray-500 text-sm">
-                        <span>Standard Hardware</span>
-                      </div>
-                    )}
                   </td>
 
                   {/* Price */}

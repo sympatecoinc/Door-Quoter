@@ -43,7 +43,7 @@ interface ExtendedDashboardData extends DashboardData {
 }
 
 export default function DashboardView() {
-  const { selectedCustomerId, customerDetailView, setSelectedCustomerId, setCustomerDetailView } = useAppStore()
+  const { selectedCustomerId, customerDetailView, setSelectedCustomerId, setCustomerDetailView, setCustomerDetailTab } = useAppStore()
   const [data, setData] = useState<ExtendedDashboardData>({
     stats: {
       totalProjects: 0,
@@ -164,9 +164,26 @@ export default function DashboardView() {
     }
   }
 
-  const handleViewCustomer = (customer: any) => {
+  const handleViewCustomer = async (customer: any) => {
+    // Always reset to overview tab when opening a customer
+    setCustomerDetailTab('overview')
     setSelectedCustomerId(customer.id)
     setCustomerDetailView(true)
+
+    // Update customer's updatedAt timestamp to track when it was last opened
+    try {
+      await fetch(`/api/customers/${customer.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyName: customer.companyName,
+          // Send minimal data to just trigger an update
+          lastViewedAt: new Date().toISOString()
+        })
+      })
+    } catch (error) {
+      console.error('Error updating customer view timestamp:', error)
+    }
   }
 
   const handleBackToCustomers = () => {
