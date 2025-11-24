@@ -1406,13 +1406,6 @@ export default function ProjectDetailView() {
                               </div>
                               <div className="flex items-center gap-2 text-xs">
                                 <span className="text-gray-600">{panel.componentInstance!.product.type}</span>
-                                <span className={`px-2 py-1 rounded-full ${
-                                  (panel.componentInstance!.product as any).withTrim === 'With Trim' 
-                                    ? 'bg-purple-100 text-purple-700' 
-                                    : 'bg-gray-100 text-gray-700'
-                                }`}>
-                                  {(panel.componentInstance!.product as any).withTrim}
-                                </span>
                                 {panel.isCorner && (
                                   <span className="px-2 py-1 rounded-full bg-orange-100 text-orange-700">
                                     ⊥ {panel.cornerDirection}
@@ -1628,7 +1621,7 @@ export default function ProjectDetailView() {
                   <option value="">Select a product...</option>
                   {products.map((product) => (
                     <option key={product.id} value={product.id}>
-                      {product.productType === 'CORNER_90' ? '90° Corner' : `${product.name} (${product.withTrim})`}
+                      {product.productType === 'CORNER_90' ? '90° Corner' : product.name}
                     </option>
                   ))}
                 </select>

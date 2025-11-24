@@ -399,7 +399,6 @@ interface Product {
   type: string
   productType: string
   archived: boolean
-  withTrim: string
   glassWidthFormula?: string
   glassHeightFormula?: string
   glassQuantityFormula?: string
@@ -489,6 +488,8 @@ export default function ProductDetailView({
   const [editPartUnit, setEditPartUnit] = useState('')
   const [editPartQuantity, setEditPartQuantity] = useState('')
   const [editPartNumber, setEditPartNumber] = useState('')
+  const [newPartAddFinish, setNewPartAddFinish] = useState(false)
+  const [editPartAddFinish, setEditPartAddFinish] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [productDetails, setProductDetails] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -987,7 +988,8 @@ export default function ProductDetailView({
         quantity: parseFloat(newPartQuantity),
         stockLength: null,
         partNumber: masterPartFound.partNumber,
-        cost: masterPartFound.cost || null
+        cost: masterPartFound.cost || null,
+        addFinishToPartNumber: masterPartFound.partType === 'Hardware' ? newPartAddFinish : false
       }
 
       const response = await fetch('/api/product-boms', {
@@ -1001,6 +1003,7 @@ export default function ProductDetailView({
         setNewPartNumber('')
         setNewPartFormula('')
         setNewPartQuantity('')
+        setNewPartAddFinish(false)
         setMasterPartFound(null)
         setMasterPartSuggestions([])
         setShowSuggestions(false)
@@ -1031,6 +1034,7 @@ export default function ProductDetailView({
     setEditPartUnit(part.unit || '')
     setEditPartQuantity(part.quantity?.toString() || '')
     setEditPartNumber(part.partNumber || '')
+    setEditPartAddFinish(part.addFinishToPartNumber || false)
   }
 
   function cancelEditPart() {
@@ -1065,6 +1069,7 @@ export default function ProductDetailView({
           quantity: editPartQuantity ? parseFloat(editPartQuantity) : null,
           stockLength: null,
           partNumber: editPartNumber || null,
+          addFinishToPartNumber: editPartType === 'Hardware' ? editPartAddFinish : false
         })
       })
 
@@ -1138,21 +1143,14 @@ export default function ProductDetailView({
           <div className="flex items-center gap-3 mb-2">
             <h2 className="text-2xl font-bold text-gray-900">{product.name}</h2>
             <span className={`px-3 py-1 text-sm rounded-full ${
-              product.productType === 'SWING_DOOR' 
-                ? 'bg-blue-100 text-blue-700' 
+              product.productType === 'SWING_DOOR'
+                ? 'bg-blue-100 text-blue-700'
                 : product.productType === 'SLIDING_DOOR'
                 ? 'bg-green-100 text-green-700'
                 : 'bg-orange-100 text-orange-700'
             }`}>
-              {product.productType === 'SWING_DOOR' ? 'Swing Door' : 
+              {product.productType === 'SWING_DOOR' ? 'Swing Door' :
                product.productType === 'SLIDING_DOOR' ? 'Sliding Door' : 'Fixed Panel'}
-            </span>
-            <span className={`px-3 py-1 text-sm rounded-full ${
-              product.withTrim === 'With Trim' 
-                ? 'bg-purple-100 text-purple-700' 
-                : 'bg-gray-100 text-gray-700'
-            }`}>
-              {product.withTrim}
             </span>
           </div>
           <p className="text-gray-600">{product.description || 'No description'}</p>
@@ -1379,18 +1377,34 @@ export default function ProductDetailView({
               )}
               
               {masterPartFound && masterPartFound.partType === 'Hardware' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
-                  <input
-                    type="number"
-                    value={newPartQuantity}
-                    onChange={(e) => setNewPartQuantity(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                    placeholder="e.g., 2"
-                    step="0.01"
-                    min="0"
-                    required
-                  />
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                    <input
+                      type="number"
+                      value={newPartQuantity}
+                      onChange={(e) => setNewPartQuantity(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      placeholder="e.g., 2"
+                      step="0.01"
+                      min="0"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newPartAddFinish}
+                        onChange={(e) => setNewPartAddFinish(e.target.checked)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="text-sm text-gray-700">Add finish color to part number in BOM</span>
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1 ml-6">
+                      When checked, the opening&apos;s finish color code will be appended to this part number (e.g., PART-123 → PART-123-BL)
+                    </p>
+                  </div>
                 </div>
               )}
               
@@ -1860,18 +1874,31 @@ export default function ProductDetailView({
             <h2 className="text-xl font-bold text-gray-900 mb-4">Edit Part</h2>
             <form onSubmit={handleUpdatePart} className="space-y-4">
               {editPartType === 'Hardware' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
-                  <input
-                    type="number"
-                    value={editPartQuantity}
-                    onChange={(e) => setEditPartQuantity(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                    placeholder="e.g., 2"
-                    step="0.01"
-                    min="0"
-                    required
-                  />
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                    <input
+                      type="number"
+                      value={editPartQuantity}
+                      onChange={(e) => setEditPartQuantity(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      placeholder="e.g., 2"
+                      step="0.01"
+                      min="0"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editPartAddFinish}
+                        onChange={(e) => setEditPartAddFinish(e.target.checked)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="text-sm text-gray-700">Add finish color to part number in BOM</span>
+                    </label>
+                  </div>
                 </div>
               )}
 

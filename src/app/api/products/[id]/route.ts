@@ -51,7 +51,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       description,
       type,
       productType,
-      withTrim,
       glassWidthFormula,
       glassHeightFormula,
       glassQuantityFormula,
@@ -75,7 +74,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     if (description !== undefined) updateData.description = description
     if (type !== undefined) updateData.type = type || 'Product'
-    if (withTrim !== undefined) updateData.withTrim = withTrim
     if (productType !== undefined) {
       // Validate productType
       const validProductTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL', 'CORNER_90']
@@ -119,9 +117,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     // Update or create corresponding ComponentLibrary entry if elevation image is provided
     if (elevationImageData !== undefined ||
-        name !== undefined || description !== undefined || productType !== undefined || withTrim !== undefined) {
+        name !== undefined || description !== undefined || productType !== undefined) {
 
-      const componentName = `${product.name} (${product.withTrim})`
+      const componentName = product.name
 
       // Check if ComponentLibrary entry exists
       const existingComponent = await prisma.componentLibrary.findFirst({
@@ -134,7 +132,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       })
 
       const componentData: any = {}
-      if (name !== undefined || withTrim !== undefined) componentData.name = componentName
+      if (name !== undefined) componentData.name = componentName
       if (description !== undefined) componentData.description = description
       if (productType !== undefined) {
         componentData.productType = productType

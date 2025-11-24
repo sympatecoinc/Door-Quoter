@@ -217,6 +217,14 @@ export async function GET(
             }
           }
 
+          // Apply finish code for Hardware parts with addFinishToPartNumber flag
+          if (bom.partType === 'Hardware' && fullPartNumber && bom.addFinishToPartNumber && opening.finishColor) {
+            const finishCode = await getFinishCode(opening.finishColor)
+            if (finishCode) {
+              fullPartNumber = `${fullPartNumber}${finishCode}`
+            }
+          }
+
           // Calculate % of stock used
           let percentOfStock: number | null = null
           if (bom.partType === 'Extrusion' && cutLength && stockLength && stockLength > 0) {

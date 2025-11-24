@@ -30,18 +30,19 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { 
-      productId, 
-      partType, 
-      partName, 
-      description, 
-      formula, 
-      variable, 
-      unit, 
-      quantity, 
-      stockLength, 
+    const {
+      productId,
+      partType,
+      partName,
+      description,
+      formula,
+      variable,
+      unit,
+      quantity,
+      stockLength,
       partNumber,
-      cost
+      cost,
+      addFinishToPartNumber
     } = await request.json()
 
     if (!productId || !partName) {
@@ -63,7 +64,8 @@ export async function POST(request: NextRequest) {
         quantity: quantity || null,
         stockLength: stockLength || null,
         partNumber: partNumber || null,
-        cost: cost || null
+        cost: cost || null,
+        addFinishToPartNumber: addFinishToPartNumber || false
       },
       include: {
         product: true
@@ -82,18 +84,19 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { 
+    const {
       id,
-      partType, 
-      partName, 
-      description, 
-      formula, 
-      variable, 
-      unit, 
-      quantity, 
-      stockLength, 
+      partType,
+      partName,
+      description,
+      formula,
+      variable,
+      unit,
+      quantity,
+      stockLength,
       partNumber,
-      cost
+      cost,
+      addFinishToPartNumber
     } = await request.json()
 
     if (!id || !partName) {
@@ -115,7 +118,8 @@ export async function PUT(request: NextRequest) {
         quantity: quantity || null,
         stockLength: stockLength || null,
         partNumber: partNumber || null,
-        cost: cost || null
+        cost: cost || null,
+        addFinishToPartNumber: addFinishToPartNumber !== undefined ? addFinishToPartNumber : undefined
       },
       include: {
         product: true

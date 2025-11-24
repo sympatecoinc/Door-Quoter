@@ -121,7 +121,6 @@ export interface Product {
   name: string
   description?: string
   type: string
-  withTrim: string
   createdAt: Date
   updatedAt: Date
 }

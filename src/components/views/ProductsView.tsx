@@ -12,7 +12,6 @@ interface Product {
   type: string
   productType: string
   archived: boolean
-  withTrim: string
   installationPrice?: number
   _count: {
     productBOMs: number
@@ -403,7 +402,6 @@ function ProductsTab({
   const [newProductName, setNewProductName] = useState('')
   const [newProductDescription, setNewProductDescription] = useState('')
   const [newProductType, setNewProductType] = useState('SWING_DOOR')
-  const [newProductWithTrim, setNewProductWithTrim] = useState('Without Trim')
   const [newProductInstallationPrice, setNewProductInstallationPrice] = useState(0)
   const [creating, setCreating] = useState(false)
 
@@ -420,7 +418,6 @@ function ProductsTab({
           name: newProductName,
           description: newProductDescription,
           productType: newProductType,
-          withTrim: newProductWithTrim,
           installationPrice: newProductInstallationPrice
         })
       })
@@ -429,7 +426,6 @@ function ProductsTab({
         setNewProductName('')
         setNewProductDescription('')
         setNewProductType('SWING_DOOR')
-        setNewProductWithTrim('Without Trim')
         setNewProductInstallationPrice(0)
         setShowCreateForm(false)
         onRefresh()
@@ -530,13 +526,6 @@ function ProductsTab({
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-medium text-gray-900">{product.name}</h3>
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          product.withTrim === 'With Trim'
-                            ? 'bg-purple-100 text-purple-700'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}>
-                          {product.withTrim}
-                        </span>
                         {product.archived && (
                           <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">
                             Archived
@@ -641,18 +630,6 @@ function ProductsTab({
                   <option value="CORNER_90">90° Corner</option>
                 </select>
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Trim</label>
-                <select
-                  value={newProductWithTrim}
-                  onChange={(e) => setNewProductWithTrim(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                >
-                  <option value="Without Trim">Without Trim</option>
-                  <option value="With Trim">With Trim</option>
-                </select>
-              </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Installation Price</label>
@@ -679,7 +656,6 @@ function ProductsTab({
                     setNewProductName('')
                     setNewProductDescription('')
                     setNewProductType('SWING_DOOR')
-                    setNewProductWithTrim('Without Trim')
                     setNewProductInstallationPrice(0)
                     setShowCreateForm(false)
                   }}
