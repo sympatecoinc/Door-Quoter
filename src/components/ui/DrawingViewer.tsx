@@ -397,206 +397,199 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
                       </div>
 
                       {/* Display plan views with directional changes at corners */}
-                      <div className="bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto">
-                        <div className="flex justify-center w-full" style={{ position: 'relative' }}>
-                          {(() => {
-                            // Build segments: horizontal until corner, then vertical based on corner direction
-                            const segments: Array<{
-                              views: typeof drawingData.planViews
-                              direction: 'horizontal' | 'vertical-up' | 'vertical-down'
-                            }> = []
+                      {(() => {
+                        // Build segments: horizontal until corner, then vertical based on corner direction
+                        const segments: Array<{
+                          views: typeof drawingData.planViews
+                          direction: 'horizontal' | 'vertical-up' | 'vertical-down'
+                        }> = []
 
-                            let currentSegment: typeof drawingData.planViews = []
-                            let currentDirection: 'horizontal' | 'vertical-up' | 'vertical-down' = 'horizontal'
+                        let currentSegment: typeof drawingData.planViews = []
+                        let currentDirection: 'horizontal' | 'vertical-up' | 'vertical-down' = 'horizontal'
 
-                            drawingData.planViews.forEach((view, index) => {
-                              console.log(`Plan view ${index}: ${view.productName}, isCorner: ${view.isCorner}, productType: ${view.productType}`)
-
-                              if (view.isCorner && view.productType === 'CORNER_90') {
-                                console.log(`  ⟲ CORNER DETECTED! Direction: ${view.cornerDirection}`)
-                                // Push current segment before corner
-                                if (currentSegment.length > 0) {
-                                  console.log(`  → Ending segment with ${currentSegment.length} views, direction: ${currentDirection}`)
-                                  segments.push({ views: currentSegment, direction: currentDirection })
-                                  currentSegment = []
-                                }
-                                // Change direction based on corner
-                                currentDirection = view.cornerDirection === 'Down' ? 'vertical-down' : 'vertical-up'
-                                console.log(`  → New direction: ${currentDirection}`)
-                              } else {
-                                currentSegment.push(view)
-                              }
-                            })
-
-                            // Push last segment
+                        drawingData.planViews.forEach((view, index) => {
+                          if (view.isCorner && view.productType === 'CORNER_90') {
+                            // Push current segment before corner
                             if (currentSegment.length > 0) {
                               segments.push({ views: currentSegment, direction: currentDirection })
+                              currentSegment = []
                             }
+                            // Change direction based on corner
+                            currentDirection = view.cornerDirection === 'Down' ? 'vertical-down' : 'vertical-up'
+                          } else {
+                            currentSegment.push(view)
+                          }
+                        })
 
-                            console.log(`Total segments: ${segments.length}`)
-                            segments.forEach((seg, i) => {
-                              console.log(`  Segment ${i}: ${seg.views.length} views, direction: ${seg.direction}`)
-                            })
+                        // Push last segment
+                        if (currentSegment.length > 0) {
+                          segments.push({ views: currentSegment, direction: currentDirection })
+                        }
 
-                            // First pass: calculate all positions and bounding box
-                            const pixelsPerInch = 4
-                            let cumulativeX = 0
-                            let cumulativeY = 0
+                        // First pass: calculate all positions and bounding box
+                        const pixelsPerInch = 4
+                        let cumulativeX = 0
+                        let cumulativeY = 0
 
-                            interface PanelPosition {
-                              view: typeof drawingData.planViews[0]
-                              x: number
-                              y: number
-                              displayWidth: number
-                              displayHeight: number
-                              translateY: string
-                              rotation: number
-                              transformOrigin: string
-                              imageSrc: string
-                            }
+                        interface PanelPosition {
+                          view: typeof drawingData.planViews[0]
+                          x: number
+                          y: number
+                          displayWidth: number
+                          displayHeight: number
+                          translateY: string
+                          rotation: number
+                          transformOrigin: string
+                          imageSrc: string
+                        }
 
-                            const panelPositions: PanelPosition[] = []
-                            let minX = Infinity
-                            let maxX = -Infinity
-                            let minY = Infinity
-                            let maxY = -Infinity
+                        const panelPositions: PanelPosition[] = []
+                        let minX = Infinity
+                        let maxX = -Infinity
+                        let minY = Infinity
+                        let maxY = -Infinity
 
-                            segments.forEach((segment, segmentIndex) => {
-                              const isHorizontal = segment.direction === 'horizontal'
-                              const isVerticalDown = segment.direction === 'vertical-down'
+                        segments.forEach((segment) => {
+                          const isHorizontal = segment.direction === 'horizontal'
+                          const isVerticalDown = segment.direction === 'vertical-down'
 
-                              console.log(`\nCalculating segment ${segmentIndex}: ${segment.direction}, starting at X=${cumulativeX}, Y=${cumulativeY}`)
+                          segment.views.forEach((view) => {
+                            const imageSrc = getImageDataUrl(view.imageData)
+                            const displayHeight = view.height * pixelsPerInch
+                            const displayWidth = view.width * pixelsPerInch
 
-                              segment.views.forEach((view, viewIndex) => {
-                                const imageSrc = getImageDataUrl(view.imageData)
-                                const displayHeight = view.height * pixelsPerInch
-                                const displayWidth = view.width * pixelsPerInch
+                            // Calculate position and rotation
+                            let x = cumulativeX
+                            let y = cumulativeY
+                            let translateY = '0px'
+                            let rotation = 0
+                            let transformOrigin = 'center center'
 
-                                // Calculate position and rotation
-                                let x = cumulativeX
-                                let y = cumulativeY
-                                let translateY = '0px'
-                                let rotation = 0
-                                let transformOrigin = 'center center'
+                            if (isHorizontal) {
+                              // Horizontal layout - no rotation
+                              translateY = view.orientation === 'bottom'
+                                ? `-${displayHeight}px`
+                                : `0px`
 
-                                if (isHorizontal) {
-                                  // Horizontal layout - no rotation
-                                  translateY = view.orientation === 'bottom'
-                                    ? `-${displayHeight}px`
-                                    : `0px`
+                              // Update bounding box for horizontal panel
+                              minX = Math.min(minX, x)
+                              maxX = Math.max(maxX, x + displayWidth)
+                              const yWithTranslate = view.orientation === 'bottom' ? y - displayHeight : y
+                              minY = Math.min(minY, yWithTranslate)
+                              maxY = Math.max(maxY, yWithTranslate + displayHeight)
 
-                                  console.log(`  Panel ${viewIndex} (${view.productName}): X=${x}, translateY=${translateY}, width=${displayWidth}`)
+                              // Add this panel's width to cumulative X for next panel
+                              cumulativeX += displayWidth
+                            } else {
+                              // Vertical layout - rotate 90 degrees and position at corner
+                              const isSquarish = Math.abs(displayWidth - displayHeight) < 20
 
-                                  // Update bounding box for horizontal panel
-                                  minX = Math.min(minX, x)
-                                  maxX = Math.max(maxX, x + displayWidth)
-                                  const yWithTranslate = view.orientation === 'bottom' ? y - displayHeight : y
-                                  minY = Math.min(minY, yWithTranslate)
-                                  maxY = Math.max(maxY, yWithTranslate + displayHeight)
+                              if (isVerticalDown) {
+                                rotation = 90
+                                transformOrigin = isSquarish ? 'left top' : 'left center'
 
-                                  // Add this panel's width to cumulative X for next panel
-                                  cumulativeX += displayWidth
-                                } else {
-                                  // Vertical layout - rotate 90 degrees and position at corner
-                                  const isSquarish = Math.abs(displayWidth - displayHeight) < 20
-
-                                  if (isVerticalDown) {
-                                    rotation = 90
-                                    transformOrigin = isSquarish ? 'left top' : 'left center'
-
-                                    if (isSquarish) {
-                                      x = x + displayHeight
-                                    }
-
-                                    translateY = '0px'
-                                    console.log(`  Panel ${viewIndex} (${view.productName}): X=${x}, Y=${y}, rotation=90°, isSquare=${isSquarish}, origin=${transformOrigin}`)
-
-                                    // Update bounding box for vertical-down panel (rotated 90°)
-                                    // After rotation, width becomes height and height becomes width
-                                    minX = Math.min(minX, x)
-                                    maxX = Math.max(maxX, x + displayHeight)
-                                    minY = Math.min(minY, y)
-                                    maxY = Math.max(maxY, y + displayWidth)
-
-                                    cumulativeY += displayWidth
-                                  } else {
-                                    // Vertical up - rotate counterclockwise
-                                    rotation = -90
-                                    transformOrigin = isSquarish ? 'left bottom' : 'left center'
-
-                                    if (isSquarish) {
-                                      y = -displayHeight
-                                      x = x + displayHeight
-                                    }
-
-                                    translateY = '0px'
-                                    console.log(`  Panel ${viewIndex} (${view.productName}): X=${x}, Y=${y}, rotation=-90°, isSquare=${isSquarish}, origin=${transformOrigin}`)
-
-                                    // Update bounding box for vertical-up panel (rotated -90°)
-                                    minX = Math.min(minX, x)
-                                    maxX = Math.max(maxX, x + displayHeight)
-                                    minY = Math.min(minY, y - displayWidth)
-                                    maxY = Math.max(maxY, y)
-
-                                    cumulativeY -= displayWidth
-                                  }
+                                if (isSquarish) {
+                                  x = x + displayHeight
                                 }
 
-                                panelPositions.push({
-                                  view,
-                                  x,
-                                  y,
-                                  displayWidth,
-                                  displayHeight,
-                                  translateY,
-                                  rotation,
-                                  transformOrigin,
-                                  imageSrc
-                                })
-                              })
+                                translateY = '0px'
+
+                                // Update bounding box for vertical-down panel (rotated 90°)
+                                // After rotation, width becomes height and height becomes width
+                                minX = Math.min(minX, x)
+                                maxX = Math.max(maxX, x + displayHeight)
+                                minY = Math.min(minY, y)
+                                maxY = Math.max(maxY, y + displayWidth)
+
+                                cumulativeY += displayWidth
+                              } else {
+                                // Vertical up - rotate counterclockwise
+                                rotation = -90
+                                transformOrigin = isSquarish ? 'left bottom' : 'left center'
+
+                                if (isSquarish) {
+                                  y = -displayHeight
+                                  x = x + displayHeight
+                                }
+
+                                translateY = '0px'
+
+                                // Update bounding box for vertical-up panel (rotated -90°)
+                                minX = Math.min(minX, x)
+                                maxX = Math.max(maxX, x + displayHeight)
+                                minY = Math.min(minY, y - displayWidth)
+                                maxY = Math.max(maxY, y)
+
+                                cumulativeY -= displayWidth
+                              }
+                            }
+
+                            panelPositions.push({
+                              view,
+                              x,
+                              y,
+                              displayWidth,
+                              displayHeight,
+                              translateY,
+                              rotation,
+                              transformOrigin,
+                              imageSrc
                             })
+                          })
+                        })
 
-                            // Calculate center offset to center the entire assembly
-                            const assemblyWidth = maxX - minX
-                            const assemblyHeight = maxY - minY
-                            const centerOffsetX = -minX - assemblyWidth / 2
-                            const centerOffsetY = -minY - assemblyHeight / 2
+                        // Calculate assembly dimensions and center offset
+                        const assemblyWidth = maxX - minX
+                        const assemblyHeight = maxY - minY
+                        const centerOffsetX = -minX - assemblyWidth / 2
+                        const centerOffsetY = -minY - assemblyHeight / 2
 
-                            console.log(`\nAssembly bounds: minX=${minX}, maxX=${maxX}, minY=${minY}, maxY=${maxY}`)
-                            console.log(`Assembly size: ${assemblyWidth} x ${assemblyHeight}`)
-                            console.log(`Center offset: X=${centerOffsetX}, Y=${centerOffsetY}`)
+                        // Add padding around the assembly
+                        const containerHeight = Math.max(assemblyHeight + 40, 200)
+                        const containerWidth = Math.max(assemblyWidth + 40, 200)
 
-                            // Second pass: render all panels with center offset applied
-                            const allImages: JSX.Element[] = panelPositions.map((panel, index) => {
-                              const adjustedX = panel.x + centerOffsetX
-                              const adjustedY = panel.y + centerOffsetY
+                        // Second pass: render all panels with center offset applied
+                        const allImages = panelPositions.map((panel, index) => {
+                          const adjustedX = panel.x + centerOffsetX
+                          const adjustedY = panel.y + centerOffsetY
 
-                              return (
-                                <img
-                                  key={index}
-                                  src={panel.imageSrc}
-                                  alt={`${panel.view.productName} - ${panel.view.planViewName}`}
-                                  style={{
-                                    height: `${panel.displayHeight}px`,
-                                    width: `${panel.displayWidth}px`,
-                                    display: 'block',
-                                    position: 'absolute',
-                                    left: `calc(50% + ${adjustedX}px)`,
-                                    top: `calc(50% + ${adjustedY}px)`,
-                                    transform: `translate(0, ${panel.translateY}) rotate(${panel.rotation}deg)`,
-                                    transformOrigin: panel.transformOrigin
-                                  }}
-                                  onError={(e) => {
-                                    console.error('Image load error for:', panel.view.productName, panel.view.planViewName)
-                                  }}
-                                />
-                              )
-                            })
+                          return (
+                            <img
+                              key={index}
+                              src={panel.imageSrc}
+                              alt={`${panel.view.productName} - ${panel.view.planViewName}`}
+                              style={{
+                                height: `${panel.displayHeight}px`,
+                                width: `${panel.displayWidth}px`,
+                                display: 'block',
+                                position: 'absolute',
+                                left: `calc(50% + ${adjustedX}px)`,
+                                top: `calc(50% + ${adjustedY}px)`,
+                                transform: `translate(0, ${panel.translateY}) rotate(${panel.rotation}deg)`,
+                                transformOrigin: panel.transformOrigin
+                              }}
+                              onError={(e) => {
+                                console.error('Image load error for:', panel.view.productName, panel.view.planViewName)
+                              }}
+                            />
+                          )
+                        })
 
-                            return allImages
-                          })()}
-                        </div>
-                      </div>
+                        return (
+                          <div className="bg-white p-4 rounded-lg border border-gray-200 overflow-auto">
+                            <div
+                              className="flex justify-center w-full"
+                              style={{
+                                position: 'relative',
+                                height: `${containerHeight}px`,
+                                minWidth: `${containerWidth}px`
+                              }}
+                            >
+                              {allImages}
+                            </div>
+                          </div>
+                        )
+                      })()}
                       <div className="text-xs text-gray-500 text-center">
                         {drawingData.planViews.map(v => `${v.productName} (${v.planViewName})`).join(' + ')}
                       </div>

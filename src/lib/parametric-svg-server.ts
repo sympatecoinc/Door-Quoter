@@ -164,21 +164,22 @@ export function scaleElement(
           const origViewBoxWidth = originalDimensions.width
           const origViewBoxHeight = originalDimensions.height
           const targetPixelWidth = origViewBoxWidth * scaling.scaleX
+          const targetPixelHeight = origViewBoxHeight * scaling.scaleY  // Scale height too!
 
           if (x > origViewBoxWidth * 0.5) {
             // Right stile - position at right edge of SCALED width
             element.setAttribute('x', (targetPixelWidth - rightStileWidth).toString())
             element.setAttribute('y', '0')
             element.setAttribute('width', rightStileWidth.toString())
-            element.setAttribute('height', origViewBoxHeight.toString())
-            console.log(`  → Vertical (RIGHT): x → ${targetPixelWidth - rightStileWidth} (scaled width ${targetPixelWidth}), width → ${rightStileWidth}`)
+            element.setAttribute('height', targetPixelHeight.toString())
+            console.log(`  → Vertical (RIGHT): x → ${targetPixelWidth - rightStileWidth} (scaled width ${targetPixelWidth}), width → ${rightStileWidth}, height → ${targetPixelHeight}`)
           } else {
             // Left stile - stays at x=0
             element.setAttribute('x', '0')
             element.setAttribute('y', '0')
             element.setAttribute('width', leftStileWidth.toString())
-            element.setAttribute('height', origViewBoxHeight.toString())
-            console.log(`  → Vertical (LEFT): x=0, width → ${leftStileWidth}`)
+            element.setAttribute('height', targetPixelHeight.toString())
+            console.log(`  → Vertical (LEFT): x=0, width → ${leftStileWidth}, height → ${targetPixelHeight}`)
           }
         } else if (mode === 'plan') {
           // Plan view: Scale width with scaleX
@@ -201,25 +202,23 @@ export function scaleElement(
 
       case 'horizontal':
         // Rails: Span between stiles in SCALED coordinate system
-        // Keep original height - rails don't change thickness when door width changes
         if (mode === 'elevation') {
           const origViewBoxWidth = originalDimensions.width
-          const origViewBoxHeight = originalDimensions.height
           const targetPixelWidth = origViewBoxWidth * scaling.scaleX
 
-          // Keep original rail height - thickness doesn't change with width
-          const railHeight = height
+          // Scale Y position and height to fit within scaled viewBox
+          const scaledY = y * scaling.scaleY
+          const scaledRailHeight = height * scaling.scaleY
 
-          // Keep Y position in ORIGINAL coordinates - don't reposition rails vertically
           // Rails must span between left and right stiles in SCALED coordinate space
           const newX = leftStileWidth
           const newWidth = targetPixelWidth - leftStileWidth - rightStileWidth
 
           element.setAttribute('x', newX.toString())
-          element.setAttribute('y', y.toString())  // Keep original Y
+          element.setAttribute('y', scaledY.toString())
           element.setAttribute('width', newWidth.toString())
-          element.setAttribute('height', railHeight.toString())
-          console.log(`  → Horizontal: x → ${newX}, y → ${y} (original), width → ${newWidth}, height → ${railHeight} (original)`)
+          element.setAttribute('height', scaledRailHeight.toString())
+          console.log(`  → Horizontal: x → ${newX}, y → ${scaledY}, width → ${newWidth}, height → ${scaledRailHeight}`)
         } else if (mode === 'plan') {
           // Plan view: Scale width with scaleX
           const origViewBoxWidth = originalDimensions.width
@@ -240,9 +239,15 @@ export function scaleElement(
           const newX = leftStileWidth
           const newWidth = targetPixelWidth - leftStileWidth - rightStileWidth
 
+          // Scale Y position and height for elevation views
+          const scaledY = y * scaling.scaleY
+          const scaledHeight = height * scaling.scaleY
+
           element.setAttribute('x', newX.toString())
+          element.setAttribute('y', scaledY.toString())
           element.setAttribute('width', newWidth.toString())
-          console.log(`  → Grow: x → ${newX}, width → ${newWidth} (glass area scaled)`)
+          element.setAttribute('height', scaledHeight.toString())
+          console.log(`  → Grow: x → ${newX}, y → ${scaledY}, width → ${newWidth}, height → ${scaledHeight}`)
         } else if (mode === 'plan') {
           // Plan view: Scale both dimensions
           const newWidth = width * scaling.scaleX
@@ -262,17 +267,15 @@ export function scaleElement(
         if (mode === 'elevation') {
           if (isVerticalGS) {
             const origViewBoxWidth = originalDimensions.width
-            const origViewBoxHeight = originalDimensions.height
             const targetPixelWidth = origViewBoxWidth * scaling.scaleX
 
             // Vertical glassstops are thin strips at the inner edge of stiles
             // Keep their original width (typically 3-4 pixels)
             const glassStopWidth = width
 
-            // Keep original Y and height - they're in the viewBox coordinate system
-            // which stays at original height (610px) even when width scales
-            const glassStopY = y
-            const glassStopHeight = height
+            // Scale Y position and height for elevation views
+            const glassStopY = y * scaling.scaleY
+            const glassStopHeight = height * scaling.scaleY
 
             if (x > origViewBoxWidth * 0.5) {
               // Right-side glassstop - position at inner edge of right stile (left side of stile)
@@ -296,14 +299,17 @@ export function scaleElement(
           } else if (isHorizontalGS) {
             const origViewBoxWidth = originalDimensions.width
             const targetPixelWidth = origViewBoxWidth * scaling.scaleX
-            const glassStopHeight = height  // Keep original height
             const newWidthGS = targetPixelWidth - leftStileWidth - rightStileWidth
 
+            // Scale Y position and height for elevation views
+            const scaledY = y * scaling.scaleY
+            const scaledGlassStopHeight = height * scaling.scaleY
+
             element.setAttribute('x', leftStileWidth.toString())
-            element.setAttribute('y', y.toString())
+            element.setAttribute('y', scaledY.toString())
             element.setAttribute('width', newWidthGS.toString())
-            element.setAttribute('height', glassStopHeight.toString())
-            console.log(`  → Glassstop-H: x → ${leftStileWidth}, y → ${y}, width → ${newWidthGS}, height → ${glassStopHeight} (original)`)
+            element.setAttribute('height', scaledGlassStopHeight.toString())
+            console.log(`  → Glassstop-H: x → ${leftStileWidth}, y → ${scaledY}, width → ${newWidthGS}, height → ${scaledGlassStopHeight}`)
           }
         } else if (mode === 'plan') {
           // Plan view: Scale both dimensions
