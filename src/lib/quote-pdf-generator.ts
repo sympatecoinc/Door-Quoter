@@ -61,64 +61,87 @@ export interface QuoteAttachment {
 /**
  * Creates a complete quote PDF with optional attachments
  * Returns a Buffer containing the final PDF (either jsPDF only or merged with PDF attachments)
+ *
+ * Document order:
+ * 1. Beginning attachments (position: 'beginning')
+ * 2. Quote page with totals
+ * 3. After-quote attachments (position: 'after_quote')
+ * 4. Persistent documents - product docs / global pages (position: 'persistent')
+ * 5. End attachments (position: 'end')
  */
 export async function createQuotePDF(
   quoteData: QuoteData,
   attachments: QuoteAttachment[] = []
 ): Promise<Buffer> {
-  // Create PDF in portrait mode, letter size
-  const pdf = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'letter'
-  })
+  // Separate attachments by position
+  // Support legacy 'before'/'after' values for backwards compatibility
+  const beginningAttachments = attachments.filter(a => a.position === 'beginning' || a.position === 'before')
+  const afterQuoteAttachments = attachments.filter(a => a.position === 'after_quote' || a.position === 'after' || (!a.position && !(a as any).isPersistent))
+  const persistentAttachments = attachments.filter(a => a.position === 'persistent' || (a as any).isPersistent)
+  const endAttachments = attachments.filter(a => a.position === 'end')
 
-  // Page 1: Quote details with pricing
-  await addQuotePage(pdf, quoteData)
+  // Further separate by type
+  const beginningImages = beginningAttachments.filter(a => a.mimeType.startsWith('image/'))
+  const beginningPdfs = beginningAttachments.filter(a => a.mimeType === 'application/pdf')
 
-  // Separate attachments by position (before/after persistent docs)
-  const beforeAttachments = attachments.filter(a => a.position === 'before')
-  const afterAttachments = attachments.filter(a => a.position !== 'before') // Default to 'after'
+  const afterQuoteImages = afterQuoteAttachments.filter(a => a.mimeType.startsWith('image/'))
+  const afterQuotePdfs = afterQuoteAttachments.filter(a => a.mimeType === 'application/pdf')
 
-  // Further separate by type for 'before' attachments
-  const beforeImages = beforeAttachments.filter(a => a.mimeType.startsWith('image/'))
-  const beforePdfs = beforeAttachments.filter(a => a.mimeType === 'application/pdf')
+  const persistentImages = persistentAttachments.filter(a => a.mimeType.startsWith('image/'))
+  const persistentPdfs = persistentAttachments.filter(a => a.mimeType === 'application/pdf')
 
-  // Further separate by type for 'after' attachments
-  const afterImages = afterAttachments.filter(a => a.mimeType.startsWith('image/'))
-  const afterPdfs = afterAttachments.filter(a => a.mimeType === 'application/pdf')
+  const endImages = endAttachments.filter(a => a.mimeType.startsWith('image/'))
+  const endPdfs = endAttachments.filter(a => a.mimeType === 'application/pdf')
 
-  // Add 'before' image attachment pages to jsPDF (right after quote page)
-  if (beforeImages.length > 0) {
-    for (const attachment of beforeImages) {
-      pdf.addPage()
-      await addAttachmentPage(pdf, attachment, quoteData.project.id)
+  const hasPdfAttachments = beginningPdfs.length > 0 || afterQuotePdfs.length > 0 || persistentPdfs.length > 0 || endPdfs.length > 0
+
+  // Helper function to add image attachments to a jsPDF instance
+  async function addImageAttachments(pdf: jsPDF, images: QuoteAttachment[], addPageFirst: boolean = true) {
+    for (let i = 0; i < images.length; i++) {
+      if (addPageFirst || i > 0) {
+        pdf.addPage()
+      }
+      await addAttachmentPage(pdf, images[i], quoteData.project.id)
     }
   }
 
-  // If no PDF attachments at all, just add 'after' images and return
-  if (beforePdfs.length === 0 && afterPdfs.length === 0) {
-    // Add 'after' image attachments
-    if (afterImages.length > 0) {
-      for (const attachment of afterImages) {
+  // If no PDF attachments, we can build everything with jsPDF alone
+  if (!hasPdfAttachments) {
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'letter'
+    })
+
+    // 1. Beginning image attachments
+    if (beginningImages.length > 0) {
+      await addAttachmentPage(pdf, beginningImages[0], quoteData.project.id)
+      for (let i = 1; i < beginningImages.length; i++) {
         pdf.addPage()
-        await addAttachmentPage(pdf, attachment, quoteData.project.id)
+        await addAttachmentPage(pdf, beginningImages[i], quoteData.project.id)
       }
+      pdf.addPage()
     }
+
+    // 2. Quote page
+    await addQuotePage(pdf, quoteData)
+
+    // 3. After-quote image attachments
+    await addImageAttachments(pdf, afterQuoteImages, true)
+
+    // 4. Persistent document image attachments (product docs, global pages)
+    await addImageAttachments(pdf, persistentImages, true)
+
+    // 5. End image attachments
+    await addImageAttachments(pdf, endImages, true)
+
     return Buffer.from(pdf.output('arraybuffer'))
   }
 
   // We have PDF attachments, so we need to use pdf-lib to merge everything
   try {
-    // Convert jsPDF to pdf-lib PDFDocument
-    // At this point, the PDF contains:
-    // - Quote page(s) with grand total
-    // - 'before' image attachments (if any)
-    const mainPdfBytes = pdf.output('arraybuffer')
-    let finalPdf = await PDFDocument.load(mainPdfBytes)
-
     // Helper function to merge a single PDF attachment
-    async function mergePdfAttachment(attachment: QuoteAttachment, finalPdf: PDFDocument) {
+    async function mergePdfAttachment(attachment: QuoteAttachment, targetPdf: PDFDocument) {
       const attachmentPath = resolveAttachmentPath(attachment, quoteData.project.id)
 
       if (!fs.existsSync(attachmentPath)) {
@@ -142,14 +165,14 @@ export async function createQuotePDF(
 
         const placeholderBytes = placeholderPdf.output('arraybuffer')
         const placeholderPdfDoc = await PDFDocument.load(placeholderBytes)
-        const pages = await finalPdf.copyPages(placeholderPdfDoc, placeholderPdfDoc.getPageIndices())
+        const pages = await targetPdf.copyPages(placeholderPdfDoc, placeholderPdfDoc.getPageIndices())
         return pages
       }
 
       try {
         const attachmentBytes = await fs.promises.readFile(attachmentPath)
         const attachmentPdf = await PDFDocument.load(attachmentBytes)
-        const pages = await finalPdf.copyPages(attachmentPdf, attachmentPdf.getPageIndices())
+        const pages = await targetPdf.copyPages(attachmentPdf, attachmentPdf.getPageIndices())
         return pages
       } catch (error) {
         console.error(`Error loading PDF attachment ${attachmentPath}:`, error)
@@ -172,43 +195,72 @@ export async function createQuotePDF(
 
         const errorBytes = errorPdf.output('arraybuffer')
         const errorPdfDoc = await PDFDocument.load(errorBytes)
-        const pages = await finalPdf.copyPages(errorPdfDoc, errorPdfDoc.getPageIndices())
+        const pages = await targetPdf.copyPages(errorPdfDoc, errorPdfDoc.getPageIndices())
         return pages
       }
     }
 
-    // Merge 'before' PDF attachments
-    for (const attachment of beforePdfs) {
-      const pages = await mergePdfAttachment(attachment, finalPdf)
-      pages.forEach(page => finalPdf.addPage(page))
-    }
+    // Helper to add image attachments to pdf-lib document
+    async function addImagesToPdfLib(images: QuoteAttachment[], targetPdf: PDFDocument) {
+      if (images.length === 0) return
 
-    // Add 'after' image attachments as new jsPDF pages, then merge
-    if (afterImages.length > 0) {
-      const afterImagesPdf = new jsPDF({
+      const imagesPdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
         format: 'letter'
       })
 
-      // Add first image to the initial page
-      await addAttachmentPage(afterImagesPdf, afterImages[0], quoteData.project.id)
-
-      // Add remaining images as new pages
-      for (let i = 1; i < afterImages.length; i++) {
-        afterImagesPdf.addPage()
-        await addAttachmentPage(afterImagesPdf, afterImages[i], quoteData.project.id)
+      await addAttachmentPage(imagesPdf, images[0], quoteData.project.id)
+      for (let i = 1; i < images.length; i++) {
+        imagesPdf.addPage()
+        await addAttachmentPage(imagesPdf, images[i], quoteData.project.id)
       }
 
-      // Convert to pdf-lib and merge
-      const afterImagesBytes = afterImagesPdf.output('arraybuffer')
-      const afterImagesPdfDoc = await PDFDocument.load(afterImagesBytes)
-      const afterImagesPages = await finalPdf.copyPages(afterImagesPdfDoc, afterImagesPdfDoc.getPageIndices())
-      afterImagesPages.forEach(page => finalPdf.addPage(page))
+      const imagesBytes = imagesPdf.output('arraybuffer')
+      const imagesPdfDoc = await PDFDocument.load(imagesBytes)
+      const pages = await targetPdf.copyPages(imagesPdfDoc, imagesPdfDoc.getPageIndices())
+      pages.forEach(page => targetPdf.addPage(page))
     }
 
-    // Merge 'after' PDF attachments
-    for (const attachment of afterPdfs) {
+    // Create the final PDF document
+    let finalPdf = await PDFDocument.create()
+
+    // 1. Beginning attachments (images first, then PDFs)
+    await addImagesToPdfLib(beginningImages, finalPdf)
+    for (const attachment of beginningPdfs) {
+      const pages = await mergePdfAttachment(attachment, finalPdf)
+      pages.forEach(page => finalPdf.addPage(page))
+    }
+
+    // 2. Quote page
+    const quotePdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'letter'
+    })
+    await addQuotePage(quotePdf, quoteData)
+    const quoteBytes = quotePdf.output('arraybuffer')
+    const quotePdfDoc = await PDFDocument.load(quoteBytes)
+    const quotePages = await finalPdf.copyPages(quotePdfDoc, quotePdfDoc.getPageIndices())
+    quotePages.forEach(page => finalPdf.addPage(page))
+
+    // 3. After-quote attachments (images first, then PDFs)
+    await addImagesToPdfLib(afterQuoteImages, finalPdf)
+    for (const attachment of afterQuotePdfs) {
+      const pages = await mergePdfAttachment(attachment, finalPdf)
+      pages.forEach(page => finalPdf.addPage(page))
+    }
+
+    // 4. Persistent documents - product docs / global pages (images first, then PDFs)
+    await addImagesToPdfLib(persistentImages, finalPdf)
+    for (const attachment of persistentPdfs) {
+      const pages = await mergePdfAttachment(attachment, finalPdf)
+      pages.forEach(page => finalPdf.addPage(page))
+    }
+
+    // 5. End attachments (images first, then PDFs)
+    await addImagesToPdfLib(endImages, finalPdf)
+    for (const attachment of endPdfs) {
       const pages = await mergePdfAttachment(attachment, finalPdf)
       pages.forEach(page => finalPdf.addPage(page))
     }
@@ -218,7 +270,13 @@ export async function createQuotePDF(
     return Buffer.from(mergedBytes)
   } catch (error) {
     console.error('Error merging PDF attachments:', error)
-    // Fall back to returning just the jsPDF without attachments
+    // Fall back to a simple PDF with just the quote
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'letter'
+    })
+    await addQuotePage(pdf, quoteData)
     return Buffer.from(pdf.output('arraybuffer'))
   }
 }

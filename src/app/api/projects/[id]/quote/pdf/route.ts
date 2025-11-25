@@ -387,27 +387,35 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // 6. Combine and order attachments with proper positioning
     // The order should be:
-    // 1. Quote page(s) with grand total (handled by createQuotePDF)
-    // 2. Custom attachments with position='before'
-    // 3. Custom attachments with position='after' (default for existing records)
+    // 1. Beginning attachments (position='beginning' or legacy 'before')
+    // 2. Quote page(s) with grand total (handled by createQuotePDF)
+    // 3. After-quote attachments (position='after_quote' or legacy 'after' or no position)
     // 4. Persistent documents (global + product-specific)
+    // 5. End attachments (position='end')
 
-    const beforeAttachments = project.quoteAttachments
-      .filter(a => a.position === 'before')
+    const beginningAttachments = project.quoteAttachments
+      .filter(a => a.position === 'beginning' || a.position === 'before')
       .sort((a, b) => a.displayOrder - b.displayOrder)
 
-    const afterAttachments = project.quoteAttachments
-      .filter(a => a.position !== 'before') // Default to 'after' for existing records
+    const afterQuoteAttachments = project.quoteAttachments
+      .filter(a => a.position === 'after_quote' || a.position === 'after' || !a.position)
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+
+    const endAttachments = project.quoteAttachments
+      .filter(a => a.position === 'end')
       .sort((a, b) => a.displayOrder - b.displayOrder)
 
     // Combine in the correct order for PDF generation
+    // Note: The PDF generator will handle the ordering based on position values
     const allAttachments = [
-      ...beforeAttachments,
-      ...afterAttachments,
+      ...beginningAttachments.map(a => ({ ...a, position: 'beginning' })),
+      ...afterQuoteAttachments.map(a => ({ ...a, position: 'after_quote' })),
       ...persistentDocuments.map(doc => ({
         ...doc,
-        isPersistent: true
-      }))
+        isPersistent: true,
+        position: 'persistent' // Special position for persistent docs (between after_quote and end)
+      })),
+      ...endAttachments.map(a => ({ ...a, position: 'end' }))
     ]
 
     // Generate PDF with all attachments (now returns Buffer directly)

@@ -259,7 +259,7 @@ async function addCombinedViewPage(
   const planViewWidth = availableWidth * 0.40 - 2 * sectionPadding
   const planViewX = elevationX + elevationWidth + middleGap + sectionPadding
   const planViewHeight = availableHeight * 0.6 - 2 * sectionPadding
-  const planViewY = 22 // Moved up closer to labels (was marginTop + sectionPadding = 48mm)
+  const planViewY = 47 // Moved down 1 inch (25mm) from previous position of 22mm
 
   // Draw elevation view at bottom left
   if (openingData.elevationImages && openingData.elevationImages.length > 0) {

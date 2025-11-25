@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const file = formData.get('file') as File
     const type = formData.get('type') as string || 'custom'
     const description = formData.get('description') as string || null
-    const position = formData.get('position') as string || 'after'
+    const position = formData.get('position') as string || 'after_quote'
 
     if (!file) {
       return NextResponse.json(
@@ -75,10 +75,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       )
     }
 
-    // Validate position
-    if (position !== 'before' && position !== 'after') {
+    // Validate position (support legacy values for backwards compatibility)
+    const validPositions = ['beginning', 'after_quote', 'end', 'before', 'after']
+    if (!validPositions.includes(position)) {
       return NextResponse.json(
-        { error: 'Invalid position value. Must be "before" or "after".' },
+        { error: 'Invalid position value. Must be "beginning", "after_quote", or "end".' },
         { status: 400 }
       )
     }
@@ -157,13 +158,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // Handle single attachment update
     if (body.id) {
-      const { id: attachmentId, description, type } = body
+      const { id: attachmentId, description, type, position } = body
 
       const attachment = await prisma.quoteAttachment.update({
         where: { id: attachmentId, projectId },
         data: {
           ...(description !== undefined && { description }),
-          ...(type !== undefined && { type })
+          ...(type !== undefined && { type }),
+          ...(position !== undefined && { position })
         }
       })
 
