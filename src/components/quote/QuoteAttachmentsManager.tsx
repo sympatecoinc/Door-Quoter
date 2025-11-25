@@ -27,7 +27,7 @@ export default function QuoteAttachmentsManager({ projectId, onAttachmentsChange
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [dragActive, setDragActive] = useState(false)
-  const [selectedPosition, setSelectedPosition] = useState<'before' | 'after'>('after')
+  const [selectedPosition, setSelectedPosition] = useState<'beginning' | 'after_quote' | 'end'>('after_quote')
   const [previewAttachment, setPreviewAttachment] = useState<QuoteAttachment | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -116,6 +116,47 @@ export default function QuoteAttachmentsManager({ projectId, onAttachmentsChange
     } catch (error) {
       console.error('Error deleting attachment:', error)
       alert('Error deleting attachment')
+    }
+  }
+
+  const handleUpdatePosition = async (attachmentId: number, newPosition: string) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/quote-attachments`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: attachmentId,
+          position: newPosition
+        })
+      })
+
+      if (response.ok) {
+        await fetchAttachments()
+
+        if (onAttachmentsChange) {
+          onAttachmentsChange()
+        }
+      } else {
+        alert('Error updating position')
+      }
+    } catch (error) {
+      console.error('Error updating position:', error)
+      alert('Error updating position')
+    }
+  }
+
+  const getPositionLabel = (position: string): string => {
+    switch (position) {
+      case 'beginning':
+      case 'before':
+        return 'Beginning'
+      case 'after_quote':
+      case 'after':
+        return 'After Quote'
+      case 'end':
+        return 'End'
+      default:
+        return 'After Quote'
     }
   }
 
@@ -217,12 +258,13 @@ export default function QuoteAttachmentsManager({ projectId, onAttachmentsChange
             </label>
             <select
               value={selectedPosition}
-              onChange={(e) => setSelectedPosition(e.target.value as 'before' | 'after')}
+              onChange={(e) => setSelectedPosition(e.target.value as 'beginning' | 'after_quote' | 'end')}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={uploading}
             >
-              <option value="before">Before product documents</option>
-              <option value="after">After quote page (before product documents)</option>
+              <option value="beginning">Beginning (before quote)</option>
+              <option value="after_quote">After quote page</option>
+              <option value="end">End (after product documents)</option>
             </select>
             <p className="text-xs text-gray-500 mt-1">
               Choose where this attachment appears in the quote PDF
@@ -263,6 +305,15 @@ export default function QuoteAttachmentsManager({ projectId, onAttachmentsChange
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <select
+                    value={attachment.position === 'before' ? 'beginning' : attachment.position === 'after' ? 'after_quote' : attachment.position || 'after_quote'}
+                    onChange={(e) => handleUpdatePosition(attachment.id, e.target.value)}
+                    className="text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="beginning">Beginning</option>
+                    <option value="after_quote">After Quote</option>
+                    <option value="end">End</option>
+                  </select>
                   {attachment.mimeType.startsWith('image/') && (
                     <button
                       onClick={() => setPreviewAttachment(attachment)}

@@ -1215,7 +1215,10 @@ export default function ProductDetailView({
                         Unit
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Quantity/Formula
+                        Quantity
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Formula
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
@@ -1249,20 +1252,14 @@ export default function ProductDetailView({
                           {part.unit || '-'}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900">
-                          {part.partType === 'Hardware' && part.quantity && (
-                            <span>{part.quantity}</span>
-                          )}
-                          {part.partType === 'Extrusion' && (
-                            <div className="space-y-1">
-                              <div className="text-sm font-medium">Qty: {part.quantity || '-'}</div>
-                              {part.formula && (
-                                <div className="font-mono text-xs">
-                                  {renderFormulaWithHighlights(part.formula)}
-                                </div>
-                              )}
+                          {part.quantity || '-'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900">
+                          {part.formula ? (
+                            <div className="font-mono text-xs">
+                              {renderFormulaWithHighlights(part.formula)}
                             </div>
-                          )}
-                          {!part.quantity && !part.formula && '-'}
+                          ) : '-'}
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex space-x-2">
