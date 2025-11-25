@@ -165,6 +165,29 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
                 breakdown.details = `Percentage-based cost${excludedNote}: ${(usagePercentage * 100).toFixed(2)}% of stock (${requiredLength}"/${bestRule.stockLength}") × $${bestRule.basePrice} × ${bom.quantity || 1} = $${cost.toFixed(2)}`
                 breakdown.unitCost = cost / (bom.quantity || 1)
                 breakdown.totalCost = cost
+
+                // Calculate finish cost for percentage-based pricing
+                if (finishColor && finishColor !== 'Mill Finish' && !masterPart.isMillFinish) {
+                  try {
+                    const finishPricing = await prisma.extrusionFinishPricing.findUnique({
+                      where: { finishType: finishColor, isActive: true }
+                    })
+
+                    if (finishPricing && finishPricing.costPerFoot > 0) {
+                      const cutLengthFeet = requiredLength / 12
+                      const finishCostPerPiece = cutLengthFeet * finishPricing.costPerFoot
+                      const totalFinishCost = finishCostPerPiece * (bom.quantity || 1)
+
+                      breakdown.finishCost = totalFinishCost
+                      breakdown.finishDetails = `${finishColor} finish: ${cutLengthFeet.toFixed(2)}' × $${finishPricing.costPerFoot}/ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
+                      cost += totalFinishCost
+                      breakdown.totalCost = cost
+                    }
+                  } catch (error) {
+                    console.error('Error calculating finish cost:', error)
+                  }
+                }
+
                 return { cost, breakdown }
               }
               // If 50% or less remains, fall through to full stock cost
