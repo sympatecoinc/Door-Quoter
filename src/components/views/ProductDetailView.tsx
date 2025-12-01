@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { Plus, ArrowLeft, Tag, Wrench, Link, X, Edit2, Trash2, Save, Upload, Image as ImageIcon } from 'lucide-react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { Plus, ArrowLeft, Tag, Wrench, Link, X, Edit2, Trash2, Save, Upload, Image as ImageIcon, ChevronDown, ChevronRight, Star } from 'lucide-react'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 
@@ -488,8 +488,7 @@ export default function ProductDetailView({
   const [editPartUnit, setEditPartUnit] = useState('')
   const [editPartQuantity, setEditPartQuantity] = useState('')
   const [editPartNumber, setEditPartNumber] = useState('')
-  const [newPartAddFinish, setNewPartAddFinish] = useState(false)
-  const [editPartAddFinish, setEditPartAddFinish] = useState(false)
+  // Note: addFinishToPartNumber and addToPackingList are now managed at the MasterPart level, not per-product
   const [updating, setUpdating] = useState(false)
   const [productDetails, setProductDetails] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -525,6 +524,8 @@ export default function ProductDetailView({
   const [editingInstallationPrice, setEditingInstallationPrice] = useState(false)
   const [installationPriceValue, setInstallationPriceValue] = useState('')
   const [savingInstallationPrice, setSavingInstallationPrice] = useState(false)
+  const [expandedCategory, setExpandedCategory] = useState<number | null>(null)
+  const [settingStandard, setSettingStandard] = useState(false)
 
   // Fetch detailed product data including linked categories and plan views
   useEffect(() => {
@@ -774,7 +775,11 @@ export default function ProductDetailView({
 
   async function handleAddPlanView(e: React.FormEvent) {
     e.preventDefault()
-    if (!newPlanViewName.trim() || !newPlanViewFile) {
+
+    const isFixedPanel = product.productType === 'FIXED_PANEL'
+    const planViewName = isFixedPanel ? 'Fixed Panel' : newPlanViewName.trim()
+
+    if (!planViewName || !newPlanViewFile) {
       alert('Please provide both a name and an image for the plan view')
       return
     }
@@ -787,7 +792,7 @@ export default function ProductDetailView({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newPlanViewName,
+          name: planViewName,
           imageData,
           fileName: newPlanViewFile.name,
           fileType: newPlanViewFile.type,
@@ -949,6 +954,41 @@ export default function ProductDetailView({
     }
   }
 
+  async function handleSetStandard(categoryId: number, optionId: number | null) {
+    setSettingStandard(true)
+    try {
+      const response = await fetch(
+        `/api/products/${product.id}/categories/${categoryId}/standard`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ standardOptionId: optionId })
+        }
+      )
+      if (response.ok) {
+        // Refresh product details
+        const detailsResponse = await fetch(`/api/products/${product.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setProductDetails(data)
+        }
+        showSuccess(optionId ? 'Standard hardware set!' : 'Standard hardware cleared!')
+      } else {
+        const errorData = await response.json()
+        showError(errorData.error || 'Failed to update standard hardware')
+      }
+    } catch (error) {
+      console.error('Error setting standard:', error)
+      showError('Failed to set standard hardware')
+    } finally {
+      setSettingStandard(false)
+    }
+  }
+
+  function toggleCategoryExpand(categoryId: number) {
+    setExpandedCategory(expandedCategory === categoryId ? null : categoryId)
+  }
+
   async function handleAddPart(e: React.FormEvent) {
     e.preventDefault()
     
@@ -968,9 +1008,9 @@ export default function ProductDetailView({
       return
     }
     
-    // For hardware, validate quantity
-    if (masterPartFound.partType === 'Hardware' && !newPartQuantity.trim()) {
-      alert('Please enter a quantity for the hardware')
+    // For hardware and fasteners, validate quantity
+    if ((masterPartFound.partType === 'Hardware' || masterPartFound.partType === 'Fastener') && !newPartQuantity.trim()) {
+      alert(`Please enter a quantity for the ${masterPartFound.partType.toLowerCase()}`)
       return
     }
 
@@ -989,7 +1029,8 @@ export default function ProductDetailView({
         stockLength: null,
         partNumber: masterPartFound.partNumber,
         cost: masterPartFound.cost || null,
-        addFinishToPartNumber: masterPartFound.partType === 'Hardware' ? newPartAddFinish : false
+        addFinishToPartNumber: masterPartFound.partType === 'Hardware' ? (masterPartFound.addFinishToPartNumber || false) : false,
+        addToPackingList: masterPartFound.partType === 'Hardware' ? (masterPartFound.addToPackingList || false) : false
       }
 
       const response = await fetch('/api/product-boms', {
@@ -1003,7 +1044,6 @@ export default function ProductDetailView({
         setNewPartNumber('')
         setNewPartFormula('')
         setNewPartQuantity('')
-        setNewPartAddFinish(false)
         setMasterPartFound(null)
         setMasterPartSuggestions([])
         setShowSuggestions(false)
@@ -1035,6 +1075,7 @@ export default function ProductDetailView({
     setEditPartQuantity(part.quantity?.toString() || '')
     setEditPartNumber(part.partNumber || '')
     setEditPartAddFinish(part.addFinishToPartNumber || false)
+    setEditPartAddToPacking(part.addToPackingList || false)
   }
 
   function cancelEditPart() {
@@ -1069,7 +1110,7 @@ export default function ProductDetailView({
           quantity: editPartQuantity ? parseFloat(editPartQuantity) : null,
           stockLength: null,
           partNumber: editPartNumber || null,
-          addFinishToPartNumber: editPartType === 'Hardware' ? editPartAddFinish : false
+          // addFinishToPartNumber and addToPackingList are set from master part, not editable per-product
         })
       })
 
@@ -1221,6 +1262,9 @@ export default function ProductDetailView({
                         Formula
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Packing
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
                       </th>
                     </tr>
@@ -1238,8 +1282,10 @@ export default function ProductDetailView({
                         </td>
                         <td className="px-6 py-4">
                           <span className={`px-2 py-1 text-xs rounded-full ${
-                            part.partType === 'Hardware' 
-                              ? 'bg-green-100 text-green-700' 
+                            part.partType === 'Hardware'
+                              ? 'bg-green-100 text-green-700'
+                              : part.partType === 'Fastener'
+                              ? 'bg-purple-100 text-purple-700'
                               : 'bg-blue-100 text-blue-700'
                           }`}>
                             {part.partType}
@@ -1260,6 +1306,13 @@ export default function ProductDetailView({
                               {renderFormulaWithHighlights(part.formula)}
                             </div>
                           ) : '-'}
+                        </td>
+                        <td className="px-6 py-4">
+                          {part.partType === 'Hardware' && part.addToPackingList && (
+                            <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700">
+                              ✓ Included
+                            </span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex space-x-2">
@@ -1388,23 +1441,25 @@ export default function ProductDetailView({
                       required
                     />
                   </div>
-                  <div>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={newPartAddFinish}
-                        onChange={(e) => setNewPartAddFinish(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <span className="text-sm text-gray-700">Add finish color to part number in BOM</span>
-                    </label>
-                    <p className="text-xs text-gray-500 mt-1 ml-6">
-                      When checked, the opening&apos;s finish color code will be appended to this part number (e.g., PART-123 → PART-123-BL)
-                    </p>
-                  </div>
                 </div>
               )}
-              
+
+              {masterPartFound && masterPartFound.partType === 'Fastener' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                  <input
+                    type="number"
+                    value={newPartQuantity}
+                    onChange={(e) => setNewPartQuantity(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    placeholder="e.g., 2"
+                    step="0.01"
+                    min="0"
+                    required
+                  />
+                </div>
+              )}
+
               {masterPartFound && (
                 <div className="flex justify-end space-x-3">
                   <button
@@ -1424,7 +1479,7 @@ export default function ProductDetailView({
                   </button>
                   <button
                     type="submit"
-                    disabled={creating || !masterPartFound || (masterPartFound.partType === 'Extrusion' && (!newPartFormula || !newPartQuantity)) || (masterPartFound.partType === 'Hardware' && !newPartQuantity)}
+                    disabled={creating || !masterPartFound || (masterPartFound.partType === 'Extrusion' && (!newPartFormula || !newPartQuantity)) || ((masterPartFound.partType === 'Hardware' || masterPartFound.partType === 'Fastener') && !newPartQuantity)}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {creating ? 'Adding...' : 'Add Part'}
@@ -1571,11 +1626,13 @@ export default function ProductDetailView({
                   <table className="w-full">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-8">
+                        </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Category Name
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Description
+                          Standard Hardware
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Options
@@ -1587,28 +1644,124 @@ export default function ProductDetailView({
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {productDetails.productSubOptions.map((productSubOption: any) => (
-                        <tr key={productSubOption.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4">
-                            <div className="text-sm font-medium text-gray-900">{productSubOption.category.name}</div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-600">{productSubOption.category.description || 'No description'}</div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-gray-500">
-                              {productSubOption.category.individualOptions?.length || 0} options
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <button
-                              onClick={() => handleUnlinkCategory(productSubOption.categoryId)}
-                              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                              title="Unlink category"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
+                        <React.Fragment key={productSubOption.id}>
+                          <tr
+                            className="hover:bg-gray-50 cursor-pointer"
+                            onClick={() => toggleCategoryExpand(productSubOption.categoryId)}
+                          >
+                            <td className="px-6 py-4">
+                              {expandedCategory === productSubOption.categoryId ? (
+                                <ChevronDown className="w-4 h-4 text-gray-500" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-gray-500" />
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm font-medium text-gray-900">{productSubOption.category.name}</div>
+                              {productSubOption.category.description && (
+                                <div className="text-xs text-gray-500">{productSubOption.category.description}</div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              {productSubOption.standardOption ? (
+                                <div className="flex items-center space-x-2">
+                                  <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                                  <span className="text-sm text-gray-900">{productSubOption.standardOption.name}</span>
+                                  <span className="text-xs text-gray-500">(${productSubOption.standardOption.price.toFixed(2)})</span>
+                                </div>
+                              ) : (
+                                <span className="text-sm text-gray-400 italic">None set</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm text-gray-500">
+                                {productSubOption.category.individualOptions?.length || 0} options
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleUnlinkCategory(productSubOption.categoryId)
+                                }}
+                                className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                title="Unlink category"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                          {expandedCategory === productSubOption.categoryId && (
+                            <tr>
+                              <td colSpan={5} className="px-6 py-4 bg-gray-50">
+                                <div className="space-y-2">
+                                  <div className="text-sm font-medium text-gray-700 mb-3">
+                                    Select standard hardware for this category:
+                                  </div>
+                                  {productSubOption.category.individualOptions?.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                      {productSubOption.category.individualOptions.map((option: any) => {
+                                        const isStandard = productSubOption.standardOptionId === option.id
+                                        return (
+                                          <div
+                                            key={option.id}
+                                            className={`p-3 rounded-lg border ${
+                                              isStandard
+                                                ? 'border-yellow-400 bg-yellow-50'
+                                                : 'border-gray-200 bg-white hover:border-gray-300'
+                                            }`}
+                                          >
+                                            <div className="flex items-start justify-between">
+                                              <div className="flex-1">
+                                                <div className="flex items-center space-x-2">
+                                                  {isStandard && (
+                                                    <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                                                  )}
+                                                  <span className="text-sm font-medium text-gray-900">
+                                                    {option.name}
+                                                  </span>
+                                                </div>
+                                                <div className="text-sm text-gray-600 mt-1">
+                                                  ${option.price.toFixed(2)}
+                                                </div>
+                                                {option.description && (
+                                                  <div className="text-xs text-gray-500 mt-1">
+                                                    {option.description}
+                                                  </div>
+                                                )}
+                                              </div>
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
+                                                  handleSetStandard(
+                                                    productSubOption.categoryId,
+                                                    isStandard ? null : option.id
+                                                  )
+                                                }}
+                                                disabled={settingStandard}
+                                                className={`ml-2 px-3 py-1 text-xs rounded-lg transition-colors ${
+                                                  isStandard
+                                                    ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                                                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                                } disabled:opacity-50`}
+                                              >
+                                                {settingStandard ? '...' : isStandard ? 'Clear' : 'Set Standard'}
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <div className="text-sm text-gray-500 italic">
+                                      No options available in this category.
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>
@@ -1885,17 +2038,6 @@ export default function ProductDetailView({
                       required
                     />
                   </div>
-                  <div>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editPartAddFinish}
-                        onChange={(e) => setEditPartAddFinish(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <span className="text-sm text-gray-700">Add finish color to part number in BOM</span>
-                    </label>
-                  </div>
                 </div>
               )}
 
@@ -2134,22 +2276,39 @@ export default function ProductDetailView({
             </div>
 
             <form onSubmit={handleAddPlanView} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Plan View Name *
-                </label>
-                <input
-                  type="text"
-                  value={newPlanViewName}
-                  onChange={(e) => setNewPlanViewName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                  placeholder="e.g., Right-In, Right-Out, Left-In"
-                  required
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  This name will appear as an opening direction option when adding the product to an opening.
-                </p>
-              </div>
+              {product.productType === 'FIXED_PANEL' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Plan View Name
+                  </label>
+                  <input
+                    type="text"
+                    value="Fixed Panel"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900"
+                    disabled
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Fixed Panel products automatically use &quot;Fixed Panel&quot; as the plan view name.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Plan View Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={newPlanViewName}
+                    onChange={(e) => setNewPlanViewName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    placeholder="e.g., Right-In, Right-Out, Left-In"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    This name will appear as an opening direction option when adding the product to an opening.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2170,22 +2329,24 @@ export default function ProductDetailView({
                 )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Orientation *
-                </label>
-                <select
-                  value={newPlanViewOrientation}
-                  onChange={(e) => setNewPlanViewOrientation(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                >
-                  <option value="bottom">Bottom (align top of PNG with other components)</option>
-                  <option value="top">Top (align bottom of PNG with other components)</option>
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Choose how this plan view aligns with other components in the opening.
-                </p>
-              </div>
+              {product.productType !== 'FIXED_PANEL' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Orientation *
+                  </label>
+                  <select
+                    value={newPlanViewOrientation}
+                    onChange={(e) => setNewPlanViewOrientation(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  >
+                    <option value="bottom">Bottom (align top of PNG with other components)</option>
+                    <option value="top">Top (align bottom of PNG with other components)</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Choose how this plan view aligns with other components in the opening.
+                  </p>
+                </div>
+              )}
 
               <div className="flex justify-end space-x-3 pt-4">
                 <button

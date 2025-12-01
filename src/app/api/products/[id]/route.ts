@@ -16,7 +16,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               include: {
                 individualOptions: true
               }
-            }
+            },
+            standardOption: true
           }
         },
         _count: {
@@ -103,7 +104,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
               include: {
                 individualOptions: true
               }
-            }
+            },
+            standardOption: true
           }
         },
         _count: {

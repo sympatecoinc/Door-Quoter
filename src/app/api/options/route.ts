@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { categoryId, name, description, price = 0 } = await request.json()
+    const { categoryId, name, description, price = 0, partNumber, addToPackingList = false, addFinishToPartNumber = false } = await request.json()
 
     if (!name || !categoryId) {
       return NextResponse.json(
@@ -39,12 +39,32 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check if option with same part number already exists in this category
+    if (partNumber) {
+      const existingOption = await prisma.individualOption.findFirst({
+        where: {
+          categoryId: parseInt(categoryId),
+          partNumber: partNumber
+        }
+      })
+
+      if (existingOption) {
+        return NextResponse.json(
+          { error: `Option with part number "${partNumber}" already exists in this category` },
+          { status: 409 }
+        )
+      }
+    }
+
     const option = await prisma.individualOption.create({
       data: {
         categoryId: parseInt(categoryId),
         name,
         description,
-        price: parseFloat(price)
+        price: parseFloat(price),
+        partNumber: partNumber || null,
+        addToPackingList: Boolean(addToPackingList),
+        addFinishToPartNumber: Boolean(addFinishToPartNumber)
       },
       include: {
         category: true

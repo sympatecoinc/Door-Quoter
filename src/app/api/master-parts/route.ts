@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, partType, isOption } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, partType, isOption, addFinishToPartNumber, addToPackingList } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({
@@ -117,11 +117,11 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Validate cost requirements: Hardware parts require cost, Extrusions don't
-    if (partType === 'Hardware') {
+    // Validate cost requirements: Hardware and Fastener parts require cost, Extrusions don't
+    if (partType === 'Hardware' || partType === 'Fastener') {
       if (!cost || isNaN(parseFloat(cost.toString()))) {
         return NextResponse.json({
-          error: 'Hardware parts require a valid cost'
+          error: `${partType} parts require a valid cost`
         }, { status: 400 })
       }
       // Validate weight if provided
@@ -148,12 +148,14 @@ export async function POST(request: NextRequest) {
         partNumber,
         baseName,
         description,
-        unit: (partType === 'Extrusion') ? 'IN' : unit, // Always set unit to 'IN' for extrusions
+        unit: (partType === 'Extrusion') ? 'IN' : (unit || 'EA'), // Extrusions use 'IN', Hardware/Fastener default to 'EA'
         cost: (partType === 'Extrusion') ? null : (cost ? parseFloat(cost) : null),
-        weightPerUnit: (partType === 'Hardware' && weightPerUnit) ? parseFloat(weightPerUnit) : null,
+        weightPerUnit: ((partType === 'Hardware' || partType === 'Fastener') && weightPerUnit) ? parseFloat(weightPerUnit) : null,
         weightPerFoot: (partType === 'Extrusion' && weightPerFoot) ? parseFloat(weightPerFoot) : null,
         partType: partType || 'Hardware',
-        isOption: (partType === 'Hardware') ? (isOption || false) : false // Only hardware can be options
+        isOption: (partType === 'Hardware') ? (isOption || false) : false, // Only hardware can be options
+        addFinishToPartNumber: (partType === 'Hardware') ? (addFinishToPartNumber || false) : false,
+        addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false
       }
     })
 

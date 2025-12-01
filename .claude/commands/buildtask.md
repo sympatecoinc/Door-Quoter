@@ -1,3 +1,8 @@
+---
+model: opus
+thinking: enabled
+---
+
 # Build Task - ClickUp Task Breakdown Workflow
 
 You will help break down a ClickUp task into a comprehensive implementation plan with detailed subtasks.
@@ -44,6 +49,39 @@ Analyze the codebase to understand what needs to be changed:
 - Check database schema if needed (prisma/schema.prisma)
 - Search for related functionality with Grep
 
+### Step 3b: Efficiency Analysis (IMPORTANT)
+
+Before creating a plan, analyze for the most efficient approach:
+
+**DRY Principle Check:**
+1. **Can existing code be extended?**
+   - Look for existing endpoints that could accept new query parameters (e.g., `?summary=true`)
+   - Check if existing components could be enhanced rather than creating new ones
+   - Search for utility functions in `src/lib/` that could be reused
+
+2. **Avoid code duplication:**
+   - If similar logic exists elsewhere, consider extracting to shared utilities
+   - Don't copy helper functions between files - create shared modules instead
+   - Prefer modifying existing files over creating new ones when logic overlaps
+
+3. **Minimize file changes:**
+   - Adding a query param to existing endpoint > Creating new endpoint
+   - Extending existing component > Creating new component
+   - Using existing types > Creating duplicate types
+
+**Example - Inefficient vs Efficient:**
+```
+❌ INEFFICIENT: Create /api/projects/[id]/bom/summary/route.ts
+   (Copies 100+ lines of BOM logic from existing route)
+
+✅ EFFICIENT: Add ?summary=true param to /api/projects/[id]/bom/route.ts
+   (Reuses existing BOM logic, adds ~50 lines for aggregation)
+```
+
+**Document your efficiency decision:**
+- Note which approach you chose and why
+- If creating new files, explain why extending existing code wasn't feasible
+
 ### Step 4: Ask Clarifying Questions
 
 Before proceeding with the implementation plan, use the AskUserQuestion tool to ask any clarifying questions:
@@ -68,11 +106,26 @@ node scripts/clickup-helper.js update <TASK_ID> --append-description "<IMPLEMENT
 ```markdown
 ## Implementation Plan
 
+### Approach
+[Explain WHY you chose this approach - extending existing vs creating new]
+
+Example:
+> Instead of creating a new `/api/projects/[id]/bom/summary` endpoint,
+> we extend the existing `/api/projects/[id]/bom` endpoint with a `?summary=true`
+> query parameter. This avoids duplicating 100+ lines of BOM generation logic
+> and maintains a single source of truth.
+
 ### Files to Modify
-1. **Frontend**: `path/to/component.tsx`
-2. **Backend API**: `path/to/route.ts`
+1. **Frontend**: `path/to/component.tsx` (MODIFY/NEW)
+2. **Backend API**: `path/to/route.ts` (MODIFY/NEW)
 3. **Types** (if needed): `path/to/types.ts`
 4. **Database** (if needed): `prisma/schema.prisma`
+
+### Efficiency Notes
+- [ ] No code duplication
+- [ ] Reuses existing logic from: [file/function]
+- [ ] Backward compatible: existing API unchanged
+- [ ] Lines of code: ~X new lines (vs ~Y if duplicating)
 
 ---
 
@@ -176,6 +229,25 @@ I've analyzed the codebase and created a detailed implementation plan.
 Ready to create subtasks!
 ```
 
+### Step 6b: Self-Review Plan for Efficiency
+
+Before creating subtasks, review your plan against these criteria:
+
+**Efficiency Checklist:**
+- [ ] **No code duplication** - Am I copying logic that could be shared?
+- [ ] **Minimal new files** - Could I extend existing files instead?
+- [ ] **Reusing utilities** - Am I leveraging existing `src/lib/` functions?
+- [ ] **Single source of truth** - Will bug fixes need to be applied in multiple places?
+- [ ] **Backward compatible** - Does my approach break existing functionality?
+
+**If any check fails, revise the plan before proceeding.**
+
+**Red Flags to Watch For:**
+- Creating new API route that duplicates existing route's logic
+- Copying helper functions between files
+- Creating new types that already exist elsewhere
+- Adding new components when existing ones could be extended
+
 ### Step 7: Create Subtasks
 
 Based on the complexity, create appropriate subtasks. Common patterns:
@@ -199,6 +271,19 @@ Based on the complexity, create appropriate subtasks. Common patterns:
 4. Frontend Testing
 5. Backend Testing
 6. Deployment & Documentation
+
+#### Pattern 4: Extend Existing Feature (4 subtasks) - PREFERRED when applicable
+Use this when extending existing endpoints/components rather than creating new ones:
+1. Backend Enhancement (modify existing route/add query params)
+2. Frontend Enhancement (extend existing component)
+3. Integration Testing
+4. Deployment
+
+**Benefits of Pattern 4:**
+- Less code to write and maintain
+- No duplication of logic
+- Backward compatible by default
+- Easier to test (single endpoint)
 
 **Create each subtask:**
 
@@ -253,7 +338,7 @@ newCode()
 Part of: https://app.clickup.com/t/<PARENT_TASK_ID>
 ```
 
-#### Backend API Subtask
+#### Backend API Subtask (New Endpoint)
 
 **Name:** `Backend: [Specific API Change]`
 
@@ -315,6 +400,74 @@ fetch('/api/endpoint', {
 
 ## Files Modified
 - `path/to/route.ts`
+
+## Related Task
+Part of: https://app.clickup.com/t/<PARENT_TASK_ID>
+```
+
+#### Backend Enhancement Subtask (Extend Existing - PREFERRED)
+
+**Name:** `Backend: Extend [Endpoint] with [Feature]`
+
+**Description:**
+```markdown
+## Summary
+Extend existing endpoint with new functionality via query parameters.
+
+## Prompt
+Modify `path/to/existing/route.ts` to support `?newParam=value` query parameter.
+
+## Why This Approach
+- Reuses existing logic (no duplication)
+- Backward compatible (existing behavior unchanged)
+- Single source of truth for [feature] logic
+- ~X lines added vs ~Y lines if creating new endpoint
+
+## Changes Required
+
+### 1. Add Query Parameter Handling (After Line ~XXX)
+```typescript
+const { searchParams } = new URL(request.url)
+const newParam = searchParams.get('newParam') === 'true'
+```
+
+### 2. Add New Logic (Before final return, Line ~XXX)
+```typescript
+if (newParam) {
+  const processedData = processExistingData(existingData)
+  return NextResponse.json({ processedData })
+}
+```
+
+### 3. Add Helper Function (Before GET handler)
+```typescript
+function processExistingData(data: ExistingType[]): ProcessedType[] {
+  // New processing logic that operates on existing data
+}
+```
+
+## API Usage
+**Existing (unchanged):**
+\`\`\`
+GET /api/endpoint
+\`\`\`
+
+**New functionality:**
+\`\`\`
+GET /api/endpoint?newParam=true
+GET /api/endpoint?newParam=true&format=csv
+\`\`\`
+
+## Acceptance Criteria
+- [ ] Existing endpoint behavior is UNCHANGED
+- [ ] New query param triggers new functionality
+- [ ] No code duplication with existing logic
+- [ ] TypeScript types are correct
+- [ ] New functionality works correctly
+- [ ] CSV format works (if applicable)
+
+## Files Modified
+- `path/to/existing/route.ts` (MODIFIED - not new file)
 
 ## Related Task
 Part of: https://app.clickup.com/t/<PARENT_TASK_ID>
@@ -536,6 +689,13 @@ This indicates that the task has been fully planned and is ready for implementat
 
 ## Important Notes
 
+### Efficiency First (DRY Principle)
+- **ALWAYS check if existing code can be extended** before creating new files
+- Prefer query parameters (`?summary=true`) over new endpoints when logic overlaps
+- Extract shared utilities to `src/lib/` if same logic needed in multiple places
+- Aim for **single source of truth** - bug fixes should only need to happen in one place
+
+### Quality Guidelines
 - Be thorough in your analysis before creating the plan
 - Include specific line numbers when possible
 - Provide exact code examples
@@ -544,3 +704,9 @@ This indicates that the task has been fully planned and is ready for implementat
 - Link all related tasks
 - Follow the patterns appropriate for the complexity level
 - Use the ClickUp helper script for all API operations
+
+### Red Flags - Stop and Reconsider If:
+- You're about to copy >20 lines of code from another file
+- You're creating a new endpoint that does 80% of what an existing endpoint does
+- You're duplicating helper functions between files
+- Bug fixes would need to be applied in multiple places

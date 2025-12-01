@@ -43,7 +43,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
     }
 
-    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, partType, isOption } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, partType, isOption, addFinishToPartNumber, addToPackingList } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({
@@ -104,7 +104,9 @@ export async function PUT(
         weightPerUnit: (partType === 'Hardware' && weightPerUnit) ? parseFloat(weightPerUnit) : null,
         weightPerFoot: (partType === 'Extrusion' && weightPerFoot) ? parseFloat(weightPerFoot) : null,
         partType: partType || 'Hardware',
-        isOption: (partType === 'Hardware') ? (isOption || false) : false // Only hardware can be options
+        isOption: (partType === 'Hardware') ? (isOption || false) : false, // Only hardware can be options
+        addFinishToPartNumber: (partType === 'Hardware') ? (addFinishToPartNumber || false) : false,
+        addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false
       }
     })
 
@@ -132,26 +134,31 @@ export async function PUT(
     // Automatically sync related IndividualOptions if this is an option part
     if (updatedPart.isOption && updatedPart.partType === 'Hardware') {
       try {
-        // Find all IndividualOptions that were likely created from this master part
+        // Find all IndividualOptions that match by partNumber or description pattern
         const descriptionPattern = `${updatedPart.partNumber} - `
-        
+
         const relatedOptions = await prisma.individualOption.findMany({
           where: {
-            description: {
-              startsWith: descriptionPattern
-            }
+            OR: [
+              { partNumber: updatedPart.partNumber },
+              { partNumber: oldPart?.partNumber }, // Match old part number if changed
+              { description: { startsWith: descriptionPattern } }
+            ]
           }
         })
 
         // Update each related option with current master part data
         if (relatedOptions.length > 0) {
-          await Promise.all(relatedOptions.map(option => 
+          await Promise.all(relatedOptions.map(option =>
             prisma.individualOption.update({
               where: { id: option.id },
               data: {
                 name: updatedPart.baseName,
                 description: `${updatedPart.partNumber} - ${updatedPart.baseName}`,
-                price: updatedPart.cost || 0
+                price: updatedPart.cost || 0,
+                partNumber: updatedPart.partNumber,
+                addFinishToPartNumber: updatedPart.addFinishToPartNumber || false,
+                addToPackingList: updatedPart.addToPackingList || false
               }
             })
           ))
@@ -176,16 +183,40 @@ export async function DELETE(
   try {
     const { id: idParam } = await params
     const id = parseInt(idParam)
-    
+
     if (isNaN(id)) {
       return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
     }
 
+    // Get the master part to find its part number
+    const masterPart = await prisma.masterPart.findUnique({
+      where: { id }
+    })
+
+    if (!masterPart) {
+      return NextResponse.json({ error: 'Master part not found' }, { status: 404 })
+    }
+
+    // Delete related IndividualOptions (category options) that match this part number
+    await prisma.individualOption.deleteMany({
+      where: {
+        partNumber: masterPart.partNumber
+      }
+    })
+
+    // Delete related ProductBOM entries that use this part number
+    await prisma.productBOM.deleteMany({
+      where: {
+        partNumber: masterPart.partNumber
+      }
+    })
+
+    // Delete the master part itself
     await prisma.masterPart.delete({
       where: { id }
     })
 
-    return NextResponse.json({ message: 'Master part deleted successfully' })
+    return NextResponse.json({ message: 'Master part and all related records deleted successfully' })
   } catch (error) {
     console.error('Error deleting master part:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

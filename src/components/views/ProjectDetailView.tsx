@@ -176,6 +176,9 @@ export default function ProjectDetailView() {
   const [cornerDirection, setCornerDirection] = useState<string>('Up')
   const [glassType, setGlassType] = useState<string>('Clear')
   const [componentQuantity, setComponentQuantity] = useState<string>('1')
+  // Hardware options for add component modal
+  const [addComponentOptions, setAddComponentOptions] = useState<any[]>([])
+  const [addComponentSelectedOptions, setAddComponentSelectedOptions] = useState<Record<number, number | null>>({})
   const [showComponentEdit, setShowComponentEdit] = useState(false)
   const [selectedComponentId, setSelectedComponentId] = useState<number | null>(null)
   const [componentOptions, setComponentOptions] = useState<any[]>([])
@@ -183,10 +186,16 @@ export default function ProjectDetailView() {
   const [includedOptions, setIncludedOptions] = useState<number[]>([]) // Hardware options marked as included (no charge)
   const [editingComponentWidth, setEditingComponentWidth] = useState<string>('')
   const [editingComponentHeight, setEditingComponentHeight] = useState<string>('')
+  const [editingGlassType, setEditingGlassType] = useState<string>('')
+  const [editingDirection, setEditingDirection] = useState<string>('')
+  const [editingProductType, setEditingProductType] = useState<string>('')
   const [currentPanelId, setCurrentPanelId] = useState<number | null>(null)
   const [showBOM, setShowBOM] = useState(false)
   const [bomData, setBomData] = useState<any>(null)
   const [loadingBOM, setLoadingBOM] = useState(false)
+  const [bomViewMode, setBomViewMode] = useState<'byOpening' | 'summary'>('byOpening')
+  const [summaryData, setSummaryData] = useState<any>(null)
+  const [loadingSummary, setLoadingSummary] = useState(false)
   const [showDrawingViewer, setShowDrawingViewer] = useState(false)
   const [selectedDrawingOpeningId, setSelectedDrawingOpeningId] = useState<number | null>(null)
   const [selectedDrawingOpeningNumber, setSelectedDrawingOpeningNumber] = useState<string>('')
@@ -195,6 +204,11 @@ export default function ProjectDetailView() {
   const [showSyncConfirmation, setShowSyncConfirmation] = useState(false)
   const [syncingPrices, setSyncingPrices] = useState(false)
   const [syncDetails, setSyncDetails] = useState<string[]>([])
+
+  // Bulk delete state
+  const [selectedOpeningIds, setSelectedOpeningIds] = useState<Set<number>>(new Set())
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
 
   // Handle back navigation
   const handleBack = () => {
@@ -655,6 +669,64 @@ export default function ProjectDetailView() {
     }
   }
 
+  // Bulk selection handlers
+  function toggleOpeningSelection(openingId: number) {
+    setSelectedOpeningIds(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(openingId)) {
+        newSet.delete(openingId)
+      } else {
+        newSet.add(openingId)
+      }
+      return newSet
+    })
+  }
+
+  function toggleSelectAll() {
+    if (!project) return
+    if (selectedOpeningIds.size === project.openings.length) {
+      setSelectedOpeningIds(new Set())
+    } else {
+      setSelectedOpeningIds(new Set(project.openings.map(o => o.id)))
+    }
+  }
+
+  function clearSelection() {
+    setSelectedOpeningIds(new Set())
+  }
+
+  async function handleBulkDelete() {
+    if (selectedOpeningIds.size === 0) return
+
+    setIsBulkDeleting(true)
+    try {
+      const response = await fetch('/api/openings/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          openingIds: Array.from(selectedOpeningIds)
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        await fetchProject()
+        setShowBulkDeleteModal(false)
+        setSelectedOpeningIds(new Set())
+        showSuccess(`Deleted ${result.deletedCount} opening${result.deletedCount !== 1 ? 's' : ''}`)
+      } else {
+        showError('Error deleting openings')
+      }
+    } catch (error) {
+      console.error('Error bulk deleting openings:', error)
+      showError('Error deleting openings')
+    } finally {
+      setIsBulkDeleting(false)
+    }
+  }
+
   function handleShowEditOpeningModal(opening: Opening) {
     setEditingOpeningId(opening.id)
     setEditingOpeningName(opening.name)
@@ -916,7 +988,7 @@ export default function ProjectDetailView() {
             body: JSON.stringify({
               panelId: panelData.id,
               productId: selectedProductId,
-              subOptionSelections: {}
+              subOptionSelections: addComponentSelectedOptions
             })
           })
 
@@ -935,6 +1007,8 @@ export default function ProjectDetailView() {
         setSwingDirection('Right In')
         setSlidingDirection('Left')
         setGlassType('Clear')
+        setAddComponentOptions([])
+        setAddComponentSelectedOptions({})
 
         // Recalculate opening price
         if (selectedOpeningId) {
@@ -968,7 +1042,18 @@ export default function ProjectDetailView() {
         setEditingComponentWidth(componentData.panel.width?.toString() || '')
         setEditingComponentHeight(componentData.panel.height?.toString() || '')
         setCurrentPanelId(componentData.panel.id)
-        
+
+        // Set glass type and direction for editing
+        setEditingGlassType(componentData.panel.glassType || '')
+        // Set direction based on product type
+        if (componentData.panel.swingDirection) {
+          setEditingDirection(componentData.panel.swingDirection)
+        } else if (componentData.panel.slidingDirection) {
+          setEditingDirection(componentData.panel.slidingDirection)
+        } else {
+          setEditingDirection('')
+        }
+
         // Fetch available options for this product
         const productResponse = await fetch(`/api/products/${componentData.productId}`)
         if (productResponse.ok) {
@@ -976,6 +1061,7 @@ export default function ProjectDetailView() {
           setComponentOptions(productData.productSubOptions || [])
           setSelectedOptions(JSON.parse(componentData.subOptionSelections || '{}'))
           setIncludedOptions(JSON.parse(componentData.includedOptions || '[]'))
+          setEditingProductType(productData.productType || '')
           setShowComponentEdit(true)
         }
       }
@@ -1043,7 +1129,7 @@ export default function ProjectDetailView() {
 
   async function handleDownloadBOMCSV() {
     if (!selectedProjectId) return
-    
+
     try {
       const response = await fetch(`/api/projects/${selectedProjectId}/bom/csv`)
       if (response.ok) {
@@ -1051,21 +1137,21 @@ export default function ProjectDetailView() {
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        
+
         // Get filename from Content-Disposition header or use default
         const contentDisposition = response.headers.get('Content-Disposition')
         let filename = 'project-bom.csv'
         if (contentDisposition && contentDisposition.includes('filename=')) {
           filename = contentDisposition.split('filename=')[1].replace(/"/g, '')
         }
-        
+
         link.setAttribute('download', filename)
         link.style.visibility = 'hidden'
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
         window.URL.revokeObjectURL(url)
-        
+
         showSuccess('BOM CSV downloaded successfully!')
       } else {
         showError('Failed to download BOM CSV')
@@ -1073,6 +1159,69 @@ export default function ProjectDetailView() {
     } catch (error) {
       console.error('Error downloading BOM CSV:', error)
       showError('Error downloading BOM CSV')
+    }
+  }
+
+  async function handleFetchSummary() {
+    if (!selectedProjectId) return
+
+    setLoadingSummary(true)
+
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}/bom?summary=true`)
+      if (response.ok) {
+        const data = await response.json()
+        setSummaryData(data)
+      } else {
+        showError('Failed to load purchasing summary')
+      }
+    } catch (error) {
+      console.error('Error fetching summary:', error)
+      showError('Error fetching purchasing summary')
+    } finally {
+      setLoadingSummary(false)
+    }
+  }
+
+  async function handleDownloadSummaryCSV() {
+    if (!selectedProjectId) return
+
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}/bom?summary=true&format=csv`)
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+
+        // Get filename from Content-Disposition header or use default
+        const contentDisposition = response.headers.get('Content-Disposition')
+        let filename = 'purchasing-summary.csv'
+        if (contentDisposition && contentDisposition.includes('filename=')) {
+          filename = contentDisposition.split('filename=')[1].replace(/"/g, '')
+        }
+
+        link.setAttribute('download', filename)
+        link.style.visibility = 'hidden'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+
+        showSuccess('Purchasing summary CSV downloaded!')
+      } else {
+        showError('Failed to download purchasing summary CSV')
+      }
+    } catch (error) {
+      console.error('Error downloading summary CSV:', error)
+      showError('Error downloading purchasing summary CSV')
+    }
+  }
+
+  function handleBomViewModeChange(mode: 'byOpening' | 'summary') {
+    setBomViewMode(mode)
+    if (mode === 'summary' && !summaryData) {
+      handleFetchSummary()
     }
   }
 
@@ -1289,13 +1438,22 @@ export default function ProjectDetailView() {
             </div>
           </div>
         </div>
-        <button
-          onClick={() => setShowAddOpening(true)}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Add Opening
-        </button>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={handleShowBOM}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+          >
+            <FileText className="w-5 h-5 mr-2" />
+            View BOM
+          </button>
+          <button
+            onClick={() => setShowAddOpening(true)}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Add Opening
+          </button>
+        </div>
       </div>
 
       {/* Openings Section */}
@@ -1615,6 +1773,22 @@ export default function ProjectDetailView() {
                         setSlidingDirection(firstPlanViewName)
                       }
                     }
+
+                    // Load hardware options for the selected product
+                    if (product?.productSubOptions && product.productSubOptions.length > 0) {
+                      setAddComponentOptions(product.productSubOptions)
+                      // Pre-select standard options
+                      const preselected: Record<number, number | null> = {}
+                      for (const pso of product.productSubOptions) {
+                        if (pso.standardOptionId) {
+                          preselected[pso.category.id] = pso.standardOptionId
+                        }
+                      }
+                      setAddComponentSelectedOptions(preselected)
+                    } else {
+                      setAddComponentOptions([])
+                      setAddComponentSelectedOptions({})
+                    }
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 >
@@ -1807,6 +1981,49 @@ export default function ProjectDetailView() {
                 return null
               })()}
               
+              {/* Hardware Options - Show after direction selection */}
+              {selectedProductId && addComponentOptions.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-700">Hardware Options</h3>
+                  {addComponentOptions.map((option) => (
+                    <div key={option.id}>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {option.category.name}
+                        {option.standardOptionId && (
+                          <span className="ml-2 text-xs text-green-600">(Standard: {
+                            option.category.individualOptions?.find(
+                              (io: any) => io.id === option.standardOptionId
+                            )?.name
+                          })</span>
+                        )}
+                      </label>
+                      {option.category.description && (
+                        <p className="text-xs text-gray-500 mb-1">{option.category.description}</p>
+                      )}
+                      <select
+                        value={addComponentSelectedOptions[option.category.id] || ''}
+                        onChange={(e) => {
+                          const newValue = e.target.value ? parseInt(e.target.value) : null
+                          setAddComponentSelectedOptions({
+                            ...addComponentSelectedOptions,
+                            [option.category.id]: newValue
+                          })
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      >
+                        <option value="">Select option...</option>
+                        {option.category.individualOptions?.map((individualOption: any) => (
+                          <option key={individualOption.id} value={individualOption.id}>
+                            {individualOption.name}
+                            {option.standardOptionId === individualOption.id && ' \u2605'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Glass Type Selection - Show for all components */}
               {selectedProductId && (
                 <div>
@@ -1844,6 +2061,8 @@ export default function ProjectDetailView() {
                   setSwingDirection('Right In')
                   setSlidingDirection('Left')
                   setGlassType('Clear')
+                  setAddComponentOptions([])
+                  setAddComponentSelectedOptions({})
                 }}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
@@ -1916,6 +2135,47 @@ export default function ProjectDetailView() {
               </div>
             </div>
 
+            {/* Glass Type Section */}
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Glass Type</h3>
+              <select
+                value={editingGlassType}
+                onChange={(e) => setEditingGlassType(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+              >
+                <option value="">Select glass type...</option>
+                {glassTypes.map((type) => (
+                  <option key={type.id} value={type.name}>
+                    {type.name} {type.pricePerSqFt > 0 && `(+$${type.pricePerSqFt}/sq ft)`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Direction Section - Show based on product type */}
+            {editingProductType && editingProductType !== 'FIXED_PANEL' && (
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                  {editingProductType === 'SWING_DOOR' ? 'Swing Direction' : 'Sliding Direction'}
+                </h3>
+                <select
+                  value={editingDirection}
+                  onChange={(e) => setEditingDirection(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                >
+                  {editingProductType === 'SWING_DOOR' ? (
+                    SWING_DIRECTIONS.map((dir) => (
+                      <option key={dir} value={dir}>{dir}</option>
+                    ))
+                  ) : (
+                    SLIDING_DIRECTIONS.map((dir) => (
+                      <option key={dir} value={dir}>{dir}</option>
+                    ))
+                  )}
+                </select>
+              </div>
+            )}
+
             {/* Options Section */}
             <div className="space-y-4 max-h-96 overflow-y-auto">
               <h3 className="text-sm font-semibold text-gray-700">Product Options</h3>
@@ -1947,7 +2207,7 @@ export default function ProjectDetailView() {
                       {option.category.individualOptions?.map((individualOption: any) => (
                         <option key={individualOption.id} value={individualOption.id}>
                           {individualOption.name}
-                          {individualOption.price > 0 && ` (+$${individualOption.price})`}
+                          {option.standardOptionId === individualOption.id && ' \u2605'}
                         </option>
                       ))}
                     </select>
@@ -1993,6 +2253,9 @@ export default function ProjectDetailView() {
                   setIncludedOptions([])
                   setEditingComponentWidth('')
                   setEditingComponentHeight('')
+                  setEditingGlassType('')
+                  setEditingDirection('')
+                  setEditingProductType('')
                   setCurrentPanelId(null)
                 }}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -2012,16 +2275,26 @@ export default function ProjectDetailView() {
                   }
                   
                   try {
-                    // Update panel dimensions first
+                    // Update panel dimensions, glass type, and direction
+                    const panelUpdateData: Record<string, any> = {
+                      width: width,
+                      height: height,
+                      glassType: editingGlassType || undefined
+                    }
+
+                    // Add direction based on product type
+                    if (editingProductType === 'SWING_DOOR' && editingDirection) {
+                      panelUpdateData.swingDirection = editingDirection
+                    } else if (editingProductType === 'SLIDING_DOOR' && editingDirection) {
+                      panelUpdateData.slidingDirection = editingDirection
+                    }
+
                     const panelResponse = await fetch(`/api/panels/${currentPanelId}`, {
                       method: 'PATCH',
                       headers: {
                         'Content-Type': 'application/json',
                       },
-                      body: JSON.stringify({
-                        width: width,
-                        height: height
-                      })
+                      body: JSON.stringify(panelUpdateData)
                     })
 
                     if (!panelResponse.ok) {
@@ -2073,8 +2346,12 @@ export default function ProjectDetailView() {
                   setShowComponentEdit(false)
                   setSelectedComponentId(null)
                   setSelectedOptions({})
+                  setIncludedOptions([])
                   setEditingComponentWidth('')
                   setEditingComponentHeight('')
+                  setEditingGlassType('')
+                  setEditingDirection('')
+                  setEditingProductType('')
                   setCurrentPanelId(null)
                 }}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -2089,7 +2366,7 @@ export default function ProjectDetailView() {
       {/* Edit Project Modal */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md relative">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Edit Project</h2>
             <div className="space-y-4">
               <div>
@@ -2127,16 +2404,37 @@ export default function ProjectDetailView() {
               {/* Openings Management */}
               {project && project.openings.length > 0 && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Openings ({project.openings.length})
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Openings ({project.openings.length})
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedOpeningIds.size === project.openings.length && project.openings.length > 0}
+                        onChange={toggleSelectAll}
+                        disabled={saving}
+                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                      />
+                      Select All
+                    </label>
+                  </div>
                   <div className="max-h-32 overflow-y-auto space-y-2 border border-gray-200 rounded-lg p-2">
                     {project.openings.map((opening) => (
                       <div key={opening.id} className="flex items-center justify-between bg-gray-50 rounded p-2">
-                        <div className="flex-1">
-                          <span className="text-sm font-medium text-gray-900">{opening.name}</span>
-                          <div className="text-xs text-gray-500">
-                            {opening.panels.filter(p => p.componentInstance).length} components • ${opening.price.toLocaleString()}
+                        <div className="flex items-center gap-2 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedOpeningIds.has(opening.id)}
+                            onChange={() => toggleOpeningSelection(opening.id)}
+                            disabled={saving}
+                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                          />
+                          <div>
+                            <span className="text-sm font-medium text-gray-900">{opening.name}</span>
+                            <div className="text-xs text-gray-500">
+                              {opening.panels.filter(p => p.componentInstance).length} components • ${opening.price.toLocaleString()}
+                            </div>
                           </div>
                         </div>
                         <button
@@ -2163,25 +2461,43 @@ export default function ProjectDetailView() {
               >
                 <Archive className="w-4 h-4" />
               </button>
-              <div className="flex space-x-3">
+              <div className="flex items-center space-x-3">
                 <button
                   type="button"
-                  onClick={() => setShowEditModal(false)}
+                  onClick={() => {
+                    setShowEditModal(false)
+                    setSelectedOpeningIds(new Set())
+                  }}
                   disabled={saving}
                   className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                 >
                   Cancel
                 </button>
-                <button
-                  onClick={handleSaveProject}
-                  disabled={saving || !editName.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                >
-                  {saving && (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  )}
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </button>
+                {selectedOpeningIds.size > 0 ? (
+                  <>
+                    <span className="text-sm text-gray-600">
+                      {selectedOpeningIds.size} selected
+                    </span>
+                    <button
+                      onClick={() => setShowBulkDeleteModal(true)}
+                      disabled={saving}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                    >
+                      Delete Selected
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={handleSaveProject}
+                    disabled={saving || !editName.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  >
+                    {saving && (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    )}
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -2267,61 +2583,102 @@ export default function ProjectDetailView() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-6xl h-5/6 flex flex-col">
             {/* Header */}
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">Bill of Materials</h2>
-                <p className="text-gray-600 mt-1">{project?.name}</p>
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Bill of Materials</h2>
+                  <p className="text-gray-600 mt-1">{project?.name}</p>
+                </div>
+                <div className="flex items-center space-x-3">
+                  {bomViewMode === 'byOpening' ? (
+                    <button
+                      onClick={handleDownloadBOMCSV}
+                      disabled={loadingBOM || !bomData}
+                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download CSV
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleDownloadSummaryCSV}
+                      disabled={loadingSummary || !summaryData}
+                      className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download Purchasing CSV
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setShowBOM(false)
+                      setBomData(null)
+                      setSummaryData(null)
+                      setBomViewMode('byOpening')
+                    }}
+                    className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center space-x-3">
+
+              {/* View Mode Toggle */}
+              <div className="mt-4 flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit">
                 <button
-                  onClick={handleDownloadBOMCSV}
-                  disabled={loadingBOM || !bomData}
-                  className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  onClick={() => handleBomViewModeChange('byOpening')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    bomViewMode === 'byOpening'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
                 >
-                  <Download className="w-4 h-4 mr-2" />
-                  Download CSV
+                  By Opening
                 </button>
                 <button
-                  onClick={() => {
-                    setShowBOM(false)
-                    setBomData(null)
-                  }}
-                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
+                  onClick={() => handleBomViewModeChange('summary')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    bomViewMode === 'summary'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
                 >
-                  ✕
+                  Purchasing Summary
                 </button>
               </div>
             </div>
 
             {/* Content */}
             <div className="flex-1 overflow-hidden p-6">
-              {loadingBOM ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Generating BOM...</p>
+              {bomViewMode === 'byOpening' ? (
+                /* By Opening View */
+                loadingBOM ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                      <p className="text-gray-600">Generating BOM...</p>
+                    </div>
                   </div>
-                </div>
-              ) : bomData ? (
-                <div className="h-full overflow-auto">
-                  {bomData.groupedBomItems && Object.keys(bomData.groupedBomItems).length > 0 ? (
-                    <>
-                      <div className="mb-6 text-sm text-gray-600">
-                        <strong>{bomData.bomItems?.length || 0}</strong> total items across <strong>{Object.keys(bomData.groupedBomItems).length}</strong> openings
-                      </div>
-                      
-                      <div className="space-y-8">
-                        {Object.entries(bomData.groupedBomItems).map(([openingName, components]: [string, any]) => (
-                          <div key={openingName} className="border border-gray-200 rounded-lg">
-                            {/* Opening Header */}
-                            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 rounded-t-lg">
-                              <h3 className="text-lg font-semibold text-gray-900">Opening: {openingName}</h3>
-                              <p className="text-sm text-gray-600">
-                                {Object.keys(components).length} component{Object.keys(components).length !== 1 ? 's' : ''}
-                              </p>
-                            </div>
-                            
-                            {/* Components */}
+                ) : bomData ? (
+                  <div className="h-full overflow-auto">
+                    {bomData.groupedBomItems && Object.keys(bomData.groupedBomItems).length > 0 ? (
+                      <>
+                        <div className="mb-6 text-sm text-gray-600">
+                          <strong>{bomData.bomItems?.length || 0}</strong> total items across <strong>{Object.keys(bomData.groupedBomItems).length}</strong> openings
+                        </div>
+
+                        <div className="space-y-8">
+                          {Object.entries(bomData.groupedBomItems).map(([openingName, components]: [string, any]) => (
+                            <div key={openingName} className="border border-gray-200 rounded-lg">
+                              {/* Opening Header */}
+                              <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 rounded-t-lg">
+                                <h3 className="text-lg font-semibold text-gray-900">Opening: {openingName}</h3>
+                                <p className="text-sm text-gray-600">
+                                  {Object.keys(components).length} component{Object.keys(components).length !== 1 ? 's' : ''}
+                                </p>
+                              </div>
+
+                              {/* Components */}
                             <div className="p-4 space-y-6">
                               {Object.entries(components).map(([componentKey, component]: [string, any]) => (
                                 <div key={componentKey} className="border border-gray-100 rounded-lg">
@@ -2411,25 +2768,164 @@ export default function ProjectDetailView() {
                           </div>
                         ))}
                       </div>
-                    </>
-                  ) : (
-                    <div className="text-center py-12 text-gray-500">
-                      <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No BOM Items Found</h3>
-                      <p className="text-gray-600">Add components to your openings to generate a bill of materials.</p>
-                    </div>
-                  )}
-                </div>
+                      </>
+                    ) : (
+                      <div className="text-center py-12 text-gray-500">
+                        <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No BOM Items Found</h3>
+                        <p className="text-gray-600">Add components to your openings to generate a bill of materials.</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <p>Failed to load BOM data</p>
+                  </div>
+                )
               ) : (
-                <div className="text-center py-12 text-gray-500">
-                  <p>Failed to load BOM data</p>
-                </div>
+                /* Purchasing Summary View */
+                loadingSummary ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
+                      <p className="text-gray-600">Loading purchasing summary...</p>
+                    </div>
+                  </div>
+                ) : summaryData ? (
+                  <div className="h-full overflow-auto">
+                    {summaryData.summaryItems && summaryData.summaryItems.length > 0 ? (
+                      <>
+                        {/* Summary Stats */}
+                        <div className="mb-6 grid grid-cols-2 md:grid-cols-5 gap-4">
+                          <div className="bg-gray-50 rounded-lg p-3 text-center">
+                            <div className="text-2xl font-bold text-gray-900">{summaryData.totalParts}</div>
+                            <div className="text-sm text-gray-600">Total Parts</div>
+                          </div>
+                          <div className="bg-blue-50 rounded-lg p-3 text-center">
+                            <div className="text-2xl font-bold text-blue-600">{summaryData.totalExtrusions}</div>
+                            <div className="text-sm text-blue-600">Extrusions</div>
+                          </div>
+                          <div className="bg-green-50 rounded-lg p-3 text-center">
+                            <div className="text-2xl font-bold text-green-600">{summaryData.totalHardware}</div>
+                            <div className="text-sm text-green-600">Hardware</div>
+                          </div>
+                          <div className="bg-purple-50 rounded-lg p-3 text-center">
+                            <div className="text-2xl font-bold text-purple-600">{summaryData.totalGlass}</div>
+                            <div className="text-sm text-purple-600">Glass</div>
+                          </div>
+                          <div className="bg-orange-50 rounded-lg p-3 text-center">
+                            <div className="text-2xl font-bold text-orange-600">{summaryData.totalOptions}</div>
+                            <div className="text-sm text-orange-600">Options</div>
+                          </div>
+                        </div>
+
+                        {/* Summary Table */}
+                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="bg-gray-100">
+                                <th className="border-b border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-900">Part Number</th>
+                                <th className="border-b border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-900">Part Name</th>
+                                <th className="border-b border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-900">Type</th>
+                                <th className="border-b border-gray-200 px-4 py-3 text-center text-sm font-semibold text-gray-900">Total Qty</th>
+                                <th className="border-b border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-900">Unit</th>
+                                <th className="border-b border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-900">Cut Lengths / Dimensions</th>
+                                <th className="border-b border-gray-200 px-4 py-3 text-right text-sm font-semibold text-gray-900">Total Length / Area</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {summaryData.summaryItems.map((item: any, index: number) => (
+                                <tr key={item.partNumber} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                  <td className="border-b border-gray-100 px-4 py-3 text-sm font-mono text-gray-900">{item.partNumber}</td>
+                                  <td className="border-b border-gray-100 px-4 py-3 text-sm text-gray-900">{item.partName}</td>
+                                  <td className="border-b border-gray-100 px-4 py-3 text-sm">
+                                    <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                                      item.partType === 'Extrusion'
+                                        ? 'bg-blue-100 text-blue-800'
+                                        : item.partType === 'Hardware'
+                                        ? 'bg-green-100 text-green-800'
+                                        : item.partType === 'Glass'
+                                        ? 'bg-purple-100 text-purple-800'
+                                        : 'bg-orange-100 text-orange-800'
+                                    }`}>
+                                      {item.partType}
+                                    </span>
+                                  </td>
+                                  <td className="border-b border-gray-100 px-4 py-3 text-sm text-center font-semibold text-gray-900">{item.totalQuantity}</td>
+                                  <td className="border-b border-gray-100 px-4 py-3 text-sm text-gray-600">{item.unit}</td>
+                                  <td className="border-b border-gray-100 px-4 py-3 text-sm text-gray-600">
+                                    {item.partType === 'Extrusion' && item.cutLengths.length > 0 ? (
+                                      <div className="max-w-xs">
+                                        <div className="text-xs text-gray-500 mb-1">
+                                          {item.cutLengths.length} cut{item.cutLengths.length !== 1 ? 's' : ''}
+                                          {item.stockLength && ` from ${item.stockLength}" stock`}
+                                        </div>
+                                        <div className="flex flex-wrap gap-1">
+                                          {item.cutLengths.slice(0, 6).map((len: number, i: number) => (
+                                            <span key={i} className="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
+                                              {len.toFixed(2)}"
+                                            </span>
+                                          ))}
+                                          {item.cutLengths.length > 6 && (
+                                            <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                                              +{item.cutLengths.length - 6} more
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : item.partType === 'Glass' && item.glassDimensions.length > 0 ? (
+                                      <div className="max-w-xs">
+                                        <div className="flex flex-wrap gap-1">
+                                          {item.glassDimensions.slice(0, 4).map((dim: any, i: number) => (
+                                            <span key={i} className="inline-block px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-xs">
+                                              {dim.width?.toFixed(1)}" × {dim.height?.toFixed(1)}"
+                                            </span>
+                                          ))}
+                                          {item.glassDimensions.length > 4 && (
+                                            <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                                              +{item.glassDimensions.length - 4} more
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span className="text-gray-400">-</span>
+                                    )}
+                                  </td>
+                                  <td className="border-b border-gray-100 px-4 py-3 text-sm text-right font-medium text-gray-900">
+                                    {item.partType === 'Extrusion' && item.totalCutLength > 0 ? (
+                                      <span>{item.totalCutLength.toFixed(2)}"</span>
+                                    ) : item.partType === 'Glass' && item.totalArea > 0 ? (
+                                      <span>{item.totalArea.toFixed(2)} sq ft</span>
+                                    ) : (
+                                      <span className="text-gray-400">-</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center py-12 text-gray-500">
+                        <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No Parts Found</h3>
+                        <p className="text-gray-600">Add components to your openings to generate a purchasing summary.</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <p>Failed to load purchasing summary</p>
+                  </div>
+                )
               )}
             </div>
           </div>
         </div>
       )}
-      
+
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       
       {/* Drawing Viewer Modal */}
@@ -2559,6 +3055,57 @@ export default function ProjectDetailView() {
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                 )}
                 {isDeleting ? 'Deleting...' : 'Delete Opening'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteModal && project && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              Delete {selectedOpeningIds.size} Opening{selectedOpeningIds.size !== 1 ? 's' : ''}
+            </h3>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Are you sure you want to delete these openings? This will also delete all components in each opening.
+            </p>
+
+            <div className="max-h-40 overflow-y-auto mb-4 border border-gray-200 rounded-lg">
+              {project.openings
+                .filter(o => selectedOpeningIds.has(o.id))
+                .map(opening => (
+                  <div key={opening.id} className="px-3 py-2 border-b border-gray-100 last:border-b-0">
+                    <span className="text-sm font-medium text-gray-900">{opening.name}</span>
+                    <span className="text-xs text-gray-500 ml-2">
+                      ({opening.panels.filter(p => p.componentInstance).length} components)
+                    </span>
+                  </div>
+                ))}
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowBulkDeleteModal(false)
+                  setSelectedOpeningIds(new Set())
+                }}
+                disabled={isBulkDeleting}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+              >
+                {isBulkDeleting && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                )}
+                {isBulkDeleting ? 'Deleting...' : `Delete ${selectedOpeningIds.size} Opening${selectedOpeningIds.size !== 1 ? 's' : ''}`}
               </button>
             </div>
           </div>

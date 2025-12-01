@@ -24,11 +24,18 @@ When presented with a development task:
 4. Output: List of files and their relationships
 
 ### STEP 2: PLANNING
-For complex tasks (multiple files or >20 lines of changes), create a planning file:
+
+**If using `/buildtask` command:** Skip local file creation - the buildtask workflow handles planning via ClickUp task updates and subtasks.
+
+**For all other tasks:**
+- **Simple tasks** (single file, <20 lines): Use TodoWrite tool only - no planning file needed.
+- **Medium tasks** (2-3 files, <50 lines): Use TodoWrite tool for tracking.
+- **Complex tasks** (>3 files OR >50 lines): Ask user: "This is a complex task. Would you like me to create a local planning file in `tasks/`, or should I just use the todo list?"
+
+**If user wants a planning file**, use this structure:
 
 **File location:** `tasks/[TASK_NAME]-[YYYY-MM-DD].md`
 
-**Structure:**
 ```markdown
 # [TASK_NAME]
 Date: [YYYY-MM-DD]
@@ -56,8 +63,6 @@ Files to modify:
 ## Notes
 (Any issues or observations)
 ```
-
-For simple tasks (single file, <20 lines), use TodoWrite tool only - no planning file needed.
 
 ### STEP 3: APPROVAL CHECKPOINT
 Present to user:
@@ -103,10 +108,13 @@ Update the planning file (if created) with:
 IF task requires new file creation:
   THEN include in plan and request permission
 
-IF task affects >3 files OR >50 lines of code:
-  THEN create planning file in tasks/ directory
+IF using /buildtask command:
+  THEN skip local task file - ClickUp handles planning
 
-IF task is simple (<3 files AND <20 lines):
+IF task affects >3 files OR >50 lines of code:
+  THEN ask user if they want a local planning file, otherwise use TodoWrite
+
+IF task is simple or medium (<3 files AND <50 lines):
   THEN use TodoWrite only, skip planning file
 
 IF error occurs during execution:
@@ -154,11 +162,11 @@ Action needed: Please confirm to proceed
 Session start/Branch announcement:
 "Current branch: [branch_name]"
 
-Starting work (complex task):
-"I'll analyze the codebase and create a plan in tasks/[TASK_NAME]-[YYYY-MM-DD].md"
+Starting work (any task):
+"I'll analyze the codebase and create a task list."
 
-Starting work (simple task):
-"I'll analyze the codebase and create a task list"
+For complex tasks (ask user):
+"This is a complex task affecting [N] files. Would you like me to create a local planning file in `tasks/`, or should I just use the todo list?"
 
 After planning:
 "I've created a plan with [N] tasks affecting [M] files. Please confirm before I proceed."
@@ -166,10 +174,7 @@ After planning:
 During execution:
 "Task [N/TOTAL]: [Description] - Complete"
 
-On completion (with planning file):
-"All tasks complete. Review document available at tasks/[TASK_NAME]-[YYYY-MM-DD].md"
-
-On completion (simple task):
+On completion:
 "All tasks complete."
 
 ## ERROR HANDLING

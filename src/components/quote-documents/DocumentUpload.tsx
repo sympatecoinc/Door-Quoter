@@ -1,10 +1,17 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { Upload, FileUp } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Upload, FileUp, X } from 'lucide-react'
+
+interface Product {
+  id: number
+  name: string
+}
 
 interface DocumentUploadProps {
   onUploadComplete: () => void
+  isOpen: boolean
+  onClose: () => void
 }
 
 const categoryOptions = [
@@ -13,9 +20,10 @@ const categoryOptions = [
   { value: 'warranty', label: 'Warranty' },
   { value: 'installation', label: 'Installation Instructions' },
   { value: 'general', label: 'General' },
+  { value: 'product', label: 'Product' },
 ]
 
-export default function DocumentUpload({ onUploadComplete }: DocumentUploadProps) {
+export default function DocumentUpload({ onUploadComplete, isOpen, onClose }: DocumentUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [formData, setFormData] = useState({
@@ -25,7 +33,26 @@ export default function DocumentUpload({ onUploadComplete }: DocumentUploadProps
     isGlobal: true,
   })
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [products, setProducts] = useState<Product[]>([])
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const response = await fetch('/api/products')
+        if (response.ok) {
+          const data = await response.json()
+          setProducts(data)
+        }
+      } catch (error) {
+        console.error('Error fetching products:', error)
+      }
+    }
+    if (isOpen) {
+      fetchProducts()
+    }
+  }, [isOpen])
 
   const handleFileSelect = (file: File) => {
     setSelectedFile(file)
@@ -90,8 +117,13 @@ export default function DocumentUpload({ onUploadComplete }: DocumentUploadProps
       uploadFormData.append('name', formData.name.trim())
       uploadFormData.append('description', formData.description.trim())
       uploadFormData.append('category', formData.category)
-      uploadFormData.append('isGlobal', formData.isGlobal.toString())
+      // If product category is selected, force isGlobal to false
+      const isGlobalValue = formData.category === 'product' ? false : formData.isGlobal
+      uploadFormData.append('isGlobal', isGlobalValue.toString())
       uploadFormData.append('displayOrder', '0')
+      if (formData.category === 'product' && selectedProductId) {
+        uploadFormData.append('productId', selectedProductId.toString())
+      }
 
       const response = await fetch('/api/quote-documents', {
         method: 'POST',
@@ -111,12 +143,14 @@ export default function DocumentUpload({ onUploadComplete }: DocumentUploadProps
         isGlobal: true,
       })
       setSelectedFile(null)
+      setSelectedProductId(null)
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
 
-      // Notify parent
+      // Notify parent and close modal
       onUploadComplete()
+      onClose()
     } catch (error) {
       console.error('Error uploading document:', error)
       alert(error instanceof Error ? error.message : 'Failed to upload document')
@@ -125,9 +159,27 @@ export default function DocumentUpload({ onUploadComplete }: DocumentUploadProps
     }
   }
 
+  if (!isOpen) return null
+
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload New Document</h3>
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] overflow-auto p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Upload New Document</h3>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded transition-colors"
+            type="button"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* File Upload Area */}
@@ -213,7 +265,13 @@ export default function DocumentUpload({ onUploadComplete }: DocumentUploadProps
           <select
             id="doc-category"
             value={formData.category}
-            onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
+            onChange={(e) => {
+              setFormData(prev => ({ ...prev, category: e.target.value }))
+              // Reset product selection when changing away from product category
+              if (e.target.value !== 'product') {
+                setSelectedProductId(null)
+              }
+            }}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={uploading}
           >
@@ -225,20 +283,46 @@ export default function DocumentUpload({ onUploadComplete }: DocumentUploadProps
           </select>
         </div>
 
-        {/* Global Document Checkbox */}
-        <div className="flex items-center">
-          <input
-            id="doc-global"
-            type="checkbox"
-            checked={formData.isGlobal}
-            onChange={(e) => setFormData(prev => ({ ...prev, isGlobal: e.target.checked }))}
-            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            disabled={uploading}
-          />
-          <label htmlFor="doc-global" className="ml-2 text-sm text-gray-700">
-            Include in all quotes (Global Document)
-          </label>
-        </div>
+        {/* Product Selector - Only shown when category is 'product' */}
+        {formData.category === 'product' && (
+          <div>
+            <label htmlFor="doc-product" className="block text-sm font-medium text-gray-700 mb-1">
+              Select Product *
+            </label>
+            <select
+              id="doc-product"
+              value={selectedProductId || ''}
+              onChange={(e) => setSelectedProductId(e.target.value ? parseInt(e.target.value) : null)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={uploading}
+              required
+            >
+              <option value="">Select a product...</option>
+              {products.map(product => (
+                <option key={product.id} value={product.id}>
+                  {product.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Global Document Checkbox - Hidden when category is 'product' */}
+        {formData.category !== 'product' && (
+          <div className="flex items-center">
+            <input
+              id="doc-global"
+              type="checkbox"
+              checked={formData.isGlobal}
+              onChange={(e) => setFormData(prev => ({ ...prev, isGlobal: e.target.checked }))}
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              disabled={uploading}
+            />
+            <label htmlFor="doc-global" className="ml-2 text-sm text-gray-700">
+              Include in all quotes (Global Document)
+            </label>
+          </div>
+        )}
 
         {/* Submit Button */}
         <button
@@ -259,6 +343,7 @@ export default function DocumentUpload({ onUploadComplete }: DocumentUploadProps
           )}
         </button>
       </form>
+      </div>
     </div>
   )
 }

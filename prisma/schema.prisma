@@ -155,26 +155,32 @@ model SubOptionCategory {
 }
 
 model IndividualOption {
-  id          Int               @id @default(autoincrement())
-  categoryId  Int
-  name        String
-  description String?
-  price       Float             @default(0)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  category    SubOptionCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  id                          Int                @id @default(autoincrement())
+  categoryId                  Int
+  name                        String
+  description                 String?
+  partNumber                  String?
+  price                       Float              @default(0)
+  addToPackingList            Boolean            @default(false)
+  addFinishToPartNumber       Boolean            @default(false)
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
+  category                    SubOptionCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  productSubOptionsAsStandard ProductSubOption[] @relation("StandardOption")
 
   @@map("IndividualOptions")
 }
 
 model ProductSubOption {
-  id         Int               @id @default(autoincrement())
-  productId  Int
-  categoryId Int
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-  category   SubOptionCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  product    Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id               Int                @id @default(autoincrement())
+  productId        Int
+  categoryId       Int
+  standardOptionId Int?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  category         SubOptionCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  product          Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  standardOption   IndividualOption?  @relation("StandardOption", fields: [standardOptionId], references: [id], onDelete: SetNull)
 
   @@unique([productId, categoryId])
   @@map("ProductSubOptions")
@@ -208,6 +214,7 @@ model ProductBOM {
   partNumber            String?
   cost                  Float?
   addFinishToPartNumber Boolean  @default(false) // When true, append finish color code to hardware part number in BOM
+  addToPackingList      Boolean  @default(false) // When true, this hardware item appears in the packing list
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   product               Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -243,6 +250,8 @@ model MasterPart {
   isOption                Boolean            @default(false) // True if this hardware part can be used as a category option
   optionImagePath         String?            // Path to uploaded image for category options (relative to public/)
   optionImageOriginalName String?            // Original filename of uploaded image
+  addFinishToPartNumber   Boolean            @default(false) // When true, append finish color code to hardware part number in BOM
+  addToPackingList        Boolean            @default(false) // When true, this hardware item appears in the packing list
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
   stockLengthRules        StockLengthRule[]
