@@ -11,7 +11,11 @@ export async function GET(request: NextRequest) {
       include: {
         productSubOptions: {
           include: {
-            category: true
+            category: {
+              include: {
+                individualOptions: true
+              }
+            }
           }
         },
         productBOMs: true,

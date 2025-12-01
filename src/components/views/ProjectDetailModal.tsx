@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, ArrowLeft, Calendar, User, FileText, Users, Truck } from 'lucide-react'
+import { X, ArrowLeft, Calendar, User, FileText, Users, Truck, ShoppingCart, Download } from 'lucide-react'
 import ProjectContacts from '../projects/ProjectContacts'
 import ProjectNotes from '../projects/ProjectNotes'
 
@@ -55,7 +55,31 @@ interface ProjectDetailModalProps {
   onBack: () => void
 }
 
-type TabType = 'overview' | 'contacts' | 'notes' | 'shipping'
+type TabType = 'overview' | 'contacts' | 'notes' | 'shipping' | 'purchasing'
+
+interface SummaryItem {
+  partNumber: string
+  partName: string
+  partType: string
+  totalQuantity: number
+  unit: string
+  stockLength: number | null
+  cutLengths: number[]
+  totalCutLength: number
+  totalArea: number
+  glassDimensions: { width: number; height: number; area: number }[]
+}
+
+interface SummaryData {
+  projectId: number
+  projectName: string
+  summaryItems: SummaryItem[]
+  totalParts: number
+  totalExtrusions: number
+  totalHardware: number
+  totalGlass: number
+  totalOptions: number
+}
 
 export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailModalProps) {
   const [project, setProject] = useState<Project | null>(null)
@@ -75,9 +99,75 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
   const [shippingZipCode, setShippingZipCode] = useState<string>('')
   const [shippingShipDate, setShippingShipDate] = useState<string>('')
 
+  // Packing list state
+  const [packingListData, setPackingListData] = useState<any[]>([])
+  const [loadingPackingList, setLoadingPackingList] = useState(false)
+
+  // Purchasing tab state
+  const [summaryData, setSummaryData] = useState<SummaryData | null>(null)
+  const [loadingSummary, setLoadingSummary] = useState(false)
+
   useEffect(() => {
     fetchProject()
   }, [projectId])
+
+  useEffect(() => {
+    if (activeTab === 'shipping' && projectId) {
+      fetchPackingList()
+    }
+    if (activeTab === 'purchasing' && projectId) {
+      fetchPurchasingSummary()
+    }
+  }, [activeTab, projectId])
+
+  const fetchPackingList = async () => {
+    try {
+      setLoadingPackingList(true)
+      const response = await fetch(`/api/projects/${projectId}/packing-list`)
+      if (response.ok) {
+        const data = await response.json()
+        setPackingListData(data.packingList || [])
+      }
+    } catch (err) {
+      console.error('Error fetching packing list:', err)
+    } finally {
+      setLoadingPackingList(false)
+    }
+  }
+
+  const fetchPurchasingSummary = async () => {
+    try {
+      setLoadingSummary(true)
+      const response = await fetch(`/api/projects/${projectId}/bom?summary=true`)
+      if (response.ok) {
+        const data = await response.json()
+        setSummaryData(data)
+      }
+    } catch (err) {
+      console.error('Error fetching purchasing summary:', err)
+    } finally {
+      setLoadingSummary(false)
+    }
+  }
+
+  const handleDownloadPurchasingCSV = async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/bom?summary=true&format=csv`)
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${project?.name || 'project'}-purchasing-summary.csv`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      }
+    } catch (err) {
+      console.error('Error downloading CSV:', err)
+    }
+  }
 
   const fetchProject = async () => {
     try {
@@ -354,6 +444,19 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
               Shipping
             </div>
           </button>
+          <button
+            onClick={() => setActiveTab('purchasing')}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'purchasing'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <ShoppingCart className="w-4 h-4" />
+              Purchasing
+            </div>
+          </button>
         </div>
 
         {/* Content */}
@@ -456,17 +559,73 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                 )}
               </div>
 
-              {/* Documents Placeholders */}
+              {/* Documents Section */}
               <div className="space-y-4">
-                {/* Packing List Placeholder */}
+                {/* Packing List Section */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="w-5 h-5 text-blue-600" />
                     <h3 className="font-medium text-blue-900">Packing List</h3>
                   </div>
-                  <p className="text-sm text-blue-700">
-                    Packing list will be generated automatically when the project is ready for production.
-                  </p>
+
+                  {loadingPackingList ? (
+                    <div className="flex justify-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    </div>
+                  ) : packingListData.length === 0 ? (
+                    <p className="text-sm text-blue-700">
+                      No items configured for packing list yet. Add hardware items to product BOMs and mark them with &quot;Add to packing list&quot;.
+                    </p>
+                  ) : (
+                    <div className="space-y-4 mt-4">
+                      {packingListData.map((opening) => (
+                        <div key={opening.openingId} className="bg-white rounded-lg p-4 border border-gray-200">
+                          <h4 className="font-semibold text-gray-900 mb-3">{opening.openingName}</h4>
+
+                          {/* Components Section */}
+                          {opening.components && opening.components.length > 0 && (
+                            <div className="mb-3">
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">Components:</h5>
+                              <ul className="space-y-1 text-sm text-gray-600">
+                                {opening.components.map((comp: any, idx: number) => (
+                                  <li key={idx}>
+                                    • {comp.productName} - {comp.panelType} ({comp.width}&quot; x {comp.height}&quot;) - {comp.glassType}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Hardware Section */}
+                          {opening.hardware && opening.hardware.length > 0 && (
+                            <div>
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">Hardware:</h5>
+                              <table className="w-full text-sm">
+                                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                                  <tr>
+                                    <th className="px-2 py-1 text-left">Part</th>
+                                    <th className="px-2 py-1 text-left">Part #</th>
+                                    <th className="px-2 py-1 text-left">Qty</th>
+                                    <th className="px-2 py-1 text-left">Unit</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                  {opening.hardware.map((hw: any, idx: number) => (
+                                    <tr key={idx} className="text-gray-700">
+                                      <td className="px-2 py-1">{hw.partName}</td>
+                                      <td className="px-2 py-1 font-mono text-xs">{hw.partNumber || '-'}</td>
+                                      <td className="px-2 py-1">{hw.quantity || '-'}</td>
+                                      <td className="px-2 py-1">{hw.unit || '-'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Shop Drawings Placeholder */}
@@ -580,15 +739,71 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                 {saving ? 'Saving...' : 'Save Shipping Information'}
               </button>
 
-              {/* Packing List Placeholder */}
+              {/* Packing List Section */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <FileText className="w-5 h-5 text-blue-600" />
                   <h3 className="font-medium text-blue-900">Packing List</h3>
                 </div>
-                <p className="text-sm text-blue-700">
-                  Packing list generation will be available soon. This will include all products and quantities for this shipment.
-                </p>
+
+                {loadingPackingList ? (
+                  <div className="flex justify-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : packingListData.length === 0 ? (
+                  <p className="text-sm text-blue-700">
+                    No items configured for packing list yet. Add hardware items to product BOMs and mark them with &quot;Add to packing list&quot;.
+                  </p>
+                ) : (
+                  <div className="space-y-4 mt-4">
+                    {packingListData.map((opening) => (
+                      <div key={opening.openingId} className="bg-white rounded-lg p-4 border border-gray-200">
+                        <h4 className="font-semibold text-gray-900 mb-3">{opening.openingName}</h4>
+
+                        {/* Components Section */}
+                        {opening.components && opening.components.length > 0 && (
+                          <div className="mb-3">
+                            <h5 className="text-sm font-medium text-gray-700 mb-2">Components:</h5>
+                            <ul className="space-y-1 text-sm text-gray-600">
+                              {opening.components.map((comp: any, idx: number) => (
+                                <li key={idx}>
+                                  • {comp.productName} - {comp.panelType} ({comp.width}&quot; x {comp.height}&quot;) - {comp.glassType}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Hardware Section */}
+                        {opening.hardware && opening.hardware.length > 0 && (
+                          <div>
+                            <h5 className="text-sm font-medium text-gray-700 mb-2">Hardware:</h5>
+                            <table className="w-full text-sm">
+                              <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                                <tr>
+                                  <th className="px-2 py-1 text-left">Part</th>
+                                  <th className="px-2 py-1 text-left">Part #</th>
+                                  <th className="px-2 py-1 text-left">Qty</th>
+                                  <th className="px-2 py-1 text-left">Unit</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200">
+                                {opening.hardware.map((hw: any, idx: number) => (
+                                  <tr key={idx} className="text-gray-700">
+                                    <td className="px-2 py-1">{hw.partName}</td>
+                                    <td className="px-2 py-1 font-mono text-xs">{hw.partNumber || '-'}</td>
+                                    <td className="px-2 py-1">{hw.quantity || '-'}</td>
+                                    <td className="px-2 py-1">{hw.unit || '-'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Labels Placeholder */}
@@ -601,6 +816,131 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                   Shipping label generation will be available soon. This will automatically generate labels based on the shipping address.
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Purchasing Tab */}
+          {activeTab === 'purchasing' && (
+            <div className="space-y-6">
+              {/* Header with Download Button */}
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium text-gray-900">Purchasing Summary</h3>
+                <button
+                  onClick={handleDownloadPurchasingCSV}
+                  className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download CSV
+                </button>
+              </div>
+
+              {loadingSummary ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : summaryData ? (
+                <>
+                  {/* Stats Cards */}
+                  <div className="grid grid-cols-5 gap-4">
+                    <div className="bg-gray-50 rounded-lg p-4 text-center border border-gray-200">
+                      <div className="text-2xl font-bold text-gray-900">{summaryData.totalParts.toFixed(2)}</div>
+                      <div className="text-sm text-gray-600">Total Parts</div>
+                    </div>
+                    <div className="bg-blue-50 rounded-lg p-4 text-center border border-blue-200">
+                      <div className="text-2xl font-bold text-blue-700">{summaryData.totalExtrusions}</div>
+                      <div className="text-sm text-blue-600">Extrusions</div>
+                    </div>
+                    <div className="bg-purple-50 rounded-lg p-4 text-center border border-purple-200">
+                      <div className="text-2xl font-bold text-purple-700">{summaryData.totalHardware.toFixed(2)}</div>
+                      <div className="text-sm text-purple-600">Hardware</div>
+                    </div>
+                    <div className="bg-cyan-50 rounded-lg p-4 text-center border border-cyan-200">
+                      <div className="text-2xl font-bold text-cyan-700">{summaryData.totalGlass}</div>
+                      <div className="text-sm text-cyan-600">Glass</div>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg p-4 text-center border border-amber-200">
+                      <div className="text-2xl font-bold text-amber-700">{summaryData.totalOptions}</div>
+                      <div className="text-sm text-amber-600">Options</div>
+                    </div>
+                  </div>
+
+                  {/* Summary Table */}
+                  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Part Number</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Part Name</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Qty</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unit</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cut Lengths / Dimensions</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Length / Area</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {summaryData.summaryItems.map((item, index) => (
+                          <tr key={index} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 font-mono text-xs">{item.partNumber}</td>
+                            <td className="px-4 py-3">{item.partName}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded text-xs ${
+                                item.partType === 'Extrusion' ? 'bg-blue-100 text-blue-700' :
+                                item.partType === 'Hardware' ? 'bg-purple-100 text-purple-700' :
+                                item.partType === 'Glass' ? 'bg-cyan-100 text-cyan-700' :
+                                'bg-amber-100 text-amber-700'
+                              }`}>
+                                {item.partType}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">{item.totalQuantity}</td>
+                            <td className="px-4 py-3">{item.unit}</td>
+                            <td className="px-4 py-3">
+                              {item.partType === 'Extrusion' && item.cutLengths.length > 0 ? (
+                                <div className="text-xs">
+                                  <div className="text-gray-500 mb-1">
+                                    {item.cutLengths.length} cuts{item.stockLength ? ` from ${item.stockLength}" stock` : ''}
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {item.cutLengths.slice(0, 6).map((len, i) => (
+                                      <span key={i} className="bg-gray-100 px-1 rounded">{len}"</span>
+                                    ))}
+                                    {item.cutLengths.length > 6 && (
+                                      <span className="text-gray-500">+{item.cutLengths.length - 6} more</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : item.partType === 'Glass' && item.glassDimensions.length > 0 ? (
+                                <div className="flex flex-wrap gap-1 text-xs">
+                                  {item.glassDimensions.slice(0, 4).map((dim, i) => (
+                                    <span key={i} className="bg-gray-100 px-1 rounded">
+                                      {dim.width}" x {dim.height}"
+                                    </span>
+                                  ))}
+                                  {item.glassDimensions.length > 4 && (
+                                    <span className="text-gray-500">+{item.glassDimensions.length - 4} more</span>
+                                  )}
+                                </div>
+                              ) : '-'}
+                            </td>
+                            <td className="px-4 py-3">
+                              {item.partType === 'Extrusion' && item.totalCutLength > 0 ? (
+                                <span className="font-medium">{item.totalCutLength.toFixed(2)}"</span>
+                              ) : item.partType === 'Glass' && item.totalArea > 0 ? (
+                                <span className="font-medium">{item.totalArea.toFixed(2)} sq ft</span>
+                              ) : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  No purchasing data available
+                </div>
+              )}
             </div>
           )}
         </div>

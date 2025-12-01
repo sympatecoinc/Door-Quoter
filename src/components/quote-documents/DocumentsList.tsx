@@ -40,7 +40,11 @@ const categoryLabels: Record<string, string> = {
   warranty: 'Warranty',
   installation: 'Installation Instructions',
   general: 'General',
+  product: 'Product',
 }
+
+// Order for displaying categories
+const categoryOrder = ['spec_sheet', 'brochure', 'warranty', 'installation', 'general', 'product']
 
 export default function DocumentsList({ documents, onDocumentsChange }: DocumentsListProps) {
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -150,27 +154,50 @@ export default function DocumentsList({ documents, onDocumentsChange }: Document
     }
   }
 
+  // Group global documents by category
+  const globalDocs = documents.filter(d => d.isGlobal)
+  const globalByCategory = globalDocs.reduce((acc, doc) => {
+    const cat = doc.category || 'general'
+    if (!acc[cat]) acc[cat] = []
+    acc[cat].push(doc)
+    return acc
+  }, {} as Record<string, QuoteDocument[]>)
+
+  // Group product documents by product
+  const productDocs = documents.filter(d => !d.isGlobal && d.productDocuments && d.productDocuments.length > 0)
+  const byProduct = productDocs.reduce((acc, doc) => {
+    doc.productDocuments?.forEach(pd => {
+      const productId = pd.product.id
+      if (!acc[productId]) {
+        acc[productId] = { name: pd.product.name, docs: [] }
+      }
+      // Avoid duplicates
+      if (!acc[productId].docs.find(d => d.id === doc.id)) {
+        acc[productId].docs.push(doc)
+      }
+    })
+    return acc
+  }, {} as Record<number, { name: string, docs: QuoteDocument[] }>)
+
+  // Get sorted categories that have documents
+  const categoriesWithDocs = categoryOrder.filter(cat => globalByCategory[cat]?.length > 0)
+
+  // Get sorted product IDs
+  const productIds = Object.keys(byProduct).map(Number).sort((a, b) =>
+    byProduct[a].name.localeCompare(byProduct[b].name)
+  )
+
   if (documents.length === 0) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 text-center">
         <FileText className="w-12 h-12 mx-auto text-gray-400 mb-3" />
         <p className="text-gray-500">No documents uploaded yet.</p>
-        <p className="text-sm text-gray-400 mt-1">Upload a document to get started.</p>
+        <p className="text-sm text-gray-400 mt-1">Click "Add Document" to upload your first document.</p>
       </div>
     )
   }
 
-  return (
-    <>
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">
-            Documents ({documents.length})
-          </h3>
-        </div>
-
-        <div className="divide-y divide-gray-200">
-          {documents.map((doc) => (
+  const renderDocumentRow = (doc: QuoteDocument) => (
             <div key={doc.id} className="p-4 hover:bg-gray-50 transition-colors">
               {editingId === doc.id ? (
                 /* Edit Mode */
@@ -310,8 +337,75 @@ export default function DocumentsList({ documents, onDocumentsChange }: Document
                 </div>
               )}
             </div>
-          ))}
-        </div>
+  )
+
+  return (
+    <>
+      <div className="space-y-6">
+        {/* Global Documents Section */}
+        {categoriesWithDocs.length > 0 && (
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center gap-2">
+                <Globe className="w-5 h-5 text-blue-600" />
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Global Documents ({globalDocs.length})
+                </h3>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">Included in all quotes</p>
+            </div>
+
+            {categoriesWithDocs.map(category => (
+              <div key={category}>
+                <div className="px-6 py-3 bg-gray-100 border-b border-gray-200">
+                  <h4 className="text-sm font-medium text-gray-700">
+                    {categoryLabels[category] || category} ({globalByCategory[category].length})
+                  </h4>
+                </div>
+                <div className="divide-y divide-gray-200">
+                  {globalByCategory[category].map(doc => renderDocumentRow(doc))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Product Documents Section */}
+        {productIds.length > 0 && (
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5 text-green-600" />
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Product Documents ({productDocs.length})
+                </h3>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">Included only when specific products are used</p>
+            </div>
+
+            {productIds.map(productId => (
+              <div key={productId}>
+                <div className="px-6 py-3 bg-gray-100 border-b border-gray-200">
+                  <h4 className="text-sm font-medium text-gray-700">
+                    {byProduct[productId].name} ({byProduct[productId].docs.length})
+                  </h4>
+                </div>
+                <div className="divide-y divide-gray-200">
+                  {byProduct[productId].docs.map(doc => renderDocumentRow(doc))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Empty state if no documents in either section */}
+        {categoriesWithDocs.length === 0 && productIds.length === 0 && (
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 text-center">
+            <FileText className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+            <p className="text-gray-500">No documents uploaded yet.</p>
+            <p className="text-sm text-gray-400 mt-1">Click "Add Document" to upload your first document.</p>
+          </div>
+        )}
       </div>
 
       {/* Preview Modal */}

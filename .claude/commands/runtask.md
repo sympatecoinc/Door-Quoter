@@ -1,215 +1,247 @@
 # Run Task - ClickUp Task Implementation Workflow
 
-IMPORTANT: MAKE SURE YOU ARE ON THE DEV BRANCH
-
 Automatically implement a ClickUp task end-to-end with testing and updates.
 
-## Instructions
+**Argument:** `$ARGUMENTS` (ClickUp Task ID - required)
 
-### Step 1: Get Task ID
+---
 
-First, ask the user for the ClickUp task ID using the AskUserQuestion tool:
+## Pre-Flight Checklist
 
-```
-Use AskUserQuestion to ask: "What's the ClickUp task ID you'd like me to implement?"
-```
+**BEFORE PROCEEDING, verify:**
+- [ ] You are on the **dev** branch (run `git branch --show-current` if unsure)
+- [ ] No uncommitted changes that could interfere (`git status`)
 
-Wait for the user to provide the task ID.
+If not on dev branch, switch to it before continuing.
 
-### Step 2: Fetch Task Details
+---
 
-Once you have the task ID, fetch complete task information including subtasks:
+## Step 1: Initialize Task Context
+
+### 1.1 Validate Task ID
+
+The task ID is: `$ARGUMENTS`
+
+**If $ARGUMENTS is empty or invalid:**
+Use AskUserQuestion: "What's the ClickUp task ID you'd like me to implement?"
+
+### 1.2 Fetch Task Details (Run in Parallel)
+
+Execute BOTH commands simultaneously to save time:
 
 ```bash
+# Command 1: Get task details
 node scripts/clickup-helper.js task <TASK_ID>
+
+# Command 2: Get subtasks
 node scripts/clickup-helper.js get-subtasks <TASK_ID>
 ```
 
-**Extract from the task:**
+### 1.3 Create Task Context Record
 
-- Task ID
-- Task name
-- Current description
-- Status
-- Priority
-- Due date
-- All subtasks (if any)
+**IMMEDIATELY after fetching, create this structured record using TodoWrite:**
 
-**IMPORTANT - Subtask Management:**
-If subtasks exist, you MUST:
+```
+Task Context:
+- Task ID: [ID]
+- Task Name: [NAME]
+- Start Time: [CURRENT_TIME in HH:MM format]
+- Subtask IDs: [LIST_ALL_SUBTASK_IDS]
+```
 
-1. **Record each subtask ID** from the get-subtasks output (they appear at the end of each line)
-2. **Store them in a list** to reference during implementation
-3. Example subtask output format: `1. 🟡 📋 Subtask Name... | status | assignee | 86b7c21gy`
-   - The ID is the last item: `86b7c21gy`
+**CRITICAL:** The start time MUST be recorded now. You will need it for time tracking in Step 9.
 
-### Step 3: Analyze Scope & Codebase
+**Subtask ID Extraction:**
+- Subtask IDs appear at the END of each line in get-subtasks output
+- Format: `1. 🟡 📋 Subtask Name... | status | assignee | 86b7c21gy`
+- The ID is the last alphanumeric string: `86b7c21gy`
 
-Thoroughly analyze what needs to be done:
+---
 
-**Understanding the Requirements:**
+## Step 2: Analyze Requirements
 
-- Read the task description carefully
-- Identify all acceptance criteria
-- Note any subtasks and their requirements
-- Understand the full scope of changes needed
+### 2.1 Understanding the Task
 
-**Codebase Analysis:**
-Use the Task tool with subagent_type=Explore to understand:
+From the task description, extract:
+- **Primary Goal:** What is the main deliverable?
+- **Acceptance Criteria:** What must be true when complete?
+- **Constraints:** Any limitations or requirements mentioned?
 
-- Which files need to be modified
+### 2.2 Codebase Analysis
+
+Use `Task tool with subagent_type=Explore` to understand:
+- Which files need modification
 - Current implementation patterns
 - Related components/APIs/database schemas
 - Data flow (frontend → API → database)
-- Testing requirements
 
-### Step 4: Ask Clarifying Questions
+**Output a file list:**
+```
+Files to analyze:
+• path/to/file1.tsx - reason
+• path/to/file2.ts - reason
+```
 
-Before proceeding, use the AskUserQuestion tool to clarify:
+---
 
-- Implementation approach (if multiple valid options)
-- Technical choices (libraries, patterns, etc.)
-- Scope decisions (what's in/out of scope)
+## Step 3: Clarification Checkpoint
+
+**STOP and ask questions BEFORE planning if ANY of these are unclear:**
+
+Using AskUserQuestion, clarify:
+- Implementation approach (if multiple valid options exist)
+- Technical choices (libraries, patterns)
+- Scope boundaries (what's in vs out)
+- Priority order for multiple subtasks
 - Any ambiguities in requirements
-- Priority if there are multiple subtasks
 
-**IMPORTANT:** Only proceed after getting answers to your questions.
+**Rule:** Do NOT proceed to Step 4 until all questions are answered.
 
-### Step 5: Plan Implementation
+---
 
-Create a detailed implementation plan using TodoWrite:
+## Step 4: Create Implementation Plan
 
-- Break down into specific, actionable tasks
-- Order tasks logically (database → backend → frontend → tests)
-- Include all files that need modification
-- Plan for testing steps
+### 4.1 Build TodoWrite Task List
 
-Present the plan to the user and get confirmation before proceeding.
+Create a detailed task list with:
+- Specific, actionable items
+- Logical order (database → backend → frontend → tests)
+- Each file that needs modification
+- Testing steps
 
-### Step 6: Execute Implementation
+### 4.2 Present Plan for Approval
 
-Follow the workflow from CLAUDE.md:
+Show the user:
+1. Summary of changes
+2. Files to be modified
+3. Estimated complexity
 
-**6.1 Update Status & Start Time Tracking**
+**Request:** "Please confirm this plan before I proceed."
 
-Set the current ClickUp task status to "DEVELOPMENT" and record the start time:
+**Do NOT proceed until user confirms.**
+
+---
+
+## Step 5: Update ClickUp Status
+
+Set task status to "DEVELOPMENT":
 
 ```bash
-# Update status to development
 node scripts/clickup-helper.js status <TASK_ID> development
 ```
 
-**IMPORTANT - Record Start Time:**
-Note the current time when you begin implementation. You'll use this to calculate total time spent.
+**If this fails:** Note the error, but continue with implementation. Status can be updated manually later.
 
-Example: "Starting implementation at [TIME]"
+---
 
-**For each task in your plan:**
+## Step 6: Execute Implementation
 
-1. Mark as in_progress in TodoWrite
-2. Announce: "Starting: [TASK_DESCRIPTION]"
-3. Make the minimal required change using Edit/Write tools
-4. Mark complete in TodoWrite
-5. Report: "Completed: [TASK_DESCRIPTION] - [SUMMARY]"
-6. **If this task corresponds to a ClickUp subtask**, attempt to mark it complete:
-   ```bash
-   node scripts/clickup-helper.js complete-subtask <SUBTASK_ID>
-   ```
-   - Use the subtask ID you recorded in Step 2
-   - **If the command fails with "Status does not exist" error:** This is expected for subtasks with different status configurations. Simply note the subtask as completed in your tracking and continue. You'll document it in Step 8.
-   - **If other errors occur:** Note the error and continue (you can retry in Step 9)
-   - When successful, this provides real-time progress updates in ClickUp
+### 6.1 Implementation Loop
 
-**Important Notes:**
+For EACH task in your plan:
 
-- Follow all constraints from CLAUDE.md
-- Use Read/Edit/Write tools for file operations
-- Never use bash commands for file manipulation
-- Stop and request permission if unexpected changes are needed
+1. **Mark in_progress** in TodoWrite
+2. **Announce:** "Starting: [TASK_DESCRIPTION]"
+3. **Implement** using Read/Edit/Write tools (NEVER bash for file operations)
+4. **Mark complete** in TodoWrite
+5. **Report:** "Completed: [TASK_DESCRIPTION] - [ONE_LINE_SUMMARY]"
 
-### Step 7: Test Implementation
+### 6.2 Subtask Completion (As You Go)
 
-After implementation is complete:
+**When completing work that corresponds to a ClickUp subtask:**
 
-**7.1 Launch Dedicated Development Server**
+```bash
+node scripts/clickup-helper.js complete-subtask <SUBTASK_ID>
+```
 
-**IMPORTANT:** Start a NEW dedicated dev server specifically for testing. This ensures:
-- You have access to real-time server logs for debugging
-- The server is running on a unique port for this test session
-- Server-side errors and API calls are visible in the terminal output
-- You can monitor backend behavior during testing
+**Expected Errors (Non-Blocking):**
+- `"Status does not exist" (ITEM_114)`: Subtask has different status config. Note it and continue.
+- `API authentication error`: Note and continue; mark manually later.
+- `Network error`: Retry once, then note and continue.
+
+**Tracking:** Keep a list of which subtasks you've attempted to mark complete and their results.
+
+### 6.3 Unexpected Changes
+
+If you need to modify a file NOT in the approved plan:
+
+```
+⚠️ PERMISSION REQUIRED
+File: [path/to/file.ext]
+Reason: [Why this change is needed]
+Action needed: Please confirm to proceed
+```
+
+**STOP and wait for approval.**
+
+---
+
+## Step 7: Test Implementation
+
+### 7.1 Start Development Server
 
 ```bash
 npm run dev
 ```
 
-**Key points:**
-- Do NOT reuse an existing dev server instance
-- Keep the terminal window visible to monitor server logs
-- Note the port number that the dev server starts on (usually 3000)
-- Watch for any server errors during testing
+**IMPORTANT:**
+- Note the PORT number from the output (usually 3000, but verify)
+- Watch for startup errors
+- Keep terminal visible to monitor server logs
 
-**7.2 Automated Testing with Playwright**
+### 7.2 Automated Testing with Playwright
 
-Use the Playwright MCP tools to test the implementation:
+**Navigate to:** `http://localhost:[PORT]` (use the actual port from 7.1)
 
-1. **Navigate to Application:**
+**Login Credentials:**
+- Email: `kyle.goevert@sympatecoinc.com`
+- Password: `Caramia458`
 
-   ```
-   URL: http://localhost:[PORT]
-   Where [PORT] is the dev server port (e.g., 3000)
-   ```
+**Testing Workflow:**
+1. Navigate to the relevant section
+2. Execute the user workflow for the feature
+3. Verify all acceptance criteria
+4. Check browser console for errors (use `mcp__playwright__browser_console_messages`)
+5. Verify data persistence (reload and check)
 
-2. **Login:**
+### 7.3 Testing Checklist
 
-   - Email: kyle.goevert@sympatecoinc.com
-   - Password: Caramia458
-
-3. **Test the Feature:**
-
-   - Navigate to the relevant section
-   - Execute the user workflow for the feature
-   - Verify all acceptance criteria are met
-   - Check for console errors
-   - Verify data persistence
-
-4. **Take Screenshots:**
-   - Take screenshots of key functionality
-   - Document any issues found
-
-**Testing Checklist:**
-
+Complete ALL items:
 - [ ] Feature works as expected
 - [ ] No console errors
-- [ ] Data persists correctly
+- [ ] Data persists correctly after refresh
 - [ ] UI updates properly
-- [ ] Validation works
+- [ ] Validation works (try invalid inputs)
 - [ ] Edge cases handled
 
-### Step 8: Update ClickUp Task
+**If ANY test fails:** Document the failure, fix the issue, and re-test before proceeding.
 
-After successful testing, update the ClickUp task:
+### 7.4 Take Screenshots
 
-**8.1 Prepare Summary**
+Capture key functionality for documentation.
 
-Create a concise summary in this format:
+---
+
+## Step 8: Update ClickUp Task Description
+
+### 8.1 Generate Implementation Summary
+
+Create this EXACT format:
 
 ```markdown
 ---
 
-## Implementation Summary - [DATE]
+## Implementation Summary - [YYYY-MM-DD]
 
 ### Changes Made
 
-- **[File 1]**: [Brief description of changes]
-- **[File 2]**: [Brief description of changes]
-- **[File 3]**: [Brief description of changes]
+- **[File 1]**: [Brief description]
+- **[File 2]**: [Brief description]
 
 ### Features Implemented
 
 ✅ [Feature/requirement 1]
 ✅ [Feature/requirement 2]
-✅ [Feature/requirement 3]
 
 ### Testing Completed
 
@@ -220,217 +252,126 @@ Create a concise summary in this format:
 
 ### Technical Details
 
-- Approach: [Brief explanation of implementation approach]
-- Files modified: [Number] files
-- Lines changed: ~[Approximate number]
-
-[Any additional notes or considerations]
+- Approach: [Brief explanation]
+- Files modified: [N] files
+- Lines changed: ~[N]
 ```
 
-**8.2 Update Task Description**
+### 8.2 Append to Task
 
 ```bash
 node scripts/clickup-helper.js update <TASK_ID> --append-description "[SUMMARY_FROM_ABOVE]"
 ```
 
-This will append the summary to the existing description without overwriting.
+---
 
-### Step 9: Update Task Status & Track Time
+## Step 9: Time Tracking & Final Status
 
-**9.1 Calculate Time Spent**
+### 9.1 Calculate Time Spent
 
-Calculate the elapsed time from when you started implementation (Step 6) to now.
+**Recall the start time from Step 1.3.**
 
-Example calculation:
+Calculate elapsed time:
+- Start time: [FROM_STEP_1.3]
+- Current time: [NOW]
+- Duration: [CALCULATE_DIFFERENCE]
 
-- Start time: 2:00 PM
-- End time: 3:30 PM
-- Duration: 1.5 hours
+**Round to nearest 0.25 hours:**
+- 15 min = 0.25h
+- 30 min = 0.5h
+- 45 min = 0.75h
+- 1h 15min = 1.25h
 
-**9.2 Track Time in ClickUp**
-
-Record the time spent on this task:
+### 9.2 Track Time
 
 ```bash
-# Track time spent on implementation and testing
 node scripts/clickup-helper.js track-time <TASK_ID> <HOURS> "Task implementation and testing via /runtask"
 ```
 
-Replace `<HOURS>` with the calculated duration as a decimal (e.g., 1.5 for 1 hour 30 minutes, 0.5 for 30 minutes).
+**If this fails:** Note the calculated hours in your final report for manual entry.
 
-**Important Notes:**
-
-- Be accurate with time tracking - include analysis, implementation, and testing
-- Round to nearest 0.25 hours (15 min increments) for cleaner tracking
-- Examples: 0.25, 0.5, 0.75, 1, 1.5, 2, etc.
-
-**9.3 Update Task Status**
-
-Mark the task as "testing" and ensure all subtasks are complete:
+### 9.3 Update Status to Testing
 
 ```bash
-# Update main task status to testing
 node scripts/clickup-helper.js status <TASK_ID> testing
-
-# Verify all subtasks are marked complete
-# (If any subtask marking failed in Step 6, retry them here)
-node scripts/clickup-helper.js complete-subtask <SUBTASK_ID_1>
-node scripts/clickup-helper.js complete-subtask <SUBTASK_ID_2>
-# ... for any remaining subtasks that weren't marked complete in Step 6
 ```
 
-**Subtask ID Reference:**
+### 9.4 Verify Subtask Completion
 
-- Use the subtask IDs you recorded in Step 2 from the `get-subtasks` output
-- Each subtask ID is shown at the end of each line in that output
-- If you already marked subtasks complete during Step 6, you can verify status:
-  ```bash
-  node scripts/clickup-helper.js get-subtasks <TASK_ID>
-  ```
+Check if any subtasks failed to mark complete earlier:
 
-### Step 10: Final Report
+```bash
+node scripts/clickup-helper.js get-subtasks <TASK_ID>
+```
 
-Provide a summary to the user:
+For any still incomplete:
+```bash
+node scripts/clickup-helper.js complete-subtask <SUBTASK_ID>
+```
+
+---
+
+## Step 10: Final Report
+
+Generate this report for the user:
 
 ```markdown
 ## ✅ Task Implementation Complete
 
 **ClickUp Task:** [TASK_ID] - [TASK_NAME]
+**Duration:** [X] hours (started at [START_TIME])
 
 ### Summary
 
 - ✅ Implementation completed
 - ✅ Testing passed via Playwright
 - ✅ Time tracked: [X] hours
-- ✅ ClickUp task updated with summary
-- ✅ Task status set to "testing"
+- ✅ ClickUp task updated
+- ✅ Status set to "testing"
 
 ### Files Modified
 
-- [List of files]
+- [file1.tsx]
+- [file2.ts]
 
-### Subtasks Status
+### Subtask Status
 
-[If any subtasks couldn't be marked complete via CLI due to status configuration:]
-⚠️ The following subtasks need to be marked complete manually in ClickUp:
+[IF ALL COMPLETE:]
+✅ All subtasks marked complete
 
-- [Subtask 1 name] (ID: [SUBTASK_ID])
-- [Subtask 2 name] (ID: [SUBTASK_ID])
-
-Note: These subtasks are functionally complete; only the ClickUp status sync failed due to status configuration differences.
+[IF SOME FAILED:]
+⚠️ Manual action needed - mark these complete in ClickUp:
+- [Subtask name] (ID: [ID])
 
 ### Next Steps
 
-- Task is ready for review
+- Task ready for review
 - All tests passed
-- Documentation updated in ClickUp
-  [If subtasks need manual marking:] - Mark the listed subtasks as complete in ClickUp UI
 
 **ClickUp Link:** https://app.clickup.com/t/[TASK_ID]
 ```
 
-## Error Handling
+---
 
-**If testing fails:**
+## Quick Reference: Error Recovery
 
-1. Document the failure
-2. Fix the issues
-3. Re-test
-4. Update ClickUp with the corrected implementation
+| Error | Action |
+|-------|--------|
+| Task ID not found | Verify ID, check for typos |
+| Status update fails | Continue; update manually |
+| Subtask marking fails (ITEM_114) | Expected; note for manual marking |
+| Time tracking fails | Note hours; user can enter manually |
+| Test fails | Fix issue, re-test, don't proceed until passing |
+| Dev server port conflict | Kill existing process or use different port |
+| ClickUp API auth error | Check API key validity; continue with implementation |
 
-**If scope is unclear:**
+---
 
-1. Stop immediately
-2. Use AskUserQuestion to clarify
-3. Get explicit confirmation before proceeding
+## Constraints (from CLAUDE.md)
 
-**If ClickUp update fails:**
-
-1. Document the error
-2. Provide the summary to user manually
-3. Ask user to update ClickUp or provide alternative approach
-
-**If time tracking fails:**
-
-1. Note the error in your final report
-2. Provide the calculated hours to the user
-3. User can manually track time in ClickUp UI
-4. Continue with the workflow - time tracking failure should not block completion
-
-**If subtask marking fails:**
-Common issues and solutions:
-
-1. **"Status does not exist" error (ECODE: ITEM_114):**
-
-   ```
-   Error: API Error 400: {"err":"Status does not exist","ECODE":"ITEM_114"}
-   ```
-
-   **Root Cause:** The subtask has a different status configuration than the main task list.
-
-   **Solutions:**
-
-   - **Option A (Recommended):** Continue without marking subtasks via CLI. Instead:
-
-     - Note which subtasks need marking
-     - Include them in your final summary to the user
-     - User can mark them complete manually in ClickUp UI
-
-   - **Option B:** Use the ClickUp UI to check the subtask's available statuses, then modify the status in clickup-helper.js temporarily
-
-   - **Option C:** Skip automated subtask marking entirely and document completed work in the task description update (Step 8)
-
-   **Important:** This error does NOT indicate a problem with your implementation. The work is complete; only the ClickUp status sync is failing.
-
-2. **Invalid subtask ID error:**
-
-   - Verify the subtask ID by running `node scripts/clickup-helper.js get-subtasks <TASK_ID>` again
-   - Ensure you're using the ID from the end of the subtask line (e.g., `86b7c21gy`)
-   - The ID should be alphanumeric without special characters
-
-3. **API authentication error:**
-
-   - The API key may have expired or be invalid
-   - Report the error to the user and continue with implementation
-   - Subtasks can be marked manually in ClickUp UI
-
-4. **Network/connection error:**
-   - Retry the command once after a few seconds
-   - If still failing, note it and continue
-   - Retry all failed subtasks in Step 9
-
-**Best Practice:**
-
-- Don't let subtask marking errors block implementation progress
-- Note which subtasks failed to mark and include them in your final summary
-- Continue with the implementation and testing even if ClickUp updates fail
-- The actual work completion is what matters, not the ClickUp status sync
-
-## Important Reminders
-
-- **ALWAYS** follow CLAUDE.md workflow constraints
-- **ALWAYS** get user confirmation before implementing
-- **ALWAYS** test thoroughly before updating ClickUp
-- **NEVER** overwrite existing ClickUp task data (use --append-description)
-- **NEVER** mark task as complete without user approval
-- **NEVER** skip testing steps
-- **For database connection setup:** Reference `MANUAL_DATABASE_MIGRATION_GUIDE.md` for instructions on establishing Cloud SQL proxy connections to staging/production databases
-
-## Development Server URL
-
-The application URL for testing is:
-
-```
-http://localhost:[PORT]
-```
-
-Where [PORT] is the port number output by `npm run dev` (usually 3000).
-
-## Login Credentials
-
-```
-Email: kyle.goevert@sympatecoinc.com
-Password: Caramia458
-```
-
-These credentials are used for Playwright automated testing.
+- ✅ Always work on dev branch
+- ✅ Use Read/Edit/Write tools for files (never bash)
+- ✅ Get user approval before implementing
+- ✅ Stop and request permission for unexpected changes
+- ❌ Never merge to main without explicit permission
+- ❌ Never deploy without explicit "DEPLOY" permission

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, ArrowLeft, Edit2, Trash2, Save, X, Search } from 'lucide-react'
+import { Plus, ArrowLeft, Trash2, Search } from 'lucide-react'
 
 interface Category {
   id: number
@@ -19,7 +19,10 @@ interface IndividualOption {
   categoryId: number
   name: string
   description?: string
+  partNumber?: string
   price: number
+  addToPackingList: boolean
+  addFinishToPartNumber: boolean
   category?: {
     name: string
   }
@@ -42,11 +45,6 @@ export default function CategoryDetailView({
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedMasterParts, setSelectedMasterParts] = useState<any[]>([])
   const [creating, setCreating] = useState(false)
-  const [editingOption, setEditingOption] = useState<number | null>(null)
-  const [editOptionName, setEditOptionName] = useState('')
-  const [editOptionDescription, setEditOptionDescription] = useState('')
-  const [editOptionPrice, setEditOptionPrice] = useState('')
-  const [updating, setUpdating] = useState(false)
 
   // Fetch detailed category data and available master parts
   useEffect(() => {
@@ -75,19 +73,29 @@ export default function CategoryDetailView({
     fetchData()
   }, [category.id])
 
-  // Filter master parts based on search term
+  // Filter master parts based on search term and exclude already added options
   useEffect(() => {
-    if (!searchTerm.trim()) {
-      setFilteredMasterParts(availableMasterParts)
-    } else {
-      const filtered = availableMasterParts.filter(part =>
+    // Get part numbers that are already in the category
+    const existingPartNumbers = new Set(
+      categoryDetails?.individualOptions
+        ?.map((opt: IndividualOption) => opt.partNumber)
+        .filter(Boolean) || []
+    )
+
+    // Filter out parts already in the category
+    let partsToShow = availableMasterParts.filter(part => !existingPartNumbers.has(part.partNumber))
+
+    // Apply search filter
+    if (searchTerm.trim()) {
+      partsToShow = partsToShow.filter(part =>
         part.baseName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         part.partNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (part.description && part.description.toLowerCase().includes(searchTerm.toLowerCase()))
       )
-      setFilteredMasterParts(filtered)
     }
-  }, [searchTerm, availableMasterParts])
+
+    setFilteredMasterParts(partsToShow)
+  }, [searchTerm, availableMasterParts, categoryDetails?.individualOptions])
 
   async function handleAddOption(e: React.FormEvent) {
     e.preventDefault()
@@ -104,15 +112,31 @@ export default function CategoryDetailView({
             categoryId: category.id,
             name: masterPart.baseName,
             description: masterPart.description || `${masterPart.partNumber} - ${masterPart.baseName}`,
-            price: masterPart.cost || 0
+            price: masterPart.cost || 0,
+            partNumber: masterPart.partNumber,
+            addToPackingList: masterPart.addToPackingList ?? true,
+            addFinishToPartNumber: masterPart.addFinishToPartNumber ?? false
           })
         })
       )
 
       const responses = await Promise.all(promises)
 
-      // Check if all requests were successful
-      if (responses.every(res => res.ok)) {
+      // Check results and collect any errors
+      const errors: string[] = []
+      for (let i = 0; i < responses.length; i++) {
+        if (!responses[i].ok) {
+          const errorData = await responses[i].json()
+          errors.push(`${selectedMasterParts[i].baseName}: ${errorData.error || 'Failed to add'}`)
+        }
+      }
+
+      if (errors.length > 0) {
+        alert(`Some options could not be added:\n${errors.join('\n')}`)
+      }
+
+      // Refresh if at least some were successful
+      if (responses.some(res => res.ok)) {
         setSelectedMasterParts([])
         setSearchTerm('')
         setShowAddOptionForm(false)
@@ -129,58 +153,6 @@ export default function CategoryDetailView({
       alert('Error adding options')
     } finally {
       setCreating(false)
-    }
-  }
-
-  function startEditOption(option: IndividualOption) {
-    setEditingOption(option.id)
-    setEditOptionName(option.name)
-    setEditOptionDescription(option.description || '')
-    setEditOptionPrice(option.price.toString())
-  }
-
-  function cancelEditOption() {
-    setEditingOption(null)
-    setEditOptionName('')
-    setEditOptionDescription('')
-    setEditOptionPrice('')
-  }
-
-  async function handleUpdateOption(e: React.FormEvent) {
-    e.preventDefault()
-    if (!editOptionName.trim() || !editingOption) return
-
-    setUpdating(true)
-    try {
-      const response = await fetch(`/api/options/${editingOption}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editOptionName,
-          description: editOptionDescription,
-          price: editOptionPrice
-        })
-      })
-
-      if (response.ok) {
-        setEditingOption(null)
-        setEditOptionName('')
-        setEditOptionDescription('')
-        setEditOptionPrice('')
-        onRefresh()
-        // Refresh category details
-        const detailsResponse = await fetch(`/api/categories/${category.id}`)
-        if (detailsResponse.ok) {
-          const data = await detailsResponse.json()
-          setCategoryDetails(data)
-        }
-        alert('Option updated successfully!')
-      }
-    } catch (error) {
-      console.error('Error updating option:', error)
-      alert('Error updating option')
-    } finally {
-      setUpdating(false)
     }
   }
 
@@ -248,91 +220,35 @@ export default function CategoryDetailView({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {categoryDetails.individualOptions.map((option: any) => (
               <div key={option.id} className="border border-gray-200 rounded-lg p-4">
-                {editingOption === option.id ? (
-                  <form onSubmit={handleUpdateOption} className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Option Name</label>
-                      <input
-                        type="text"
-                        value={editOptionName}
-                        onChange={(e) => setEditOptionName(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        placeholder="Option name"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                      <textarea
-                        value={editOptionDescription}
-                        onChange={(e) => setEditOptionDescription(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        placeholder="Option description"
-                        rows={2}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Price ($)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={editOptionPrice}
-                        onChange={(e) => setEditOptionPrice(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div className="flex justify-end space-x-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={cancelEditOption}
-                        className="flex items-center px-3 py-1 text-gray-600 hover:text-gray-800"
-                      >
-                        <X className="w-4 h-4 mr-1" />
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={updating}
-                        className="flex items-center px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        <Save className="w-4 h-4 mr-1" />
-                        {updating ? 'Saving...' : 'Save'}
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium text-gray-900">{option.name}</h4>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => startEditOption(option)}
-                          className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
-                          title="Edit option"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteOption(option.id, option.name)}
-                          className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                          title="Delete option"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                    {option.description && (
-                      <p className="text-sm text-gray-600 mb-2">{option.description}</p>
-                    )}
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-green-600">
-                        {option.price > 0 ? `+$${option.price.toFixed(2)}` : 'Free'}
-                      </span>
-                    </div>
-                  </div>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium text-gray-900">{option.name}</h4>
+                  <button
+                    onClick={() => handleDeleteOption(option.id, option.name)}
+                    className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                    title="Remove from category"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                {option.partNumber && (
+                  <p className="text-xs text-gray-500 mb-1">Part #: {option.partNumber}</p>
                 )}
+                {option.description && (
+                  <p className="text-sm text-gray-600 mb-2">{option.description}</p>
+                )}
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-green-600">
+                    {option.price > 0 ? `+$${option.price.toFixed(2)}` : 'Free'}
+                  </span>
+                  <div className="flex gap-1">
+                    {option.addToPackingList && (
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Packing List</span>
+                    )}
+                    {option.addFinishToPartNumber && (
+                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">+ Finish</span>
+                    )}
+                  </div>
+                </div>
               </div>
             ))}
           </div>

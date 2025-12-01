@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
     const isGlobal = formData.get('isGlobal') === 'true'
     const displayOrder = parseInt(formData.get('displayOrder') as string) || 0
     const uploadedBy = formData.get('uploadedBy') as string | null
+    const productId = formData.get('productId') as string | null
 
     if (!file) {
       return NextResponse.json(
@@ -120,6 +121,16 @@ export async function POST(request: NextRequest) {
       where: { id: document.id },
       data: { filename },
     })
+
+    // Create product association if productId is provided
+    if (productId) {
+      await prisma.productQuoteDocument.create({
+        data: {
+          productId: parseInt(productId),
+          quoteDocumentId: document.id,
+        },
+      })
+    }
 
     return NextResponse.json({ success: true, document: updatedDocument })
   } catch (error) {

@@ -377,42 +377,112 @@ export async function POST(
         componentCost += cost
       }
 
-      // Calculate sub-option costs
+      // Calculate sub-option costs with standard hardware logic
+      // Standard hardware: included at cost (no markup), always added if nothing selected
+      // Non-standard hardware: full price with markup
+      const processedCategories = new Set<string>()
+
       if (component.subOptionSelections) {
         try {
           const selections = JSON.parse(component.subOptionSelections)
           const includedOptions = component.includedOptions ? JSON.parse(component.includedOptions) : []
 
           for (const [categoryId, optionId] of Object.entries(selections)) {
-            if (!optionId) continue
+            processedCategories.add(categoryId)
 
-            // Find the individual option
-            const category = product.productSubOptions.find(pso =>
+            // Find the product sub-option (includes standardOptionId now)
+            const productSubOption = product.productSubOptions.find((pso: any) =>
               pso.category.id === parseInt(categoryId)
-            )?.category
+            )
 
-            const individualOption = category?.individualOptions.find(io =>
+            if (!productSubOption) continue
+
+            const category = productSubOption.category
+            const standardOptionId = productSubOption.standardOptionId
+            const standardOption = standardOptionId
+              ? category.individualOptions.find((io: any) => io.id === standardOptionId)
+              : null
+
+            if (!optionId) {
+              // No option selected - if there's a standard, include its cost at cost (no markup)
+              if (standardOption) {
+                componentBreakdown.optionCosts.push({
+                  categoryName: category.name,
+                  optionName: standardOption.name,
+                  price: standardOption.price, // Cost price, no markup
+                  isStandard: true,
+                  isIncluded: false
+                })
+                componentBreakdown.totalOptionCost += standardOption.price
+                componentCost += standardOption.price
+              }
+              continue
+            }
+
+            // Option was selected
+            const selectedOption = category.individualOptions.find((io: any) =>
               io.id === parseInt(optionId as string)
             )
 
-            if (individualOption) {
-              // Check if this option is marked as included (no charge)
-              const isIncluded = includedOptions.includes(individualOption.id)
-              const optionPrice = isIncluded ? 0 : individualOption.price
+            if (selectedOption) {
+              const isIncluded = includedOptions.includes(selectedOption.id)
+              const isStandardSelected = standardOptionId === selectedOption.id
 
-              componentBreakdown.optionCosts.push({
-                categoryName: category?.name || '',
-                optionName: individualOption.name,
-                price: optionPrice,
-                isIncluded: isIncluded
-              })
+              if (isStandardSelected) {
+                // Standard option selected - cost only, no markup
+                const optionPrice = isIncluded ? 0 : selectedOption.price
 
-              componentBreakdown.totalOptionCost += optionPrice
-              componentCost += optionPrice
+                componentBreakdown.optionCosts.push({
+                  categoryName: category.name,
+                  optionName: selectedOption.name,
+                  price: optionPrice,
+                  isStandard: true,
+                  isIncluded: isIncluded
+                })
+
+                componentBreakdown.totalOptionCost += optionPrice
+                componentCost += optionPrice
+              } else {
+                // Non-standard option selected - full price (markup applied at project level)
+                const optionPrice = isIncluded ? 0 : selectedOption.price
+
+                componentBreakdown.optionCosts.push({
+                  categoryName: category.name,
+                  optionName: selectedOption.name,
+                  price: optionPrice,
+                  isStandard: false,
+                  standardDeducted: standardOption ? standardOption.price : 0,
+                  isIncluded: isIncluded
+                })
+
+                componentBreakdown.totalOptionCost += optionPrice
+                componentCost += optionPrice
+              }
             }
           }
         } catch (error) {
           console.error('Error parsing sub-option selections:', error)
+        }
+      }
+
+      // Add standard options for categories that weren't in selections at all
+      for (const productSubOption of product.productSubOptions) {
+        const categoryId = productSubOption.category.id.toString()
+        if (!processedCategories.has(categoryId) && productSubOption.standardOptionId) {
+          const standardOption = productSubOption.category.individualOptions.find(
+            (io: any) => io.id === productSubOption.standardOptionId
+          )
+          if (standardOption) {
+            componentBreakdown.optionCosts.push({
+              categoryName: productSubOption.category.name,
+              optionName: standardOption.name,
+              price: standardOption.price, // At cost
+              isStandard: true,
+              isIncluded: false
+            })
+            componentBreakdown.totalOptionCost += standardOption.price
+            componentCost += standardOption.price
+          }
         }
       }
 

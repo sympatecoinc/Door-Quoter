@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
       stockLength,
       partNumber,
       cost,
-      addFinishToPartNumber
+      addFinishToPartNumber,
+      addToPackingList
     } = await request.json()
 
     if (!productId || !partName) {
@@ -65,7 +66,8 @@ export async function POST(request: NextRequest) {
         stockLength: stockLength || null,
         partNumber: partNumber || null,
         cost: cost || null,
-        addFinishToPartNumber: addFinishToPartNumber || false
+        addFinishToPartNumber: addFinishToPartNumber || false,
+        addToPackingList: addToPackingList || false
       },
       include: {
         product: true
@@ -96,7 +98,8 @@ export async function PUT(request: NextRequest) {
       stockLength,
       partNumber,
       cost,
-      addFinishToPartNumber
+      addFinishToPartNumber,
+      addToPackingList
     } = await request.json()
 
     if (!id || !partName) {
@@ -119,7 +122,8 @@ export async function PUT(request: NextRequest) {
         stockLength: stockLength || null,
         partNumber: partNumber || null,
         cost: cost || null,
-        addFinishToPartNumber: addFinishToPartNumber !== undefined ? addFinishToPartNumber : undefined
+        addFinishToPartNumber: addFinishToPartNumber !== undefined ? addFinishToPartNumber : undefined,
+        addToPackingList: addToPackingList !== undefined ? addToPackingList : undefined
       },
       include: {
         product: true

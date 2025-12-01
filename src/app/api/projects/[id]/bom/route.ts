@@ -108,6 +108,88 @@ async function findStockLength(partNumber: string, bom: any, variables: Record<s
   }
 }
 
+// Helper function to aggregate BOM items for purchasing summary
+function aggregateBomItems(bomItems: any[]): any[] {
+  const aggregated: Record<string, any> = {}
+
+  for (const item of bomItems) {
+    const key = item.partNumber
+
+    if (!aggregated[key]) {
+      aggregated[key] = {
+        partNumber: item.partNumber,
+        partName: item.partName,
+        partType: item.partType,
+        totalQuantity: 0,
+        unit: item.unit,
+        stockLength: item.stockLength,
+        cutLengths: [],
+        totalCutLength: 0,
+        glassDimensions: [],
+        totalArea: 0
+      }
+    }
+
+    aggregated[key].totalQuantity += item.quantity || 1
+
+    // For extrusions, collect cut lengths
+    if (item.partType === 'Extrusion' && item.cutLength) {
+      for (let i = 0; i < (item.quantity || 1); i++) {
+        aggregated[key].cutLengths.push(item.cutLength)
+      }
+      aggregated[key].totalCutLength += (item.cutLength * (item.quantity || 1))
+    }
+
+    // For glass, collect dimensions and area
+    if (item.partType === 'Glass') {
+      aggregated[key].glassDimensions.push({
+        width: item.glassWidth,
+        height: item.glassHeight,
+        area: item.glassArea
+      })
+      aggregated[key].totalArea += item.glassArea || 0
+    }
+  }
+
+  // Sort by part type then part number
+  const typeOrder: Record<string, number> = { 'Extrusion': 1, 'Hardware': 2, 'Glass': 3, 'Option': 4 }
+  return Object.values(aggregated).sort((a: any, b: any) => {
+    const aOrder = typeOrder[a.partType] || 5
+    const bOrder = typeOrder[b.partType] || 5
+    if (aOrder !== bOrder) return aOrder - bOrder
+    return a.partNumber.localeCompare(b.partNumber)
+  })
+}
+
+// Helper function to convert summary to CSV
+function summaryToCSV(projectName: string, summaryItems: any[]): string {
+  const headers = ['Part Number', 'Part Name', 'Type', 'Total Qty', 'Unit', 'Stock Length', 'Cut Lengths', 'Total Cut Length', 'Glass Dimensions', 'Total Area (SQ FT)']
+
+  const rows = summaryItems.map(item => {
+    const cutLengthsStr = item.cutLengths.length > 0
+      ? item.cutLengths.map((l: number) => l.toFixed(2)).join('; ')
+      : ''
+    const glassDimsStr = item.glassDimensions.length > 0
+      ? item.glassDimensions.map((g: any) => `${g.width?.toFixed(2)}"x${g.height?.toFixed(2)}"`).join('; ')
+      : ''
+
+    return [
+      item.partNumber,
+      item.partName,
+      item.partType,
+      item.totalQuantity,
+      item.unit,
+      item.stockLength || '',
+      cutLengthsStr,
+      item.totalCutLength ? item.totalCutLength.toFixed(2) : '',
+      glassDimsStr,
+      item.totalArea ? item.totalArea.toFixed(2) : ''
+    ].map(field => `"${String(field).replace(/"/g, '""')}"`)
+  })
+
+  return [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -115,7 +197,12 @@ export async function GET(
   try {
     const resolvedParams = await params
     const projectId = parseInt(resolvedParams.id)
-    
+
+    // Parse query parameters
+    const { searchParams } = new URL(request.url)
+    const summary = searchParams.get('summary') === 'true'
+    const format = searchParams.get('format')
+
     if (isNaN(projectId)) {
       return NextResponse.json(
         { error: 'Invalid project ID' },
@@ -302,7 +389,9 @@ export async function GET(
           })
         }
 
-        // Add product options (sub-options) to BOM
+        // Add product options (sub-options) to BOM with standard hardware logic
+        const processedBomCategories = new Set<string>()
+
         if (panel.componentInstance.subOptionSelections) {
           try {
             const selections = JSON.parse(panel.componentInstance.subOptionSelections)
@@ -310,57 +399,169 @@ export async function GET(
 
             // Process each selected option
             for (const [categoryIdStr, optionId] of Object.entries(selections)) {
-              if (optionId) {
-                const categoryId = parseInt(categoryIdStr)
+              processedBomCategories.add(categoryIdStr)
+              const categoryId = parseInt(categoryIdStr)
 
-                // Find the product sub-option and individual option details
-                const productSubOption = product.productSubOptions?.find(
-                  (pso: any) => pso.category.id === categoryId
-                )
+              // Find the product sub-option and individual option details
+              const productSubOption = product.productSubOptions?.find(
+                (pso: any) => pso.category.id === categoryId
+              )
 
-                if (productSubOption) {
-                  const individualOption = productSubOption.category.individualOptions?.find(
-                    (opt: any) => opt.id === Number(optionId)
-                  )
+              if (!productSubOption) continue
 
-                  if (individualOption) {
-                    const isIncluded = includedOptions.includes(Number(optionId))
+              const standardOptionId = productSubOption.standardOptionId
+              const standardOption = standardOptionId
+                ? productSubOption.category.individualOptions?.find((opt: any) => opt.id === standardOptionId)
+                : null
 
-                    // Extract part number from description field (format: "PART-NUMBER - BASE-NAME")
-                    let partNumber = `OPTION-${individualOption.id}`
-                    if (individualOption.description) {
-                      // Match everything before " - " (space-dash-space)
-                      const match = individualOption.description.match(/^(.+?)\s+-\s+/)
-                      if (match) {
-                        partNumber = match[1]
-                      }
+              if (!optionId) {
+                // No option selected - add standard if available
+                if (standardOption) {
+                  let partNumber = standardOption.partNumber || `OPTION-${standardOption.id}`
+                  if (!standardOption.partNumber && standardOption.description) {
+                    const match = standardOption.description.match(/^(.+?)\s+-\s+/)
+                    if (match) {
+                      partNumber = match[1]
                     }
+                  }
 
-                    bomItems.push({
-                      openingName: opening.name,
-                      panelId: panel.id,
-                      productName: product.name,
-                      panelWidth: panel.width,
-                      panelHeight: panel.height,
-                      partNumber: partNumber,
-                      partName: individualOption.name,
-                      partType: 'Option',
-                      quantity: 1,
-                      cutLength: null,
-                      stockLength: null,
-                      percentOfStock: null,
-                      unit: 'EA',
-                      description: `${productSubOption.category.name}: ${individualOption.name}${isIncluded ? ' (Included)' : ''}`,
-                      color: 'N/A',
-                      isIncluded: isIncluded,
-                      optionPrice: individualOption.price
-                    })
+                  // Apply finish code if addFinishToPartNumber is set
+                  if (standardOption.addFinishToPartNumber && opening.finishColor && standardOption.partNumber) {
+                    const finishCode = await getFinishCode(opening.finishColor)
+                    if (finishCode) {
+                      partNumber = `${partNumber}${finishCode}`
+                    }
+                  }
+
+                  bomItems.push({
+                    openingName: opening.name,
+                    panelId: panel.id,
+                    productName: product.name,
+                    panelWidth: panel.width,
+                    panelHeight: panel.height,
+                    partNumber: partNumber,
+                    partName: standardOption.name,
+                    partType: 'Option',
+                    quantity: 1,
+                    cutLength: null,
+                    stockLength: null,
+                    percentOfStock: null,
+                    unit: 'EA',
+                    description: `${productSubOption.category.name}: ${standardOption.name} (Standard - Included)`,
+                    color: opening.finishColor || 'N/A',
+                    isIncluded: false,
+                    isStandard: true,
+                    optionPrice: standardOption.price
+                  })
+                }
+                continue
+              }
+
+              const individualOption = productSubOption.category.individualOptions?.find(
+                (opt: any) => opt.id === Number(optionId)
+              )
+
+              if (individualOption) {
+                const isIncluded = includedOptions.includes(Number(optionId))
+                const isStandardOption = standardOptionId === individualOption.id
+
+                // Use partNumber field if available, otherwise fall back to parsing description or OPTION-{id}
+                let partNumber = individualOption.partNumber || `OPTION-${individualOption.id}`
+                if (!individualOption.partNumber && individualOption.description) {
+                  // Legacy fallback: Match everything before " - " (space-dash-space)
+                  const match = individualOption.description.match(/^(.+?)\s+-\s+/)
+                  if (match) {
+                    partNumber = match[1]
                   }
                 }
+
+                // Apply finish code if addFinishToPartNumber is set
+                if (individualOption.addFinishToPartNumber && opening.finishColor && individualOption.partNumber) {
+                  const finishCode = await getFinishCode(opening.finishColor)
+                  if (finishCode) {
+                    partNumber = `${partNumber}${finishCode}`
+                  }
+                }
+
+                let description = `${productSubOption.category.name}: ${individualOption.name}`
+                if (isStandardOption) {
+                  description += ' (Standard - Included)'
+                } else if (isIncluded) {
+                  description += ' (Included)'
+                }
+
+                bomItems.push({
+                  openingName: opening.name,
+                  panelId: panel.id,
+                  productName: product.name,
+                  panelWidth: panel.width,
+                  panelHeight: panel.height,
+                  partNumber: partNumber,
+                  partName: individualOption.name,
+                  partType: 'Option',
+                  quantity: 1,
+                  cutLength: null,
+                  stockLength: null,
+                  percentOfStock: null,
+                  unit: 'EA',
+                  description: description,
+                  color: opening.finishColor || 'N/A',
+                  isIncluded: isIncluded,
+                  isStandard: isStandardOption,
+                  optionPrice: individualOption.price
+                })
               }
             }
           } catch (error) {
             console.error('Error parsing product options:', error)
+          }
+        }
+
+        // Add standard options for categories not in selections
+        for (const productSubOption of product.productSubOptions || []) {
+          const categoryId = productSubOption.category.id.toString()
+          if (!processedBomCategories.has(categoryId) && productSubOption.standardOptionId) {
+            const standardOption = productSubOption.category.individualOptions?.find(
+              (opt: any) => opt.id === productSubOption.standardOptionId
+            )
+            if (standardOption) {
+              let partNumber = standardOption.partNumber || `OPTION-${standardOption.id}`
+              if (!standardOption.partNumber && standardOption.description) {
+                const match = standardOption.description.match(/^(.+?)\s+-\s+/)
+                if (match) {
+                  partNumber = match[1]
+                }
+              }
+
+              // Apply finish code if addFinishToPartNumber is set
+              if (standardOption.addFinishToPartNumber && opening.finishColor && standardOption.partNumber) {
+                const finishCode = await getFinishCode(opening.finishColor)
+                if (finishCode) {
+                  partNumber = `${partNumber}${finishCode}`
+                }
+              }
+
+              bomItems.push({
+                openingName: opening.name,
+                panelId: panel.id,
+                productName: product.name,
+                panelWidth: panel.width,
+                panelHeight: panel.height,
+                partNumber: partNumber,
+                partName: standardOption.name,
+                partType: 'Option',
+                quantity: 1,
+                cutLength: null,
+                stockLength: null,
+                percentOfStock: null,
+                unit: 'EA',
+                description: `${productSubOption.category.name}: ${standardOption.name} (Standard - Included)`,
+                color: opening.finishColor || 'N/A',
+                isIncluded: false,
+                isStandard: true,
+                optionPrice: standardOption.price
+              })
+            }
           }
         }
       }
@@ -402,6 +603,41 @@ export async function GET(
         })
       })
     })
+
+    // If summary mode is requested, return aggregated data
+    if (summary) {
+      const summaryItems = aggregateBomItems(bomItems)
+
+      // Calculate totals by type
+      const totals = {
+        totalParts: summaryItems.reduce((sum, item) => sum + item.totalQuantity, 0),
+        totalExtrusions: summaryItems.filter(item => item.partType === 'Extrusion').reduce((sum, item) => sum + item.totalQuantity, 0),
+        totalHardware: summaryItems.filter(item => item.partType === 'Hardware').reduce((sum, item) => sum + item.totalQuantity, 0),
+        totalGlass: summaryItems.filter(item => item.partType === 'Glass').reduce((sum, item) => sum + item.totalQuantity, 0),
+        totalOptions: summaryItems.filter(item => item.partType === 'Option').reduce((sum, item) => sum + item.totalQuantity, 0)
+      }
+
+      // If CSV format requested, return as file download
+      if (format === 'csv') {
+        const csvContent = summaryToCSV(project.name, summaryItems)
+        const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '-')}-purchasing-summary.csv`
+
+        return new NextResponse(csvContent, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': `attachment; filename="${filename}"`
+          }
+        })
+      }
+
+      return NextResponse.json({
+        projectId,
+        projectName: project.name,
+        summaryItems,
+        ...totals
+      })
+    }
 
     return NextResponse.json({
       projectId,

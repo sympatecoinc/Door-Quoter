@@ -17,6 +17,9 @@ interface MasterPart {
   weightPerFoot?: number
   partType: string
   isOption?: boolean
+  isMillFinish?: boolean
+  addFinishToPartNumber?: boolean
+  addToPackingList?: boolean
   createdAt: string
   updatedAt: string
   pricingRules?: {
@@ -141,6 +144,8 @@ export default function MasterPartsView() {
   const [partType, setPartType] = useState('')
   const [isOption, setIsOption] = useState(false)
   const [isMillFinish, setIsMillFinish] = useState(false)
+  const [addFinishToPartNumber, setAddFinishToPartNumber] = useState(false)
+  const [addToPackingList, setAddToPackingList] = useState(false)
 
   // Stock Rules State
   const [stockRules, setStockRules] = useState<StockLengthRule[]>([])
@@ -257,8 +262,8 @@ export default function MasterPartsView() {
       return price % 1 === 0 ? price.toString() : price.toFixed(2)
     }
 
-    // For hardware parts, show direct cost
-    if (part.partType === 'Hardware') {
+    // For hardware and fastener parts, show direct cost
+    if (part.partType === 'Hardware' || part.partType === 'Fastener') {
       return part.cost ? `$${formatPrice(part.cost)}` : '-'
     }
 
@@ -330,18 +335,19 @@ export default function MasterPartsView() {
     setPartType('')
     setIsOption(false)
     setIsMillFinish(false)
+    setAddFinishToPartNumber(false)
+    setAddToPackingList(false)
   }
 
   async function handleCreateMasterPart(e: React.FormEvent) {
     e.preventDefault()
     if (!partNumber.trim() || !baseName.trim()) return
     
-    // Validate cost for Hardware parts
-    if (partType === 'Hardware' && (!cost.trim() || isNaN(parseFloat(cost)))) {
-      showError('Hardware parts require a valid cost')
+    // Validate cost for Hardware and Fastener parts
+    if ((partType === 'Hardware' || partType === 'Fastener') && (!cost.trim() || isNaN(parseFloat(cost)))) {
+      showError(`${partType} parts require a valid cost`)
       return
     }
-    
 
     setCreating(true)
     try {
@@ -358,7 +364,9 @@ export default function MasterPartsView() {
           weightPerFoot: weightPerUnit ? parseFloat(weightPerUnit) : null,
           partType,
           isOption: partType === 'Hardware' ? isOption : false,
-          isMillFinish: partType === 'Extrusion' ? isMillFinish : false
+          isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
+          addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
+          addToPackingList: partType === 'Hardware' ? addToPackingList : false
         })
       })
 
@@ -383,12 +391,11 @@ export default function MasterPartsView() {
     e.preventDefault()
     if (!partNumber.trim() || !baseName.trim() || !editingPart) return
     
-    // Validate cost for Hardware parts
-    if (partType === 'Hardware' && (!cost.trim() || isNaN(parseFloat(cost)))) {
-      showError('Hardware parts require a valid cost')
+    // Validate cost for Hardware and Fastener parts
+    if ((partType === 'Hardware' || partType === 'Fastener') && (!cost.trim() || isNaN(parseFloat(cost)))) {
+      showError(`${partType} parts require a valid cost`)
       return
     }
-    
 
     setUpdating(true)
     try {
@@ -405,7 +412,9 @@ export default function MasterPartsView() {
           weightPerFoot: weightPerUnit ? parseFloat(weightPerUnit) : null,
           partType,
           isOption: partType === 'Hardware' ? isOption : false,
-          isMillFinish: partType === 'Extrusion' ? isMillFinish : false
+          isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
+          addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
+          addToPackingList: partType === 'Hardware' ? addToPackingList : false
         })
       })
 
@@ -452,11 +461,13 @@ export default function MasterPartsView() {
     setDescription(part.description || '')
     setUnit(part.unit || '')
     setCost(part.cost?.toString() || '')
-    // For hardware use weightPerUnit, for extrusions use weightPerFoot (both stored in same input field)
-    setWeightPerUnit((part.partType === 'Hardware' ? part.weightPerUnit : part.weightPerFoot)?.toString() || '')
+    // For hardware/fastener use weightPerUnit, for extrusions use weightPerFoot (both stored in same input field)
+    setWeightPerUnit(((part.partType === 'Hardware' || part.partType === 'Fastener') ? part.weightPerUnit : part.weightPerFoot)?.toString() || '')
     setPartType(part.partType)
     setIsOption(part.isOption || false)
     setIsMillFinish(part.isMillFinish || false)
+    setAddFinishToPartNumber(part.addFinishToPartNumber || false)
+    setAddToPackingList(part.addToPackingList || false)
   }
 
   function viewMasterPartRules(part: MasterPart) {
@@ -1101,7 +1112,7 @@ export default function MasterPartsView() {
             <Package className="w-5 h-5 inline-block mr-2" />
             Master Parts ({masterParts.length})
           </button>
-          {selectedMasterPart && selectedMasterPart.partType !== 'Hardware' && (
+          {selectedMasterPart && selectedMasterPart.partType !== 'Hardware' && selectedMasterPart.partType !== 'Fastener' && (
             <button
               onClick={() => setActiveTab('partRules')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
@@ -1260,6 +1271,8 @@ export default function MasterPartsView() {
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                             part.partType === 'Hardware'
                               ? 'bg-green-100 text-green-800'
+                              : part.partType === 'Fastener'
+                              ? 'bg-orange-100 text-orange-800'
                               : 'bg-blue-100 text-blue-800'
                           }`}>
                             {part.partType}
@@ -1269,7 +1282,7 @@ export default function MasterPartsView() {
                           {part.unit || '-'}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900">
-                          {part.partType === 'Hardware' && part.weightPerUnit
+                          {(part.partType === 'Hardware' || part.partType === 'Fastener') && part.weightPerUnit
                             ? `${part.weightPerUnit} oz`
                             : part.partType === 'Extrusion' && part.weightPerFoot
                             ? `${part.weightPerFoot} oz/ft`
@@ -1280,7 +1293,7 @@ export default function MasterPartsView() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex space-x-2 justify-end">
-                            {part.partType !== 'Hardware' && (
+                            {part.partType !== 'Hardware' && part.partType !== 'Fastener' && (
                               <button
                                 onClick={() => viewMasterPartRules(part)}
                                 className="p-1 text-gray-400 hover:text-green-600 transition-colors"
@@ -1513,8 +1526,8 @@ export default function MasterPartsView() {
             </div>
           </div>
 
-          {/* Pricing Rules for this part - only show for non-extrusion and non-hardware parts */}
-          {selectedMasterPart?.partType !== 'Extrusion' && selectedMasterPart?.partType !== 'Hardware' && (
+          {/* Pricing Rules for this part - only show for non-extrusion, non-hardware, and non-fastener parts */}
+          {selectedMasterPart?.partType !== 'Extrusion' && selectedMasterPart?.partType !== 'Hardware' && selectedMasterPart?.partType !== 'Fastener' && (
             <div className="bg-white shadow-sm rounded-lg border border-gray-200 mt-6">
               <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                 <h3 className="text-lg font-medium text-gray-900">Pricing Rules ({pricingRules.length})</h3>
@@ -1920,6 +1933,7 @@ export default function MasterPartsView() {
                   <option value="">Select Part Type</option>
                   <option value="Hardware">Hardware</option>
                   <option value="Extrusion">Extrusion</option>
+                  <option value="Fastener">Fastener</option>
                 </select>
               </div>
 
@@ -2011,7 +2025,75 @@ export default function MasterPartsView() {
                           (Can be selected when adding options to product categories)
                         </span>
                       </div>
+
+                      {/* Add finish to part number checkbox */}
+                      <div className="flex items-center mt-2">
+                        <input
+                          type="checkbox"
+                          id="addFinishToPartNumber"
+                          checked={addFinishToPartNumber}
+                          onChange={(e) => setAddFinishToPartNumber(e.target.checked)}
+                          className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="addFinishToPartNumber" className="text-sm font-medium text-gray-700">
+                          Add finish color to part number in BOM
+                        </label>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (Appends finish code like -BL, -C2 to part number)
+                        </span>
+                      </div>
+
+                      {/* Add to packing list checkbox */}
+                      <div className="flex items-center mt-2">
+                        <input
+                          type="checkbox"
+                          id="addToPackingList"
+                          checked={addToPackingList}
+                          onChange={(e) => setAddToPackingList(e.target.checked)}
+                          className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="addToPackingList" className="text-sm font-medium text-gray-700">
+                          Add to packing list
+                        </label>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (This hardware item will appear in the project packing list)
+                        </span>
+                      </div>
                     </>
+                  )}
+
+                  {/* Fastener specific fields */}
+                  {partType === 'Fastener' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Cost ($) *
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={cost}
+                          onChange={(e) => setCost(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="0.00"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Weight (oz)
+                          <span className="text-xs text-gray-500 ml-1">(Optional)</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={weightPerUnit}
+                          onChange={(e) => setWeightPerUnit(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
                   )}
 
                   {/* Extrusion specific fields */}
