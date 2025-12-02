@@ -161,17 +161,214 @@ function aggregateBomItems(bomItems: any[]): any[] {
   })
 }
 
+// Helper function to aggregate BOM items for cut list (extrusions only, grouped by product + size + cut length)
+function aggregateCutListItems(bomItems: any[]): any[] {
+  const aggregated: Record<string, any> = {}
+
+  // Filter to extrusions only
+  const extrusions = bomItems.filter(item => item.partType === 'Extrusion')
+
+  // First, count unique panels per product+size combination
+  const panelCounts: Record<string, Set<number>> = {}
+  for (const item of extrusions) {
+    const productSizeKey = `${item.productName}|${item.panelWidth}x${item.panelHeight}`
+    if (!panelCounts[productSizeKey]) {
+      panelCounts[productSizeKey] = new Set()
+    }
+    panelCounts[productSizeKey].add(item.panelId)
+  }
+
+  for (const item of extrusions) {
+    // Group by product name + panel dimensions + part number + cut length
+    // This ensures parts with same part number but different cut lengths (e.g., vertical vs horizontal glass stop) are shown separately
+    const sizeKey = `${item.panelWidth}x${item.panelHeight}`
+    const cutLengthKey = item.cutLength ? item.cutLength.toFixed(2) : 'none'
+    const key = `${item.productName}|${sizeKey}|${item.partNumber}|${cutLengthKey}`
+    const productSizeKey = `${item.productName}|${sizeKey}`
+
+    if (!aggregated[key]) {
+      // Get the actual count of unique panels for this product+size
+      const unitCount = panelCounts[productSizeKey]?.size || 1
+
+      aggregated[key] = {
+        productName: item.productName,
+        panelWidth: item.panelWidth,
+        panelHeight: item.panelHeight,
+        sizeKey: sizeKey,
+        partNumber: item.partNumber,
+        partName: item.partName,
+        stockLength: item.stockLength,
+        cutLength: item.cutLength,
+        qtyPerUnit: item.quantity || 1,
+        unitCount: unitCount,
+        totalQty: (item.quantity || 1) * unitCount,
+        color: item.color
+      }
+    }
+  }
+
+  // Sort by product name, then size, then part number, then cut length
+  return Object.values(aggregated).sort((a: any, b: any) => {
+    if (a.productName !== b.productName) return a.productName.localeCompare(b.productName)
+    if (a.sizeKey !== b.sizeKey) return a.sizeKey.localeCompare(b.sizeKey)
+    if (a.partNumber !== b.partNumber) return a.partNumber.localeCompare(b.partNumber)
+    return (a.cutLength || 0) - (b.cutLength || 0)
+  })
+}
+
+// Helper function to calculate stock optimization for cut list
+function calculateStockOptimization(cutListItems: any[]): any[] {
+  const optimizations: any[] = []
+
+  // Group by part number and stock length
+  const grouped: Record<string, any[]> = {}
+  for (const item of cutListItems) {
+    if (item.stockLength && item.cutLength) {
+      const key = `${item.partNumber}|${item.stockLength}`
+      if (!grouped[key]) grouped[key] = []
+      grouped[key].push(item)
+    }
+  }
+
+  for (const [key, items] of Object.entries(grouped)) {
+    const [partNumber, stockLengthStr] = key.split('|')
+    const stockLength = parseFloat(stockLengthStr)
+
+    // Calculate total cuts needed
+    let totalCuts = 0
+    const cutDetails: { cutLength: number; qty: number }[] = []
+
+    for (const item of items) {
+      totalCuts += item.totalQty
+      cutDetails.push({
+        cutLength: item.cutLength,
+        qty: item.totalQty
+      })
+    }
+
+    // Simple bin-packing: calculate minimum stock pieces needed
+    // Sort cuts by length descending for first-fit decreasing
+    const allCuts: number[] = []
+    for (const detail of cutDetails) {
+      for (let i = 0; i < detail.qty; i++) {
+        allCuts.push(detail.cutLength)
+      }
+    }
+    allCuts.sort((a, b) => b - a)
+
+    // First-fit decreasing bin packing
+    const bins: number[] = []
+    for (const cut of allCuts) {
+      let placed = false
+      for (let i = 0; i < bins.length; i++) {
+        if (bins[i] >= cut) {
+          bins[i] -= cut
+          placed = true
+          break
+        }
+      }
+      if (!placed) {
+        bins.push(stockLength - cut)
+      }
+    }
+
+    const stockPiecesNeeded = bins.length
+    const totalStockLength = stockPiecesNeeded * stockLength
+    const totalCutLength = allCuts.reduce((sum, cut) => sum + cut, 0)
+    const wasteLength = totalStockLength - totalCutLength
+    const wastePercent = totalStockLength > 0 ? (wasteLength / totalStockLength) * 100 : 0
+
+    optimizations.push({
+      partNumber,
+      partName: items[0].partName,
+      stockLength,
+      totalCuts,
+      stockPiecesNeeded,
+      totalStockLength,
+      totalCutLength,
+      wasteLength,
+      wastePercent
+    })
+  }
+
+  return optimizations.sort((a, b) => a.partNumber.localeCompare(b.partNumber))
+}
+
+// Helper function to convert cut list to CSV
+function cutlistToCSV(
+  projectName: string,
+  cutListItems: any[],
+  batchInfo?: { totalUnits: number; batchSize: number; remainder: number; remainderItems?: any[] }
+): string {
+  const headers = ['Product', 'Size (WxH)', 'Part Number', 'Part Name', 'Stock Length', 'Cut Length', 'Qty Per Unit', 'Unit Count', 'Total Qty', 'Color']
+
+  const rows = cutListItems.map(item => {
+    return [
+      item.productName,
+      `${item.panelWidth}"x${item.panelHeight}"`,
+      item.partNumber,
+      item.partName,
+      item.stockLength || '',
+      item.cutLength ? item.cutLength.toFixed(2) : '',
+      item.qtyPerUnit,
+      item.unitCount,
+      item.totalQty,
+      item.color || ''
+    ].map(field => `"${String(field).replace(/"/g, '""')}"`)
+  })
+
+  let csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
+
+  // Add batch information section at bottom
+  if (batchInfo) {
+    csv += '\n\n'
+    csv += '"--- BATCH INFORMATION ---"\n'
+    csv += `"Total Units:",${batchInfo.totalUnits}\n`
+    csv += `"Batch Size:",${batchInfo.batchSize}\n`
+    csv += `"Full Batches:",${Math.floor(batchInfo.totalUnits / batchInfo.batchSize)}\n`
+
+    if (batchInfo.remainder > 0) {
+      csv += `"Remainder Units:",${batchInfo.remainder}\n`
+      csv += '\n"--- REMAINDER CUT LIST (Last Batch) ---"\n'
+      csv += headers.join(',') + '\n'
+
+      if (batchInfo.remainderItems) {
+        for (const item of batchInfo.remainderItems) {
+          const remainderRow = [
+            item.productName,
+            `${item.panelWidth}"x${item.panelHeight}"`,
+            item.partNumber,
+            item.partName,
+            item.stockLength || '',
+            item.cutLength ? item.cutLength.toFixed(2) : '',
+            item.qtyPerUnit,
+            item.unitCount,
+            item.totalQty,
+            item.color || ''
+          ].map(field => `"${String(field).replace(/"/g, '""')}"`)
+          csv += remainderRow.join(',') + '\n'
+        }
+      }
+    } else {
+      csv += '"Remainder Units:","None - batches divide evenly"\n'
+    }
+  }
+
+  return csv
+}
+
 // Helper function to convert summary to CSV
 function summaryToCSV(projectName: string, summaryItems: any[]): string {
-  const headers = ['Part Number', 'Part Name', 'Type', 'Total Qty', 'Unit', 'Stock Length', 'Cut Lengths', 'Total Cut Length', 'Glass Dimensions', 'Total Area (SQ FT)']
+  const headers = ['Part Number', 'Part Name', 'Type', 'Total Qty', 'Unit', 'Stock Length', 'Cut Lengths']
 
   const rows = summaryItems.map(item => {
-    const cutLengthsStr = item.cutLengths.length > 0
-      ? item.cutLengths.map((l: number) => l.toFixed(2)).join('; ')
-      : ''
-    const glassDimsStr = item.glassDimensions.length > 0
-      ? item.glassDimensions.map((g: any) => `${g.width?.toFixed(2)}"x${g.height?.toFixed(2)}"`).join('; ')
-      : ''
+    // Combine cut lengths and glass dimensions into a single column
+    let cutLengthsStr = ''
+    if (item.cutLengths.length > 0) {
+      cutLengthsStr = item.cutLengths.map((l: number) => l.toFixed(2)).join('; ')
+    } else if (item.glassDimensions.length > 0) {
+      cutLengthsStr = item.glassDimensions.map((g: any) => `${g.width?.toFixed(2)}"x${g.height?.toFixed(2)}"`).join('; ')
+    }
 
     return [
       item.partNumber,
@@ -180,10 +377,7 @@ function summaryToCSV(projectName: string, summaryItems: any[]): string {
       item.totalQuantity,
       item.unit,
       item.stockLength || '',
-      cutLengthsStr,
-      item.totalCutLength ? item.totalCutLength.toFixed(2) : '',
-      glassDimsStr,
-      item.totalArea ? item.totalArea.toFixed(2) : ''
+      cutLengthsStr
     ].map(field => `"${String(field).replace(/"/g, '""')}"`)
   })
 
@@ -201,7 +395,10 @@ export async function GET(
     // Parse query parameters
     const { searchParams } = new URL(request.url)
     const summary = searchParams.get('summary') === 'true'
+    const cutlist = searchParams.get('cutlist') === 'true'
     const format = searchParams.get('format')
+    const productFilter = searchParams.get('product')
+    const batchSize = parseInt(searchParams.get('batch') || '1') || 1
 
     if (isNaN(projectId)) {
       return NextResponse.json(
@@ -636,6 +833,83 @@ export async function GET(
         projectName: project.name,
         summaryItems,
         ...totals
+      })
+    }
+
+    // If cutlist mode is requested, return cut list data (extrusions only, grouped by product + size)
+    if (cutlist) {
+      let cutListItems = aggregateCutListItems(bomItems)
+
+      // Filter by product if specified
+      if (productFilter) {
+        cutListItems = cutListItems.filter(item => item.productName === productFilter)
+      }
+
+      // Get original unit count before applying batch size
+      const originalUnitCount = cutListItems[0]?.unitCount || 1
+
+      // Apply batch size - this sets quantities to match the specified number of units per batch
+      // e.g., if batch=5 and original has 20 units, we show quantities for 5 units at a time
+      let batchedCutListItems = cutListItems
+      let remainderItems: any[] = []
+      let remainder = 0
+
+      if (batchSize >= 1 && productFilter) {
+        remainder = originalUnitCount % batchSize
+
+        // Create the batched cut list
+        batchedCutListItems = cutListItems.map(item => ({
+          ...item,
+          unitCount: batchSize,
+          totalQty: item.qtyPerUnit * batchSize
+        }))
+
+        // Create remainder cut list if needed
+        if (remainder > 0) {
+          remainderItems = cutListItems.map(item => ({
+            ...item,
+            unitCount: remainder,
+            totalQty: item.qtyPerUnit * remainder
+          }))
+        }
+      }
+
+      const stockOptimization = calculateStockOptimization(batchedCutListItems)
+
+      // Calculate totals
+      const totalParts = batchedCutListItems.reduce((sum, item) => sum + item.totalQty, 0)
+      const totalUniqueProducts = new Set(batchedCutListItems.map(item => `${item.productName}|${item.sizeKey}`)).size
+
+      // If CSV format requested, return as file download
+      if (format === 'csv') {
+        const batchInfo = productFilter ? {
+          totalUnits: originalUnitCount,
+          batchSize: batchSize,
+          remainder: remainder,
+          remainderItems: remainder > 0 ? remainderItems : undefined
+        } : undefined
+
+        const csvContent = cutlistToCSV(project.name, batchedCutListItems, batchInfo)
+        const productSuffix = productFilter ? `-${productFilter.replace(/\s+/g, '-')}` : ''
+        const batchSuffix = productFilter ? `-${batchSize}units` : ''
+        const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '-')}${productSuffix}${batchSuffix}-cutlist.csv`
+
+        return new NextResponse(csvContent, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': `attachment; filename="${filename}"`
+          }
+        })
+      }
+
+      return NextResponse.json({
+        projectId,
+        projectName: project.name,
+        cutListItems: batchedCutListItems,
+        stockOptimization,
+        totalParts,
+        totalUniqueProducts
       })
     }
 

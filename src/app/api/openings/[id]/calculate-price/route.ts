@@ -338,6 +338,7 @@ export async function POST(
     const priceBreakdown = {
       components: [] as any[],
       totalComponentCost: 0,
+      totalStandardOptionCost: 0, // Track standard option costs separately (no markup)
       totalPrice: 0
     }
 
@@ -415,6 +416,7 @@ export async function POST(
                 })
                 componentBreakdown.totalOptionCost += standardOption.price
                 componentCost += standardOption.price
+                priceBreakdown.totalStandardOptionCost += standardOption.price // Track for no-markup
               }
               continue
             }
@@ -442,6 +444,7 @@ export async function POST(
 
                 componentBreakdown.totalOptionCost += optionPrice
                 componentCost += optionPrice
+                priceBreakdown.totalStandardOptionCost += optionPrice // Track for no-markup
               } else {
                 // Non-standard option selected - full price (markup applied at project level)
                 const optionPrice = isIncluded ? 0 : selectedOption.price
@@ -482,6 +485,7 @@ export async function POST(
             })
             componentBreakdown.totalOptionCost += standardOption.price
             componentCost += standardOption.price
+            priceBreakdown.totalStandardOptionCost += standardOption.price // Track for no-markup
           }
         }
       }
@@ -571,6 +575,7 @@ export async function POST(
       where: { id: openingId },
       data: {
         price: priceBreakdown.totalPrice,
+        standardOptionCost: priceBreakdown.totalStandardOptionCost,
         priceCalculatedAt: new Date()
       }
     })

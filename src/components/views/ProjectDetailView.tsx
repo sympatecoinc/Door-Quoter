@@ -1987,19 +1987,12 @@ export default function ProjectDetailView() {
                   <h3 className="text-sm font-semibold text-gray-700">Hardware Options</h3>
                   {addComponentOptions.map((option) => (
                     <div key={option.id}>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
                         {option.category.name}
-                        {option.standardOptionId && (
-                          <span className="ml-2 text-xs text-green-600">(Standard: {
-                            option.category.individualOptions?.find(
-                              (io: any) => io.id === option.standardOptionId
-                            )?.name
-                          })</span>
+                        {addComponentSelectedOptions[option.category.id] === option.standardOptionId && (
+                          <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard Option Applied</span>
                         )}
                       </label>
-                      {option.category.description && (
-                        <p className="text-xs text-gray-500 mb-1">{option.category.description}</p>
-                      )}
                       <select
                         value={addComponentSelectedOptions[option.category.id] || ''}
                         onChange={(e) => {
@@ -2015,7 +2008,6 @@ export default function ProjectDetailView() {
                         {option.category.individualOptions?.map((individualOption: any) => (
                           <option key={individualOption.id} value={individualOption.id}>
                             {individualOption.name}
-                            {option.standardOptionId === individualOption.id && ' \u2605'}
                           </option>
                         ))}
                       </select>
@@ -2182,8 +2174,11 @@ export default function ProjectDetailView() {
               {componentOptions.length > 0 ? (
                 componentOptions.map((option) => (
                   <div key={option.id}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
                       {option.category.name}
+                      {selectedOptions[option.category.id] === option.standardOptionId && (
+                        <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard Option Applied</span>
+                      )}
                     </label>
                     {option.category.description && (
                       <p className="text-xs text-gray-500 mb-2">{option.category.description}</p>
@@ -2211,33 +2206,6 @@ export default function ProjectDetailView() {
                         </option>
                       ))}
                     </select>
-                    {/* Show "Included" checkbox only when an option is selected */}
-                    {selectedOptions[option.category.id] && (
-                      <div className="mt-2 flex items-center">
-                        <input
-                          type="checkbox"
-                          id={`included-${option.category.id}`}
-                          checked={includedOptions.includes(selectedOptions[option.category.id] as number)}
-                          onChange={(e) => {
-                            const optionId = selectedOptions[option.category.id] as number
-                            if (e.target.checked) {
-                              setIncludedOptions([...includedOptions, optionId])
-                            } else {
-                              setIncludedOptions(includedOptions.filter(id => id !== optionId))
-                            }
-                          }}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <label htmlFor={`included-${option.category.id}`} className="ml-2 text-sm text-gray-700">
-                          Included (no charge)
-                          {includedOptions.includes(selectedOptions[option.category.id] as number) && (
-                            <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded">
-                              Included
-                            </span>
-                          )}
-                        </label>
-                      </div>
-                    )}
                   </div>
                 ))
               ) : (
@@ -2830,7 +2798,6 @@ export default function ProjectDetailView() {
                                 <th className="border-b border-gray-200 px-4 py-3 text-center text-sm font-semibold text-gray-900">Total Qty</th>
                                 <th className="border-b border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-900">Unit</th>
                                 <th className="border-b border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-900">Cut Lengths / Dimensions</th>
-                                <th className="border-b border-gray-200 px-4 py-3 text-right text-sm font-semibold text-gray-900">Total Length / Area</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -2888,15 +2855,6 @@ export default function ProjectDetailView() {
                                           )}
                                         </div>
                                       </div>
-                                    ) : (
-                                      <span className="text-gray-400">-</span>
-                                    )}
-                                  </td>
-                                  <td className="border-b border-gray-100 px-4 py-3 text-sm text-right font-medium text-gray-900">
-                                    {item.partType === 'Extrusion' && item.totalCutLength > 0 ? (
-                                      <span>{item.totalCutLength.toFixed(2)}"</span>
-                                    ) : item.partType === 'Glass' && item.totalArea > 0 ? (
-                                      <span>{item.totalArea.toFixed(2)} sq ft</span>
                                     ) : (
                                       <span className="text-gray-400">-</span>
                                     )}
