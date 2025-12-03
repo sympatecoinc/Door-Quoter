@@ -259,7 +259,10 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
   const handleDownloadProductCutListCSV = async (productName: string) => {
     try {
       setDownloadingProduct(productName)
-      const batchSize = batchSizes[productName] || 1
+      // Get the unit count from cutListData for this product, default to total units if not found
+      const productItems = cutListData?.cutListItems.filter(item => item.productName === productName) || []
+      const unitCount = productItems[0]?.unitCount || 1
+      const batchSize = batchSizes[productName] || unitCount
       const response = await fetch(`/api/projects/${projectId}/bom?cutlist=true&format=csv&product=${encodeURIComponent(productName)}&batch=${batchSize}`)
       if (response.ok) {
         const blob = await response.blob()

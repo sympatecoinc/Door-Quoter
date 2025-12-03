@@ -1,6 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// Saw blade kerf width in inches (material lost per cut)
+const KERF_WIDTH = 0.125
+
+// Bin-packing function to calculate optimal stock pieces needed
+// Uses First-Fit Decreasing algorithm with kerf consideration
+function calculateOptimizedStockPieces(
+  cutLengths: number[],
+  stockLength: number,
+  kerf: number = KERF_WIDTH
+): { stockPiecesNeeded: number; totalStockLength: number; wasteLength: number; wastePercent: number } {
+  if (cutLengths.length === 0 || stockLength <= 0) {
+    return { stockPiecesNeeded: 0, totalStockLength: 0, wasteLength: 0, wastePercent: 0 }
+  }
+
+  // Sort cuts by length descending for first-fit decreasing
+  const sortedCuts = [...cutLengths].sort((a, b) => b - a)
+
+  // Check for cuts that exceed stock length
+  const oversizedCuts = sortedCuts.filter(cut => cut > stockLength)
+  if (oversizedCuts.length > 0) {
+    // Each oversized cut needs its own stock piece (error case, but handle gracefully)
+    console.warn(`Warning: ${oversizedCuts.length} cuts exceed stock length of ${stockLength}"`)
+  }
+
+  // bins array holds remaining usable length in each stock piece
+  const bins: number[] = []
+
+  for (const cut of sortedCuts) {
+    let placed = false
+
+    // Try to fit in existing bin (accounting for kerf on subsequent cuts in same bin)
+    for (let i = 0; i < bins.length; i++) {
+      // Need cut length + kerf (except we already accounted for kerf when placing previous cuts)
+      if (bins[i] >= cut) {
+        bins[i] -= (cut + kerf)  // Subtract cut and kerf for next potential cut
+        placed = true
+        break
+      }
+    }
+
+    // If doesn't fit anywhere, open new stock piece
+    if (!placed) {
+      // New bin starts with stock length, subtract the cut and kerf
+      bins.push(stockLength - cut - kerf)
+    }
+  }
+
+  const stockPiecesNeeded = bins.length
+  const totalStockLength = stockPiecesNeeded * stockLength
+  const totalCutLength = cutLengths.reduce((sum, cut) => sum + cut, 0)
+  const wasteLength = totalStockLength - totalCutLength
+  const wastePercent = totalStockLength > 0 ? (wasteLength / totalStockLength) * 100 : 0
+
+  return {
+    stockPiecesNeeded,
+    totalStockLength,
+    wasteLength,
+    wastePercent: Math.round(wastePercent * 10) / 10  // Round to 1 decimal place
+  }
+}
+
 // Function to evaluate simple formulas for cut lengths
 function evaluateFormula(formula: string, variables: Record<string, number>): number {
   if (!formula || typeof formula !== 'string' || formula.trim() === '') return 0
@@ -113,7 +174,11 @@ function aggregateBomItems(bomItems: any[]): any[] {
   const aggregated: Record<string, any> = {}
 
   for (const item of bomItems) {
-    const key = item.partNumber
+    // For glass, group by part number AND dimensions to get separate rows per size
+    let key = item.partNumber
+    if (item.partType === 'Glass' && item.glassWidth && item.glassHeight) {
+      key = `${item.partNumber}|${item.glassWidth.toFixed(2)}x${item.glassHeight.toFixed(2)}`
+    }
 
     if (!aggregated[key]) {
       aggregated[key] = {
@@ -126,7 +191,13 @@ function aggregateBomItems(bomItems: any[]): any[] {
         cutLengths: [],
         totalCutLength: 0,
         glassDimensions: [],
-        totalArea: 0
+        totalArea: 0,
+        // Glass size fields (for unique glass sizes)
+        glassWidth: item.partType === 'Glass' ? item.glassWidth : null,
+        glassHeight: item.partType === 'Glass' ? item.glassHeight : null,
+        // Stock optimization fields (for extrusions)
+        stockPiecesNeeded: null,
+        wastePercent: null
       }
     }
 
@@ -151,6 +222,15 @@ function aggregateBomItems(bomItems: any[]): any[] {
     }
   }
 
+  // Calculate stock optimization for extrusions
+  for (const item of Object.values(aggregated)) {
+    if (item.partType === 'Extrusion' && item.stockLength && item.cutLengths.length > 0) {
+      const optimization = calculateOptimizedStockPieces(item.cutLengths, item.stockLength)
+      item.stockPiecesNeeded = optimization.stockPiecesNeeded
+      item.wastePercent = optimization.wastePercent
+    }
+  }
+
   // Sort by part type then part number
   const typeOrder: Record<string, number> = { 'Extrusion': 1, 'Hardware': 2, 'Glass': 3, 'Option': 4 }
   return Object.values(aggregated).sort((a: any, b: any) => {
@@ -163,8 +243,6 @@ function aggregateBomItems(bomItems: any[]): any[] {
 
 // Helper function to aggregate BOM items for cut list (extrusions only, grouped by product + size + cut length)
 function aggregateCutListItems(bomItems: any[]): any[] {
-  const aggregated: Record<string, any> = {}
-
   // Filter to extrusions only
   const extrusions = bomItems.filter(item => item.partType === 'Extrusion')
 
@@ -178,17 +256,41 @@ function aggregateCutListItems(bomItems: any[]): any[] {
     panelCounts[productSizeKey].add(item.panelId)
   }
 
+  // First pass: Calculate qty per unit for each panel, then take the first panel's qty as the baseline
+  // (All panels of the same product/size should have identical BOMs)
+  const perPanelQty: Record<string, Record<number, number>> = {}  // key -> { panelId -> totalQty }
+
   for (const item of extrusions) {
-    // Group by product name + panel dimensions + part number + cut length
-    // This ensures parts with same part number but different cut lengths (e.g., vertical vs horizontal glass stop) are shown separately
+    const sizeKey = `${item.panelWidth}x${item.panelHeight}`
+    const cutLengthKey = item.cutLength ? item.cutLength.toFixed(2) : 'none'
+    const key = `${item.productName}|${sizeKey}|${item.partNumber}|${cutLengthKey}`
+    const itemQty = item.quantity || 1
+
+    if (!perPanelQty[key]) {
+      perPanelQty[key] = {}
+    }
+    if (!perPanelQty[key][item.panelId]) {
+      perPanelQty[key][item.panelId] = 0
+    }
+    perPanelQty[key][item.panelId] += itemQty
+  }
+
+  // Second pass: Build aggregated results using first panel's qty as qtyPerUnit
+  const aggregated: Record<string, any> = {}
+
+  for (const item of extrusions) {
     const sizeKey = `${item.panelWidth}x${item.panelHeight}`
     const cutLengthKey = item.cutLength ? item.cutLength.toFixed(2) : 'none'
     const key = `${item.productName}|${sizeKey}|${item.partNumber}|${cutLengthKey}`
     const productSizeKey = `${item.productName}|${sizeKey}`
 
     if (!aggregated[key]) {
-      // Get the actual count of unique panels for this product+size
       const unitCount = panelCounts[productSizeKey]?.size || 1
+
+      // Get qty per unit from the first panel we recorded for this key
+      const panelQtys = perPanelQty[key]
+      const firstPanelId = Object.keys(panelQtys)[0]
+      const qtyPerUnit = panelQtys[parseInt(firstPanelId)] || (item.quantity || 1)
 
       aggregated[key] = {
         productName: item.productName,
@@ -199,9 +301,9 @@ function aggregateCutListItems(bomItems: any[]): any[] {
         partName: item.partName,
         stockLength: item.stockLength,
         cutLength: item.cutLength,
-        qtyPerUnit: item.quantity || 1,
+        qtyPerUnit: qtyPerUnit,
         unitCount: unitCount,
-        totalQty: (item.quantity || 1) * unitCount,
+        totalQty: qtyPerUnit * unitCount,
         color: item.color
       }
     }
@@ -236,58 +338,28 @@ function calculateStockOptimization(cutListItems: any[]): any[] {
 
     // Calculate total cuts needed
     let totalCuts = 0
-    const cutDetails: { cutLength: number; qty: number }[] = []
+    const allCuts: number[] = []
 
     for (const item of items) {
       totalCuts += item.totalQty
-      cutDetails.push({
-        cutLength: item.cutLength,
-        qty: item.totalQty
-      })
-    }
-
-    // Simple bin-packing: calculate minimum stock pieces needed
-    // Sort cuts by length descending for first-fit decreasing
-    const allCuts: number[] = []
-    for (const detail of cutDetails) {
-      for (let i = 0; i < detail.qty; i++) {
-        allCuts.push(detail.cutLength)
-      }
-    }
-    allCuts.sort((a, b) => b - a)
-
-    // First-fit decreasing bin packing
-    const bins: number[] = []
-    for (const cut of allCuts) {
-      let placed = false
-      for (let i = 0; i < bins.length; i++) {
-        if (bins[i] >= cut) {
-          bins[i] -= cut
-          placed = true
-          break
-        }
-      }
-      if (!placed) {
-        bins.push(stockLength - cut)
+      for (let i = 0; i < item.totalQty; i++) {
+        allCuts.push(item.cutLength)
       }
     }
 
-    const stockPiecesNeeded = bins.length
-    const totalStockLength = stockPiecesNeeded * stockLength
-    const totalCutLength = allCuts.reduce((sum, cut) => sum + cut, 0)
-    const wasteLength = totalStockLength - totalCutLength
-    const wastePercent = totalStockLength > 0 ? (wasteLength / totalStockLength) * 100 : 0
+    // Use the shared bin-packing function with kerf
+    const optimization = calculateOptimizedStockPieces(allCuts, stockLength)
 
     optimizations.push({
       partNumber,
       partName: items[0].partName,
       stockLength,
       totalCuts,
-      stockPiecesNeeded,
-      totalStockLength,
-      totalCutLength,
-      wasteLength,
-      wastePercent
+      stockPiecesNeeded: optimization.stockPiecesNeeded,
+      totalStockLength: optimization.totalStockLength,
+      totalCutLength: allCuts.reduce((sum, cut) => sum + cut, 0),
+      wasteLength: optimization.wasteLength,
+      wastePercent: optimization.wastePercent
     })
   }
 
@@ -359,25 +431,36 @@ function cutlistToCSV(
 
 // Helper function to convert summary to CSV
 function summaryToCSV(projectName: string, summaryItems: any[]): string {
-  const headers = ['Part Number', 'Part Name', 'Type', 'Total Qty', 'Unit', 'Stock Length', 'Cut Lengths']
+  const headers = ['Part Number', 'Part Name', 'Type', 'Size (WxH)', 'Pieces', 'Unit', 'Stock Length', 'Stock Pieces to Order', 'Waste %', 'Area (SQ FT)']
 
   const rows = summaryItems.map(item => {
-    // Combine cut lengths and glass dimensions into a single column
-    let cutLengthsStr = ''
-    if (item.cutLengths.length > 0) {
-      cutLengthsStr = item.cutLengths.map((l: number) => l.toFixed(2)).join('; ')
-    } else if (item.glassDimensions.length > 0) {
-      cutLengthsStr = item.glassDimensions.map((g: any) => `${g.width?.toFixed(2)}"x${g.height?.toFixed(2)}"`).join('; ')
+    // For glass, show the specific size; for extrusions, show cut lengths
+    let sizeStr = ''
+    if (item.partType === 'Glass' && item.glassWidth && item.glassHeight) {
+      sizeStr = `${item.glassWidth.toFixed(2)}" x ${item.glassHeight.toFixed(2)}"`
+    } else if (item.cutLengths && item.cutLengths.length > 0) {
+      // For extrusions, show unique cut lengths
+      const uniqueCuts = [...new Set(item.cutLengths.map((l: number) => l.toFixed(2)))]
+      sizeStr = uniqueCuts.join('; ')
+    }
+
+    // Calculate area for glass
+    let areaStr = ''
+    if (item.partType === 'Glass' && item.totalArea) {
+      areaStr = item.totalArea.toFixed(2)
     }
 
     return [
       item.partNumber,
       item.partName,
       item.partType,
+      sizeStr,
       item.totalQuantity,
       item.unit,
       item.stockLength || '',
-      cutLengthsStr
+      item.stockPiecesNeeded !== null ? item.stockPiecesNeeded : '',
+      item.wastePercent !== null ? `${item.wastePercent}%` : '',
+      areaStr
     ].map(field => `"${String(field).replace(/"/g, '""')}"`)
   })
 
@@ -811,7 +894,11 @@ export async function GET(
         totalExtrusions: summaryItems.filter(item => item.partType === 'Extrusion').reduce((sum, item) => sum + item.totalQuantity, 0),
         totalHardware: summaryItems.filter(item => item.partType === 'Hardware').reduce((sum, item) => sum + item.totalQuantity, 0),
         totalGlass: summaryItems.filter(item => item.partType === 'Glass').reduce((sum, item) => sum + item.totalQuantity, 0),
-        totalOptions: summaryItems.filter(item => item.partType === 'Option').reduce((sum, item) => sum + item.totalQuantity, 0)
+        totalOptions: summaryItems.filter(item => item.partType === 'Option').reduce((sum, item) => sum + item.totalQuantity, 0),
+        // Total optimized stock pieces to order for all extrusions
+        totalStockPiecesToOrder: summaryItems
+          .filter(item => item.partType === 'Extrusion' && item.stockPiecesNeeded !== null)
+          .reduce((sum, item) => sum + item.stockPiecesNeeded, 0)
       }
 
       // If CSV format requested, return as file download
