@@ -58,16 +58,17 @@ model ProjectStatusHistory {
 }
 
 model Opening {
-  id                Int       @id @default(autoincrement())
-  projectId         Int
-  name              String
-  roughWidth        Float?
-  roughHeight       Float?
-  finishedWidth     Float?
-  finishedHeight    Float?
-  price             Float     @default(0)
-  multiplier        Float     @default(1.0) // Price multiplier/markup for this opening (e.g., 1.2 = 20% markup)
-  priceCalculatedAt DateTime? // Track when price was last calculated
+  id                 Int       @id @default(autoincrement())
+  projectId          Int
+  name               String
+  roughWidth         Float?
+  roughHeight        Float?
+  finishedWidth      Float?
+  finishedHeight     Float?
+  price              Float     @default(0)
+  standardOptionCost Float     @default(0) // Cost of standard options (no markup applied)
+  multiplier         Float     @default(1.0) // Price multiplier/markup for this opening (e.g., 1.2 = 20% markup)
+  priceCalculatedAt  DateTime? // Track when price was last calculated
   finishColor       String?   // Finish type for extrusions (e.g., "Mill Finish", "Powder Coated", "Anodized")
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

@@ -232,10 +232,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           }
         }
 
+        // Get standard option cost for this opening (should NOT be marked up)
+        const standardOptionCost = opening.standardOptionCost || 0
+
         // Distribute the opening base cost based on BOM counts
         // This is an approximation - ideally we'd recalculate exact costs per component
         const totalBOMCount = bomCounts.Extrusion + bomCounts.Hardware + bomCounts.Glass + bomCounts.Other
-        const remainingCost = opening.price - hardwareCost // Subtract already-counted hardware options
+        // Subtract already-counted hardware options AND standard option costs (which get no markup)
+        const remainingCost = opening.price - hardwareCost - standardOptionCost
 
         if (totalBOMCount > 0 && remainingCost > 0) {
           extrusionCost += (remainingCost * bomCounts.Extrusion) / totalBOMCount
@@ -251,7 +255,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const markedUpOtherCost = calculateMarkupPrice(otherCost, 'Other', pricingMode, globalPricingMultiplier)
 
         // Total marked-up price with category-specific markups
-        const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpOtherCost
+        // Standard option costs are added back WITHOUT markup (at cost)
+        const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpOtherCost + standardOptionCost
 
         // Generate description
         const panelTypes = opening.panels
@@ -317,7 +322,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             extrusion: { base: extrusionCost, markedUp: markedUpExtrusionCost },
             hardware: { base: hardwareCost, markedUp: markedUpHardwareCost },
             glass: { base: glassCost, markedUp: markedUpGlassCost },
-            other: { base: otherCost, markedUp: markedUpOtherCost }
+            other: { base: otherCost, markedUp: markedUpOtherCost },
+            standardOptions: { base: standardOptionCost, markedUp: standardOptionCost } // No markup on standard options
           }
         }
       })

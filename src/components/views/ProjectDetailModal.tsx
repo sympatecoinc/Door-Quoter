@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, ArrowLeft, Calendar, User, FileText, Users, Truck, ShoppingCart, Download } from 'lucide-react'
+import { X, ArrowLeft, Calendar, User, FileText, Users, Truck, ShoppingCart, Download, Factory } from 'lucide-react'
 import ProjectContacts from '../projects/ProjectContacts'
 import ProjectNotes from '../projects/ProjectNotes'
 
@@ -55,7 +55,7 @@ interface ProjectDetailModalProps {
   onBack: () => void
 }
 
-type TabType = 'overview' | 'contacts' | 'notes' | 'shipping' | 'purchasing'
+type TabType = 'overview' | 'contacts' | 'notes' | 'shipping' | 'purchasing' | 'production'
 
 interface SummaryItem {
   partNumber: string
@@ -81,6 +81,42 @@ interface SummaryData {
   totalOptions: number
 }
 
+interface CutListItem {
+  productName: string
+  panelWidth: number
+  panelHeight: number
+  sizeKey: string
+  partNumber: string
+  partName: string
+  stockLength: number | null
+  cutLength: number | null
+  qtyPerUnit: number
+  unitCount: number
+  totalQty: number
+  color: string
+}
+
+interface StockOptimization {
+  partNumber: string
+  partName: string
+  stockLength: number
+  totalCuts: number
+  stockPiecesNeeded: number
+  totalStockLength: number
+  totalCutLength: number
+  wasteLength: number
+  wastePercent: number
+}
+
+interface CutListData {
+  projectId: number
+  projectName: string
+  cutListItems: CutListItem[]
+  stockOptimization: StockOptimization[]
+  totalParts: number
+  totalUniqueProducts: number
+}
+
 export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailModalProps) {
   const [project, setProject] = useState<Project | null>(null)
   const [activeTab, setActiveTab] = useState<TabType>('overview')
@@ -102,10 +138,17 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
   // Packing list state
   const [packingListData, setPackingListData] = useState<any[]>([])
   const [loadingPackingList, setLoadingPackingList] = useState(false)
+  const [generatingStickers, setGeneratingStickers] = useState(false)
 
   // Purchasing tab state
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null)
   const [loadingSummary, setLoadingSummary] = useState(false)
+
+  // Production tab state
+  const [cutListData, setCutListData] = useState<CutListData | null>(null)
+  const [loadingCutList, setLoadingCutList] = useState(false)
+  const [batchSizes, setBatchSizes] = useState<Record<string, number>>({})
+  const [downloadingProduct, setDownloadingProduct] = useState<string | null>(null)
 
   useEffect(() => {
     fetchProject()
@@ -117,6 +160,9 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
     }
     if (activeTab === 'purchasing' && projectId) {
       fetchPurchasingSummary()
+    }
+    if (activeTab === 'production' && projectId) {
+      fetchCutList()
     }
   }, [activeTab, projectId])
 
@@ -132,6 +178,32 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
       console.error('Error fetching packing list:', err)
     } finally {
       setLoadingPackingList(false)
+    }
+  }
+
+  const handleGenerateStickers = async () => {
+    try {
+      setGeneratingStickers(true)
+      const response = await fetch(`/api/projects/${projectId}/packing-list/stickers`)
+
+      if (!response.ok) {
+        throw new Error('Failed to generate stickers')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${project?.name || 'project'}-packing-stickers.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error('Error generating stickers:', error)
+      alert('Failed to generate stickers PDF')
+    } finally {
+      setGeneratingStickers(false)
     }
   }
 
@@ -168,6 +240,48 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
       console.error('Error downloading CSV:', err)
     }
   }
+
+  const fetchCutList = async () => {
+    try {
+      setLoadingCutList(true)
+      const response = await fetch(`/api/projects/${projectId}/bom?cutlist=true`)
+      if (response.ok) {
+        const data = await response.json()
+        setCutListData(data)
+      }
+    } catch (err) {
+      console.error('Error fetching cut list:', err)
+    } finally {
+      setLoadingCutList(false)
+    }
+  }
+
+  const handleDownloadProductCutListCSV = async (productName: string) => {
+    try {
+      setDownloadingProduct(productName)
+      // Get the unit count from cutListData for this product, default to total units if not found
+      const productItems = cutListData?.cutListItems.filter(item => item.productName === productName) || []
+      const unitCount = productItems[0]?.unitCount || 1
+      const batchSize = batchSizes[productName] || unitCount
+      const response = await fetch(`/api/projects/${projectId}/bom?cutlist=true&format=csv&product=${encodeURIComponent(productName)}&batch=${batchSize}`)
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${project?.name || 'project'}-${productName.replace(/\s+/g, '-')}-${batchSize}units-cutlist.csv`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      }
+    } catch (err) {
+      console.error('Error downloading cut list CSV:', err)
+    } finally {
+      setDownloadingProduct(null)
+    }
+  }
+
 
   const fetchProject = async () => {
     try {
@@ -455,6 +569,19 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
             <div className="flex items-center gap-2">
               <ShoppingCart className="w-4 h-4" />
               Purchasing
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveTab('production')}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'production'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Factory className="w-4 h-4" />
+              Production
             </div>
           </button>
         </div>
@@ -806,14 +933,33 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                 )}
               </div>
 
-              {/* Labels Placeholder */}
+              {/* Packing Stickers */}
               <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <FileText className="w-5 h-5 text-purple-600" />
-                  <h3 className="font-medium text-purple-900">Shipping Labels</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-purple-600" />
+                    <h3 className="font-medium text-purple-900">Packing Stickers</h3>
+                  </div>
+                  <button
+                    onClick={handleGenerateStickers}
+                    disabled={generatingStickers || packingListData.length === 0}
+                    className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {generatingStickers ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Generate Stickers PDF
+                      </>
+                    )}
+                  </button>
                 </div>
                 <p className="text-sm text-purple-700">
-                  Shipping label generation will be available soon. This will automatically generate labels based on the shipping address.
+                  Generate a printable PDF with 6 stickers per page (8.5&quot; x 11&quot;). Each component and hardware piece gets its own sticker with opening name and QR code. Cut along dotted lines.
                 </p>
               </div>
             </div>
@@ -874,8 +1020,6 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Qty</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unit</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cut Lengths / Dimensions</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Length / Area</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -895,41 +1039,6 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                             </td>
                             <td className="px-4 py-3">{item.totalQuantity}</td>
                             <td className="px-4 py-3">{item.unit}</td>
-                            <td className="px-4 py-3">
-                              {item.partType === 'Extrusion' && item.cutLengths.length > 0 ? (
-                                <div className="text-xs">
-                                  <div className="text-gray-500 mb-1">
-                                    {item.cutLengths.length} cuts{item.stockLength ? ` from ${item.stockLength}" stock` : ''}
-                                  </div>
-                                  <div className="flex flex-wrap gap-1">
-                                    {item.cutLengths.slice(0, 6).map((len, i) => (
-                                      <span key={i} className="bg-gray-100 px-1 rounded">{len}"</span>
-                                    ))}
-                                    {item.cutLengths.length > 6 && (
-                                      <span className="text-gray-500">+{item.cutLengths.length - 6} more</span>
-                                    )}
-                                  </div>
-                                </div>
-                              ) : item.partType === 'Glass' && item.glassDimensions.length > 0 ? (
-                                <div className="flex flex-wrap gap-1 text-xs">
-                                  {item.glassDimensions.slice(0, 4).map((dim, i) => (
-                                    <span key={i} className="bg-gray-100 px-1 rounded">
-                                      {dim.width}" x {dim.height}"
-                                    </span>
-                                  ))}
-                                  {item.glassDimensions.length > 4 && (
-                                    <span className="text-gray-500">+{item.glassDimensions.length - 4} more</span>
-                                  )}
-                                </div>
-                              ) : '-'}
-                            </td>
-                            <td className="px-4 py-3">
-                              {item.partType === 'Extrusion' && item.totalCutLength > 0 ? (
-                                <span className="font-medium">{item.totalCutLength.toFixed(2)}"</span>
-                              ) : item.partType === 'Glass' && item.totalArea > 0 ? (
-                                <span className="font-medium">{item.totalArea.toFixed(2)} sq ft</span>
-                              ) : '-'}
-                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -939,6 +1048,163 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
               ) : (
                 <div className="text-center py-8 text-gray-500">
                   No purchasing data available
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Production Tab */}
+          {activeTab === 'production' && (
+            <div className="space-y-6">
+              {loadingCutList ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : cutListData && cutListData.cutListItems.length > 0 ? (
+                <>
+                  {/* Product Cut List Cards */}
+                  <div className="space-y-4">
+                    <h4 className="font-medium text-gray-900">Download Cut Lists by Product</h4>
+                    {(() => {
+                      const productGroups = cutListData.cutListItems.reduce((acc, item) => {
+                        if (!acc[item.productName]) {
+                          acc[item.productName] = []
+                        }
+                        acc[item.productName].push(item)
+                        return acc
+                      }, {} as Record<string, CutListItem[]>)
+
+                      return Object.entries(productGroups).map(([productName, items]) => {
+                        // Calculate total units (sum of unique unit counts across all sizes)
+                        const totalUnits = items.reduce((sum, item) => sum + item.unitCount, 0) / items.reduce((sum, item) => sum + item.qtyPerUnit, 0) * items[0]?.qtyPerUnit || 0
+                        // Get unique unit count (number of product instances)
+                        const uniqueSizes = new Set(items.map(item => item.sizeKey)).size
+                        const unitCount = items[0]?.unitCount || 1
+                        const uniqueCuts = items.length
+                        const totalParts = items.reduce((sum, item) => sum + item.totalQty, 0)
+                        const partsPerUnit = items.reduce((sum, item) => sum + item.qtyPerUnit, 0)
+
+                        const batchSize = batchSizes[productName] || unitCount
+                        const partsInBatch = partsPerUnit * batchSize
+
+                        return (
+                          <div key={productName} className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <h5 className="font-semibold text-gray-900 text-lg">{productName}</h5>
+                                <div className="mt-2 grid grid-cols-4 gap-4 text-sm">
+                                  <div>
+                                    <span className="text-gray-500">Total Units:</span>
+                                    <span className="ml-2 font-medium">{unitCount}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Unique Cuts:</span>
+                                    <span className="ml-2 font-medium">{uniqueCuts}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Parts/Unit:</span>
+                                    <span className="ml-2 font-medium">{partsPerUnit}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Total Parts:</span>
+                                    <span className="ml-2 font-medium">{totalParts}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-4 ml-4">
+                                <div className="text-right">
+                                  <label className="block text-xs text-gray-500 mb-1">Units per Batch</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={unitCount}
+                                    value={batchSize}
+                                    onChange={(e) => setBatchSizes(prev => ({
+                                      ...prev,
+                                      [productName]: Math.min(unitCount, Math.max(1, parseInt(e.target.value) || 1))
+                                    }))}
+                                    className="w-20 px-2 py-1.5 border border-gray-300 rounded text-center text-sm"
+                                  />
+                                  <div className="text-xs text-gray-400 mt-1">
+                                    {partsInBatch} parts/batch
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => handleDownloadProductCutListCSV(productName)}
+                                  disabled={downloadingProduct === productName}
+                                  className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50"
+                                >
+                                  {downloadingProduct === productName ? (
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                                  ) : (
+                                    <Download className="w-4 h-4 mr-2" />
+                                  )}
+                                  Download CSV
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })
+                    })()}
+                  </div>
+
+                  {/* Stats Cards */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-blue-50 rounded-lg p-4 text-center border border-blue-200">
+                      <div className="text-2xl font-bold text-blue-700">{cutListData.totalParts}</div>
+                      <div className="text-sm text-blue-600">Total Extrusion Parts</div>
+                    </div>
+                    <div className="bg-purple-50 rounded-lg p-4 text-center border border-purple-200">
+                      <div className="text-2xl font-bold text-purple-700">{cutListData.totalUniqueProducts}</div>
+                      <div className="text-sm text-purple-600">Unique Product Sizes</div>
+                    </div>
+                  </div>
+
+                  {/* Stock Optimization Section */}
+                  {cutListData.stockOptimization.length > 0 && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <h4 className="font-medium text-green-900 mb-3">Stock Optimization</h4>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-green-100">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-green-700 uppercase">Part Number</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-green-700 uppercase">Part Name</th>
+                              <th className="px-3 py-2 text-center text-xs font-medium text-green-700 uppercase">Stock Length</th>
+                              <th className="px-3 py-2 text-center text-xs font-medium text-green-700 uppercase">Total Cuts</th>
+                              <th className="px-3 py-2 text-center text-xs font-medium text-green-700 uppercase">Stock Pieces Needed</th>
+                              <th className="px-3 py-2 text-center text-xs font-medium text-green-700 uppercase">Waste %</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-green-200">
+                            {cutListData.stockOptimization.map((opt, index) => (
+                              <tr key={index} className="hover:bg-green-100">
+                                <td className="px-3 py-2 font-mono text-xs">{opt.partNumber}</td>
+                                <td className="px-3 py-2">{opt.partName}</td>
+                                <td className="px-3 py-2 text-center">{opt.stockLength}"</td>
+                                <td className="px-3 py-2 text-center">{opt.totalCuts}</td>
+                                <td className="px-3 py-2 text-center font-medium">{opt.stockPiecesNeeded}</td>
+                                <td className="px-3 py-2 text-center">
+                                  <span className={`px-2 py-1 rounded text-xs ${
+                                    opt.wastePercent < 10 ? 'bg-green-200 text-green-800' :
+                                    opt.wastePercent < 25 ? 'bg-yellow-200 text-yellow-800' :
+                                    'bg-red-200 text-red-800'
+                                  }`}>
+                                    {opt.wastePercent.toFixed(1)}%
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  No cut list data available. Add extrusion parts to product BOMs to generate cut lists.
                 </div>
               )}
             </div>

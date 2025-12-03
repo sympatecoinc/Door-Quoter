@@ -488,7 +488,8 @@ export default function ProductDetailView({
   const [editPartUnit, setEditPartUnit] = useState('')
   const [editPartQuantity, setEditPartQuantity] = useState('')
   const [editPartNumber, setEditPartNumber] = useState('')
-  // Note: addFinishToPartNumber and addToPackingList are now managed at the MasterPart level, not per-product
+  const [editPartAddFinish, setEditPartAddFinish] = useState(false)
+  const [editPartAddToPacking, setEditPartAddToPacking] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [productDetails, setProductDetails] = useState<any>(null)
   const [loading, setLoading] = useState(true)

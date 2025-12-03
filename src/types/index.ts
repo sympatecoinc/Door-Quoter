@@ -89,6 +89,31 @@ export function getStatusLabel(status: ProjectStatus): string {
   return STATUS_CONFIG[status]?.label || status
 }
 
+// Lead phase statuses (pre-acceptance)
+export const LEAD_STATUSES: ProjectStatus[] = [
+  ProjectStatus.STAGING,
+  ProjectStatus.APPROVED,
+  ProjectStatus.REVISE,
+  ProjectStatus.QUOTE_SENT
+]
+
+// Project phase statuses (post-acceptance / "Won")
+export const PROJECT_STATUSES: ProjectStatus[] = [
+  ProjectStatus.QUOTE_ACCEPTED,
+  ProjectStatus.ACTIVE,
+  ProjectStatus.COMPLETE
+]
+
+// Helper to check if a status is in lead phase
+export function isLeadStatus(status: ProjectStatus): boolean {
+  return LEAD_STATUSES.includes(status)
+}
+
+// Helper to check if a status is in project phase
+export function isProjectStatus(status: ProjectStatus): boolean {
+  return PROJECT_STATUSES.includes(status)
+}
+
 export interface Opening {
   id: number
   projectId: number

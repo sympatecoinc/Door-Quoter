@@ -25,39 +25,56 @@ function evaluateFormula(formula: string, variables: Record<string, number>): nu
   }
 }
 
-// Helper function to get finish suffix for part numbers
-function getFinishSuffix(finishColor: string): string {
-  switch (finishColor) {
-    case 'Black': return '-BL'
-    case 'Clear': return '-C2'
-    case 'Other': return '-AL'
-    default: return ''
+// Helper function to get finish code from database
+async function getFinishCode(finishType: string): Promise<string> {
+  try {
+    const finish = await prisma.extrusionFinishPricing.findUnique({
+      where: { finishType }
+    })
+    return finish?.finishCode ? `-${finish.finishCode}` : ''
+  } catch (error) {
+    console.error('Error fetching finish code:', error)
+    return ''
   }
 }
 
-// Helper function to apply finish code to part number
-function applyFinishCode(partNumber: string, finishColor: string): string {
-  if (!partNumber || !finishColor) return partNumber
-  
-  const finishSuffix = getFinishSuffix(finishColor)
-  if (!finishSuffix) return partNumber
-  
-  if (partNumber.endsWith(finishSuffix)) {
-    return partNumber
-  }
-  
-  const finishCodes = ['-BL', '-C2', '-AL']
-  for (const code of finishCodes) {
-    if (partNumber.endsWith(code)) {
-      return partNumber.slice(0, -code.length) + finishSuffix
+// Helper function to calculate required part length from formula
+function calculateRequiredPartLength(bom: any, variables: Record<string, number>): number {
+  if (bom.formula) {
+    try {
+      return evaluateFormula(bom.formula, variables)
+    } catch (error) {
+      console.error('Error evaluating part length formula:', error)
+      return 0
     }
   }
-  
-  return partNumber + finishSuffix
+
+  // For extrusions without formulas, try to use a reasonable default based on component size
+  if (bom.partType === 'Extrusion') {
+    return Math.max(variables.width || 0, variables.height || 0)
+  }
+
+  return bom.quantity || 0
 }
 
-// Helper function to find stock length for extrusions
-async function findStockLength(partNumber: string, componentWidth: number, componentHeight: number): Promise<number | null> {
+// Helper function to find best stock length rule based on calculated part length
+function findBestStockLengthRule(rules: any[], requiredLength: number): any | null {
+  const applicableRules = rules.filter(rule => {
+    const matchesLength = (rule.minHeight === null || requiredLength >= rule.minHeight) &&
+                         (rule.maxHeight === null || requiredLength <= rule.maxHeight)
+
+    return rule.isActive && matchesLength
+  })
+
+  return applicableRules.sort((a, b) => {
+    const aSpecificity = (a.minHeight !== null ? 1 : 0) + (a.maxHeight !== null ? 1 : 0)
+    const bSpecificity = (b.minHeight !== null ? 1 : 0) + (b.maxHeight !== null ? 1 : 0)
+    return bSpecificity - aSpecificity
+  })[0] || null
+}
+
+// Helper function to find stock length for extrusions using the formula-based approach
+async function findStockLength(partNumber: string, bom: any, variables: Record<string, number>): Promise<{ stockLength: number | null, isMillFinish: boolean }> {
   try {
     const masterPart = await prisma.masterPart.findUnique({
       where: { partNumber },
@@ -66,33 +83,23 @@ async function findStockLength(partNumber: string, componentWidth: number, compo
       }
     })
 
-    if (masterPart && masterPart.stockLengthRules.length > 0) {
-      const applicableRules = masterPart.stockLengthRules.filter(rule => {
-        const matchesWidth = (rule.minWidth === null || componentWidth >= rule.minWidth) && 
-                            (rule.maxWidth === null || componentWidth <= rule.maxWidth)
-        const matchesHeight = (rule.minHeight === null || componentHeight >= rule.minHeight) && 
-                             (rule.maxHeight === null || componentHeight <= rule.maxHeight)
-        
-        return rule.isActive && matchesWidth && matchesHeight
-      })
-      
-      if (applicableRules.length > 0) {
-        const bestRule = applicableRules.sort((a, b) => {
-          const aSpecificity = (a.minWidth !== null ? 1 : 0) + (a.maxWidth !== null ? 1 : 0) +
-                              (a.minHeight !== null ? 1 : 0) + (a.maxHeight !== null ? 1 : 0)
-          const bSpecificity = (b.minWidth !== null ? 1 : 0) + (b.maxWidth !== null ? 1 : 0) +
-                              (b.minHeight !== null ? 1 : 0) + (b.maxHeight !== null ? 1 : 0)
-          return bSpecificity - aSpecificity
-        })[0]
-        
-        return bestRule.stockLength || null
+    if (masterPart && masterPart.partType === 'Extrusion' && masterPart.stockLengthRules.length > 0) {
+      // Calculate the required part length from the ProductBOM formula
+      const requiredLength = calculateRequiredPartLength(bom, variables)
+
+      const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
+      if (bestRule) {
+        return {
+          stockLength: bestRule.stockLength || null,
+          isMillFinish: masterPart.isMillFinish || false
+        }
       }
     }
-    
-    return null
+
+    return { stockLength: null, isMillFinish: masterPart?.isMillFinish || false }
   } catch (error) {
     console.error(`Error finding stock length for ${partNumber}:`, error)
-    return null
+    return { stockLength: null, isMillFinish: false }
   }
 }
 
@@ -124,7 +131,16 @@ export async function GET(
                   include: {
                     product: {
                       include: {
-                        productBOMs: true
+                        productBOMs: true,
+                        productSubOptions: {
+                          include: {
+                            category: {
+                              include: {
+                                individualOptions: true
+                              }
+                            }
+                          }
+                        }
                       }
                     }
                   }
@@ -152,12 +168,14 @@ export async function GET(
         if (!panel.componentInstance) continue
 
         const product = panel.componentInstance.product
-        
+
         // Process each BOM item for this component
         for (const bom of product.productBOMs) {
           const variables = {
             width: panel.width || 0,
             height: panel.height || 0,
+            Width: panel.width || 0,    // Support both uppercase and lowercase
+            Height: panel.height || 0,  // Support both uppercase and lowercase
             quantity: bom.quantity || 1
           }
 
@@ -167,16 +185,31 @@ export async function GET(
             cutLength = evaluateFormula(bom.formula, variables)
           }
 
-          // Generate part number with finish code for extrusions
+          // Generate part number with finish code and stock length for extrusions
           let fullPartNumber = bom.partNumber || ''
-          if (bom.partType === 'Extrusion' && fullPartNumber && opening.finishColor) {
-            fullPartNumber = applyFinishCode(fullPartNumber, opening.finishColor)
-          }
-
-          // Find stock length for extrusions
           let stockLength: number | null = null
-          if (bom.partType === 'Extrusion' && bom.partNumber) {
-            stockLength = await findStockLength(bom.partNumber, panel.width, panel.height)
+          let isMillFinish = false
+
+          if (bom.partType === 'Extrusion' && fullPartNumber) {
+            // Find stock length and isMillFinish flag for extrusions from MasterPart
+            if (bom.partNumber) {
+              const stockInfo = await findStockLength(bom.partNumber, bom, variables)
+              stockLength = stockInfo.stockLength
+              isMillFinish = stockInfo.isMillFinish
+            }
+
+            // Only append finish color code if NOT mill finish (using masterPart.isMillFinish)
+            if (opening.finishColor && !isMillFinish) {
+              const finishCode = await getFinishCode(opening.finishColor)
+              if (finishCode) {
+                fullPartNumber = `${fullPartNumber}${finishCode}`
+              }
+            }
+
+            // Always append stock length (regardless of mill finish status)
+            if (stockLength) {
+              fullPartNumber = `${fullPartNumber}-${stockLength}`
+            }
           }
 
           // Calculate % of stock used
@@ -186,14 +219,12 @@ export async function GET(
             percentOfStock = percentage.toFixed(1) + '%'
           }
 
-          // Add stock length to part number if available
-          if (stockLength && fullPartNumber) {
-            fullPartNumber = `${fullPartNumber}-${stockLength}`
-          }
-
           // Apply finish code for Hardware parts with addFinishToPartNumber flag
           if (bom.partType === 'Hardware' && fullPartNumber && bom.addFinishToPartNumber && opening.finishColor) {
-            fullPartNumber = applyFinishCode(fullPartNumber, opening.finishColor)
+            const finishCode = await getFinishCode(opening.finishColor)
+            if (finishCode) {
+              fullPartNumber = `${fullPartNumber}${finishCode}`
+            }
           }
 
           bomItems.push({
@@ -261,6 +292,166 @@ export async function GET(
             color: 'N/A'
           })
         }
+
+        // Add product options (sub-options) to BOM - includes handles and other hardware options
+        const processedBomCategories = new Set<string>()
+
+        if (panel.componentInstance.subOptionSelections) {
+          try {
+            const selections = JSON.parse(panel.componentInstance.subOptionSelections)
+            const includedOptions = JSON.parse(panel.componentInstance.includedOptions || '[]')
+
+            // Process each selected option
+            for (const [categoryIdStr, optionId] of Object.entries(selections)) {
+              processedBomCategories.add(categoryIdStr)
+              const categoryId = parseInt(categoryIdStr)
+
+              // Find the product sub-option and individual option details
+              const productSubOption = product.productSubOptions?.find(
+                (pso: any) => pso.category.id === categoryId
+              )
+
+              if (!productSubOption) continue
+
+              const standardOptionId = productSubOption.standardOptionId
+              const standardOption = standardOptionId
+                ? productSubOption.category.individualOptions?.find((opt: any) => opt.id === standardOptionId)
+                : null
+
+              if (!optionId) {
+                // No option selected - add standard if available
+                if (standardOption) {
+                  let partNumber = standardOption.partNumber || `OPTION-${standardOption.id}`
+                  if (!standardOption.partNumber && standardOption.description) {
+                    const match = standardOption.description.match(/^(.+?)\s+-\s+/)
+                    if (match) {
+                      partNumber = match[1]
+                    }
+                  }
+
+                  // Apply finish code if addFinishToPartNumber is set
+                  if (standardOption.addFinishToPartNumber && opening.finishColor && standardOption.partNumber) {
+                    const finishCode = await getFinishCode(opening.finishColor)
+                    if (finishCode) {
+                      partNumber = `${partNumber}${finishCode}`
+                    }
+                  }
+
+                  bomItems.push({
+                    openingName: opening.name,
+                    productName: product.name,
+                    panelWidth: panel.width,
+                    panelHeight: panel.height,
+                    partNumber: partNumber,
+                    partName: standardOption.name,
+                    partType: 'Option',
+                    quantity: 1,
+                    cutLength: '',
+                    percentOfStock: '',
+                    unit: 'EA',
+                    description: `${productSubOption.category.name}: ${standardOption.name} (Standard - Included)`,
+                    color: opening.finishColor || 'N/A'
+                  })
+                }
+                continue
+              }
+
+              const individualOption = productSubOption.category.individualOptions?.find(
+                (opt: any) => opt.id === Number(optionId)
+              )
+
+              if (individualOption) {
+                const isIncluded = includedOptions.includes(Number(optionId))
+                const isStandardOption = standardOptionId === individualOption.id
+
+                // Use partNumber field if available, otherwise fall back to parsing description or OPTION-{id}
+                let partNumber = individualOption.partNumber || `OPTION-${individualOption.id}`
+                if (!individualOption.partNumber && individualOption.description) {
+                  const match = individualOption.description.match(/^(.+?)\s+-\s+/)
+                  if (match) {
+                    partNumber = match[1]
+                  }
+                }
+
+                // Apply finish code if addFinishToPartNumber is set
+                if (individualOption.addFinishToPartNumber && opening.finishColor && individualOption.partNumber) {
+                  const finishCode = await getFinishCode(opening.finishColor)
+                  if (finishCode) {
+                    partNumber = `${partNumber}${finishCode}`
+                  }
+                }
+
+                let description = `${productSubOption.category.name}: ${individualOption.name}`
+                if (isStandardOption) {
+                  description += ' (Standard - Included)'
+                } else if (isIncluded) {
+                  description += ' (Included)'
+                }
+
+                bomItems.push({
+                  openingName: opening.name,
+                  productName: product.name,
+                  panelWidth: panel.width,
+                  panelHeight: panel.height,
+                  partNumber: partNumber,
+                  partName: individualOption.name,
+                  partType: 'Option',
+                  quantity: 1,
+                  cutLength: '',
+                  percentOfStock: '',
+                  unit: 'EA',
+                  description: description,
+                  color: opening.finishColor || 'N/A'
+                })
+              }
+            }
+          } catch (error) {
+            console.error('Error parsing product options:', error)
+          }
+        }
+
+        // Add standard options for categories not in selections
+        for (const productSubOption of product.productSubOptions || []) {
+          const categoryId = productSubOption.category.id.toString()
+          if (!processedBomCategories.has(categoryId) && productSubOption.standardOptionId) {
+            const standardOption = productSubOption.category.individualOptions?.find(
+              (opt: any) => opt.id === productSubOption.standardOptionId
+            )
+            if (standardOption) {
+              let partNumber = standardOption.partNumber || `OPTION-${standardOption.id}`
+              if (!standardOption.partNumber && standardOption.description) {
+                const match = standardOption.description.match(/^(.+?)\s+-\s+/)
+                if (match) {
+                  partNumber = match[1]
+                }
+              }
+
+              // Apply finish code if addFinishToPartNumber is set
+              if (standardOption.addFinishToPartNumber && opening.finishColor && standardOption.partNumber) {
+                const finishCode = await getFinishCode(opening.finishColor)
+                if (finishCode) {
+                  partNumber = `${partNumber}${finishCode}`
+                }
+              }
+
+              bomItems.push({
+                openingName: opening.name,
+                productName: product.name,
+                panelWidth: panel.width,
+                panelHeight: panel.height,
+                partNumber: partNumber,
+                partName: standardOption.name,
+                partType: 'Option',
+                quantity: 1,
+                cutLength: '',
+                percentOfStock: '',
+                unit: 'EA',
+                description: `${productSubOption.category.name}: ${standardOption.name} (Standard - Included)`,
+                color: opening.finishColor || 'N/A'
+              })
+            }
+          }
+        }
       }
     }
 
@@ -269,11 +460,11 @@ export async function GET(
       if (a.openingName !== b.openingName) {
         return a.openingName.localeCompare(b.openingName)
       }
-      
-      const typeOrder = { 'Extrusion': 1, 'Hardware': 2, 'Glass': 3 }
-      const aOrder = typeOrder[a.partType as keyof typeof typeOrder] || 4
-      const bOrder = typeOrder[b.partType as keyof typeof typeOrder] || 4
-      
+
+      const typeOrder: Record<string, number> = { 'Extrusion': 1, 'Hardware': 2, 'Glass': 3, 'Option': 4 }
+      const aOrder = typeOrder[a.partType] || 5
+      const bOrder = typeOrder[b.partType] || 5
+
       return aOrder - bOrder
     })
 

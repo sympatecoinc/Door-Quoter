@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { Plus, Edit, Calendar, DollarSign, Briefcase, CheckCircle, Clock, AlertCircle, Archive, FileText, X, Download, List, Search, Trash2 } from 'lucide-react'
-import { ProjectStatus, STATUS_CONFIG } from '@/types'
+import { ProjectStatus, STATUS_CONFIG, LEAD_STATUSES, PROJECT_STATUSES } from '@/types'
 import { useAppStore } from '@/stores/appStore'
+import LeadForm from './LeadForm'
 
 interface Project {
   id: number
@@ -35,16 +36,14 @@ interface CustomerProjectsProps {
   customer: Customer
   onProjectClick?: (projectId: number) => void
   showFullHeader?: boolean
+  filterType?: 'all' | 'leads' | 'projects'  // Filter to show only leads, only projects, or all
 }
 
-export default function CustomerProjects({ customerId, customer, onProjectClick, showFullHeader = false }: CustomerProjectsProps) {
+export default function CustomerProjects({ customerId, customer, onProjectClick, showFullHeader = false, filterType = 'all' }: CustomerProjectsProps) {
   const { setSelectedProjectId, setCurrentMenu, setCustomerDetailTab, setAutoOpenAddOpening } = useAppStore()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
-  const [showCreateForm, setShowCreateForm] = useState(false)
-  const [newProjectName, setNewProjectName] = useState('')
-  const [newProjectDueDate, setNewProjectDueDate] = useState('')
-  const [creating, setCreating] = useState(false)
+  const [showLeadForm, setShowLeadForm] = useState(false)
 
 
   // Edit modal state
@@ -118,38 +117,24 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
     }
   }
 
-  const handleCreateProject = async () => {
-    if (!newProjectName.trim()) return
+  const handleCreateLead = async (leadData: any) => {
+    const response = await fetch('/api/leads', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...leadData,
+        customerId: customerId
+      }),
+    })
 
-    setCreating(true)
-    try {
-      const response = await fetch('/api/projects', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: newProjectName,
-          customerId: customerId,
-          dueDate: newProjectDueDate || null,
-          status: ProjectStatus.STAGING
-        }),
-      })
-
-      if (response.ok) {
-        const newProject = await response.json()
-        setProjects(prev => [newProject, ...prev])
-        setNewProjectName('')
-        setNewProjectDueDate('')
-        setShowCreateForm(false)
-      } else {
-        console.error('Failed to create project')
-      }
-    } catch (error) {
-      console.error('Error creating project:', error)
-    } finally {
-      setCreating(false)
+    if (!response.ok) {
+      throw new Error('Failed to create lead')
     }
+
+    // Refresh projects list to show the new lead
+    fetchProjects()
   }
 
   const handleStatusButtonClick = (projectId: number, projectName: string, newStatus: string) => {
@@ -438,7 +423,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
     )
   }
 
-  // Filter projects based on search and status
+  // Filter projects based on search, status, and filterType (leads vs projects)
   const filteredProjects = projects.filter(project => {
     // Search filter
     const matchesSearch = searchTerm === '' ||
@@ -454,7 +439,15 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
       ? !isArchived
       : statusFilters.includes(project.status)
 
-    return matchesSearch && matchesStatus
+    // Filter by type (leads vs projects)
+    let matchesType = true
+    if (filterType === 'leads') {
+      matchesType = LEAD_STATUSES.includes(project.status as ProjectStatus)
+    } else if (filterType === 'projects') {
+      matchesType = PROJECT_STATUSES.includes(project.status as ProjectStatus)
+    }
+
+    return matchesSearch && matchesStatus && matchesType
   })
 
 
@@ -476,11 +469,11 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
               Projects for {customer.companyName}
             </h2>
             <button
-              onClick={() => setShowCreateForm(!showCreateForm)}
+              onClick={() => setShowLeadForm(true)}
               className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Create Project
+              Create Lead
             </button>
           </div>
 
@@ -612,15 +605,21 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-semibold text-gray-900 flex items-center">
               <Briefcase className="w-5 h-5 mr-2" />
-              Projects ({filteredProjects.length}{statusFilters.length > 0 || searchTerm ? ` of ${projects.length}` : ''})
+              {filterType === 'leads' ? 'Leads' : filterType === 'projects' ? 'Projects' : 'Projects'} ({filteredProjects.length}{statusFilters.length > 0 || searchTerm ? ` of ${projects.filter(p => {
+                if (filterType === 'leads') return LEAD_STATUSES.includes(p.status as ProjectStatus)
+                if (filterType === 'projects') return PROJECT_STATUSES.includes(p.status as ProjectStatus)
+                return true
+              }).length}` : ''})
             </h2>
-            <button
-              onClick={() => setShowCreateForm(!showCreateForm)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Create Project
-            </button>
+            {filteredProjects.length > 0 && filterType === 'leads' && (
+              <button
+                onClick={() => setShowLeadForm(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Create Lead
+              </button>
+            )}
           </div>
 
           {/* Search and Filter Controls */}
@@ -789,10 +788,22 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                 </div>
               </div>
 
-              {/* Status Hot Buttons */}
+              {/* Status Hot Buttons - filtered based on filterType */}
               <div className="mt-4 pt-4 border-t border-gray-200">
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(STATUS_CONFIG)
+                    .filter(([key]) => {
+                      // Filter status buttons based on filterType
+                      if (filterType === 'leads') {
+                        // Only show lead statuses for leads
+                        return LEAD_STATUSES.includes(key as ProjectStatus)
+                      } else if (filterType === 'projects') {
+                        // Only show project statuses for projects
+                        return PROJECT_STATUSES.includes(key as ProjectStatus)
+                      }
+                      // Show all statuses when filterType is 'all'
+                      return true
+                    })
                     .map(([key, config]) => {
                       const isActive = project.status === key
                       return (
@@ -821,17 +832,25 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
             <div className="text-center py-8 text-gray-500">
               <Briefcase className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No projects yet</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {filterType === 'leads' ? 'No leads yet' : filterType === 'projects' ? 'No won projects yet' : 'No projects yet'}
+              </h3>
               <p className="text-gray-600 mb-4">
-                Create your first project for {customer.companyName} to start tracking work and quotes.
+                {filterType === 'leads'
+                  ? 'Create a new project to start a lead. Projects become leads when they are in Staging through Quote Sent status.'
+                  : filterType === 'projects'
+                  ? 'Projects appear here when their status changes to Quote Accepted or beyond.'
+                  : `Create your first project for ${customer.companyName} to start tracking work and quotes.`}
               </p>
-              <button
-                onClick={() => setShowCreateForm(true)}
-                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mx-auto"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create Project
-              </button>
+              {filterType === 'leads' && (
+                <button
+                  onClick={() => setShowLeadForm(true)}
+                  className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mx-auto"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Lead
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1044,73 +1063,14 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
         </div>
       )}
 
-      {/* Create Project Modal */}
-      {showCreateForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">Create Create Project</h2>
-              <button
-                onClick={() => {
-                  setShowCreateForm(false)
-                  setNewProjectName('')
-                  setNewProjectDueDate('')
-                }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Project Name *
-                </label>
-                <input
-                  type="text"
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder="Enter project name..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Due Date (Optional)
-                </label>
-                <input
-                  type="date"
-                  value={newProjectDueDate}
-                  onChange={(e) => setNewProjectDueDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-2 mt-6">
-              <button
-                onClick={() => {
-                  setShowCreateForm(false)
-                  setNewProjectName('')
-                  setNewProjectDueDate('')
-                }}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateProject}
-                disabled={creating || !newProjectName.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {creating ? 'Creating...' : 'Create Project'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Lead Form Modal */}
+      <LeadForm
+        isOpen={showLeadForm}
+        onClose={() => setShowLeadForm(false)}
+        onSubmit={handleCreateLead}
+        defaultStage="New"
+        customerId={customerId}
+      />
 
       {/* BOM Modal */}
       {showBOM && (
