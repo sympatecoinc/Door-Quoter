@@ -157,8 +157,11 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       default:
         return (
           <div className="space-y-8">
-            {/* Projects Section */}
-            <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={false} />
+            {/* Projects Section (Won projects) */}
+            <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={false} filterType="projects" />
+
+            {/* Leads Section */}
+            <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={false} filterType="leads" />
 
             {/* Customer Information */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

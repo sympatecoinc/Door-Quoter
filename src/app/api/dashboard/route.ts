@@ -3,6 +3,21 @@ import { prisma } from '@/lib/prisma'
 import { ProjectStatus } from '@prisma/client'
 import { calculateTotalMarkedUpPrice, estimateCostBreakdown, type PricingMode } from '@/lib/pricing'
 
+// Lead phase statuses (pre-acceptance)
+const LEAD_STATUSES = [
+  ProjectStatus.STAGING,
+  ProjectStatus.APPROVED,
+  ProjectStatus.REVISE,
+  ProjectStatus.QUOTE_SENT
+]
+
+// Project phase statuses (post-acceptance / "Won")
+const PROJECT_STATUSES = [
+  ProjectStatus.QUOTE_ACCEPTED,
+  ProjectStatus.ACTIVE,
+  ProjectStatus.COMPLETE
+]
+
 // Helper function to calculate sale price with category-specific markup/discount
 async function calculateProjectSalePrice(projectId: number, costPrice: number, pricingMode: PricingMode | null): Promise<number> {
   if (!pricingMode || costPrice === 0) return costPrice
@@ -62,20 +77,27 @@ async function calculateProjectSalePrice(projectId: number, costPrice: number, p
 
 export async function GET() {
   try {
-    // Get total projects (excluding Staging)
+    // Get total projects (only "Won" projects - QUOTE_ACCEPTED, ACTIVE, COMPLETE)
     const totalProjects = await prisma.project.count({
       where: {
-        status: { notIn: [ProjectStatus.STAGING] }
+        status: { in: PROJECT_STATUSES }
+      }
+    })
+
+    // Get total leads (STAGING, APPROVED, REVISE, QUOTE_SENT)
+    const totalLeads = await prisma.project.count({
+      where: {
+        status: { in: LEAD_STATUSES }
       }
     })
 
     // Get total openings
     const totalOpenings = await prisma.opening.count()
 
-    // Get all projects with pricing modes to calculate total portfolio value (excluding Staging)
+    // Get all projects with pricing modes to calculate total portfolio value (only won projects)
     const allProjects = await prisma.project.findMany({
       where: {
-        status: { notIn: [ProjectStatus.STAGING] }
+        status: { in: PROJECT_STATUSES }
       },
       include: {
         openings: true,
@@ -83,7 +105,18 @@ export async function GET() {
       }
     })
 
-    // Calculate total portfolio value with pricing modes applied
+    // Get all leads to calculate lead pipeline value
+    const allLeadProjects = await prisma.project.findMany({
+      where: {
+        status: { in: LEAD_STATUSES }
+      },
+      include: {
+        openings: true,
+        pricingMode: true
+      }
+    })
+
+    // Calculate total portfolio value (won projects only)
     let totalValue = 0
     for (const project of allProjects) {
       const costValue = project.openings.reduce((openingSum, opening) => openingSum + opening.price, 0)
@@ -91,10 +124,38 @@ export async function GET() {
       totalValue += saleValue
     }
 
-    // Get active projects with their openings and pricing modes (excluding Staging)
+    // Calculate total lead pipeline value
+    let leadPipelineValue = 0
+    for (const lead of allLeadProjects) {
+      const costValue = lead.openings.reduce((openingSum, opening) => openingSum + opening.price, 0)
+      const saleValue = await calculateProjectSalePrice(lead.id, costValue, lead.pricingMode)
+      leadPipelineValue += saleValue
+    }
+
+    // Get recent projects (won projects only)
     const recentProjects = await prisma.project.findMany({
       where: {
-        status: { notIn: [ProjectStatus.STAGING] }
+        status: { in: PROJECT_STATUSES }
+      },
+      take: 5,
+      orderBy: {
+        updatedAt: 'desc'
+      },
+      include: {
+        openings: true,
+        pricingMode: true,
+        _count: {
+          select: {
+            openings: true
+          }
+        }
+      }
+    })
+
+    // Get recent leads
+    const recentLeads = await prisma.project.findMany({
+      where: {
+        status: { in: LEAD_STATUSES }
       },
       take: 5,
       orderBy: {
@@ -122,8 +183,25 @@ export async function GET() {
           name: project.name,
           status: project.status,
           openingsCount: project._count.openings,
-          value: saleValue, // Sale price (with category-specific markup/discount applied)
+          value: saleValue,
           updatedAt: project.updatedAt.toISOString()
+        }
+      })
+    )
+
+    // Calculate lead values with pricing modes
+    const leadsWithValues = await Promise.all(
+      recentLeads.map(async (lead) => {
+        const costValue = lead.openings.reduce((sum, opening) => sum + opening.price, 0)
+        const saleValue = await calculateProjectSalePrice(lead.id, costValue, lead.pricingMode)
+
+        return {
+          id: lead.id,
+          name: lead.name,
+          status: lead.status,
+          openingsCount: lead._count.openings,
+          value: saleValue,
+          updatedAt: lead.updatedAt.toISOString()
         }
       })
     )
@@ -131,10 +209,13 @@ export async function GET() {
     return NextResponse.json({
       stats: {
         totalProjects,
-        totalValue, // Total portfolio sale value
+        totalLeads,
+        totalValue,
+        leadPipelineValue,
         totalOpenings
       },
-      recentProjects: projectsWithValues
+      recentProjects: projectsWithValues,
+      recentLeads: leadsWithValues
     })
   } catch (error: unknown) {
     console.error('Dashboard API Error:', error)
