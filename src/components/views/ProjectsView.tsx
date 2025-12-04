@@ -47,6 +47,12 @@ export default function ProjectsView() {
   const [showArchived, setShowArchived] = useState(false)
   const { setSelectedProjectId } = useAppStore()
 
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: editingProject !== null, isBlocked: updating, onClose: () => setEditingProject(null) },
+    { isOpen: showCreateForm, isBlocked: creating, onClose: () => setShowCreateForm(false) },
+  ])
+
   useEffect(() => {
     fetchProjects()
     fetchPricingModes()

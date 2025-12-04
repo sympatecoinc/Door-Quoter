@@ -83,6 +83,11 @@ export default function QuoteView() {
     }
   }
 
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: showExcludedPartsModal, onClose: () => setShowExcludedPartsModal(false) },
+  ])
+
   useEffect(() => {
     if (selectedProjectId) {
       fetchQuoteData()

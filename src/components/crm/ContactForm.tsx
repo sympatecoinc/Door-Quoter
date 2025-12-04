@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface Contact {
   id: number
@@ -45,6 +46,11 @@ export default function ContactForm({
   })
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Handle Escape key to close modal
+  useEscapeKey([
+    { isOpen: isOpen, isBlocked: isSubmitting, onClose: onClose },
+  ])
 
   useEffect(() => {
     if (contact && mode === 'edit') {

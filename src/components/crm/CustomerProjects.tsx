@@ -84,6 +84,14 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   const [deleteConfirm, setDeleteConfirm] = useState<{ projectId: number; projectName: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: deleteConfirm !== null, isBlocked: deleting, onClose: () => setDeleteConfirm(null) },
+    { isOpen: showBOM, onClose: () => setShowBOM(false) },
+    { isOpen: showLeadForm, onClose: () => setShowLeadForm(false) },
+    { isOpen: editingProject !== null, onClose: () => setEditingProject(null) },
+  ])
+
   useEffect(() => {
     fetchProjects()
     fetchPricingModes()

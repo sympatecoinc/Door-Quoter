@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Plus, Users } from 'lucide-react'
 import ContactCard from './ContactCard'
 import ContactForm, { ContactFormData } from './ContactForm'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface Contact {
   id: number
@@ -25,6 +26,12 @@ export default function CustomerContacts({ customerId }: CustomerContactsProps) 
   const [editingContact, setEditingContact] = useState<Contact | null>(null)
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
   const [deleteConfirm, setDeleteConfirm] = useState<Contact | null>(null)
+
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: deleteConfirm !== null, onClose: () => setDeleteConfirm(null) },
+    { isOpen: isFormOpen, onClose: () => setIsFormOpen(false) },
+  ])
 
   useEffect(() => {
     fetchContacts()

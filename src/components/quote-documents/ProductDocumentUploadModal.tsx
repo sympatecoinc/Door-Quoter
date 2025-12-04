@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { X, Upload, FileUp } from 'lucide-react'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface ProductDocumentUploadModalProps {
   productId: number
@@ -32,6 +33,11 @@ export default function ProductDocumentUploadModal({
   })
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Handle Escape key to close modal
+  useEscapeKey([
+    { isOpen: true, isBlocked: uploading, onClose: onClose },
+  ])
 
   const handleFileSelect = (file: File) => {
     // Only accept PDFs

@@ -61,6 +61,13 @@ export default function ProductsView() {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
 
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: showArchiveDialog !== null, onClose: () => setShowArchiveDialog(null) },
+    { isOpen: editingProduct !== null, isBlocked: updating, onClose: () => setEditingProduct(null) },
+    { isOpen: showCreateForm, onClose: () => setShowCreateForm(false) },
+  ])
+
   useEffect(() => {
     loadData()
   }, [showArchived]) // eslint-disable-line react-hooks/exhaustive-deps

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Upload, X, FileText, Image as ImageIcon, FileUp, GripVertical, Eye } from 'lucide-react'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface QuoteAttachment {
   id: number
@@ -30,6 +31,11 @@ export default function QuoteAttachmentsManager({ projectId, onAttachmentsChange
   const [selectedPosition, setSelectedPosition] = useState<'beginning' | 'after_quote' | 'end'>('after_quote')
   const [previewAttachment, setPreviewAttachment] = useState<QuoteAttachment | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Handle Escape key to close preview modal
+  useEscapeKey([
+    { isOpen: previewAttachment !== null, onClose: () => setPreviewAttachment(null) },
+  ])
 
   useEffect(() => {
     fetchAttachments()

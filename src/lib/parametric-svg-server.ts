@@ -28,6 +28,7 @@ export type ComponentType =
   | 'fixed'        // No scaling (hardware, text)
   | 'glassstop'    // Scales with glass opening
   | 'trim'         // Outer trim that spans full width
+  | 'jamb'         // Outer jamb frame elements
 
 export type ViewMode = 'elevation' | 'plan'
 
@@ -88,6 +89,8 @@ export function detectComponentType(element: Element, mode?: ViewMode): Componen
   if (combined.includes('glasstop')) return 'glassstop'
   // Check for trim elements (outer frame that spans full width)
   if (combined.includes('trim')) return 'trim'
+  // Check for jamb elements (outer door frame)
+  if (combined.includes('jamb')) return 'jamb'
   if (combined.includes('vertical') || combined.includes('stile')) return 'vertical'
   if (combined.includes('horizontal') || combined.includes('rail')) return 'horizontal'
   if (combined.includes('grow') || combined.includes('glass-area')) return 'grow'
@@ -153,7 +156,9 @@ export function scaleElement(
   originalDimensions: ScalingDimensions,
   mode: ViewMode,
   leftStileWidth: number,
-  rightStileWidth: number
+  rightStileWidth: number,
+  leftJambWidth: number = 0,
+  rightJambWidth: number = 0
 ): ElementTransform {
   const tagName = element.tagName
 
@@ -173,7 +178,7 @@ export function scaleElement(
 
     switch (componentType) {
       case 'vertical':
-        // Stiles: Keep constant WIDTH, position at edges of SCALED coordinate system
+        // Stiles: Keep constant WIDTH, position inside jambs (or at edges if no jambs)
         if (mode === 'elevation') {
           const origViewBoxWidth = originalDimensions.width
           const targetPixelWidth = origViewBoxWidth * scaling.scaleX
@@ -183,19 +188,21 @@ export function scaleElement(
           const scaledHeight = height * scaling.scaleY
 
           if (x > origViewBoxWidth * 0.5) {
-            // Right stile - position at right edge of SCALED width
-            element.setAttribute('x', (targetPixelWidth - rightStileWidth).toString())
+            // Right stile - position inside right jamb (or at edge if no jamb)
+            const rightStileX = targetPixelWidth - rightJambWidth - rightStileWidth
+            element.setAttribute('x', rightStileX.toString())
             element.setAttribute('y', scaledY.toString())
             element.setAttribute('width', rightStileWidth.toString())
             element.setAttribute('height', scaledHeight.toString())
-            console.log(`  → Vertical (RIGHT): x → ${targetPixelWidth - rightStileWidth}, y → ${scaledY}, width → ${rightStileWidth}, height → ${scaledHeight}`)
+            console.log(`  → Vertical (RIGHT): x → ${rightStileX}, y → ${scaledY}, width → ${rightStileWidth}, height → ${scaledHeight}`)
           } else {
-            // Left stile - stays at x=0
-            element.setAttribute('x', '0')
+            // Left stile - position after left jamb (or at edge if no jamb)
+            const leftStileX = leftJambWidth
+            element.setAttribute('x', leftStileX.toString())
             element.setAttribute('y', scaledY.toString())
             element.setAttribute('width', leftStileWidth.toString())
             element.setAttribute('height', scaledHeight.toString())
-            console.log(`  → Vertical (LEFT): x=0, y → ${scaledY}, width → ${leftStileWidth}, height → ${scaledHeight}`)
+            console.log(`  → Vertical (LEFT): x → ${leftStileX}, y → ${scaledY}, width → ${leftStileWidth}, height → ${scaledHeight}`)
           }
         } else if (mode === 'plan') {
           // Plan view: Scale width with scaleX
@@ -217,7 +224,7 @@ export function scaleElement(
         break
 
       case 'horizontal':
-        // Rails: Span between stiles in SCALED coordinate system
+        // Rails: Span between stiles in SCALED coordinate system (accounting for jambs)
         if (mode === 'elevation') {
           const origViewBoxWidth = originalDimensions.width
           const targetPixelWidth = origViewBoxWidth * scaling.scaleX
@@ -226,9 +233,9 @@ export function scaleElement(
           const scaledY = y * scaling.scaleY
           const scaledRailHeight = height * scaling.scaleY
 
-          // Rails must span between left and right stiles in SCALED coordinate space
-          const newX = leftStileWidth
-          const newWidth = targetPixelWidth - leftStileWidth - rightStileWidth
+          // Rails must span between left and right stiles (which are inside jambs)
+          const newX = leftJambWidth + leftStileWidth
+          const newWidth = targetPixelWidth - leftJambWidth - leftStileWidth - rightStileWidth - rightJambWidth
 
           element.setAttribute('x', newX.toString())
           element.setAttribute('y', scaledY.toString())
@@ -247,13 +254,14 @@ export function scaleElement(
         break
 
       case 'grow':
-        // Glass area: Fill space between stiles in SCALED coordinate system
+        // Glass area: Fill space between stiles in SCALED coordinate system (accounting for jambs)
         if (mode === 'elevation') {
           const origViewBoxWidth = originalDimensions.width
           const targetPixelWidth = origViewBoxWidth * scaling.scaleX
 
-          const newX = leftStileWidth
-          const newWidth = targetPixelWidth - leftStileWidth - rightStileWidth
+          // Glass area spans between stiles (which are inside jambs)
+          const newX = leftJambWidth + leftStileWidth
+          const newWidth = targetPixelWidth - leftJambWidth - leftStileWidth - rightStileWidth - rightJambWidth
 
           // Scale Y position and height for elevation views
           const scaledY = y * scaling.scaleY
@@ -276,7 +284,7 @@ export function scaleElement(
         break
 
       case 'glassstop':
-        // Glass stops logic - position in SCALED coordinate system
+        // Glass stops logic - position in SCALED coordinate system (accounting for jambs)
         const isHorizontalGS = element.getAttribute('id')?.includes('horizontal') || width > height
         const isVerticalGS = element.getAttribute('id')?.includes('vertical') || height > width
 
@@ -295,7 +303,7 @@ export function scaleElement(
 
             if (x > origViewBoxWidth * 0.5) {
               // Right-side glassstop - position in glass area, ending at inner edge of right stile
-              const newX = targetPixelWidth - rightStileWidth - glassStopWidth
+              const newX = targetPixelWidth - rightJambWidth - rightStileWidth - glassStopWidth
 
               element.setAttribute('x', newX.toString())
               element.setAttribute('y', glassStopY.toString())
@@ -304,7 +312,7 @@ export function scaleElement(
               console.log(`  → Glassstop-V (RIGHT): x → ${newX}, y → ${glassStopY}, width → ${glassStopWidth}, height → ${glassStopHeight}`)
             } else {
               // Left-side glassstop - position in glass area, starting at inner edge of left stile
-              const newX = leftStileWidth
+              const newX = leftJambWidth + leftStileWidth
 
               element.setAttribute('x', newX.toString())
               element.setAttribute('y', glassStopY.toString())
@@ -315,17 +323,19 @@ export function scaleElement(
           } else if (isHorizontalGS) {
             const origViewBoxWidth = originalDimensions.width
             const targetPixelWidth = origViewBoxWidth * scaling.scaleX
-            const newWidthGS = targetPixelWidth - leftStileWidth - rightStileWidth
+            // Horizontal glasstops span between stiles (which are inside jambs)
+            const newWidthGS = targetPixelWidth - leftJambWidth - leftStileWidth - rightStileWidth - rightJambWidth
+            const newXGS = leftJambWidth + leftStileWidth
 
             // Scale Y position and height for elevation views
             const scaledY = y * scaling.scaleY
             const scaledGlassStopHeight = height * scaling.scaleY
 
-            element.setAttribute('x', leftStileWidth.toString())
+            element.setAttribute('x', newXGS.toString())
             element.setAttribute('y', scaledY.toString())
             element.setAttribute('width', newWidthGS.toString())
             element.setAttribute('height', scaledGlassStopHeight.toString())
-            console.log(`  → Glassstop-H: x → ${leftStileWidth}, y → ${scaledY}, width → ${newWidthGS}, height → ${scaledGlassStopHeight}`)
+            console.log(`  → Glassstop-H: x → ${newXGS}, y → ${scaledY}, width → ${newWidthGS}, height → ${scaledGlassStopHeight}`)
           }
         } else if (mode === 'plan') {
           // Plan view: Scale both dimensions
@@ -364,6 +374,75 @@ export function scaleElement(
 
           element.setAttribute('width', targetPixelWidth.toString())
           console.log(`  → Trim PLAN: width → ${targetPixelWidth}`)
+        }
+        break
+
+      case 'jamb':
+        // Jamb elements: outer door frame
+        const isVerticalJamb = element.getAttribute('id')?.includes('vertical') || height > width
+        const isHorizontalJamb = element.getAttribute('id')?.includes('horizontal') || width > height
+
+        if (mode === 'elevation') {
+          const origViewBoxWidth = originalDimensions.width
+          const origViewBoxHeight = originalDimensions.height
+          const targetPixelWidth = origViewBoxWidth * scaling.scaleX
+          const targetPixelHeight = origViewBoxHeight * scaling.scaleY
+
+          if (isVerticalJamb) {
+            // Vertical jambs: position at outer edges, use scaled y position and height
+            const scaledJambWidth = width * scaling.scaleY  // Scale width proportionally
+            const scaledY = y * scaling.scaleY
+            const scaledHeight = height * scaling.scaleY
+
+            if (x > origViewBoxWidth * 0.5) {
+              // Right jamb - position at far right edge
+              const newX = targetPixelWidth - scaledJambWidth
+              element.setAttribute('x', newX.toString())
+              element.setAttribute('y', scaledY.toString())
+              element.setAttribute('width', scaledJambWidth.toString())
+              element.setAttribute('height', scaledHeight.toString())
+              console.log(`  → Jamb-V (RIGHT): x → ${newX}, y → ${scaledY}, width → ${scaledJambWidth}, height → ${scaledHeight}`)
+            } else {
+              // Left jamb - position at far left edge
+              element.setAttribute('x', '0')
+              element.setAttribute('y', scaledY.toString())
+              element.setAttribute('width', scaledJambWidth.toString())
+              element.setAttribute('height', scaledHeight.toString())
+              console.log(`  → Jamb-V (LEFT): x → 0, y → ${scaledY}, width → ${scaledJambWidth}, height → ${scaledHeight}`)
+            }
+          } else if (isHorizontalJamb) {
+            // Horizontal jamb: scale y position and height, span between vertical jambs
+            const scaledY = y * scaling.scaleY
+            const scaledJambHeight = height * scaling.scaleY
+
+            // Horizontal jamb spans between vertical jambs (not full width)
+            const scaledLeftJambWidth = leftJambWidth  // Already scaled
+            const scaledRightJambWidth = rightJambWidth  // Already scaled
+            const newX = scaledLeftJambWidth
+            const newWidth = targetPixelWidth - scaledLeftJambWidth - scaledRightJambWidth
+
+            element.setAttribute('x', newX.toString())
+            element.setAttribute('y', scaledY.toString())
+            element.setAttribute('width', newWidth.toString())
+            element.setAttribute('height', scaledJambHeight.toString())
+            console.log(`  → Jamb-H: x → ${newX}, y → ${scaledY}, width → ${newWidth}, height → ${scaledJambHeight}`)
+          }
+        } else if (mode === 'plan') {
+          // Plan view: Scale proportionally
+          const origViewBoxWidth = originalDimensions.width
+          const targetPixelWidth = origViewBoxWidth * scaling.scaleX
+
+          if (isVerticalJamb) {
+            const scaledWidth = width * scaling.scaleX
+            if (x > origViewBoxWidth * 0.5) {
+              element.setAttribute('x', (targetPixelWidth - scaledWidth).toString())
+            }
+            element.setAttribute('width', scaledWidth.toString())
+            console.log(`  → Jamb-V PLAN: width → ${scaledWidth}`)
+          } else {
+            element.setAttribute('width', targetPixelWidth.toString())
+            console.log(`  → Jamb-H PLAN: width → ${targetPixelWidth}`)
+          }
         }
         break
 
@@ -720,32 +799,49 @@ export function processParametricSVG(
   }
   collectElements(svgElement)
 
-  // PASS 1: Detect ORIGINAL stile widths
+  // PASS 1: Detect ORIGINAL stile and jamb widths
   let leftStileOriginalWidth = 0
   let rightStileOriginalWidth = 0
+  let leftJambOriginalWidth = 0
+  let rightJambOriginalWidth = 0
 
   elements.forEach(element => {
     if (element.tagName === 'rect') {
       const componentType = detectComponentType(element, mode)
-      if (componentType === 'vertical') {
-        const x = parseFloat(element.getAttribute('x') || '0')
-        const width = parseFloat(element.getAttribute('width') || '0')
+      const x = parseFloat(element.getAttribute('x') || '0')
+      const w = parseFloat(element.getAttribute('width') || '0')
+      const h = parseFloat(element.getAttribute('height') || '0')
 
+      if (componentType === 'vertical') {
         if (x > originalDimensions.width * 0.5) {
-          rightStileOriginalWidth = width
+          rightStileOriginalWidth = w
         } else {
-          leftStileOriginalWidth = width
+          leftStileOriginalWidth = w
+        }
+      } else if (componentType === 'jamb') {
+        // Detect vertical jambs (height > width means vertical)
+        const isVertical = element.getAttribute('id')?.includes('vertical') || h > w
+        if (isVertical) {
+          if (x > originalDimensions.width * 0.5) {
+            rightJambOriginalWidth = w
+          } else {
+            leftJambOriginalWidth = w
+          }
         }
       }
     }
   })
 
-  // PASS 2: Calculate PRE-SCALED stile widths
+  // PASS 2: Calculate PRE-SCALED stile and jamb widths
   const leftStileWidth = leftStileOriginalWidth * scaling.scaleY
   const rightStileWidth = rightStileOriginalWidth * scaling.scaleY
+  const leftJambWidth = leftJambOriginalWidth * scaling.scaleY
+  const rightJambWidth = rightJambOriginalWidth * scaling.scaleY
 
   console.log(`Original stile widths: left=${leftStileOriginalWidth}, right=${rightStileOriginalWidth}`)
   console.log(`Scaled stile widths: left=${leftStileWidth}, right=${rightStileWidth}`)
+  console.log(`Original jamb widths: left=${leftJambOriginalWidth}, right=${rightJambOriginalWidth}`)
+  console.log(`Scaled jamb widths: left=${leftJambWidth}, right=${rightJambWidth}`)
 
   // PASS 3: Process all elements
   const transforms: ElementTransform[] = []
@@ -759,7 +855,9 @@ export function processParametricSVG(
       originalDimensions,
       mode,
       leftStileWidth,
-      rightStileWidth
+      rightStileWidth,
+      leftJambWidth,
+      rightJambWidth
     )
     transforms.push(elementTransform)
   })

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { X, Trash2 } from 'lucide-react'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface Customer {
   id: number
@@ -48,6 +49,11 @@ export default function LeadForm({ isOpen, onClose, onSubmit, onDelete, defaultS
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [loadingCustomers, setLoadingCustomers] = useState(false)
+
+  // Handle Escape key to close modal
+  useEscapeKey([
+    { isOpen: isOpen, isBlocked: isSubmitting || isDeleting, onClose: onClose },
+  ])
 
   // Initialize form data when lead is provided (edit mode)
   useEffect(() => {

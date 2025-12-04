@@ -8,6 +8,7 @@ import LeadPipeline from '../crm/LeadPipeline'
 import CustomerForm from '../crm/CustomerForm'
 import LeadForm from '../crm/LeadForm'
 import { useAppStore } from '@/stores/appStore'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface CRMStats {
   totalCustomers: number
@@ -38,6 +39,13 @@ export default function CRMView() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [editingCustomer, setEditingCustomer] = useState(null)
   const [customerFormMode, setCustomerFormMode] = useState('create')
+
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: showLeadForm, onClose: () => setShowLeadForm(false) },
+    { isOpen: showCustomerForm, onClose: () => setShowCustomerForm(false) },
+    { isOpen: customerDetailView && selectedCustomerId !== null, onClose: () => { setCustomerDetailView(false); setSelectedCustomerId(null) } },
+  ])
 
   useEffect(() => {
     async function fetchCRMData() {

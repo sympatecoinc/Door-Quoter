@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, ChevronDown, Sparkles, Brush, Tag } from 'lucide-react'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 import CategoryDetailView from './CategoryDetailView'
 
 interface MasterPart {
@@ -216,6 +217,22 @@ export default function MasterPartsView() {
   // Category Form State
   const [categoryName, setCategoryName] = useState('')
   const [categoryDescription, setCategoryDescription] = useState('')
+
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: showAddPartForm, isBlocked: creating, onClose: () => setShowAddPartForm(false) },
+    { isOpen: editingPart !== null, isBlocked: updating, onClose: () => setEditingPart(null) },
+    { isOpen: showAddRuleForm, isBlocked: creatingRule, onClose: () => setShowAddRuleForm(false) },
+    { isOpen: editingRule !== null, isBlocked: updatingRule, onClose: () => setEditingRule(null) },
+    { isOpen: showAddPricingForm, isBlocked: creatingPricingRule, onClose: () => setShowAddPricingForm(false) },
+    { isOpen: editingPricingRule !== null, isBlocked: updatingPricingRule, onClose: () => setEditingPricingRule(null) },
+    { isOpen: showAddGlassForm, isBlocked: creatingGlass, onClose: () => setShowAddGlassForm(false) },
+    { isOpen: editingGlassType !== null, isBlocked: updatingGlass, onClose: () => setEditingGlassType(null) },
+    { isOpen: showAddFinish, onClose: () => setShowAddFinish(false) },
+    { isOpen: editingFinishId !== null, onClose: () => setEditingFinishId(null) },
+    { isOpen: showAddCategoryForm, isBlocked: creatingCategory, onClose: () => setShowAddCategoryForm(false) },
+    { isOpen: editingCategory !== null, isBlocked: updatingCategory, onClose: () => setEditingCategory(null) },
+  ])
 
   // Filter and sort master parts
   const filteredMasterParts = masterParts

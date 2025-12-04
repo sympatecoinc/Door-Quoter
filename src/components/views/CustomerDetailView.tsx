@@ -56,6 +56,13 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: showDeleteConfirm, isBlocked: deleting, onClose: () => setShowDeleteConfirm(false) },
+    { isOpen: selectedProjectId !== null, onClose: () => setSelectedProjectId(null) },
+    { isOpen: showEditForm, onClose: () => setShowEditForm(false) },
+  ])
+
   useEffect(() => {
     // Always reset to overview tab when component mounts or customer changes
     setCustomerDetailTab('overview')

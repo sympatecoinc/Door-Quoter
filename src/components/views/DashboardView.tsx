@@ -10,6 +10,7 @@ import LeadPipeline from '@/components/crm/LeadPipeline'
 import CustomerForm from '@/components/crm/CustomerForm'
 import LeadForm from '@/components/crm/LeadForm'
 import { useAppStore } from '@/stores/appStore'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface DashboardStats {
   totalProjects: number
@@ -73,6 +74,13 @@ export default function DashboardView() {
   const [editingCustomer, setEditingCustomer] = useState(null)
   const [customerFormMode, setCustomerFormMode] = useState('create')
   const [showCRMStats, setShowCRMStats] = useState(true)
+
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: showLeadForm, onClose: () => setShowLeadForm(false) },
+    { isOpen: showCustomerForm, onClose: () => setShowCustomerForm(false) },
+    { isOpen: customerDetailView && selectedCustomerId !== null, onClose: () => { setCustomerDetailView(false); setSelectedCustomerId(null) } },
+  ])
 
   useEffect(() => {
     // Load CRM stats visibility setting
