@@ -27,6 +27,7 @@ export type ComponentType =
   | 'grow'         // Scales both dimensions (glass areas)
   | 'fixed'        // No scaling (hardware, text)
   | 'glassstop'    // Scales with glass opening
+  | 'trim'         // Outer trim that spans full width
 
 export type ViewMode = 'elevation' | 'plan'
 
@@ -41,6 +42,11 @@ function isInStaticLayer(element: Element, mode: ViewMode): boolean {
   let current: Element | null = element
 
   while (current) {
+    // Check if current node has getAttribute (is an Element, not Document/etc)
+    if (typeof current.getAttribute !== 'function') {
+      break
+    }
+
     const id = (current.getAttribute('id') || '').toLowerCase()
     const className = (current.getAttribute('class') || '').toLowerCase()
 
@@ -48,11 +54,16 @@ function isInStaticLayer(element: Element, mode: ViewMode): boolean {
       return true
     }
 
-    // Move up to parent
-    current = current.parentNode as Element | null
-
     // Stop at SVG root
-    if (current && current.tagName === 'svg') {
+    if (current.tagName === 'svg') {
+      break
+    }
+
+    // Move up to parent - only if it's an Element
+    const parent = current.parentNode
+    if (parent && parent.nodeType === 1) { // nodeType 1 = Element
+      current = parent as Element
+    } else {
       break
     }
   }
@@ -73,7 +84,10 @@ export function detectComponentType(element: Element, mode?: ViewMode): Componen
 
   // Check for static on element itself (plan view only)
   if (mode === 'plan' && combined.includes('static')) return 'fixed'
-  if (combined.includes('glassstop')) return 'glassstop'
+  // Check for glasstop (both spellings: "glasstop" and "glassstop")
+  if (combined.includes('glasstop')) return 'glassstop'
+  // Check for trim elements (outer frame that spans full width)
+  if (combined.includes('trim')) return 'trim'
   if (combined.includes('vertical') || combined.includes('stile')) return 'vertical'
   if (combined.includes('horizontal') || combined.includes('rail')) return 'horizontal'
   if (combined.includes('grow') || combined.includes('glass-area')) return 'grow'
@@ -162,24 +176,26 @@ export function scaleElement(
         // Stiles: Keep constant WIDTH, position at edges of SCALED coordinate system
         if (mode === 'elevation') {
           const origViewBoxWidth = originalDimensions.width
-          const origViewBoxHeight = originalDimensions.height
           const targetPixelWidth = origViewBoxWidth * scaling.scaleX
-          const targetPixelHeight = origViewBoxHeight * scaling.scaleY  // Scale height too!
+
+          // Scale Y position and height to preserve relationship with trims
+          const scaledY = y * scaling.scaleY
+          const scaledHeight = height * scaling.scaleY
 
           if (x > origViewBoxWidth * 0.5) {
             // Right stile - position at right edge of SCALED width
             element.setAttribute('x', (targetPixelWidth - rightStileWidth).toString())
-            element.setAttribute('y', '0')
+            element.setAttribute('y', scaledY.toString())
             element.setAttribute('width', rightStileWidth.toString())
-            element.setAttribute('height', targetPixelHeight.toString())
-            console.log(`  → Vertical (RIGHT): x → ${targetPixelWidth - rightStileWidth} (scaled width ${targetPixelWidth}), width → ${rightStileWidth}, height → ${targetPixelHeight}`)
+            element.setAttribute('height', scaledHeight.toString())
+            console.log(`  → Vertical (RIGHT): x → ${targetPixelWidth - rightStileWidth}, y → ${scaledY}, width → ${rightStileWidth}, height → ${scaledHeight}`)
           } else {
             // Left stile - stays at x=0
             element.setAttribute('x', '0')
-            element.setAttribute('y', '0')
+            element.setAttribute('y', scaledY.toString())
             element.setAttribute('width', leftStileWidth.toString())
-            element.setAttribute('height', targetPixelHeight.toString())
-            console.log(`  → Vertical (LEFT): x=0, width → ${leftStileWidth}, height → ${targetPixelHeight}`)
+            element.setAttribute('height', scaledHeight.toString())
+            console.log(`  → Vertical (LEFT): x=0, y → ${scaledY}, width → ${leftStileWidth}, height → ${scaledHeight}`)
           }
         } else if (mode === 'plan') {
           // Plan view: Scale width with scaleX
@@ -278,8 +294,8 @@ export function scaleElement(
             const glassStopHeight = height * scaling.scaleY
 
             if (x > origViewBoxWidth * 0.5) {
-              // Right-side glassstop - position at inner edge of right stile (left side of stile)
-              const newX = targetPixelWidth - rightStileWidth
+              // Right-side glassstop - position in glass area, ending at inner edge of right stile
+              const newX = targetPixelWidth - rightStileWidth - glassStopWidth
 
               element.setAttribute('x', newX.toString())
               element.setAttribute('y', glassStopY.toString())
@@ -287,8 +303,8 @@ export function scaleElement(
               element.setAttribute('height', glassStopHeight.toString())
               console.log(`  → Glassstop-V (RIGHT): x → ${newX}, y → ${glassStopY}, width → ${glassStopWidth}, height → ${glassStopHeight}`)
             } else {
-              // Left-side glassstop - position at inner edge of left stile (right side of stile)
-              const newX = leftStileWidth - glassStopWidth
+              // Left-side glassstop - position in glass area, starting at inner edge of left stile
+              const newX = leftStileWidth
 
               element.setAttribute('x', newX.toString())
               element.setAttribute('y', glassStopY.toString())
@@ -324,8 +340,51 @@ export function scaleElement(
         }
         break
 
+      case 'trim':
+        // Outer trim elements: span full width, scale y position and height
+        if (mode === 'elevation') {
+          const origViewBoxWidth = originalDimensions.width
+          const targetPixelWidth = origViewBoxWidth * scaling.scaleX
+          const targetPixelHeight = originalDimensions.height * scaling.scaleY
+
+          // Scale Y position and height proportionally
+          const scaledY = y * scaling.scaleY
+          const scaledHeight = height * scaling.scaleY
+
+          // Trim spans full width (from edge to edge)
+          element.setAttribute('x', '0')
+          element.setAttribute('y', scaledY.toString())
+          element.setAttribute('width', targetPixelWidth.toString())
+          element.setAttribute('height', scaledHeight.toString())
+          console.log(`  → Trim: x → 0, y → ${scaledY}, width → ${targetPixelWidth}, height → ${scaledHeight}`)
+        } else if (mode === 'plan') {
+          // Plan view: Scale width to full scaled width
+          const origViewBoxWidth = originalDimensions.width
+          const targetPixelWidth = origViewBoxWidth * scaling.scaleX
+
+          element.setAttribute('width', targetPixelWidth.toString())
+          console.log(`  → Trim PLAN: width → ${targetPixelWidth}`)
+        }
+        break
+
       case 'fixed':
-        console.log(`  → Fixed: no changes`)
+        // Fixed elements: keep size constant, but in plan view translate right-side elements
+        if (mode === 'plan') {
+          const origViewBoxWidth = originalDimensions.width
+          const midpoint = origViewBoxWidth / 2
+          const widthDelta = (origViewBoxWidth * scaling.scaleX) - origViewBoxWidth
+
+          if (x > midpoint) {
+            // Right-side fixed element - translate to new right edge
+            const newX = x + widthDelta
+            element.setAttribute('x', newX.toString())
+            console.log(`  → Fixed PLAN (RIGHT): x → ${newX} (translated by ${widthDelta})`)
+          } else {
+            console.log(`  → Fixed PLAN (LEFT): no changes`)
+          }
+        } else {
+          console.log(`  → Fixed: no changes`)
+        }
         break
     }
   }
@@ -339,45 +398,227 @@ export function scaleElement(
 
 /**
  * Plan view specific adjustments (SERVER-SIDE compatible version)
- * Adjusts positioning of right-side elements in plan view
+ * Handles groups with semantic IDs/classes for proper scaling behavior
+ *
+ * Plan View SVG Structure:
+ * - left-jamb: Static elements at left edge, no transform
+ * - grow: Center elements, scaled horizontally around left edge
+ * - mullions: Evenly distributed markers, scaled around center
+ * - right-jamb: Static elements at right edge, translated by widthDelta
  */
 function adjustPlanViewElements(svgElement: Element, scaling: ComponentScaling, originalDimensions: ScalingDimensions) {
-  // Move right-side elements to maintain proper positioning
-  // Look for elements with id containing "1" or class containing "right"
-  const elements: Element[] = []
-  const collectElements = (node: Element) => {
-    const id = node.getAttribute('id') || ''
-    const className = node.getAttribute('class') || ''
-    if (id.includes('1') || className.includes('right')) {
-      elements.push(node)
+  // Get the original viewBox width for calculating translations
+  const origWidth = originalDimensions.width
+  const targetWidth = origWidth * scaling.scaleX
+  const widthDelta = targetWidth - origWidth
+  const midpoint = origWidth / 2
+
+  console.log(`Plan view adjustment: origWidth=${origWidth}, targetWidth=${targetWidth}, widthDelta=${widthDelta}, midpoint=${midpoint}`)
+
+  // Helper function to get the X bounds (min and max) of a group's content
+  const getGroupXBounds = (group: Element): { min: number; max: number } => {
+    let minX = Infinity
+    let maxX = -Infinity
+
+    const processElement = (elem: Element) => {
+      if (elem.tagName === 'rect') {
+        const x = parseFloat(elem.getAttribute('x') || '0')
+        const width = parseFloat(elem.getAttribute('width') || '0')
+        minX = Math.min(minX, x)
+        maxX = Math.max(maxX, x + width)
+      }
+      if (elem.tagName === 'path') {
+        const d = elem.getAttribute('d') || ''
+        // Extract all x coordinates from path data (M, L, H commands and coordinate pairs)
+        const matches = d.match(/[MLH]\s*([0-9.-]+)|,\s*([0-9.-]+)\s+([0-9.-]+)/g)
+        if (matches) {
+          matches.forEach(match => {
+            const nums = match.match(/[0-9.-]+/g)
+            if (nums) {
+              nums.forEach(num => {
+                const val = parseFloat(num)
+                // Sanity check: positive and within reasonable SVG bounds (allow up to 10000 for high-res SVGs)
+                if (!isNaN(val) && val > 0 && val < 10000) {
+                  minX = Math.min(minX, val)
+                  maxX = Math.max(maxX, val)
+                }
+              })
+            }
+          })
+        }
+      }
+      // Recurse into child elements
+      for (let i = 0; i < elem.childNodes.length; i++) {
+        const child = elem.childNodes[i]
+        if (child.nodeType === 1) {
+          processElement(child as Element)
+        }
+      }
+    }
+
+    for (let i = 0; i < group.childNodes.length; i++) {
+      const child = group.childNodes[i]
+      if (child.nodeType === 1) {
+        processElement(child as Element)
+      }
+    }
+
+    return {
+      min: minX === Infinity ? 0 : minX,
+      max: maxX === -Infinity ? origWidth : maxX
+    }
+  }
+
+  // Helper function to get the left X position of a group's content
+  const getGroupXPosition = (group: Element): number => {
+    return getGroupXBounds(group).min
+  }
+
+  // First pass: Find the grow group and calculate where its right edge will end up
+  // This is needed to properly position the right-jamb
+  let growScaledRightEdge = origWidth + widthDelta  // Default to far right if no grow group
+  let growOriginalRightEdge = origWidth
+
+  const findGrowGroup = (node: Element) => {
+    if (node.tagName !== 'g') return
+    const id = (node.getAttribute('id') || '').toLowerCase()
+    if (id === 'grow') {
+      const bounds = getGroupXBounds(node)
+      growOriginalRightEdge = bounds.max
+      // Calculate where the right edge ends up after scaling from pivot at bounds.min
+      const pivotX = bounds.min
+      growScaledRightEdge = pivotX + (bounds.max - pivotX) * scaling.scaleX
+      console.log(`  Pre-scan: grow group right edge will move from ${bounds.max.toFixed(1)} to ${growScaledRightEdge.toFixed(1)}`)
     }
     for (let i = 0; i < node.childNodes.length; i++) {
       const child = node.childNodes[i]
+      if (child.nodeType === 1) findGrowGroup(child as Element)
+    }
+  }
+
+  // Run pre-scan to find grow group dimensions
+  for (let i = 0; i < svgElement.childNodes.length; i++) {
+    const child = svgElement.childNodes[i]
+    if (child.nodeType === 1) findGrowGroup(child as Element)
+  }
+
+  // Find and process groups with semantic IDs
+  const processGroup = (node: Element) => {
+    // Skip non-group elements
+    if (node.tagName !== 'g') {
+      return
+    }
+
+    const id = (node.getAttribute('id') || '').toLowerCase()
+    const className = (node.getAttribute('class') || '').toLowerCase()
+
+    console.log(`  Processing group: id="${id}", class="${className}"`)
+
+    // Right jamb: translate to maintain connection with scaled grow group
+    if (id === 'right-jamb' || className.includes('translate-horizontal')) {
+      const bounds = getGroupXBounds(node)
+
+      // Calculate translation to keep right-jamb attached to the scaled grow group
+      // The original gap between grow's right edge and right-jamb's left edge should be preserved
+      const originalGap = bounds.min - growOriginalRightEdge
+      const rightJambTranslation = growScaledRightEdge + originalGap - bounds.min
+
+      const currentTransform = node.getAttribute('transform') || ''
+      const translateTransform = `translate(${rightJambTranslation}, 0)`
+      const newTransform = currentTransform ?
+        `${currentTransform} ${translateTransform}` :
+        translateTransform
+      node.setAttribute('transform', newTransform)
+      console.log(`  → Right jamb: original gap to grow = ${originalGap.toFixed(1)}, translated by ${rightJambTranslation.toFixed(1)}`)
+      return // Don't process children
+    }
+
+    // Grow group: apply scale transform around the group's left edge
+    // This stretches the glass/grow area to fill the new width while keeping static elements fixed
+    if (id === 'grow' || className.includes('stretch-horizontal')) {
+      const bounds = getGroupXBounds(node)
+      console.log(`  ★★★ GROW GROUP FOUND ★★★`)
+      console.log(`  → Grow group bounds: ${bounds.min.toFixed(1)} to ${bounds.max.toFixed(1)}`)
+
+      // The grow group should stretch horizontally to fill the new width
+      // Use a scale transform around the left edge of the group content
+      const pivotX = bounds.min
+
+      // Apply: translate to pivot, scale, translate back
+      const currentTransform = node.getAttribute('transform') || ''
+      const scaleTransform = `translate(${pivotX}, 0) scale(${scaling.scaleX}, 1) translate(${-pivotX}, 0)`
+      const newTransform = currentTransform ?
+        `${currentTransform} ${scaleTransform}` :
+        scaleTransform
+      node.setAttribute('transform', newTransform)
+
+      console.log(`  → Applied scale transform: ${scaleTransform}`)
+      console.log(`  → Pivot at x=${pivotX}, scaleX=${scaling.scaleX}`)
+      console.log(`  → Right edge moves from ${bounds.max.toFixed(1)} to ${growScaledRightEdge.toFixed(1)}`)
+      return // Don't process children
+    }
+
+    // Mullions: apply scale transform centered on the SVG midpoint
+    // Mullions are evenly distributed across the door, so they scale proportionally
+    if (id === 'mullions' || className.includes('reposition-horizontal')) {
+      const bounds = getGroupXBounds(node)
+      console.log(`  → Mullions bounds: ${bounds.min.toFixed(1)} to ${bounds.max.toFixed(1)}`)
+
+      // Scale mullions around the center of the door width
+      // This keeps them evenly distributed as the door expands
+      const centerX = origWidth / 2
+
+      const currentTransform = node.getAttribute('transform') || ''
+      const scaleTransform = `translate(${centerX}, 0) scale(${scaling.scaleX}, 1) translate(${-centerX}, 0)`
+      const newTransform = currentTransform ?
+        `${currentTransform} ${scaleTransform}` :
+        scaleTransform
+      node.setAttribute('transform', newTransform)
+
+      console.log(`  → Applied mullion scale transform: ${scaleTransform}`)
+      return // Don't process children
+    }
+
+    // Static groups: determine if left or right based on content position
+    if (id.includes('static') || className.includes('static') || id === 'left-jamb' || id === 'left-detail') {
+      const groupX = getGroupXPosition(node)
+      console.log(`  → Static group "${id}" at x=${groupX}`)
+
+      // If this static group is on the right side of the SVG, translate it
+      // Use the same translation as the right-jamb to maintain alignment
+      if (groupX > midpoint) {
+        const originalGap = groupX - growOriginalRightEdge
+        const staticTranslation = growScaledRightEdge + originalGap - groupX
+
+        const currentTransform = node.getAttribute('transform') || ''
+        const translateTransform = `translate(${staticTranslation}, 0)`
+        const newTransform = currentTransform ?
+          `${currentTransform} ${translateTransform}` :
+          translateTransform
+        node.setAttribute('transform', newTransform)
+        console.log(`  → RIGHT static group translated by ${staticTranslation.toFixed(1)}`)
+      } else {
+        console.log(`  → LEFT static group - no transform`)
+      }
+      return // Don't process children
+    }
+
+    // Recurse into child elements
+    for (let i = 0; i < node.childNodes.length; i++) {
+      const child = node.childNodes[i]
       if (child.nodeType === 1) { // Element node
-        collectElements(child as Element)
+        processGroup(child as Element)
       }
     }
   }
-  collectElements(svgElement)
 
-  elements.forEach(element => {
-    if (element.tagName === 'rect') {
-      const currentX = parseFloat(element.getAttribute('x') || '0')
-      const newX = currentX * scaling.scaleX
-      const translateX = newX - currentX
-
-      if (Math.abs(translateX) > 0.1) {
-        // Apply position adjustment via transform
-        const currentTransform = element.getAttribute('transform') || ''
-        const positionTransform = `translate(${translateX}, 0)`
-        const newTransform = currentTransform ?
-          `${currentTransform} ${positionTransform}` :
-          positionTransform
-        element.setAttribute('transform', newTransform)
-        console.log(`  → Adjusted plan view element ${element.getAttribute('id')}: translateX = ${translateX}`)
-      }
+  // Start processing from SVG root
+  for (let i = 0; i < svgElement.childNodes.length; i++) {
+    const child = svgElement.childNodes[i]
+    if (child.nodeType === 1) { // Element node
+      processGroup(child as Element)
     }
-  })
+  }
 }
 
 /**
@@ -527,19 +768,34 @@ export function processParametricSVG(
   if (mode === 'plan') {
     console.log('→ Applying plan view adjustments')
     adjustPlanViewElements(svgElement, scaling, originalDimensions)
+
+    // For plan views with group transforms:
+    // The transforms (scale, translate) expand the content beyond original viewBox
+    // We need to expand the viewBox to match the new content bounds
+    // viewBox expands to targetPixelWidth to show all transformed content
+    const finalViewBoxWidth = targetPixelWidth
+    const finalViewBoxHeight = originalDimensions.height
+
+    console.log(`Plan view final viewBox: 0 0 ${finalViewBoxWidth} ${finalViewBoxHeight}`)
+    console.log(`Plan view final width/height: ${targetPixelWidth} x ${originalDimensions.height}`)
+
+    svgElement.setAttribute('viewBox', `0 0 ${finalViewBoxWidth} ${finalViewBoxHeight}`)
+    svgElement.setAttribute('width', targetPixelWidth.toString())
+    svgElement.setAttribute('height', originalDimensions.height.toString())
+    svgElement.setAttribute('preserveAspectRatio', 'none')
+  } else {
+    // FINAL STEP: Set viewBox to match the scaled coordinate system
+    // Elements are now positioned in scaled pixel space, so viewBox must match
+    const finalViewBoxWidth = targetPixelWidth
+    const finalViewBoxHeight = targetPixelHeight
+
+    console.log(`Final viewBox: 0 0 ${finalViewBoxWidth} ${finalViewBoxHeight}`)
+    console.log(`Final width/height attributes: ${targetPixelWidth} x ${targetPixelHeight}`)
+
+    svgElement.setAttribute('viewBox', `0 0 ${finalViewBoxWidth} ${finalViewBoxHeight}`)
+    svgElement.setAttribute('width', targetPixelWidth.toString())
+    svgElement.setAttribute('height', targetPixelHeight.toString())
   }
-
-  // FINAL STEP: Set viewBox to match the scaled coordinate system
-  // Elements are now positioned in scaled pixel space, so viewBox must match
-  const finalViewBoxWidth = targetPixelWidth
-  const finalViewBoxHeight = targetPixelHeight
-
-  console.log(`Final viewBox: 0 0 ${finalViewBoxWidth} ${finalViewBoxHeight}`)
-  console.log(`Final width/height attributes: ${targetPixelWidth} x ${targetPixelHeight}`)
-
-  svgElement.setAttribute('viewBox', `0 0 ${finalViewBoxWidth} ${finalViewBoxHeight}`)
-  svgElement.setAttribute('width', targetPixelWidth.toString())
-  svgElement.setAttribute('height', targetPixelHeight.toString())
 
   // Convert back to string
   const serializer = new XMLSerializer()

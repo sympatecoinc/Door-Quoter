@@ -44,17 +44,22 @@ export async function renderSvgToPng(
     console.log('→ Original SVG dimensions from viewBox:', originalDimensions.width, 'x', originalDimensions.height)
     console.log('→ Original aspect ratio:', originalAspectRatio.toFixed(4))
 
-    // For plan views, render at high resolution maintaining original aspect ratio
+    // For plan views, render the (already processed) SVG at high resolution
     if (options.mode === 'plan') {
-      console.log('→ Plan view: rendering at high resolution with natural aspect ratio')
+      console.log('→ Plan view: rendering processed SVG at high resolution')
 
-      // Render at 300px width, height scales proportionally
-      // This maintains the original narrow aspect ratio (wide but short)
+      // Calculate render width based on target width in inches
+      // Use pixels per inch similar to elevation views for crisp output
+      const pixelsPerInch = 48  // Higher resolution for plan views (they're small)
+      const renderWidth = Math.max(2400, options.width * pixelsPerInch)
+
+      console.log('→ Plan view render width:', renderWidth, 'pixels')
+
       const resvg = new Resvg(svgString, {
         background: options.background || '#ffffff',
         fitTo: {
           mode: 'width',
-          value: 300
+          value: Math.round(renderWidth)
         },
         font: {
           loadSystemFonts: true
@@ -66,7 +71,6 @@ export async function renderSvgToPng(
 
       console.log('→ PNG render successful, size:', pngBuffer.length, 'bytes')
       console.log('→ PNG dimensions:', pngData.width, 'x', pngData.height)
-      console.log('→ PNG aspect ratio maintained:', (pngData.height / pngData.width).toFixed(4))
 
       const base64 = pngBuffer.toString('base64')
 
@@ -88,7 +92,7 @@ export async function renderSvgToPng(
     console.log('  Elements processed:', transforms.length)
 
     // Step 2: Render scaled SVG to PNG using resvg
-    const pixelsPerInch = 8  // Reasonable resolution for shop drawings
+    const pixelsPerInch = 24  // High resolution for crisp shop drawings
     const pngWidth = Math.round(options.width * pixelsPerInch)
     const pngHeight = Math.round(options.height * pixelsPerInch)
 

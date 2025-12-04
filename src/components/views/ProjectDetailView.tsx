@@ -11,6 +11,7 @@ import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy,
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 import DrawingViewer from '../ui/DrawingViewer'
 import { ProjectStatus, STATUS_CONFIG } from '@/types'
 
@@ -219,6 +220,22 @@ export default function ProjectDetailView() {
     }
     // Otherwise stay on projects menu (will show projects list)
   }
+
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: showDeleteModal, isBlocked: isDeleting, onClose: () => { setShowDeleteModal(false); setDeletingOpeningId(null); setDeletingOpeningName('') } },
+    { isOpen: showBulkDeleteModal, isBlocked: isBulkDeleting, onClose: () => setShowBulkDeleteModal(false) },
+    { isOpen: showSyncConfirmation, isBlocked: syncingPrices, onClose: () => setShowSyncConfirmation(false) },
+    { isOpen: showArchiveModal, onClose: () => setShowArchiveModal(false) },
+    { isOpen: showDuplicateModal, isBlocked: isDuplicating, onClose: () => { setShowDuplicateModal(false); setDuplicatingOpeningId(null) } },
+    { isOpen: showEditOpeningModal, isBlocked: isUpdatingOpening, onClose: () => { setShowEditOpeningModal(false); setEditingOpeningId(null) } },
+    { isOpen: showComponentEdit, onClose: () => setShowComponentEdit(false) },
+    { isOpen: showAddComponent, onClose: () => setShowAddComponent(false) },
+    { isOpen: showAddOpening, isBlocked: addingOpening, onClose: () => setShowAddOpening(false) },
+    { isOpen: showDrawingViewer, onClose: () => setShowDrawingViewer(false) },
+    { isOpen: showBOM, onClose: () => setShowBOM(false) },
+    { isOpen: showEditModal, isBlocked: saving, onClose: () => setShowEditModal(false) },
+  ])
 
   // Check if pricing needs sync and generate details
   useEffect(() => {

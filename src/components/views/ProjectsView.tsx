@@ -5,6 +5,7 @@ import { Plus, Eye, Edit, Trash, Download } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { PricingMode, ProjectStatus, STATUS_CONFIG } from '@/types'
 import StatusBadge from '@/components/projects/StatusBadge'
 

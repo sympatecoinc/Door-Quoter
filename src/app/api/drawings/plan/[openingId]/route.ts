@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { renderSvgToPng, isSvgFile, decodeSvgData } from '@/lib/svg-renderer'
+import { processParametricSVG } from '@/lib/parametric-svg-server'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ openingId: string }> }) {
   try {
@@ -138,7 +139,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           let displayWidth = panel.width
           let displayHeight = panel.width * 0.1  // Default fallback
 
-          // If SVG, render to PNG server-side
+          // If SVG, process parametrically and render to PNG server-side
           if (isSvgFile(fileName)) {
             try {
               console.log(`Processing SVG plan view for panel ${panel.id}: ${fileName}`)
@@ -146,35 +147,43 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               // Decode SVG data
               const svgString = decodeSvgData(imageData)
 
-              // Render to PNG at 300x300 square
-              console.log(`Calling renderSvgToPng for SVG plan view`)
-              imageData = await renderSvgToPng(svgString, {
-                width: panel.width,
-                height: 0,
-                mode: 'plan'
-              })
-
-              // SVG plan views: width scales, height stays FIXED (doesn't scale)
-              // Calculate the constant height based on the original 36" width aspect ratio
+              // Extract original dimensions for calculating display height
               const viewBoxMatch = svgString.match(/viewBox="([^"]+)"/)
+              let svgWidthPx = 91.3353  // Default based on fixed panel SVG
+              let svgHeightPx = 4.6139
+
               if (viewBoxMatch) {
                 const viewBox = viewBoxMatch[1].split(/\s+/).map(parseFloat)
-                const svgWidthPx = viewBox[2]
-                const svgHeightPx = viewBox[3]
-
-                // Calculate the natural height at 36" width
-                const originalWidthInches = 36
-                const aspectRatio = svgHeightPx / svgWidthPx
-                const constantHeightInches = originalWidthInches * aspectRatio
-
-                displayWidth = panel.width
-                displayHeight = constantHeightInches  // Stays constant regardless of width
-
-                console.log(`SVG display: width scales to ${displayWidth}", height CONSTANT at ${displayHeight.toFixed(2)}"`)
-              } else {
-                displayWidth = panel.width
-                displayHeight = 2.16  // Fallback constant height
+                svgWidthPx = viewBox[2]
+                svgHeightPx = viewBox[3]
               }
+
+              // Calculate the constant height based on the original aspect ratio
+              // SVG is designed at 36" width, so calculate what the height represents
+              const originalWidthInches = 36
+              const aspectRatio = svgHeightPx / svgWidthPx
+              const constantHeightInches = originalWidthInches * aspectRatio
+
+              displayWidth = panel.width
+              displayHeight = constantHeightInches  // Stays constant regardless of width
+
+              console.log(`SVG original: ${svgWidthPx}px x ${svgHeightPx}px`)
+              console.log(`SVG display: width scales to ${displayWidth}", height CONSTANT at ${displayHeight.toFixed(2)}"`)
+
+              // Process SVG with parametric scaling (handles group transforms)
+              console.log(`Applying parametric transforms for plan view`)
+              const { scaledSVG } = processParametricSVG(svgString, {
+                width: panel.width,
+                height: constantHeightInches
+              }, 'plan')
+
+              // Render the processed SVG to PNG
+              console.log(`Rendering processed SVG to PNG`)
+              imageData = await renderSvgToPng(scaledSVG, {
+                width: panel.width,
+                height: constantHeightInches,
+                mode: 'plan'
+              })
 
               console.log(`✓ Successfully rendered SVG plan view to PNG for panel ${panel.id}`)
               console.log(`  PNG data length: ${imageData.length} characters`)

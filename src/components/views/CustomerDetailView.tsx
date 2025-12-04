@@ -9,6 +9,7 @@ import CustomerProjects from '../crm/CustomerProjects'
 import CustomerForm from '../crm/CustomerForm'
 import ProjectDetailModal from './ProjectDetailModal'
 import { useAppStore } from '@/stores/appStore'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface Contact {
   id: number

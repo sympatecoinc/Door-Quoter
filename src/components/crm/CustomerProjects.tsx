@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Edit, Calendar, DollarSign, Briefcase, CheckCircle, Clock, AlertCircle, Archive, FileText, X, Download, List, Search, Trash2 } from 'lucide-react'
 import { ProjectStatus, STATUS_CONFIG, LEAD_STATUSES, PROJECT_STATUSES } from '@/types'
 import { useAppStore } from '@/stores/appStore'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 import LeadForm from './LeadForm'
 
 interface Project {

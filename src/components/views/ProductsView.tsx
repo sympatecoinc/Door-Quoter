@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Package, Tag, Settings, Edit2, Trash2, Save, X, Copy } from 'lucide-react'
 import ProductDetailView from './ProductDetailView'
 import CategoryDetailView from './CategoryDetailView'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface Product {
   id: number
