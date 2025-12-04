@@ -40,7 +40,7 @@ interface CustomerProjectsProps {
 }
 
 export default function CustomerProjects({ customerId, customer, onProjectClick, showFullHeader = false, filterType = 'all' }: CustomerProjectsProps) {
-  const { setSelectedProjectId, setCurrentMenu, setCustomerDetailTab, setAutoOpenAddOpening } = useAppStore()
+  const { setSelectedProjectId, setCurrentMenu, setAutoOpenAddOpening } = useAppStore()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [showLeadForm, setShowLeadForm] = useState(false)
@@ -118,14 +118,17 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   }
 
   const handleCreateLead = async (leadData: any) => {
-    const response = await fetch('/api/leads', {
+    // Create a Project with STAGING status (lead phase) instead of a separate Lead record
+    const response = await fetch('/api/projects', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        ...leadData,
-        customerId: customerId
+        name: leadData.title,
+        customerId: customerId,
+        status: ProjectStatus.STAGING,
+        dueDate: leadData.expectedCloseDate || null
       }),
     })
 
@@ -196,7 +199,6 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
 
   const handleViewOpenings = (projectId: number, autoOpenModal: boolean = false) => {
     // Set the project ID and navigate to project detail view
-    setCustomerDetailTab('projects') // Remember we're on the Projects tab
     setSelectedProjectId(projectId)
     setCurrentMenu('projects')
     if (autoOpenModal) {
@@ -206,7 +208,6 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
 
   const handleViewQuote = (projectId: number) => {
     // Set the project ID and navigate to quote view
-    setCustomerDetailTab('projects') // Remember we're on the Projects tab
     setSelectedProjectId(projectId)
     setCurrentMenu('quote')
   }

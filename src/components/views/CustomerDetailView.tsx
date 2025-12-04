@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Edit, Mail, Phone, MapPin, Building, Calendar, Tag, FileText, Users, Briefcase, TrendingUp, Trash2 } from 'lucide-react'
+import { X, Edit, Mail, Phone, MapPin, Building, Calendar, Tag, FileText, Users, Trash2 } from 'lucide-react'
 import CustomerNotes from '../crm/CustomerNotes'
 import CustomerFiles from '../crm/CustomerFiles'
-import CustomerLeads from '../crm/CustomerLeads'
-import CustomerProjects from '../crm/CustomerProjects'
 import CustomerContacts from '../crm/CustomerContacts'
+import CustomerProjects from '../crm/CustomerProjects'
 import CustomerForm from '../crm/CustomerForm'
 import ProjectDetailModal from './ProjectDetailModal'
 import { useAppStore } from '@/stores/appStore'
@@ -38,8 +37,6 @@ interface Customer {
   createdAt: string
   updatedAt: string
   contacts: Contact[]
-  leads: any[]
-  projects: any[]
   activities: any[]
 }
 
@@ -132,9 +129,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     { key: 'overview', label: 'Overview', icon: Building },
     { key: 'contacts', label: 'Contacts', icon: Users },
     { key: 'notes', label: 'Notes', icon: FileText },
-    { key: 'files', label: 'Files', icon: Tag },
-    { key: 'leads', label: 'Leads', icon: TrendingUp },
-    { key: 'projects', label: 'Projects', icon: Briefcase }
+    { key: 'files', label: 'Files', icon: Tag }
   ]
 
   const renderTabContent = () => {
@@ -150,10 +145,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         return <CustomerNotes customerId={customerId} />
       case 'files':
         return <CustomerFiles customerId={customerId} />
-      case 'leads':
-        return <CustomerLeads customerId={customerId} customer={customer} />
-      case 'projects':
-        return <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={true} />
       default:
         return (
           <div className="space-y-8">
@@ -281,45 +272,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                   <p className="text-gray-900 mt-1 whitespace-pre-wrap">{customer.notes}</p>
                 </div>
               )}
-            </div>
-
-            {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center">
-                  <div className="p-3 bg-blue-100 rounded-lg">
-                    <TrendingUp className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Active Leads</p>
-                    <p className="text-2xl font-bold text-gray-900">{customer.leads.length}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center">
-                  <div className="p-3 bg-green-100 rounded-lg">
-                    <Briefcase className="w-6 h-6 text-green-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Projects</p>
-                    <p className="text-2xl font-bold text-gray-900">{customer.projects.length}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center">
-                  <div className="p-3 bg-purple-100 rounded-lg">
-                    <Users className="w-6 h-6 text-purple-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Contacts</p>
-                    <p className="text-2xl font-bold text-gray-900">{customer.contacts.length}</p>
-                  </div>
-                </div>
-              </div>
             </div>
 
             {/* Recent Activity */}

@@ -6,13 +6,13 @@ interface AppState {
   selectedProjectId: number | null
   selectedCustomerId: number | null
   customerDetailView: boolean
-  customerDetailTab: 'overview' | 'notes' | 'files' | 'leads' | 'projects'
+  customerDetailTab: 'overview' | 'contacts' | 'notes' | 'files'
   autoOpenAddOpening: boolean
   setCurrentMenu: (menu: MenuOption) => void
   setSelectedProjectId: (id: number | null) => void
   setSelectedCustomerId: (id: number | null) => void
   setCustomerDetailView: (show: boolean) => void
-  setCustomerDetailTab: (tab: 'overview' | 'notes' | 'files' | 'leads' | 'projects') => void
+  setCustomerDetailTab: (tab: 'overview' | 'contacts' | 'notes' | 'files') => void
   setAutoOpenAddOpening: (open: boolean) => void
 }
 

@@ -399,6 +399,22 @@ export default function ProjectDetailView() {
     }
   }
 
+  // Silent refresh - updates project data without showing loading spinner or affecting scroll position
+  async function refreshProject() {
+    if (!selectedProjectId) return
+
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}`)
+      if (response.ok) {
+        const projectData = await response.json()
+        setProject(projectData)
+        return projectData
+      }
+    } catch (error) {
+      console.error('Error refreshing project:', error)
+    }
+  }
+
   async function fetchGlassTypes() {
     try {
       const response = await fetch('/api/glass-types')
@@ -501,7 +517,8 @@ export default function ProjectDetailView() {
       })
 
       if (response.ok) {
-        await fetchProject()
+        // Silent refresh to preserve scroll position
+        await refreshProject()
         showSuccess('Project updated successfully!')
         setShowEditModal(false)
       }
@@ -571,8 +588,8 @@ export default function ProjectDetailView() {
           // Recalculate all opening prices with the new costing method
           await calculateAllOpeningPrices(updatedProject)
 
-          // Refresh project one final time to show updated prices
-          await fetchProject()
+          // Silent refresh to show updated prices without losing scroll position
+          await refreshProject()
 
           showSuccess('Extrusion costing method updated and prices recalculated!')
         }
@@ -612,10 +629,10 @@ export default function ProjectDetailView() {
           finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : ''
         })
         setShowAddOpening(false)
-        
-        // Refetch project data to show the new opening
+
+        // Silent refresh to preserve scroll position
         try {
-          await fetchProject()
+          await refreshProject()
           showSuccess('Opening added successfully!')
         } catch (fetchError) {
           console.error('Error refreshing project data:', fetchError)
@@ -654,7 +671,8 @@ export default function ProjectDetailView() {
       })
 
       if (response.ok) {
-        await fetchProject()
+        // Silent refresh to preserve scroll position
+        await refreshProject()
         setShowDeleteModal(false)
         setDeletingOpeningId(null)
         setDeletingOpeningName('')
@@ -712,7 +730,8 @@ export default function ProjectDetailView() {
 
       if (response.ok) {
         const result = await response.json()
-        await fetchProject()
+        // Silent refresh to preserve scroll position
+        await refreshProject()
         setShowBulkDeleteModal(false)
         setSelectedOpeningIds(new Set())
         showSuccess(`Deleted ${result.deletedCount} opening${result.deletedCount !== 1 ? 's' : ''}`)
@@ -751,7 +770,8 @@ export default function ProjectDetailView() {
       })
 
       if (response.ok) {
-        const updatedProject = await fetchProject()
+        // Use silent refresh to avoid scroll position reset
+        const updatedProject = await refreshProject()
 
         // Recalculate prices since finish color affects extrusion costs
         if (updatedProject) {
@@ -882,8 +902,8 @@ export default function ProjectDetailView() {
       setDuplicateCount('1')
       setAutoIncrement(false)
 
-      // Refresh project data
-      await fetchProject()
+      // Silent refresh to preserve scroll position
+      await refreshProject()
 
       const message = autoIncrement
         ? `Successfully created ${count} duplicate(s) and renamed original`
@@ -900,8 +920,8 @@ export default function ProjectDetailView() {
               })
             }
           }
-          // Refresh once after all calculations
-          await fetchProject()
+          // Silent refresh after all calculations to preserve scroll
+          await refreshProject()
         } catch (calcError) {
           console.error('Error calculating prices:', calcError)
           showError('Openings duplicated but some price calculations failed')
@@ -1021,7 +1041,8 @@ export default function ProjectDetailView() {
           }
         }
 
-        await fetchProject()
+        // Silent refresh to preserve scroll position
+        await refreshProject()
       }
     } catch (error) {
       console.error('Error adding component:', error)
@@ -1094,8 +1115,9 @@ export default function ProjectDetailView() {
             console.error('Error recalculating opening price:', error)
           }
         }
-        
-        await fetchProject()
+
+        // Silent refresh to preserve scroll position
+        await refreshProject()
       }
     } catch (error) {
       console.error('Error deleting component:', error)
@@ -1331,13 +1353,13 @@ export default function ProjectDetailView() {
       }
 
       console.log('Panels reordered successfully:', panelOrders)
-      // Refetch to ensure UI is in sync with database
-      await fetchProject()
+      // Silent refresh to preserve scroll position
+      await refreshProject()
     } catch (error) {
       console.error('Error reordering panels:', error)
       showError('Failed to reorder components')
-      // Revert on error
-      await fetchProject()
+      // Revert on error (silent refresh to preserve scroll)
+      await refreshProject()
     }
   }
 
@@ -2303,8 +2325,8 @@ export default function ProjectDetailView() {
                       }
                     }
 
-                    // Fetch updated project data
-                    await fetchProject()
+                    // Fetch updated project data (silent refresh to preserve scroll)
+                    await refreshProject()
 
                   } catch (error) {
                     console.error('Error updating component:', error)
@@ -2518,7 +2540,8 @@ export default function ProjectDetailView() {
                     )
 
                     await Promise.allSettled(calculations)
-                    await fetchProject()
+                    // Silent refresh to preserve scroll position
+                    await refreshProject()
                     showSuccess('All pricing synced successfully!')
                     setShowSyncConfirmation(false)
                   } catch (error) {
