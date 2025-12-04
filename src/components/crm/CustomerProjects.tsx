@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Edit, Calendar, DollarSign, Briefcase, CheckCircle, Clock, AlertCircle, Archive, FileText, X, Download, List, Search, Trash2 } from 'lucide-react'
 import { ProjectStatus, STATUS_CONFIG, LEAD_STATUSES, PROJECT_STATUSES } from '@/types'
 import { useAppStore } from '@/stores/appStore'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 import LeadForm from './LeadForm'
 
 interface Project {
@@ -40,7 +41,7 @@ interface CustomerProjectsProps {
 }
 
 export default function CustomerProjects({ customerId, customer, onProjectClick, showFullHeader = false, filterType = 'all' }: CustomerProjectsProps) {
-  const { setSelectedProjectId, setCurrentMenu, setCustomerDetailTab, setAutoOpenAddOpening } = useAppStore()
+  const { setSelectedProjectId, setCurrentMenu, setAutoOpenAddOpening } = useAppStore()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [showLeadForm, setShowLeadForm] = useState(false)
@@ -83,6 +84,14 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   const [deleteConfirm, setDeleteConfirm] = useState<{ projectId: number; projectName: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: deleteConfirm !== null, isBlocked: deleting, onClose: () => setDeleteConfirm(null) },
+    { isOpen: showBOM, onClose: () => setShowBOM(false) },
+    { isOpen: showLeadForm, onClose: () => setShowLeadForm(false) },
+    { isOpen: editingProject !== null, onClose: () => setEditingProject(null) },
+  ])
+
   useEffect(() => {
     fetchProjects()
     fetchPricingModes()
@@ -118,14 +127,17 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   }
 
   const handleCreateLead = async (leadData: any) => {
-    const response = await fetch('/api/leads', {
+    // Create a Project with STAGING status (lead phase) instead of a separate Lead record
+    const response = await fetch('/api/projects', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        ...leadData,
-        customerId: customerId
+        name: leadData.title,
+        customerId: customerId,
+        status: ProjectStatus.STAGING,
+        dueDate: leadData.expectedCloseDate || null
       }),
     })
 
@@ -196,7 +208,6 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
 
   const handleViewOpenings = (projectId: number, autoOpenModal: boolean = false) => {
     // Set the project ID and navigate to project detail view
-    setCustomerDetailTab('projects') // Remember we're on the Projects tab
     setSelectedProjectId(projectId)
     setCurrentMenu('projects')
     if (autoOpenModal) {
@@ -206,7 +217,6 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
 
   const handleViewQuote = (projectId: number) => {
     // Set the project ID and navigate to quote view
-    setCustomerDetailTab('projects') // Remember we're on the Projects tab
     setSelectedProjectId(projectId)
     setCurrentMenu('quote')
   }

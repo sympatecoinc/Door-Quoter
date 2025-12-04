@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { X, ArrowLeft, Calendar, User, FileText, Users, Truck, ShoppingCart, Download, Factory } from 'lucide-react'
 import ProjectContacts from '../projects/ProjectContacts'
 import ProjectNotes from '../projects/ProjectNotes'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface Project {
   id: number
@@ -149,6 +150,11 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
   const [loadingCutList, setLoadingCutList] = useState(false)
   const [batchSizes, setBatchSizes] = useState<Record<string, number>>({})
   const [downloadingProduct, setDownloadingProduct] = useState<string | null>(null)
+
+  // Handle Escape key to close modal
+  useEscapeKey([
+    { isOpen: true, isBlocked: saving, onClose: onBack },
+  ])
 
   useEffect(() => {
     fetchProject()

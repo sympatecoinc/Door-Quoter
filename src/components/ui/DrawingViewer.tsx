@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { X, FileText, Eye, FileDown } from 'lucide-react'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface DrawingData {
   elevation_image?: string
@@ -55,6 +56,11 @@ export default function DrawingViewer({ openingId, openingNumber, isOpen, onClos
   const [selectedElevationIndex, setSelectedElevationIndex] = useState(0)
   const [selectedPlanViewIndex, setSelectedPlanViewIndex] = useState(0)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
+
+  // Handle Escape key to close modal
+  useEscapeKey([
+    { isOpen: isOpen, isBlocked: isExportingPdf, onClose: onClose },
+  ])
 
   const generateElevationDrawing = async () => {
     setLoading(true)

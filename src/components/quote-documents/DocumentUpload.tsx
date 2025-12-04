@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Upload, FileUp, X } from 'lucide-react'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface Product {
   id: number
@@ -36,6 +37,11 @@ export default function DocumentUpload({ onUploadComplete, isOpen, onClose }: Do
   const [products, setProducts] = useState<Product[]>([])
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Handle Escape key to close modal
+  useEscapeKey([
+    { isOpen: isOpen, isBlocked: uploading, onClose: onClose },
+  ])
 
   useEffect(() => {
     const fetchProducts = async () => {

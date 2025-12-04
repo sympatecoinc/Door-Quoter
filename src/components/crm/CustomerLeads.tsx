@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Edit, DollarSign, Calendar, TrendingUp, Target, Tag, Eye } from 'lucide-react'
 import LeadForm from './LeadForm'
 import { ProjectStatus } from '@/types'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface Lead {
   id: number
@@ -45,6 +46,13 @@ export default function CustomerLeads({ customerId, customer }: CustomerLeadsPro
   } | null>(null)
   const [creatingProject, setCreatingProject] = useState(false)
   const [projectDueDate, setProjectDueDate] = useState('')
+
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: wonLeadConfirm !== null, isBlocked: creatingProject, onClose: () => setWonLeadConfirm(null) },
+    { isOpen: showDetails !== null, onClose: () => setShowDetails(null) },
+    { isOpen: showLeadForm, onClose: () => { setShowLeadForm(false); setEditingLead(null) } },
+  ])
 
   useEffect(() => {
     fetchLeads()

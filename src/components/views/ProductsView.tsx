@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Package, Tag, Settings, Edit2, Trash2, Save, X, Copy } from 'lucide-react'
 import ProductDetailView from './ProductDetailView'
 import CategoryDetailView from './CategoryDetailView'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface Product {
   id: number
@@ -59,6 +60,13 @@ export default function ProductsView() {
   const [showArchiveDialog, setShowArchiveDialog] = useState<{product: Product, projects: string[]} | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: showArchiveDialog !== null, onClose: () => setShowArchiveDialog(null) },
+    { isOpen: editingProduct !== null, isBlocked: updating, onClose: () => setEditingProduct(null) },
+    { isOpen: showCreateForm, onClose: () => setShowCreateForm(false) },
+  ])
 
   useEffect(() => {
     loadData()

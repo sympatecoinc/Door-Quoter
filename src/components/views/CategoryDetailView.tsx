@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Plus, ArrowLeft, Trash2, Search } from 'lucide-react'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface Category {
   id: number
@@ -45,6 +46,11 @@ export default function CategoryDetailView({
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedMasterParts, setSelectedMasterParts] = useState<any[]>([])
   const [creating, setCreating] = useState(false)
+
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: showAddOptionForm, isBlocked: creating, onClose: () => setShowAddOptionForm(false) },
+  ])
 
   // Fetch detailed category data and available master parts
   useEffect(() => {

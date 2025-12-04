@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Plus, ArrowLeft, Tag, Wrench, Link, X, Edit2, Trash2, Save, Upload, Image as ImageIcon, ChevronDown, ChevronRight, Star } from 'lucide-react'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 // Debounce utility function
 function debounce(func: (...args: any[]) => void, wait: number) {
@@ -519,6 +520,10 @@ export default function ProductDetailView({
   const [newPlanViewFile, setNewPlanViewFile] = useState<File | null>(null)
   const [newPlanViewOrientation, setNewPlanViewOrientation] = useState<string>('bottom')
   const [uploadingPlanView, setUploadingPlanView] = useState(false)
+  const [showDeletePlanViewModal, setShowDeletePlanViewModal] = useState(false)
+  const [deletingPlanViewId, setDeletingPlanViewId] = useState<number | null>(null)
+  const [deletingPlanViewName, setDeletingPlanViewName] = useState('')
+  const [isDeletingPlanView, setIsDeletingPlanView] = useState(false)
   const [showElevationUpload, setShowElevationUpload] = useState(false)
   const [elevationFile, setElevationFile] = useState<File | null>(null)
   const [uploadingElevation, setUploadingElevation] = useState(false)
@@ -561,6 +566,17 @@ export default function ProductDetailView({
     fetchProductDetails()
     fetchPlanViews()
   }, [product.id])
+
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: showDeletePlanViewModal, isBlocked: isDeletingPlanView, onClose: () => { setShowDeletePlanViewModal(false); setDeletingPlanViewId(null); setDeletingPlanViewName('') } },
+    { isOpen: showGlassModal, onClose: () => setShowGlassModal(false) },
+    { isOpen: showPlanViewForm, isBlocked: uploadingPlanView, onClose: () => { setShowPlanViewForm(false); setNewPlanViewName(''); setNewPlanViewFile(null) } },
+    { isOpen: showElevationUpload, isBlocked: uploadingElevation, onClose: () => { setShowElevationUpload(false); setElevationFile(null) } },
+    { isOpen: showLinkCategoryForm, isBlocked: linking, onClose: () => setShowLinkCategoryForm(false) },
+    { isOpen: showEditModal, isBlocked: saving, onClose: () => setShowEditModal(false) },
+    { isOpen: editingPart !== null, isBlocked: updating, onClose: () => setEditingPart(null) },
+  ])
 
   async function handleSaveProduct() {
     if (!editName.trim()) return
@@ -824,13 +840,18 @@ export default function ProductDetailView({
     }
   }
 
-  async function handleDeletePlanView(planViewId: number, planViewName: string) {
-    if (!confirm(`Are you sure you want to delete the plan view "${planViewName}"?`)) {
-      return
-    }
+  function handleDeletePlanView(planViewId: number, planViewName: string) {
+    setDeletingPlanViewId(planViewId)
+    setDeletingPlanViewName(planViewName)
+    setShowDeletePlanViewModal(true)
+  }
 
+  async function confirmDeletePlanView() {
+    if (!deletingPlanViewId) return
+
+    setIsDeletingPlanView(true)
     try {
-      const response = await fetch(`/api/products/${product.id}/plan-views/${planViewId}`, {
+      const response = await fetch(`/api/products/${product.id}/plan-views/${deletingPlanViewId}`, {
         method: 'DELETE'
       })
 
@@ -841,13 +862,17 @@ export default function ProductDetailView({
           const data = await planViewsResponse.json()
           setPlanViews(data)
         }
-        alert('Plan view deleted successfully!')
+        setShowDeletePlanViewModal(false)
+        setDeletingPlanViewId(null)
+        setDeletingPlanViewName('')
       } else {
         alert('Failed to delete plan view')
       }
     } catch (error) {
       console.error('Error deleting plan view:', error)
       alert('Error deleting plan view')
+    } finally {
+      setIsDeletingPlanView(false)
     }
   }
 
@@ -2365,7 +2390,7 @@ export default function ProductDetailView({
                 </button>
                 <button
                   type="submit"
-                  disabled={uploadingPlanView || !newPlanViewName.trim() || !newPlanViewFile}
+                  disabled={uploadingPlanView || (product.productType !== 'FIXED_PANEL' && !newPlanViewName.trim()) || !newPlanViewFile}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
                 >
                   {uploadingPlanView ? (
@@ -2382,6 +2407,45 @@ export default function ProductDetailView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Plan View Confirmation Modal */}
+      {showDeletePlanViewModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              Delete Plan View
+            </h3>
+
+            <p className="text-sm text-gray-600 mb-6">
+              Are you sure you want to delete the plan view "<strong>{deletingPlanViewName}</strong>"?
+            </p>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeletePlanViewModal(false)
+                  setDeletingPlanViewId(null)
+                  setDeletingPlanViewName('')
+                }}
+                disabled={isDeletingPlanView}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeletePlanView}
+                disabled={isDeletingPlanView}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+              >
+                {isDeletingPlanView && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                )}
+                {isDeletingPlanView ? 'Deleting...' : 'Delete Plan View'}
+              </button>
+            </div>
           </div>
         </div>
       )}

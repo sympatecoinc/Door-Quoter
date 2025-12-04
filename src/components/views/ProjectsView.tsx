@@ -5,6 +5,7 @@ import { Plus, Eye, Edit, Trash, Download } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { PricingMode, ProjectStatus, STATUS_CONFIG } from '@/types'
 import StatusBadge from '@/components/projects/StatusBadge'
 
@@ -45,6 +46,12 @@ export default function ProjectsView() {
   const [pricingModes, setPricingModes] = useState<PricingMode[]>([])
   const [showArchived, setShowArchived] = useState(false)
   const { setSelectedProjectId } = useAppStore()
+
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: editingProject !== null, isBlocked: updating, onClose: () => setEditingProject(null) },
+    { isOpen: showCreateForm, isBlocked: creating, onClose: () => setShowCreateForm(false) },
+  ])
 
   useEffect(() => {
     fetchProjects()

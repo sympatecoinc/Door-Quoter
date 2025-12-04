@@ -5,6 +5,7 @@ import { ArrowLeft, Download, FileText, Printer, Ruler, Palette, Eye, Wrench, Do
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 import QuoteAttachmentsManager from '../quote/QuoteAttachmentsManager'
 
 interface QuoteItem {
@@ -81,6 +82,11 @@ export default function QuoteView() {
       setCurrentMenu('projects')
     }
   }
+
+  // Handle Escape key to close modals one at a time
+  useEscapeKey([
+    { isOpen: showExcludedPartsModal, onClose: () => setShowExcludedPartsModal(false) },
+  ])
 
   useEffect(() => {
     if (selectedProjectId) {
