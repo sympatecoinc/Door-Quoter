@@ -60,7 +60,7 @@ export async function PUT(
     }
 
     const data = await request.json()
-    const { name, description, markup, extrusionMarkup, hardwareMarkup, glassMarkup, discount, isDefault } = data
+    const { name, description, markup, extrusionMarkup, hardwareMarkup, glassMarkup, discount, isDefault, extrusionCostingMethod } = data
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
@@ -105,7 +105,8 @@ export async function PUT(
         hardwareMarkup: parseFloat(hardwareMarkup) || 0,
         glassMarkup: parseFloat(glassMarkup) || 0,
         discount: parseFloat(discount) || 0,
-        isDefault: Boolean(isDefault)
+        isDefault: Boolean(isDefault),
+        extrusionCostingMethod: ['PERCENTAGE_BASED', 'HYBRID'].includes(extrusionCostingMethod) ? extrusionCostingMethod : 'FULL_STOCK'
       }
     })
 

@@ -29,6 +29,7 @@ export type ComponentType =
   | 'glassstop'    // Scales with glass opening
   | 'trim'         // Outer trim that spans full width
   | 'jamb'         // Outer jamb frame elements
+  | 'origin'       // Hardware placement origin points (scale coordinates only)
 
 export type ViewMode = 'elevation' | 'plan'
 
@@ -82,6 +83,9 @@ export function detectComponentType(element: Element, mode?: ViewMode): Componen
   const id = (element.getAttribute('id') || '').toLowerCase()
   const className = (element.getAttribute('class') || '').toLowerCase()
   const combined = `${id} ${className}`.toLowerCase()
+
+  // Check for origin points (hardware placement markers) - IDs starting with "origin-"
+  if (id.startsWith('origin-')) return 'origin'
 
   // Check for static on element itself (plan view only)
   if (mode === 'plan' && combined.includes('static')) return 'fixed'
@@ -463,6 +467,26 @@ export function scaleElement(
           }
         } else {
           console.log(`  → Fixed: no changes`)
+        }
+        break
+
+      case 'origin':
+        // Origin points: scale coordinates proportionally with door dimensions
+        // These are hardware placement markers - only position matters, not size
+        if (mode === 'elevation') {
+          // Scale both x and y coordinates proportionally
+          const scaledX = x * scaling.scaleX
+          const scaledY = y * scaling.scaleY
+
+          element.setAttribute('x', scaledX.toString())
+          element.setAttribute('y', scaledY.toString())
+          console.log(`  → Origin: x → ${scaledX}, y → ${scaledY}`)
+        } else if (mode === 'plan') {
+          // Plan view: scale x coordinate only (width changes, depth stays constant)
+          const scaledX = x * scaling.scaleX
+
+          element.setAttribute('x', scaledX.toString())
+          console.log(`  → Origin PLAN: x → ${scaledX}`)
         }
         break
     }

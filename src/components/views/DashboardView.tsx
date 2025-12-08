@@ -101,10 +101,11 @@ export default function DashboardView() {
           const dashboardData = await response.json()
 
           // Fetch CRM stats from multiple endpoints
+          // Note: Use high limit to get all leads for accurate conversion rate calculation
           const [customersRes, leadsRes, allLeadsRes] = await Promise.all([
             fetch('/api/customers?limit=1'),
             fetch('/api/leads?limit=1'),
-            fetch('/api/leads')
+            fetch('/api/leads?limit=10000')
           ])
 
           if (customersRes.ok && leadsRes.ok && allLeadsRes.ok) {
@@ -226,13 +227,37 @@ export default function DashboardView() {
   }
 
   const handleLeadSubmit = async (leadData: any) => {
-    const response = await fetch('/api/leads', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(leadData),
-    })
-    if (!response.ok) {
-      throw new Error('Failed to create lead')
+    // If the stage is a pipeline stage (Staging, Approved, Revise, Quote Sent), create a Project
+    // so it appears in the Sales Pipeline. Otherwise, create a Lead in the CRM.
+    const pipelineStages = ['STAGING', 'APPROVED', 'REVISE', 'QUOTE_SENT']
+    const isPipelineStage = pipelineStages.includes(leadData.stage)
+
+    if (isPipelineStage) {
+      // Create a Project for pipeline stages
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: leadData.title,
+          status: leadData.stage,
+          customerId: leadData.customerId
+        }),
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create project')
+      }
+    } else {
+      // Create a Lead for non-pipeline stages (e.g., 'New')
+      const response = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(leadData),
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create lead')
+      }
     }
     setRefreshKey(prev => prev + 1)
   }

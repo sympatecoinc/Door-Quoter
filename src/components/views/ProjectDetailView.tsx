@@ -4,10 +4,9 @@ import { useState, useEffect } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 
 // Direction constants matching SHOPGEN
-const SWING_DIRECTIONS = ["Left In", "Right In", "Left Out", "Right Out"]
 const SLIDING_DIRECTIONS = ["Left", "Right"]
 const CORNER_DIRECTIONS = ["Up", "Down"]
-import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive, X } from 'lucide-react'
+import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive, X, ChevronDown, Package } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
@@ -22,7 +21,6 @@ interface Project {
   extrusionCostingMethod?: string
   excludedPartNumbers?: string[]
   pricingModeId?: number | null
-  taxRate?: number
   createdAt: string
   updatedAt: string
   openings: Opening[]
@@ -139,7 +137,6 @@ export default function ProjectDetailView() {
   const [showArchiveModal, setShowArchiveModal] = useState(false)
   const [editName, setEditName] = useState('')
   const [editStatus, setEditStatus] = useState('')
-  const [editTaxRate, setEditTaxRate] = useState('0')
   const [editPricingModeId, setEditPricingModeId] = useState<number | null>(null)
   const [pricingModes, setPricingModes] = useState<any[]>([])
   const [showDuplicateModal, setShowDuplicateModal] = useState(false)
@@ -153,6 +150,10 @@ export default function ProjectDetailView() {
   const [deletingOpeningId, setDeletingOpeningId] = useState<number | null>(null)
   const [deletingOpeningName, setDeletingOpeningName] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteComponentModal, setShowDeleteComponentModal] = useState(false)
+  const [deletingComponentId, setDeletingComponentId] = useState<number | null>(null)
+  const [deletingComponentName, setDeletingComponentName] = useState('')
+  const [isDeletingComponent, setIsDeletingComponent] = useState(false)
   const [showEditOpeningModal, setShowEditOpeningModal] = useState(false)
   const [editingOpeningId, setEditingOpeningId] = useState<number | null>(null)
   const [editingOpeningName, setEditingOpeningName] = useState('')
@@ -190,11 +191,13 @@ export default function ProjectDetailView() {
   const [editingGlassType, setEditingGlassType] = useState<string>('')
   const [editingDirection, setEditingDirection] = useState<string>('')
   const [editingProductType, setEditingProductType] = useState<string>('')
+  const [editingPlanViews, setEditingPlanViews] = useState<any[]>([])
   const [currentPanelId, setCurrentPanelId] = useState<number | null>(null)
   const [showBOM, setShowBOM] = useState(false)
   const [bomData, setBomData] = useState<any>(null)
   const [loadingBOM, setLoadingBOM] = useState(false)
   const [bomViewMode, setBomViewMode] = useState<'byOpening' | 'summary'>('byOpening')
+  const [showBOMDownloadMenu, setShowBOMDownloadMenu] = useState(false)
   const [summaryData, setSummaryData] = useState<any>(null)
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [showDrawingViewer, setShowDrawingViewer] = useState(false)
@@ -224,6 +227,7 @@ export default function ProjectDetailView() {
   // Handle Escape key to close modals one at a time
   useEscapeKey([
     { isOpen: showDeleteModal, isBlocked: isDeleting, onClose: () => { setShowDeleteModal(false); setDeletingOpeningId(null); setDeletingOpeningName('') } },
+    { isOpen: showDeleteComponentModal, isBlocked: isDeletingComponent, onClose: () => { setShowDeleteComponentModal(false); setDeletingComponentId(null); setDeletingComponentName('') } },
     { isOpen: showBulkDeleteModal, isBlocked: isBulkDeleting, onClose: () => setShowBulkDeleteModal(false) },
     { isOpen: showSyncConfirmation, isBlocked: syncingPrices, onClose: () => setShowSyncConfirmation(false) },
     { isOpen: showArchiveModal, onClose: () => setShowArchiveModal(false) },
@@ -528,8 +532,7 @@ export default function ProjectDetailView() {
         body: JSON.stringify({
           name: editName,
           status: editStatus,
-          pricingModeId: editPricingModeId,
-          taxRate: parseFloat(editTaxRate)
+          pricingModeId: editPricingModeId
         })
       })
 
@@ -1100,6 +1103,7 @@ export default function ProjectDetailView() {
           setSelectedOptions(JSON.parse(componentData.subOptionSelections || '{}'))
           setIncludedOptions(JSON.parse(componentData.includedOptions || '[]'))
           setEditingProductType(productData.productType || '')
+          setEditingPlanViews(productData.planViews || [])
           setShowComponentEdit(true)
         }
       }
@@ -1109,15 +1113,22 @@ export default function ProjectDetailView() {
     }
   }
 
-  async function handleDeleteComponent(panelId: number) {
-    if (!confirm('Are you sure you want to delete this component?')) return
-    
+  function handleDeleteComponent(panelId: number, componentName: string) {
+    setDeletingComponentId(panelId)
+    setDeletingComponentName(componentName)
+    setShowDeleteComponentModal(true)
+  }
+
+  async function confirmDeleteComponent() {
+    if (!deletingComponentId) return
+
+    setIsDeletingComponent(true)
     try {
       // Get the panel info to find the opening ID for price recalculation
-      const panel = project?.openings.flatMap(o => o.panels).find(p => p.id === panelId)
-      const openingId = panel?.openingId || project?.openings.find(o => o.panels.some(p => p.id === panelId))?.id
-      
-      const response = await fetch(`/api/panels/${panelId}`, {
+      const panel = project?.openings.flatMap(o => o.panels).find(p => p.id === deletingComponentId)
+      const openingId = panel?.openingId || project?.openings.find(o => o.panels.some(p => p.id === deletingComponentId))?.id
+
+      const response = await fetch(`/api/panels/${deletingComponentId}`, {
         method: 'DELETE'
       })
 
@@ -1135,10 +1146,17 @@ export default function ProjectDetailView() {
 
         // Silent refresh to preserve scroll position
         await refreshProject()
+
+        // Close the modal
+        setShowDeleteComponentModal(false)
+        setDeletingComponentId(null)
+        setDeletingComponentName('')
       }
     } catch (error) {
       console.error('Error deleting component:', error)
-      alert('Error deleting component')
+      showError('Error deleting component')
+    } finally {
+      setIsDeletingComponent(false)
     }
   }
 
@@ -1168,6 +1186,7 @@ export default function ProjectDetailView() {
 
   async function handleDownloadBOMCSV() {
     if (!selectedProjectId) return
+    setShowBOMDownloadMenu(false)
 
     try {
       const response = await fetch(`/api/projects/${selectedProjectId}/bom/csv`)
@@ -1198,6 +1217,42 @@ export default function ProjectDetailView() {
     } catch (error) {
       console.error('Error downloading BOM CSV:', error)
       showError('Error downloading BOM CSV')
+    }
+  }
+
+  async function handleDownloadUniqueBOMsZip() {
+    if (!selectedProjectId) return
+    setShowBOMDownloadMenu(false)
+
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}/bom/csv?unique=true`)
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+
+        // Get filename from Content-Disposition header or use default
+        const contentDisposition = response.headers.get('Content-Disposition')
+        let filename = 'unique-boms.zip'
+        if (contentDisposition && contentDisposition.includes('filename=')) {
+          filename = contentDisposition.split('filename=')[1].replace(/"/g, '')
+        }
+
+        link.setAttribute('download', filename)
+        link.style.visibility = 'hidden'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+
+        showSuccess('Unique BOMs ZIP downloaded successfully!')
+      } else {
+        showError('Failed to download unique BOMs')
+      }
+    } catch (error) {
+      console.error('Error downloading unique BOMs:', error)
+      showError('Error downloading unique BOMs')
     }
   }
 
@@ -1430,7 +1485,6 @@ export default function ProjectDetailView() {
                   setEditName(project.name)
                   setEditStatus(project.status)
                   setEditPricingModeId(project.pricingModeId || null)
-                  setEditTaxRate((project.taxRate || 0).toString())
                   setShowEditModal(true)
                 }}
                 className="ml-3 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -1467,9 +1521,11 @@ export default function ProjectDetailView() {
                   ? 'bg-green-100 text-green-800'
                   : project.status === 'Archive'
                   ? 'bg-orange-100 text-orange-800'
+                  : project.status === 'QUOTE_ACCEPTED'
+                  ? 'bg-red-100 text-red-700'
                   : 'bg-gray-100 text-gray-800'
               }`}>
-                {project.status}
+                {project.status === 'QUOTE_ACCEPTED' ? 'Quote Accepted' : project.status}
               </span>
               <span className="ml-4 text-gray-600">
                 {project._count.openings} openings • Created {new Date(project.createdAt).toLocaleDateString()}
@@ -1686,7 +1742,7 @@ export default function ProjectDetailView() {
                                 <Settings className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleDeleteComponent(panel.id)}
+                                onClick={() => handleDeleteComponent(panel.id, panel.componentInstance!.product.name)}
                                 className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                 title="Delete Component"
                               >
@@ -1802,18 +1858,8 @@ export default function ProjectDetailView() {
                     const productId = parseInt(e.target.value)
                     setSelectedProductId(productId)
 
-                    // Set default direction to first plan view name if available
-                    const product = products.find(p => p.id === productId)
-                    if (product?.planViews && product.planViews.length > 0) {
-                      const firstPlanViewName = product.planViews[0].name
-                      if (product.productType === 'SWING_DOOR') {
-                        setSwingDirection(firstPlanViewName)
-                      } else if (product.productType === 'SLIDING_DOOR') {
-                        setSlidingDirection(firstPlanViewName)
-                      }
-                    }
-
                     // Load hardware options for the selected product
+                    const product = products.find(p => p.id === productId)
                     if (product?.productSubOptions && product.productSubOptions.length > 0) {
                       setAddComponentOptions(product.productSubOptions)
                       // Pre-select standard options
@@ -1827,6 +1873,11 @@ export default function ProjectDetailView() {
                     } else {
                       setAddComponentOptions([])
                       setAddComponentSelectedOptions({})
+                    }
+
+                    // Set swing direction to first plan view name if available
+                    if (product?.productType === 'SWING_DOOR' && product.planViews?.length > 0) {
+                      setSwingDirection(product.planViews[0].name)
                     }
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
@@ -1951,14 +2002,20 @@ export default function ProjectDetailView() {
               {/* Direction Selection - Show for Swing, Sliding, and Corner */}
               {selectedProductId && (() => {
                 const selectedProduct = products.find(p => p.id === selectedProductId)
-                const availablePlanViews = selectedProduct?.planViews || []
-                const planViewNames = availablePlanViews.map((pv: any) => pv.name)
 
                 if (selectedProduct?.productType === 'SWING_DOOR') {
-                  // Only show if product has plan views
-                  if (planViewNames.length === 0) {
-                    return null
+                  const planViewOptions = selectedProduct.planViews || []
+
+                  if (planViewOptions.length === 0) {
+                    return (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                        <p className="text-sm text-yellow-800">
+                          No elevation views have been added to this product. Please add elevation views in the product settings to enable direction selection.
+                        </p>
+                      </div>
+                    )
                   }
+
                   return (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
@@ -1967,19 +2024,15 @@ export default function ProjectDetailView() {
                         onChange={(e) => setSwingDirection(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                       >
-                        {planViewNames.map((direction: string) => (
-                          <option key={direction} value={direction}>
-                            {direction}
+                        {planViewOptions.map((planView: any) => (
+                          <option key={planView.id} value={planView.name}>
+                            {planView.name}
                           </option>
                         ))}
                       </select>
                     </div>
                   )
                 } else if (selectedProduct?.productType === 'SLIDING_DOOR') {
-                  // Only show if product has plan views
-                  if (planViewNames.length === 0) {
-                    return null
-                  }
                   return (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
@@ -1988,7 +2041,7 @@ export default function ProjectDetailView() {
                         onChange={(e) => setSlidingDirection(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                       >
-                        {planViewNames.map((direction: string) => (
+                        {SLIDING_DIRECTIONS.map((direction) => (
                           <option key={direction} value={direction}>
                             {direction}
                           </option>
@@ -2189,21 +2242,29 @@ export default function ProjectDetailView() {
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">
                   {editingProductType === 'SWING_DOOR' ? 'Swing Direction' : 'Sliding Direction'}
                 </h3>
-                <select
-                  value={editingDirection}
-                  onChange={(e) => setEditingDirection(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                >
-                  {editingProductType === 'SWING_DOOR' ? (
-                    SWING_DIRECTIONS.map((dir) => (
-                      <option key={dir} value={dir}>{dir}</option>
-                    ))
-                  ) : (
-                    SLIDING_DIRECTIONS.map((dir) => (
-                      <option key={dir} value={dir}>{dir}</option>
-                    ))
-                  )}
-                </select>
+                {editingProductType === 'SWING_DOOR' && editingPlanViews.length === 0 ? (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <p className="text-sm text-yellow-800">
+                      No elevation views have been added to this product. Please add elevation views in the product settings.
+                    </p>
+                  </div>
+                ) : (
+                  <select
+                    value={editingDirection}
+                    onChange={(e) => setEditingDirection(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  >
+                    {editingProductType === 'SWING_DOOR' ? (
+                      editingPlanViews.map((planView) => (
+                        <option key={planView.id} value={planView.name}>{planView.name}</option>
+                      ))
+                    ) : (
+                      SLIDING_DIRECTIONS.map((dir) => (
+                        <option key={dir} value={dir}>{dir}</option>
+                      ))
+                    )}
+                  </select>
+                )}
               </div>
             )}
 
@@ -2263,6 +2324,7 @@ export default function ProjectDetailView() {
                   setEditingGlassType('')
                   setEditingDirection('')
                   setEditingProductType('')
+                  setEditingPlanViews([])
                   setCurrentPanelId(null)
                 }}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -2359,6 +2421,7 @@ export default function ProjectDetailView() {
                   setEditingGlassType('')
                   setEditingDirection('')
                   setEditingProductType('')
+                  setEditingPlanViews([])
                   setCurrentPanelId(null)
                 }}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -2599,14 +2662,41 @@ export default function ProjectDetailView() {
                 </div>
                 <div className="flex items-center space-x-3">
                   {bomViewMode === 'byOpening' ? (
-                    <button
-                      onClick={handleDownloadBOMCSV}
-                      disabled={loadingBOM || !bomData}
-                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Download CSV
-                    </button>
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowBOMDownloadMenu(!showBOMDownloadMenu)}
+                        disabled={loadingBOM || !bomData}
+                        className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download
+                        <ChevronDown className="w-4 h-4 ml-2" />
+                      </button>
+                      {showBOMDownloadMenu && (
+                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                          <button
+                            onClick={handleDownloadBOMCSV}
+                            className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center border-b border-gray-100"
+                          >
+                            <FileText className="w-4 h-4 mr-3 text-gray-500" />
+                            <div>
+                              <div className="font-medium">Full BOM (CSV)</div>
+                              <div className="text-xs text-gray-500">All components in one file</div>
+                            </div>
+                          </button>
+                          <button
+                            onClick={handleDownloadUniqueBOMsZip}
+                            className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
+                          >
+                            <Package className="w-4 h-4 mr-3 text-gray-500" />
+                            <div>
+                              <div className="font-medium">Unique BOMs (ZIP)</div>
+                              <div className="text-xs text-gray-500">One CSV per unique component</div>
+                            </div>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <button
                       onClick={handleDownloadSummaryCSV}
@@ -3053,6 +3143,45 @@ export default function ProjectDetailView() {
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                 )}
                 {isDeleting ? 'Deleting...' : 'Delete Opening'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Component Confirmation Modal */}
+      {showDeleteComponentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              Delete Component
+            </h3>
+
+            <p className="text-sm text-gray-600 mb-6">
+              Are you sure you want to delete "<strong>{deletingComponentName}</strong>"?
+            </p>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteComponentModal(false)
+                  setDeletingComponentId(null)
+                  setDeletingComponentName('')
+                }}
+                disabled={isDeletingComponent}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteComponent}
+                disabled={isDeletingComponent}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+              >
+                {isDeletingComponent && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                )}
+                {isDeletingComponent ? 'Deleting...' : 'Delete Component'}
               </button>
             </div>
           </div>

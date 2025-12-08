@@ -194,8 +194,8 @@ npm run dev
 **Navigate to:** `http://localhost:[PORT]` (use the actual port from 7.1)
 
 **Login Credentials:**
-- Email: `kyle.goevert@sympatecoinc.com`
-- Password: `Caramia458`
+- Email: `devtest@sympatecoinc.com`
+- Password: `password`
 
 **Testing Workflow:**
 1. Navigate to the relevant section

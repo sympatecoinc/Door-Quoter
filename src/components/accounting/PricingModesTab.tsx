@@ -17,7 +17,8 @@ export default function PricingModesTab() {
     hardwareMarkup: 0,
     glassMarkup: 0,
     discount: 0,
-    isDefault: false
+    isDefault: false,
+    extrusionCostingMethod: 'FULL_STOCK' as 'FULL_STOCK' | 'PERCENTAGE_BASED' | 'HYBRID'
   })
 
   useEffect(() => {
@@ -49,7 +50,8 @@ export default function PricingModesTab() {
       hardwareMarkup: 0,
       glassMarkup: 0,
       discount: 0,
-      isDefault: false
+      isDefault: false,
+      extrusionCostingMethod: 'FULL_STOCK'
     })
   }
 
@@ -64,7 +66,8 @@ export default function PricingModesTab() {
       hardwareMarkup: mode.hardwareMarkup || 0,
       glassMarkup: mode.glassMarkup || 0,
       discount: mode.discount,
-      isDefault: mode.isDefault
+      isDefault: mode.isDefault,
+      extrusionCostingMethod: (mode.extrusionCostingMethod as 'FULL_STOCK' | 'PERCENTAGE_BASED' | 'HYBRID') || 'FULL_STOCK'
     })
   }
 
@@ -79,7 +82,8 @@ export default function PricingModesTab() {
       hardwareMarkup: 0,
       glassMarkup: 0,
       discount: 0,
-      isDefault: false
+      isDefault: false,
+      extrusionCostingMethod: 'FULL_STOCK'
     })
   }
 
@@ -178,13 +182,7 @@ export default function PricingModesTab() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900">Pricing Modes</h2>
-          <p className="text-sm text-gray-600 mt-1">
-            Create and manage pricing strategies for projects
-          </p>
-        </div>
+      <div className="flex items-center justify-end">
         <button
           onClick={handleCreate}
           className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -363,6 +361,28 @@ export default function PricingModesTab() {
               </div>
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Extrusion Costing Method
+              </label>
+              <select
+                value={formData.extrusionCostingMethod}
+                onChange={(e) => setFormData({ ...formData, extrusionCostingMethod: e.target.value as 'FULL_STOCK' | 'PERCENTAGE_BASED' | 'HYBRID' })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+              >
+                <option value="FULL_STOCK">Full Stock Cost</option>
+                <option value="PERCENTAGE_BASED">Percentage-Based Cost</option>
+                <option value="HYBRID">Hybrid Cost</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                {formData.extrusionCostingMethod === 'HYBRID'
+                  ? 'If ≥50% used: markup on used + cost on remaining. If <50% used: markup on used only'
+                  : formData.extrusionCostingMethod === 'PERCENTAGE_BASED'
+                    ? 'Only charge for % of stock used when >50% remains unused'
+                    : 'Always charge for the full stock length'}
+              </p>
+            </div>
+
             <div className="flex items-center">
               <input
                 type="checkbox"
@@ -432,6 +452,9 @@ export default function PricingModesTab() {
                     Discount
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Extrusion Costing
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Default
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -458,6 +481,17 @@ export default function PricingModesTab() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm text-gray-900">{mode.discount}%</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        mode.extrusionCostingMethod === 'HYBRID'
+                          ? 'bg-purple-100 text-purple-800'
+                          : mode.extrusionCostingMethod === 'PERCENTAGE_BASED'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {mode.extrusionCostingMethod === 'HYBRID' ? 'Hybrid' : mode.extrusionCostingMethod === 'PERCENTAGE_BASED' ? 'Percentage' : 'Full Stock'}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {!mode.isDefault && (

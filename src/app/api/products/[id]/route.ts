@@ -20,6 +20,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             standardOption: true
           }
         },
+        planViews: {
+          orderBy: {
+            displayOrder: 'asc'
+          }
+        },
         _count: {
           select: {
             productBOMs: true,

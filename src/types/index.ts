@@ -217,6 +217,7 @@ export interface PricingMode {
   hardwareMarkup: number
   glassMarkup: number
   discount: number
+  extrusionCostingMethod: 'FULL_STOCK' | 'PERCENTAGE_BASED' | 'HYBRID'
   createdAt: Date
   updatedAt: Date
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { X, Trash2 } from 'lucide-react'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
+import { ProjectStatus, STATUS_CONFIG, LEAD_STATUSES } from '@/types'
 
 interface Customer {
   id: number
@@ -32,7 +33,7 @@ interface LeadFormProps {
   lead?: Lead // Optional: existing lead data for edit mode
 }
 
-export default function LeadForm({ isOpen, onClose, onSubmit, onDelete, defaultStage = 'New', customerId, lead }: LeadFormProps) {
+export default function LeadForm({ isOpen, onClose, onSubmit, onDelete, defaultStage = ProjectStatus.STAGING, customerId, lead }: LeadFormProps) {
   const isEditMode = !!lead
 
   const [formData, setFormData] = useState({
@@ -49,6 +50,7 @@ export default function LeadForm({ isOpen, onClose, onSubmit, onDelete, defaultS
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [loadingCustomers, setLoadingCustomers] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // Handle Escape key to close modal
   useEscapeKey([
@@ -57,6 +59,7 @@ export default function LeadForm({ isOpen, onClose, onSubmit, onDelete, defaultS
 
   // Initialize form data when lead is provided (edit mode)
   useEffect(() => {
+    setError(null)
     if (lead) {
       setFormData({
         customerId: lead.customerId ? String(lead.customerId) : '',
@@ -70,6 +73,13 @@ export default function LeadForm({ isOpen, onClose, onSubmit, onDelete, defaultS
       })
     }
   }, [lead])
+
+  // Sync defaultStage prop with form state when it changes (e.g., when opening from pipeline column)
+  useEffect(() => {
+    if (!lead && defaultStage) {
+      setFormData(prev => ({ ...prev, stage: defaultStage }))
+    }
+  }, [defaultStage, lead])
 
   useEffect(() => {
     if (isOpen && !customerId) {
@@ -94,13 +104,17 @@ export default function LeadForm({ isOpen, onClose, onSubmit, onDelete, defaultS
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
+    setError(null)
     setFormData(prev => ({ ...prev, [name]: value }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.title.trim()) return
-    if (!customerId && !formData.customerId) return
+    if (!customerId && !formData.customerId) {
+      setError('Please select a customer')
+      return
+    }
 
     setIsSubmitting(true)
     try {
@@ -127,6 +141,7 @@ export default function LeadForm({ isOpen, onClose, onSubmit, onDelete, defaultS
       onClose()
     } catch (error) {
       console.error('Error creating lead:', error)
+      setError(error instanceof Error ? error.message : 'Failed to create lead. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -167,6 +182,12 @@ export default function LeadForm({ isOpen, onClose, onSubmit, onDelete, defaultS
             <X className="w-6 h-6" />
           </button>
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Lead Information */}
@@ -273,12 +294,11 @@ export default function LeadForm({ isOpen, onClose, onSubmit, onDelete, defaultS
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="New">New</option>
-                <option value="Qualified">Qualified</option>
-                <option value="Proposal">Proposal</option>
-                <option value="Negotiation">Negotiation</option>
-                <option value="Won">Won</option>
-                <option value="Lost">Lost</option>
+                {LEAD_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {STATUS_CONFIG[status].label}
+                  </option>
+                ))}
               </select>
             </div>
             <div>

@@ -64,6 +64,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       productType: string
       cornerDirection?: string
       isCorner: boolean
+      slidingDirection?: string
     }> = []
 
     for (const panel of opening.panels) {
@@ -101,9 +102,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           // For sliding doors, always use slidingDirection
           const panelDirection = panel.slidingDirection
           console.log(`Looking for sliding door plan view with direction: ${panelDirection}`)
+          // Try exact match first, then fuzzy match (plan view name starts with direction)
           matchingPlanView = product.planViews.find(
             (pv: any) => pv.name === panelDirection
           )
+          if (!matchingPlanView) {
+            // Fuzzy match: plan view name starts with direction (e.g., "Right Sliding" starts with "Right")
+            matchingPlanView = product.planViews.find(
+              (pv: any) => pv.name.startsWith(panelDirection)
+            )
+          }
           if (matchingPlanView) {
             console.log(`Found matching plan view: ${matchingPlanView.name}`)
           } else {
@@ -214,7 +222,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             height: displayHeight,
             productType: product.productType,
             cornerDirection: panel.isCorner ? panel.cornerDirection : undefined,
-            isCorner: panel.isCorner || false
+            isCorner: panel.isCorner || false,
+            slidingDirection: product.productType === 'SLIDING_DOOR' ? panel.slidingDirection : undefined
           }
 
           console.log(`\n=== Adding plan view for panel ${panel.id} ===`)

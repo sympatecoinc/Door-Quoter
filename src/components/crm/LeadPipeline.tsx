@@ -2,77 +2,91 @@
 
 import { useState, useEffect } from 'react'
 import { DollarSign, Calendar, User, Plus, Edit } from 'lucide-react'
+import { ProjectStatus, STATUS_CONFIG, LEAD_STATUSES } from '@/types'
 
-interface Lead {
+interface Project {
   id: number
-  title: string
-  description?: string
-  value?: number
-  probability: number
-  stage: string
-  source?: string
-  expectedCloseDate?: string
+  name: string
+  status: string
   createdAt: string
+  customerId: number
   customer?: {
     id: number
     companyName: string
     contactName?: string
   }
-  activities: any[]
+  openings: {
+    id: number
+    price: number
+  }[]
 }
 
-interface LeadData {
-  leads: Lead[]
-  pagination: {
-    page: number
-    limit: number
-    total: number
-    pages: number
-  }
-}
-
-const stages = [
-  { key: 'New', label: 'New', color: 'bg-gray-100 text-gray-800' },
-  { key: 'Qualified', label: 'Qualified', color: 'bg-blue-100 text-blue-800' },
-  { key: 'Proposal', label: 'Proposal', color: 'bg-yellow-100 text-yellow-800' },
-  { key: 'Negotiation', label: 'Negotiation', color: 'bg-orange-100 text-orange-800' },
-  { key: 'Won', label: 'Won', color: 'bg-green-100 text-green-800' },
-  { key: 'Lost', label: 'Lost', color: 'bg-red-100 text-red-800' }
+// Define the stages we always want to show (excludes REVISE)
+const ALWAYS_VISIBLE_STAGES: ProjectStatus[] = [
+  ProjectStatus.STAGING,
+  ProjectStatus.APPROVED,
+  ProjectStatus.QUOTE_SENT
 ]
+
+// Stages where users cannot create new leads
+const NO_CREATE_STAGES: ProjectStatus[] = [ProjectStatus.REVISE]
+
+// Build stage config from status config
+const buildStageConfig = (status: ProjectStatus) => ({
+  key: status,
+  label: STATUS_CONFIG[status].label,
+  color: `${STATUS_CONFIG[status].bgColor} ${STATUS_CONFIG[status].textColor}`
+})
 
 interface LeadPipelineProps {
   onAddLead?: (stage?: string) => void
+  onProjectClick?: (projectId: number) => void
 }
 
-export default function LeadPipeline({ onAddLead }: LeadPipelineProps) {
-  const [leadsByStage, setLeadsByStage] = useState<Record<string, Lead[]>>({})
+export default function LeadPipeline({ onAddLead, onProjectClick }: LeadPipelineProps) {
+  const [projectsByStage, setProjectsByStage] = useState<Record<string, Project[]>>({})
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<'pipeline' | 'list'>('pipeline')
 
-  const fetchLeads = async () => {
+  // Dynamically compute which stages to show
+  // Always show staging, approved, quote_sent
+  // Only show revise if there are projects in it
+  const stages = (() => {
+    const visibleStages = ALWAYS_VISIBLE_STAGES.map(buildStageConfig)
+
+    // Add revise stage only if there are projects in it
+    const reviseProjects = projectsByStage[ProjectStatus.REVISE] || []
+    if (reviseProjects.length > 0) {
+      visibleStages.push(buildStageConfig(ProjectStatus.REVISE))
+    }
+
+    return visibleStages
+  })()
+
+  const fetchProjects = async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/leads?limit=100')
+      const response = await fetch('/api/projects')
       if (response.ok) {
-        const data: LeadData = await response.json()
+        const projects: Project[] = await response.json()
 
-        // Group leads by stage
-        const grouped = stages.reduce((acc, stage) => {
-          acc[stage.key] = data.leads.filter(lead => lead.stage === stage.key)
+        // Group projects by status (all lead statuses including revise)
+        const grouped = LEAD_STATUSES.reduce((acc, status) => {
+          acc[status] = projects.filter(project => project.status === status)
           return acc
-        }, {} as Record<string, Lead[]>)
+        }, {} as Record<string, Project[]>)
 
-        setLeadsByStage(grouped)
+        setProjectsByStage(grouped)
       }
     } catch (error) {
-      console.error('Error fetching leads:', error)
+      console.error('Error fetching projects:', error)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchLeads()
+    fetchProjects()
   }, [])
 
   const formatCurrency = (amount?: number) => {
@@ -89,12 +103,16 @@ export default function LeadPipeline({ onAddLead }: LeadPipelineProps) {
     return new Date(dateString).toLocaleDateString()
   }
 
+  const getProjectValue = (project: Project) => {
+    return project.openings?.reduce((sum, opening) => sum + (opening.price || 0), 0) || 0
+  }
+
   const getStageTotal = (stage: string) => {
-    return leadsByStage[stage]?.reduce((sum, lead) => sum + (lead.value || 0), 0) || 0
+    return projectsByStage[stage]?.reduce((sum, project) => sum + getProjectValue(project), 0) || 0
   }
 
   const renderPipelineView = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-6 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
       {stages.map((stage) => (
         <div key={stage.key} className="bg-gray-50 rounded-lg p-4">
           {/* Stage Header */}
@@ -102,7 +120,7 @@ export default function LeadPipeline({ onAddLead }: LeadPipelineProps) {
             <div>
               <h3 className="font-semibold text-gray-900">{stage.label}</h3>
               <p className="text-sm text-gray-600">
-                {leadsByStage[stage.key]?.length || 0} leads
+                {projectsByStage[stage.key]?.length || 0} leads
               </p>
             </div>
             <div className="text-right">
@@ -112,64 +130,48 @@ export default function LeadPipeline({ onAddLead }: LeadPipelineProps) {
             </div>
           </div>
 
-          {/* Lead Cards */}
+          {/* Project Cards */}
           <div className="space-y-3">
-            {leadsByStage[stage.key]?.map((lead) => (
+            {projectsByStage[stage.key]?.map((project) => (
               <div
-                key={lead.id}
+                key={project.id}
+                onClick={() => onProjectClick?.(project.id)}
                 className="bg-white rounded-lg p-4 border border-gray-200 hover:shadow-md transition-shadow cursor-pointer"
               >
                 <div className="flex justify-between items-start mb-2">
                   <h4 className="font-medium text-gray-900 text-sm truncate">
-                    {lead.title}
+                    {project.name}
                   </h4>
-                  <button className="text-gray-400 hover:text-gray-600">
-                    <Edit className="w-3 h-3" />
-                  </button>
                 </div>
 
-                {lead.customer && (
+                {project.customer && (
                   <div className="flex items-center text-xs text-gray-600 mb-2">
                     <User className="w-3 h-3 mr-1" />
-                    {lead.customer.companyName}
+                    {project.customer.companyName}
                   </div>
                 )}
 
-                {lead.value && (
-                  <div className="flex items-center text-xs text-gray-600 mb-2">
-                    <DollarSign className="w-3 h-3 mr-1" />
-                    {formatCurrency(lead.value)}
-                  </div>
-                )}
+                <div className="flex items-center text-xs text-gray-600 mb-2">
+                  <DollarSign className="w-3 h-3 mr-1" />
+                  {formatCurrency(getProjectValue(project))}
+                </div>
 
-                {lead.expectedCloseDate && (
-                  <div className="flex items-center text-xs text-gray-600 mb-2">
-                    <Calendar className="w-3 h-3 mr-1" />
-                    {formatDate(lead.expectedCloseDate)}
-                  </div>
-                )}
-
-                <div className="flex justify-between items-center mt-3">
-                  <div className="text-xs text-gray-500">
-                    {lead.probability}% probability
-                  </div>
-                  <div className="w-12 h-1 bg-gray-200 rounded-full">
-                    <div
-                      className="h-1 bg-blue-500 rounded-full"
-                      style={{ width: `${lead.probability}%` }}
-                    />
-                  </div>
+                <div className="flex items-center text-xs text-gray-500">
+                  <Calendar className="w-3 h-3 mr-1" />
+                  {formatDate(project.createdAt)}
                 </div>
               </div>
             ))}
 
-            {/* Add Lead Button */}
-            <button
-              onClick={() => onAddLead?.(stage.key)}
-              className="w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 hover:border-blue-400 hover:text-blue-600 transition-colors"
-            >
-              <Plus className="w-4 h-4 mx-auto" />
-            </button>
+            {/* Add Lead Button - hidden for revise stage */}
+            {!NO_CREATE_STAGES.includes(stage.key as ProjectStatus) && (
+              <button
+                onClick={() => onAddLead?.(stage.key)}
+                className="w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              >
+                <Plus className="w-4 h-4 mx-auto" />
+              </button>
+            )}
           </div>
         </div>
       ))}
@@ -195,35 +197,26 @@ export default function LeadPipeline({ onAddLead }: LeadPipelineProps) {
                 Value
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Probability
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Expected Close
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
+                Created
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {Object.values(leadsByStage).flat().map((lead) => {
-              const stage = stages.find(s => s.key === lead.stage)
+            {Object.values(projectsByStage).flat().map((project) => {
+              const stage = stages.find(s => s.key === project.status)
               return (
-                <tr key={lead.id} className="hover:bg-gray-50">
+                <tr
+                  key={project.id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => onProjectClick?.(project.id)}
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {lead.title}
-                      </div>
-                      {lead.description && (
-                        <div className="text-sm text-gray-500 truncate max-w-xs">
-                          {lead.description}
-                        </div>
-                      )}
+                    <div className="text-sm font-medium text-gray-900">
+                      {project.name}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {lead.customer?.companyName || 'No customer'}
+                    {project.customer?.companyName || 'No customer'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${stage?.color}`}>
@@ -231,18 +224,10 @@ export default function LeadPipeline({ onAddLead }: LeadPipelineProps) {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatCurrency(lead.value)}
+                    {formatCurrency(getProjectValue(project))}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {lead.probability}%
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatDate(lead.expectedCloseDate)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button className="text-blue-600 hover:text-blue-900">
-                      <Edit className="w-4 h-4" />
-                    </button>
+                    {formatDate(project.createdAt)}
                   </td>
                 </tr>
               )
@@ -261,7 +246,7 @@ export default function LeadPipeline({ onAddLead }: LeadPipelineProps) {
           <h2 className="text-lg font-semibold text-gray-900">Sales Pipeline</h2>
           <p className="text-sm text-gray-600">
             Total Pipeline Value: {formatCurrency(
-              Object.values(leadsByStage).flat().reduce((sum, lead) => sum + (lead.value || 0), 0)
+              Object.values(projectsByStage).flat().reduce((sum, project) => sum + getProjectValue(project), 0)
             )}
           </p>
         </div>

@@ -157,10 +157,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         return (
           <div className="space-y-8">
             {/* Projects Section (Won projects) */}
-            <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={false} filterType="projects" />
+            <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={false} filterType="projects" refreshKey={refreshKey} onStatusChange={() => setRefreshKey(k => k + 1)} />
 
             {/* Leads Section */}
-            <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={false} filterType="leads" />
+            <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={false} filterType="leads" refreshKey={refreshKey} onStatusChange={() => setRefreshKey(k => k + 1)} />
 
             {/* Customer Information */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -333,9 +333,11 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                       {customer.status}
                     </span>
                   </div>
-                  {primaryContact && (
-                    <p className="text-gray-600 mt-1">
-                      Contact: {primaryContact.firstName} {primaryContact.lastName}
+                  {primaryContact && primaryContact.phone && (
+                    <p className="text-gray-600 mt-1 flex items-center">
+                      <Phone className="w-4 h-4 mr-1" />
+                      {primaryContact.phone}
+                      <span className="ml-1 text-gray-400">({primaryContact.firstName} {primaryContact.lastName})</span>
                     </p>
                   )}
                 </>

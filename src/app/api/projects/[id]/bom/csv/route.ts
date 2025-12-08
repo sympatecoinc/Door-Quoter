@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import JSZip from 'jszip'
 
 // Function to evaluate simple formulas for cut lengths
 function evaluateFormula(formula: string, variables: Record<string, number>): number {
@@ -73,6 +74,24 @@ function findBestStockLengthRule(rules: any[], requiredLength: number): any | nu
   })[0] || null
 }
 
+// Helper function to generate a unique hash for a component configuration
+function generateComponentHash(panel: any, opening: any): string {
+  const componentInstance = panel.componentInstance
+  return JSON.stringify({
+    productId: componentInstance.product.id,
+    width: panel.width,
+    height: panel.height,
+    glassType: panel.glassType || '',
+    finishColor: opening.finishColor || '',
+    subOptions: componentInstance.subOptionSelections || '{}'
+  })
+}
+
+// Helper function to sanitize filename
+function sanitizeFilename(name: string): string {
+  return name.replace(/[^a-zA-Z0-9-_]/g, '_').substring(0, 50)
+}
+
 // Helper function to find stock length for extrusions using the formula-based approach
 async function findStockLength(partNumber: string, bom: any, variables: Record<string, number>): Promise<{ stockLength: number | null, isMillFinish: boolean }> {
   try {
@@ -110,7 +129,11 @@ export async function GET(
   try {
     const resolvedParams = await params
     const projectId = parseInt(resolvedParams.id)
-    
+
+    // Parse query parameters
+    const { searchParams } = new URL(request.url)
+    const uniqueOnly = searchParams.get('unique') === 'true'
+
     if (isNaN(projectId)) {
       return NextResponse.json(
         { error: 'Invalid project ID' },
@@ -468,7 +491,113 @@ export async function GET(
       return aOrder - bOrder
     })
 
-    // Generate CSV content with component grouping
+    // Handle unique BOMs mode - generate ZIP with one CSV per unique component
+    if (uniqueOnly) {
+      // Group panels by unique configuration
+      const uniqueComponents = new Map<string, {
+        panels: { panel: any, opening: any }[],
+        productName: string,
+        width: number,
+        height: number,
+        finishColor: string
+      }>()
+
+      for (const opening of project.openings) {
+        for (const panel of opening.panels) {
+          if (!panel.componentInstance) continue
+
+          const hash = generateComponentHash(panel, opening)
+          if (!uniqueComponents.has(hash)) {
+            uniqueComponents.set(hash, {
+              panels: [],
+              productName: panel.componentInstance.product.name,
+              width: panel.width,
+              height: panel.height,
+              finishColor: opening.finishColor || 'Standard'
+            })
+          }
+          uniqueComponents.get(hash)!.panels.push({ panel, opening })
+        }
+      }
+
+      // Create ZIP with one CSV per unique component
+      const zip = new JSZip()
+      let componentIndex = 1
+
+      for (const [hash, componentGroup] of uniqueComponents) {
+        const quantity = componentGroup.panels.length
+        const { panel: representativePanel, opening: representativeOpening } = componentGroup.panels[0]
+
+        // Filter BOM items for this specific component configuration
+        const componentBomItems = sortedBomItems.filter(item =>
+          item.productName === componentGroup.productName &&
+          item.panelWidth === componentGroup.width &&
+          item.panelHeight === componentGroup.height &&
+          item.color === (componentGroup.finishColor || 'N/A')
+        )
+
+        // Remove duplicates (take first occurrence per opening)
+        const seenItems = new Set<string>()
+        const uniqueBomItems = componentBomItems.filter(item => {
+          const key = `${item.partNumber}-${item.partName}-${item.partType}`
+          if (seenItems.has(key)) return false
+          seenItems.add(key)
+          return true
+        })
+
+        // Generate CSV headers with Qty in Project column
+        const headers = [
+          'Product Name',
+          'Component Size',
+          'Qty in Project',
+          'Part Number',
+          'Part Name',
+          'Part Type',
+          'Quantity',
+          'Cut Length',
+          '% of Stock',
+          'Unit',
+          'Color',
+          'Description'
+        ]
+
+        const csvRows = [
+          headers.join(','),
+          ...uniqueBomItems.map(item => [
+            `"${item.productName}"`,
+            `"${item.panelWidth || 0}" × ${item.panelHeight || 0}""`,
+            quantity,
+            `"${item.partNumber}"`,
+            `"${item.partName}"`,
+            `"${item.partType}"`,
+            item.quantity,
+            `"${item.cutLength}"`,
+            `"${item.percentOfStock}"`,
+            `"${item.unit}"`,
+            `"${item.color}"`,
+            `"${item.description}"`
+          ].join(','))
+        ]
+
+        const csvContent = csvRows.join('\n')
+        const filename = `${sanitizeFilename(componentGroup.productName)}-${componentGroup.width}x${componentGroup.height}.csv`
+        zip.file(filename, csvContent)
+        componentIndex++
+      }
+
+      // Generate ZIP file
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+      return new NextResponse(zipBuffer, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': `attachment; filename="${project.name}-Unique-BOMs-${new Date().toISOString().slice(0, 10)}.zip"`
+        }
+      })
+    }
+
+    // Regular mode - generate single CSV with all BOMs
     const headers = [
       'Opening',
       'Product Name',

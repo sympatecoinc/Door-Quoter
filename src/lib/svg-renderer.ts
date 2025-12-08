@@ -175,3 +175,163 @@ export function decodeSvgData(imageData: string): string {
     throw new Error('Failed to decode SVG data')
   }
 }
+
+/**
+ * Hardware image placement configuration
+ */
+export interface HardwareImagePlacement {
+  originId: string      // The ID to look for in the SVG (e.g., "origin-abc123")
+  imageData: string     // Base64-encoded PNG data OR raw SVG string
+  width: number         // Image width in SVG coordinate units
+  height: number        // Image height in SVG coordinate units
+  isSvg?: boolean       // True if imageData is SVG content (not base64 PNG)
+}
+
+/**
+ * Injects hardware images into an SVG at specified origin points.
+ * Origin points are elements with IDs that match the placement's originId.
+ * The hardware image is centered on the origin point's coordinates.
+ *
+ * @param svgString - The SVG content as a string
+ * @param hardwareImages - Array of hardware images to inject
+ * @returns Modified SVG string with hardware images injected
+ */
+export function injectHardwareImages(
+  svgString: string,
+  hardwareImages: HardwareImagePlacement[]
+): string {
+  if (!hardwareImages || hardwareImages.length === 0) {
+    return svgString
+  }
+
+  try {
+    const parser = new DOMParser()
+    const svgDoc = parser.parseFromString(svgString, 'image/svg+xml')
+    const svgElement = svgDoc.documentElement
+
+    if (!svgElement || svgElement.tagName !== 'svg') {
+      console.warn('injectHardwareImages: Invalid SVG, returning original')
+      return svgString
+    }
+
+    console.log(`=== Injecting ${hardwareImages.length} hardware image(s) ===`)
+
+    for (const placement of hardwareImages) {
+      // Find the origin element by ID
+      const originElement = svgDoc.getElementById(placement.originId)
+
+      if (!originElement) {
+        console.log(`  → Origin point "${placement.originId}" not found in SVG, skipping`)
+        continue
+      }
+
+      // Get origin coordinates based on element type
+      let originX: number
+      let originY: number
+
+      const tagName = originElement.tagName.toLowerCase()
+
+      if (tagName === 'circle') {
+        // For circles, use cx/cy
+        originX = parseFloat(originElement.getAttribute('cx') || '0')
+        originY = parseFloat(originElement.getAttribute('cy') || '0')
+      } else if (tagName === 'rect') {
+        // For rects, use x/y (optionally adjusted by width/height if > 0)
+        const x = parseFloat(originElement.getAttribute('x') || '0')
+        const y = parseFloat(originElement.getAttribute('y') || '0')
+        const w = parseFloat(originElement.getAttribute('width') || '0')
+        const h = parseFloat(originElement.getAttribute('height') || '0')
+
+        // If rect has dimensions, use center; otherwise use x/y directly
+        originX = w > 0 ? x + w / 2 : x
+        originY = h > 0 ? y + h / 2 : y
+      } else {
+        // For other elements, try x/y attributes
+        originX = parseFloat(originElement.getAttribute('x') || originElement.getAttribute('cx') || '0')
+        originY = parseFloat(originElement.getAttribute('y') || originElement.getAttribute('cy') || '0')
+      }
+
+      console.log(`  → Found origin "${placement.originId}" at (${originX}, ${originY})`)
+      console.log(`    Image size: ${placement.width} x ${placement.height}`)
+
+      // Calculate position to center the image on the origin point
+      const imageX = originX - placement.width / 2
+      const imageY = originY - placement.height / 2
+
+      console.log(`    Placing image at (${imageX}, ${imageY})`)
+
+      if (placement.isSvg) {
+        // For SVG hardware: embed as a nested <svg> element
+        // Parse the hardware SVG
+        const hardwareSvgDoc = parser.parseFromString(placement.imageData, 'image/svg+xml')
+        const hardwareSvgElement = hardwareSvgDoc.documentElement
+
+        if (hardwareSvgElement && hardwareSvgElement.tagName === 'svg') {
+          // Create a nested SVG element positioned at the origin
+          const nestedSvg = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'svg')
+          nestedSvg.setAttribute('x', imageX.toString())
+          nestedSvg.setAttribute('y', imageY.toString())
+          nestedSvg.setAttribute('width', placement.width.toString())
+          nestedSvg.setAttribute('height', placement.height.toString())
+
+          // Copy the viewBox from the hardware SVG to maintain proportions
+          const viewBox = hardwareSvgElement.getAttribute('viewBox')
+          if (viewBox) {
+            nestedSvg.setAttribute('viewBox', viewBox)
+          }
+          nestedSvg.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+
+          // Copy all child elements from the hardware SVG
+          const childNodes = hardwareSvgElement.childNodes
+          for (let i = 0; i < childNodes.length; i++) {
+            const child = childNodes[i]
+            if (child.nodeType === 1) { // Element node
+              nestedSvg.appendChild(child.cloneNode(true))
+            }
+          }
+
+          // Insert the nested SVG at the end of the main SVG (on top of other elements)
+          svgElement.appendChild(nestedSvg)
+
+          console.log(`  → Injected SVG hardware for "${placement.originId}"`)
+        } else {
+          console.log(`  → Failed to parse hardware SVG for "${placement.originId}"`)
+        }
+      } else {
+        // For PNG hardware: create an <image> element with data URI
+        const imageElement = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'image')
+        imageElement.setAttribute('x', imageX.toString())
+        imageElement.setAttribute('y', imageY.toString())
+        imageElement.setAttribute('width', placement.width.toString())
+        imageElement.setAttribute('height', placement.height.toString())
+
+        // Set the image data as a data URI
+        const dataUri = placement.imageData.startsWith('data:')
+          ? placement.imageData
+          : `data:image/png;base64,${placement.imageData}`
+        imageElement.setAttribute('href', dataUri)
+        imageElement.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', dataUri)
+
+        // Add preserveAspectRatio to maintain image proportions
+        imageElement.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+
+        // Insert the image element at the end of the SVG (on top of other elements)
+        svgElement.appendChild(imageElement)
+
+        console.log(`  → Injected PNG image for "${placement.originId}"`)
+      }
+    }
+
+    // Serialize and return
+    const serializer = new XMLSerializer()
+    const result = serializer.serializeToString(svgDoc)
+
+    console.log('=== Hardware image injection complete ===')
+
+    return result
+  } catch (error) {
+    console.error('Error injecting hardware images:', error)
+    // Return original SVG on error
+    return svgString
+  }
+}
