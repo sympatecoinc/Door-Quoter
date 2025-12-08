@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, ArrowLeft, Trash2, Search } from 'lucide-react'
+import { Plus, ArrowLeft, Trash2, Search, Camera, X, Upload, Copy, Check } from 'lucide-react'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface Category {
   id: number
   name: string
   description?: string
+  svgOriginId?: string
   _count: {
     individualOptions: number
     productSubOptions: number
@@ -24,6 +25,10 @@ interface IndividualOption {
   price: number
   addToPackingList: boolean
   addFinishToPartNumber: boolean
+  elevationImagePath?: string
+  elevationImageOriginalName?: string
+  planImagePath?: string
+  planImageOriginalName?: string
   category?: {
     name: string
   }
@@ -46,9 +51,24 @@ export default function CategoryDetailView({
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedMasterParts, setSelectedMasterParts] = useState<any[]>([])
   const [creating, setCreating] = useState(false)
+  const [selectedOptionForImages, setSelectedOptionForImages] = useState<IndividualOption | null>(null)
+  const [uploadingElevation, setUploadingElevation] = useState(false)
+  const [uploadingPlan, setUploadingPlan] = useState(false)
+  const [copiedOriginId, setCopiedOriginId] = useState(false)
+
+  // Copy SVG Origin ID to clipboard
+  const handleCopyOriginId = async () => {
+    const originId = categoryDetails?.svgOriginId || category.svgOriginId
+    if (originId) {
+      await navigator.clipboard.writeText(originId)
+      setCopiedOriginId(true)
+      setTimeout(() => setCopiedOriginId(false), 2000)
+    }
+  }
 
   // Handle Escape key to close modals one at a time
   useEscapeKey([
+    { isOpen: selectedOptionForImages !== null, isBlocked: uploadingElevation || uploadingPlan, onClose: () => setSelectedOptionForImages(null) },
     { isOpen: showAddOptionForm, isBlocked: creating, onClose: () => setShowAddOptionForm(false) },
   ])
 
@@ -186,6 +206,76 @@ export default function CategoryDetailView({
     }
   }
 
+  async function handleImageUpload(file: File, imageType: 'elevation' | 'plan') {
+    if (!selectedOptionForImages) return
+
+    const setUploading = imageType === 'elevation' ? setUploadingElevation : setUploadingPlan
+    setUploading(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('imageType', imageType)
+
+      const response = await fetch(`/api/options/${selectedOptionForImages.id}/images`, {
+        method: 'POST',
+        body: formData
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setSelectedOptionForImages(data.option)
+        // Refresh category details
+        const detailsResponse = await fetch(`/api/categories/${category.id}`)
+        if (detailsResponse.ok) {
+          const categoryData = await detailsResponse.json()
+          setCategoryDetails(categoryData)
+        }
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to upload image')
+      }
+    } catch (error) {
+      console.error('Error uploading image:', error)
+      alert('Error uploading image')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleImageDelete(imageType: 'elevation' | 'plan') {
+    if (!selectedOptionForImages) return
+    if (!confirm(`Are you sure you want to delete the ${imageType} image?`)) return
+
+    const setUploading = imageType === 'elevation' ? setUploadingElevation : setUploadingPlan
+    setUploading(true)
+
+    try {
+      const response = await fetch(`/api/options/${selectedOptionForImages.id}/images?imageType=${imageType}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setSelectedOptionForImages(data.option)
+        // Refresh category details
+        const detailsResponse = await fetch(`/api/categories/${category.id}`)
+        if (detailsResponse.ok) {
+          const categoryData = await detailsResponse.json()
+          setCategoryDetails(categoryData)
+        }
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to delete image')
+      }
+    } catch (error) {
+      console.error('Error deleting image:', error)
+      alert('Error deleting image')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <div>
       {/* Header */}
@@ -204,6 +294,43 @@ export default function CategoryDetailView({
           </div>
         </div>
       </div>
+
+      {/* SVG Origin ID Info Box */}
+      {(categoryDetails?.svgOriginId || category.svgOriginId) && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-blue-800 mb-1">SVG Origin ID</h3>
+              <div className="flex items-center gap-2">
+                <code className="bg-white px-3 py-1.5 rounded border border-blue-200 text-sm font-mono text-blue-900">
+                  {categoryDetails?.svgOriginId || category.svgOriginId}
+                </code>
+                <button
+                  onClick={handleCopyOriginId}
+                  className="flex items-center gap-1 px-2 py-1.5 text-sm text-blue-700 hover:bg-blue-100 rounded transition-colors"
+                  title="Copy to clipboard"
+                >
+                  {copiedOriginId ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-xs text-blue-600 mt-2">
+                Add this ID to an element in your door SVG to place hardware at that location.
+                Example: <code className="bg-white px-1 rounded">&lt;rect id="{categoryDetails?.svgOriginId || category.svgOriginId}" x="149" y="3527"/&gt;</code>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Options Section */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -225,16 +352,30 @@ export default function CategoryDetailView({
         ) : categoryDetails?.individualOptions?.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {categoryDetails.individualOptions.map((option: any) => (
-              <div key={option.id} className="border border-gray-200 rounded-lg p-4">
+              <div
+                key={option.id}
+                className="border border-gray-200 rounded-lg p-4 cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all"
+                onClick={() => setSelectedOptionForImages(option)}
+              >
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-medium text-gray-900">{option.name}</h4>
-                  <button
-                    onClick={() => handleDeleteOption(option.id, option.name)}
-                    className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                    title="Remove from category"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {(option.elevationImagePath || option.planImagePath) && (
+                      <span className="text-green-600" title="Has images">
+                        <Camera className="w-4 h-4" />
+                      </span>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteOption(option.id, option.name)
+                      }}
+                      className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                      title="Remove from category"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 {option.partNumber && (
                   <p className="text-xs text-gray-500 mb-1">Part #: {option.partNumber}</p>
@@ -404,6 +545,146 @@ export default function CategoryDetailView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Image Upload Modal */}
+      {selectedOptionForImages && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Hardware Images</h2>
+                <p className="text-sm text-gray-600">{selectedOptionForImages.name}</p>
+                {selectedOptionForImages.partNumber && (
+                  <p className="text-xs text-gray-500">Part #: {selectedOptionForImages.partNumber}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setSelectedOptionForImages(null)}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Elevation Image Section */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h3 className="font-medium text-gray-900 mb-3">Elevation View</h3>
+                {selectedOptionForImages.elevationImagePath ? (
+                  <div className="space-y-3">
+                    <div className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                      <img
+                        src={`/uploads/option-images/${selectedOptionForImages.id}/${selectedOptionForImages.elevationImagePath}`}
+                        alt="Elevation view"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 truncate">
+                      {selectedOptionForImages.elevationImageOriginalName}
+                    </p>
+                    <button
+                      onClick={() => handleImageDelete('elevation')}
+                      disabled={uploadingElevation}
+                      className="w-full px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {uploadingElevation ? 'Removing...' : 'Remove Image'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <label className="block">
+                      <div className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                        {uploadingElevation ? (
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                        ) : (
+                          <>
+                            <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                            <span className="text-sm text-gray-500">Click to upload</span>
+                            <span className="text-xs text-gray-400 mt-1">PNG or JPEG</span>
+                          </>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleImageUpload(file, 'elevation')
+                          e.target.value = ''
+                        }}
+                        disabled={uploadingElevation}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* Plan Image Section */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h3 className="font-medium text-gray-900 mb-3">Plan View</h3>
+                {selectedOptionForImages.planImagePath ? (
+                  <div className="space-y-3">
+                    <div className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                      <img
+                        src={`/uploads/option-images/${selectedOptionForImages.id}/${selectedOptionForImages.planImagePath}`}
+                        alt="Plan view"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 truncate">
+                      {selectedOptionForImages.planImageOriginalName}
+                    </p>
+                    <button
+                      onClick={() => handleImageDelete('plan')}
+                      disabled={uploadingPlan}
+                      className="w-full px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {uploadingPlan ? 'Removing...' : 'Remove Image'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <label className="block">
+                      <div className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                        {uploadingPlan ? (
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                        ) : (
+                          <>
+                            <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                            <span className="text-sm text-gray-500">Click to upload</span>
+                            <span className="text-xs text-gray-400 mt-1">PNG or JPEG</span>
+                          </>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleImageUpload(file, 'plan')
+                          e.target.value = ''
+                        }}
+                        disabled={uploadingPlan}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setSelectedOptionForImages(null)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

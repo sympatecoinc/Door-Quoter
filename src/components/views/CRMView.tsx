@@ -9,6 +9,7 @@ import CustomerForm from '../crm/CustomerForm'
 import LeadForm from '../crm/LeadForm'
 import { useAppStore } from '@/stores/appStore'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
+import { ProjectStatus } from '@/types'
 
 interface CRMStats {
   totalCustomers: number
@@ -35,7 +36,7 @@ export default function CRMView() {
   const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'leads'>('overview')
   const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [showLeadForm, setShowLeadForm] = useState(false)
-  const [leadFormStage, setLeadFormStage] = useState('New')
+  const [leadFormStage, setLeadFormStage] = useState(ProjectStatus.STAGING)
   const [refreshKey, setRefreshKey] = useState(0)
   const [editingCustomer, setEditingCustomer] = useState(null)
   const [customerFormMode, setCustomerFormMode] = useState('create')
@@ -171,12 +172,18 @@ export default function CRMView() {
   }
 
   const handleLeadSubmit = async (leadData: any) => {
-    const response = await fetch('/api/leads', {
+    // Create a Project with lead status instead of a separate Lead record
+    const response = await fetch('/api/projects', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(leadData),
+      body: JSON.stringify({
+        name: leadData.title,
+        customerId: leadData.customerId,
+        status: leadFormStage || ProjectStatus.STAGING,
+        dueDate: leadData.expectedCloseDate || null
+      }),
     })
 
     if (!response.ok) {
@@ -216,7 +223,7 @@ export default function CRMView() {
         )
       case 'leads':
         return <LeadPipeline key={refreshKey} onAddLead={(stage) => {
-          setLeadFormStage(stage || 'New')
+          setLeadFormStage(stage || ProjectStatus.STAGING)
           setShowLeadForm(true)
         }} />
       default:
@@ -288,7 +295,7 @@ export default function CRMView() {
                 </button>
                 <button
                   onClick={() => {
-                    setLeadFormStage('New')
+                    setLeadFormStage(ProjectStatus.STAGING)
                     setShowLeadForm(true)
                   }}
                   className="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-green-400 hover:bg-green-50 transition-colors"

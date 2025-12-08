@@ -1,11 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Download, FileText, Printer, Ruler, Palette, Eye, Wrench, DollarSign, Paperclip, Settings } from 'lucide-react'
+import { ArrowLeft, Download, FileText, Printer, Wrench, DollarSign } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
-import { useEscapeKey } from '../../hooks/useEscapeKey'
 import QuoteAttachmentsManager from '../quote/QuoteAttachmentsManager'
 
 interface QuoteItem {
@@ -23,6 +22,14 @@ interface QuoteItem {
   elevationImages: string[]
 }
 
+interface PricingModeOption {
+  id: number
+  name: string
+  description?: string
+  isDefault: boolean
+  extrusionCostingMethod: 'FULL_STOCK' | 'PERCENTAGE_BASED'
+}
+
 interface QuoteData {
   project: {
     id: number
@@ -35,12 +42,16 @@ interface QuoteData {
     manualInstallationCost: number
     extrusionCostingMethod?: 'FULL_STOCK' | 'PERCENTAGE_BASED'
     excludedPartNumbers?: string[]
+    pricingModeId?: number | null
     pricingMode?: {
+      id: number
       name: string
       markup: number
       discount: number
+      extrusionCostingMethod: 'FULL_STOCK' | 'PERCENTAGE_BASED'
     } | null
   }
+  availablePricingModes: PricingModeOption[]
   quoteItems: QuoteItem[]
   subtotal: number
   markupAmount: number
@@ -65,13 +76,12 @@ export default function QuoteView() {
   const [installationComplexity, setInstallationComplexity] = useState<'SIMPLE' | 'STANDARD' | 'COMPLEX' | 'VERY_COMPLEX'>('STANDARD')
   const [manualInstallationCost, setManualInstallationCost] = useState<number>(0)
 
-  // Extrusion costing state
-  const [extrusionCostingMethod, setExtrusionCostingMethod] = useState<'FULL_STOCK' | 'PERCENTAGE_BASED'>('FULL_STOCK')
-  const [excludedPartNumbers, setExcludedPartNumbers] = useState<string[]>([])
-  const [showExcludedPartsModal, setShowExcludedPartsModal] = useState(false)
-  const [projectParts, setProjectParts] = useState<any[]>([])
-  const [loadingParts, setLoadingParts] = useState(false)
-  const [isUpdatingCosting, setIsUpdatingCosting] = useState(false)
+  // Pricing mode state
+  const [selectedPricingModeId, setSelectedPricingModeId] = useState<number | null>(null)
+  const [isUpdatingPricingMode, setIsUpdatingPricingMode] = useState(false)
+
+  // Tax rate state
+  const [taxRate, setTaxRate] = useState<number>(0)
 
   // Handle back navigation
   const handleBack = () => {
@@ -83,25 +93,20 @@ export default function QuoteView() {
     }
   }
 
-  // Handle Escape key to close modals one at a time
-  useEscapeKey([
-    { isOpen: showExcludedPartsModal, onClose: () => setShowExcludedPartsModal(false) },
-  ])
-
   useEffect(() => {
     if (selectedProjectId) {
       fetchQuoteData()
     }
   }, [selectedProjectId])
 
-  // Initialize installation and costing state from quote data
+  // Initialize installation, pricing mode, and tax rate state from quote data
   useEffect(() => {
-    if (quoteData?.project && !isUpdatingCosting) {
+    if (quoteData?.project && !isUpdatingPricingMode) {
       setInstallationMethod(quoteData.project.installationMethod)
       setInstallationComplexity(quoteData.project.installationComplexity)
       setManualInstallationCost(quoteData.project.manualInstallationCost)
-      setExtrusionCostingMethod(quoteData.project.extrusionCostingMethod || 'FULL_STOCK')
-      setExcludedPartNumbers(quoteData.project.excludedPartNumbers || [])
+      setSelectedPricingModeId(quoteData.project.pricingModeId || null)
+      setTaxRate(quoteData.taxRate || 0)
     }
   }, [quoteData])
 
@@ -166,51 +171,14 @@ export default function QuoteView() {
     }
   }
 
-  const fetchProjectParts = async () => {
-    if (!selectedProjectId) return
-
-    setLoadingParts(true)
-    try {
-      const response = await fetch(`/api/projects/${selectedProjectId}/bom`)
-      if (response.ok) {
-        const data = await response.json()
-
-        // Get unique extrusion parts from BOM
-        const uniqueParts = new Map()
-        data.bomItems?.forEach((item: any) => {
-          if (item.partType === 'Extrusion' && item.partNumber) {
-            const partNumber = item.partNumber
-            if (!uniqueParts.has(partNumber)) {
-              uniqueParts.set(partNumber, {
-                partNumber: partNumber,
-                partName: item.partName,
-                partType: item.partType
-              })
-            }
-          }
-        })
-
-        setProjectParts(Array.from(uniqueParts.values()))
-      }
-    } catch (error) {
-      console.error('Error fetching project parts:', error)
-      showError('Failed to load project parts')
-    } finally {
-      setLoadingParts(false)
-    }
-  }
-
-  const updateExtrusionCosting = async (
-    method: 'FULL_STOCK' | 'PERCENTAGE_BASED',
-    excludedParts: string[]
-  ) => {
+  const updatePricingMode = async (pricingModeId: number) => {
     if (!selectedProjectId || !quoteData) return
 
-    // Store old values for rollback on error
-    const oldMethod = extrusionCostingMethod
-    const oldExcludedParts = excludedPartNumbers
+    // Store old value for rollback on error
+    const oldPricingModeId = selectedPricingModeId
 
-    setIsUpdatingCosting(true)
+    setIsUpdatingPricingMode(true)
+    setSelectedPricingModeId(pricingModeId)
 
     try {
       const response = await fetch(`/api/projects/${selectedProjectId}`, {
@@ -221,16 +189,15 @@ export default function QuoteView() {
         body: JSON.stringify({
           name: quoteData.project.name,
           status: quoteData.project.status,
-          extrusionCostingMethod: method,
-          excludedPartNumbers: excludedParts,
+          pricingModeId: pricingModeId,
         }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to update extrusion costing settings')
+        throw new Error('Failed to update pricing mode')
       }
 
-      // Recalculate all opening prices with the new costing method
+      // Recalculate all opening prices with the new pricing mode
       const recalcResults = await Promise.allSettled(
         quoteData.quoteItems.map(item =>
           fetch(`/api/openings/${item.openingId}/calculate-price`, {
@@ -247,15 +214,43 @@ export default function QuoteView() {
 
       // Refresh quote to show updated prices
       await fetchQuoteData()
-      showSuccess('Extrusion costing settings updated and prices recalculated')
+      showSuccess('Pricing mode updated and prices recalculated')
     } catch (error) {
-      console.error('Error updating extrusion costing:', error)
-      showError('Failed to update extrusion costing settings')
+      console.error('Error updating pricing mode:', error)
+      showError('Failed to update pricing mode')
       // Rollback optimistic update on error
-      setExtrusionCostingMethod(oldMethod)
-      setExcludedPartNumbers(oldExcludedParts)
+      setSelectedPricingModeId(oldPricingModeId)
     } finally {
-      setIsUpdatingCosting(false)
+      setIsUpdatingPricingMode(false)
+    }
+  }
+
+  const updateTaxRate = async (newTaxRate: number) => {
+    if (!selectedProjectId || !quoteData) return
+
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: quoteData.project.name,
+          status: quoteData.project.status,
+          taxRate: newTaxRate,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update tax rate')
+      }
+
+      // Refresh quote to show updated tax amount
+      await fetchQuoteData()
+      showSuccess('Tax rate updated')
+    } catch (error) {
+      console.error('Error updating tax rate:', error)
+      showError('Failed to update tax rate')
     }
   }
 
@@ -395,59 +390,47 @@ export default function QuoteView() {
         </div>
       </div>
 
-      {/* Extrusion Costing Settings */}
+      {/* Pricing Mode Selection */}
       <div className="mb-6 print:hidden">
         <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
           <div className="flex items-center space-x-2 mb-4">
-            <Ruler className="w-5 h-5 text-gray-700" />
-            <h2 className="text-lg font-semibold text-gray-900">Extrusion Costing Settings</h2>
+            <DollarSign className="w-5 h-5 text-gray-700" />
+            <h2 className="text-lg font-semibold text-gray-900">Pricing Mode</h2>
           </div>
 
           <div className="space-y-4">
-            {/* Extrusion Costing Method Dropdown */}
+            {/* Pricing Mode Dropdown */}
             <div>
-              <label htmlFor="extrusionCostingMethod" className="block text-sm font-medium text-gray-700 mb-2">
-                Costing Method
+              <label htmlFor="pricingMode" className="block text-sm font-medium text-gray-700 mb-2">
+                Select Pricing Mode
               </label>
               <select
-                id="extrusionCostingMethod"
-                value={extrusionCostingMethod}
+                id="pricingMode"
+                value={selectedPricingModeId || ''}
                 onChange={(e) => {
-                  const method = e.target.value as 'FULL_STOCK' | 'PERCENTAGE_BASED'
-                  setExtrusionCostingMethod(method)
-                  updateExtrusionCosting(method, excludedPartNumbers)
+                  const modeId = parseInt(e.target.value)
+                  if (!isNaN(modeId)) {
+                    updatePricingMode(modeId)
+                  }
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer relative z-10"
+                disabled={isUpdatingPricingMode}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed"
               >
-                <option value="FULL_STOCK">Full Stock Cost</option>
-                <option value="PERCENTAGE_BASED">Percentage-Based Cost</option>
+                {quoteData.availablePricingModes.map((mode) => (
+                  <option key={mode.id} value={mode.id}>
+                    {mode.name}{mode.isDefault ? ' (Default)' : ''}
+                  </option>
+                ))}
               </select>
-              <p className="mt-2 text-sm text-gray-500">
-                {extrusionCostingMethod === 'PERCENTAGE_BASED'
-                  ? 'Only charge for % of stock used when >50% remains unused'
-                  : 'Always charge for the full stock length'}
-              </p>
+              {quoteData.project.pricingMode && (
+                <p className="mt-2 text-sm text-gray-500">
+                  Extrusion Costing: {quoteData.project.pricingMode.extrusionCostingMethod === 'PERCENTAGE_BASED'
+                    ? 'Percentage-Based (charge for % of stock used when >50% remains unused)'
+                    : 'Full Stock (charge for full stock length)'}
+                </p>
+              )}
             </div>
 
-            {/* Exclude Parts Button (only shown for FULL_STOCK method) */}
-            {extrusionCostingMethod === 'FULL_STOCK' && (
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowExcludedPartsModal(true)
-                    fetchProjectParts()
-                  }}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center space-x-2"
-                >
-                  <Settings className="w-4 h-4" />
-                  <span>Exclude Expensive Parts ({excludedPartNumbers.length})</span>
-                </button>
-                <p className="mt-2 text-sm text-gray-500">
-                  Select specific parts to use percentage-based costing even when using Full Stock method
-                </p>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -537,6 +520,50 @@ export default function QuoteView() {
                   ${quoteData.installationCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                 </span>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tax Rate Settings */}
+      <div className="mb-6 print:hidden">
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
+          <div className="flex items-center space-x-2 mb-4">
+            <DollarSign className="w-5 h-5 text-gray-700" />
+            <h2 className="text-lg font-semibold text-gray-900">Tax Settings</h2>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Tax Rate (%)
+              </label>
+              <div className="flex items-center space-x-3">
+                <div className="relative flex-1 max-w-xs">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={(taxRate * 100).toFixed(1)}
+                    onChange={(e) => {
+                      const percentValue = parseFloat(e.target.value) || 0
+                      setTaxRate(percentValue / 100)
+                    }}
+                    onBlur={() => {
+                      updateTaxRate(taxRate)
+                    }}
+                    className="w-full pr-8 pl-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+                </div>
+                <span className="text-sm text-gray-500">
+                  = ${((quoteData.adjustedSubtotal + quoteData.installationCost) * taxRate).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} tax
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-gray-500">
+                Tax is applied to the subtotal plus installation cost.
+              </p>
             </div>
           </div>
         </div>
@@ -734,82 +761,6 @@ export default function QuoteView() {
           </div>
         </div>
       </div>
-
-      {/* Excluded Parts Modal */}
-      {showExcludedPartsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Exclude Expensive Parts from Full Stock Cost</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Select parts that should use percentage-based costing even when the project uses "Full Stock Cost" method.
-              This is useful for expensive extrusions where you want to charge only for the percentage used.
-            </p>
-
-            <div className="flex-1 overflow-y-auto border border-gray-200 rounded-lg">
-              {loadingParts ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                </div>
-              ) : projectParts.length > 0 ? (
-                <div className="divide-y divide-gray-200">
-                  {projectParts.map((part) => {
-                    const isExcluded = excludedPartNumbers.includes(part.partNumber)
-                    return (
-                      <div key={part.partNumber} className="p-4 hover:bg-gray-50 flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="font-mono text-sm font-medium text-gray-900">{part.partNumber}</div>
-                          <div className="text-sm text-gray-600">{part.partName}</div>
-                        </div>
-                        <button
-                          onClick={() => {
-                            const newExcluded = isExcluded
-                              ? excludedPartNumbers.filter(p => p !== part.partNumber)
-                              : [...excludedPartNumbers, part.partNumber]
-                            setExcludedPartNumbers(newExcluded)
-                          }}
-                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                            isExcluded ? 'bg-blue-600' : 'bg-gray-200'
-                          }`}
-                        >
-                          <span
-                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                              isExcluded ? 'translate-x-5' : 'translate-x-0'
-                            }`}
-                          />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="p-4 text-center text-gray-500">
-                  No extrusion parts found in this project.
-                  <br />
-                  <span className="text-xs">Add components to your openings to see parts here.</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end space-x-3 mt-4 pt-4 border-t border-gray-200">
-              <button
-                onClick={() => setShowExcludedPartsModal(false)}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  updateExtrusionCosting(extrusionCostingMethod, excludedPartNumbers)
-                  setShowExcludedPartsModal(false)
-                }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Apply Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Print Styles */}
       <style jsx>{`

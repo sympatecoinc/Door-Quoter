@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { nanoid } from 'nanoid'
 
 export async function GET() {
   try {
@@ -39,10 +40,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Generate a unique SVG origin ID for this category
+    const svgOriginId = `origin-${nanoid(8)}`
+
     const category = await prisma.subOptionCategory.create({
       data: {
         name,
-        description
+        description,
+        svgOriginId
       }
     })
 

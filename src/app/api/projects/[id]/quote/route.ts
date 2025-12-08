@@ -6,25 +6,36 @@ function convertDirectionToAbbreviation(direction: string, panelType: string): s
   // Swing door directions
   if (panelType === 'SWING_DOOR') {
     const swingAbbreviations: Record<string, string> = {
+      // Full names
       'Left In': 'ILH',
       'Right In': 'IRH',
       'Left Out': 'LH',
       'Right Out': 'RH',
+      // Already abbreviated (from legacy data or plan views)
+      'ILH': 'ILH',
+      'IRH': 'IRH',
+      'LH': 'LH',
+      'RH': 'RH',
       'None': '',
       'N/A': ''
     }
-    return swingAbbreviations[direction] || ''
+    // Return match or the original direction as fallback (for custom plan view names)
+    return swingAbbreviations[direction] ?? direction
   }
 
   // Sliding door directions
   if (panelType === 'SLIDING_DOOR') {
     const slidingAbbreviations: Record<string, string> = {
+      // Full names
       'Left': 'SL',
       'Right': 'SR',
+      // Already abbreviated
+      'SL': 'SL',
+      'SR': 'SR',
       'None': '',
       'N/A': ''
     }
-    return slidingAbbreviations[direction] || ''
+    return slidingAbbreviations[direction] ?? direction
   }
 
   // Corner directions
@@ -32,13 +43,15 @@ function convertDirectionToAbbreviation(direction: string, panelType: string): s
     const cornerAbbreviations: Record<string, string> = {
       'Up': 'CU',
       'Down': 'CD',
+      'CU': 'CU',
+      'CD': 'CD',
       'None': '',
       'N/A': ''
     }
-    return cornerAbbreviations[direction] || ''
+    return cornerAbbreviations[direction] ?? direction
   }
 
-  return ''
+  return direction || ''
 }
 
 // Helper function to calculate price with category-specific markup
@@ -79,7 +92,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const projectId = parseInt(id)
-    
+
+    // Fetch all available pricing modes for the dropdown
+    const availablePricingModes = await prisma.pricingMode.findMany({
+      orderBy: [
+        { isDefault: 'desc' },
+        { name: 'asc' }
+      ]
+    })
+
     // Fetch project data with all related openings and components
     const project = await prisma.project.findUnique({
       where: { id: projectId },
@@ -187,9 +208,49 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             }
           }
 
-          // Track glass types
+          // Track glass types and calculate glass cost directly
           if (panel.glassType && panel.glassType !== 'N/A') {
             glassTypes.add(panel.glassType)
+
+            // Calculate glass cost for this panel (same logic as calculate-price route)
+            try {
+              const glassTypeData = await prisma.glassType.findUnique({
+                where: { name: panel.glassType }
+              })
+
+              if (glassTypeData && product.glassWidthFormula && product.glassHeightFormula) {
+                const variables = { width: panel.width, height: panel.height }
+
+                // Simple formula evaluation for glass dimensions
+                const evaluateFormula = (formula: string, vars: Record<string, number>): number => {
+                  if (!formula) return 0
+                  let expression = formula.trim()
+                  for (const [key, value] of Object.entries(vars)) {
+                    const regex = new RegExp(`\\b${key}\\b`, 'gi')
+                    expression = expression.replace(regex, value.toString())
+                  }
+                  try {
+                    const result = eval(expression)
+                    return isNaN(result) ? 0 : Math.max(0, result)
+                  } catch {
+                    return 0
+                  }
+                }
+
+                const glassWidth = evaluateFormula(product.glassWidthFormula, variables)
+                const glassHeight = evaluateFormula(product.glassHeightFormula, variables)
+                const glassQuantity = product.glassQuantityFormula
+                  ? evaluateFormula(product.glassQuantityFormula, variables)
+                  : 1
+
+                // Calculate square footage and cost
+                const sqft = (glassWidth * glassHeight / 144) * glassQuantity
+                const panelGlassCost = sqft * glassTypeData.pricePerSqFt
+                glassCost += panelGlassCost
+              }
+            } catch (error) {
+              console.error('Error calculating glass cost for markup:', error)
+            }
           }
 
           // Extract hardware from component options and calculate their costs
@@ -234,18 +295,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         // Get standard option cost for this opening (should NOT be marked up)
         const standardOptionCost = opening.standardOptionCost || 0
+        // Get HYBRID remaining cost (extrusion portion at cost, no markup)
+        const hybridRemainingCost = opening.hybridRemainingCost || 0
 
         // Distribute the opening base cost based on BOM counts
         // This is an approximation - ideally we'd recalculate exact costs per component
         const totalBOMCount = bomCounts.Extrusion + bomCounts.Hardware + bomCounts.Glass + bomCounts.Other
-        // Subtract already-counted hardware options AND standard option costs (which get no markup)
-        const remainingCost = opening.price - hardwareCost - standardOptionCost
+        // Subtract already-calculated costs: hardware options, glass cost, standard option costs, and HYBRID remaining costs
+        // Glass cost is now calculated directly above, so we exclude it from the BOM distribution
+        const remainingCost = opening.price - hardwareCost - glassCost - standardOptionCost - hybridRemainingCost
 
         if (totalBOMCount > 0 && remainingCost > 0) {
-          extrusionCost += (remainingCost * bomCounts.Extrusion) / totalBOMCount
-          hardwareCost += (remainingCost * bomCounts.Hardware) / totalBOMCount
-          glassCost += (remainingCost * bomCounts.Glass) / totalBOMCount
-          otherCost += (remainingCost * bomCounts.Other) / totalBOMCount
+          // Only distribute remaining cost among non-glass BOM types
+          const nonGlassBOMCount = bomCounts.Extrusion + bomCounts.Hardware + bomCounts.Other
+          if (nonGlassBOMCount > 0) {
+            extrusionCost += (remainingCost * bomCounts.Extrusion) / nonGlassBOMCount
+            hardwareCost += (remainingCost * bomCounts.Hardware) / nonGlassBOMCount
+            otherCost += (remainingCost * bomCounts.Other) / nonGlassBOMCount
+          } else {
+            // If no non-glass BOMs, put remaining in extrusion
+            extrusionCost += remainingCost
+          }
         }
 
         // Apply category-specific markups to each cost component
@@ -255,8 +325,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const markedUpOtherCost = calculateMarkupPrice(otherCost, 'Other', pricingMode, globalPricingMultiplier)
 
         // Total marked-up price with category-specific markups
-        // Standard option costs are added back WITHOUT markup (at cost)
-        const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpOtherCost + standardOptionCost
+        // Standard option costs and HYBRID remaining costs are added back WITHOUT markup (at cost)
+        const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpOtherCost + standardOptionCost + hybridRemainingCost
 
         // Generate description
         const panelTypes = opening.panels
@@ -323,7 +393,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             hardware: { base: hardwareCost, markedUp: markedUpHardwareCost },
             glass: { base: glassCost, markedUp: markedUpGlassCost },
             other: { base: otherCost, markedUp: markedUpOtherCost },
-            standardOptions: { base: standardOptionCost, markedUp: standardOptionCost } // No markup on standard options
+            standardOptions: { base: standardOptionCost, markedUp: standardOptionCost }, // No markup on standard options
+            hybridRemaining: { base: hybridRemainingCost, markedUp: hybridRemainingCost } // HYBRID remaining at cost (no markup)
           }
         }
       })
@@ -394,17 +465,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         installationMethod: project.installationMethod,
         installationComplexity: project.installationComplexity,
         manualInstallationCost: project.manualInstallationCost,
-        extrusionCostingMethod: project.extrusionCostingMethod,
+        extrusionCostingMethod: project.pricingMode?.extrusionCostingMethod || project.extrusionCostingMethod,
         excludedPartNumbers: project.excludedPartNumbers,
+        pricingModeId: project.pricingModeId,
         pricingMode: project.pricingMode ? {
+          id: project.pricingMode.id,
           name: project.pricingMode.name,
           markup: project.pricingMode.markup,
           extrusionMarkup: project.pricingMode.extrusionMarkup,
           hardwareMarkup: project.pricingMode.hardwareMarkup,
           glassMarkup: project.pricingMode.glassMarkup,
-          discount: project.pricingMode.discount
+          discount: project.pricingMode.discount,
+          extrusionCostingMethod: project.pricingMode.extrusionCostingMethod
         } : null
       },
+      availablePricingModes: availablePricingModes.map(mode => ({
+        id: mode.id,
+        name: mode.name,
+        description: mode.description,
+        isDefault: mode.isDefault,
+        extrusionCostingMethod: mode.extrusionCostingMethod
+      })),
       quoteItems,
       subtotal,
       markupAmount,

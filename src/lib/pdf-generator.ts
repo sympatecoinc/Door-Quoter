@@ -38,6 +38,213 @@ export interface ProjectDrawingData {
 }
 
 /**
+ * Formats a decimal inch value to fractional format (e.g., 51.75 -> "51 3/4")
+ */
+function formatDimensionInches(value: number): string {
+  const wholePart = Math.floor(value)
+  const fractionalPart = value - wholePart
+
+  // Common fractions to check (in order of precision)
+  const fractions: Array<{ decimal: number; display: string }> = [
+    { decimal: 0, display: '' },
+    { decimal: 0.0625, display: '1/16' },
+    { decimal: 0.125, display: '1/8' },
+    { decimal: 0.1875, display: '3/16' },
+    { decimal: 0.25, display: '1/4' },
+    { decimal: 0.3125, display: '5/16' },
+    { decimal: 0.375, display: '3/8' },
+    { decimal: 0.4375, display: '7/16' },
+    { decimal: 0.5, display: '1/2' },
+    { decimal: 0.5625, display: '9/16' },
+    { decimal: 0.625, display: '5/8' },
+    { decimal: 0.6875, display: '11/16' },
+    { decimal: 0.75, display: '3/4' },
+    { decimal: 0.8125, display: '13/16' },
+    { decimal: 0.875, display: '7/8' },
+    { decimal: 0.9375, display: '15/16' },
+    { decimal: 1, display: '' }
+  ]
+
+  // Find closest fraction
+  let closestFraction = fractions[0]
+  let minDiff = Math.abs(fractionalPart - fractions[0].decimal)
+
+  for (const frac of fractions) {
+    const diff = Math.abs(fractionalPart - frac.decimal)
+    if (diff < minDiff) {
+      minDiff = diff
+      closestFraction = frac
+    }
+  }
+
+  // Handle rounding up to next whole number
+  if (closestFraction.decimal === 1) {
+    return `${wholePart + 1}"`
+  }
+
+  if (closestFraction.display === '') {
+    return `${wholePart}"`
+  }
+
+  return `${wholePart} ${closestFraction.display}"`
+}
+
+/**
+ * Draws a horizontal dimension line with arrows and text
+ * Used for width dimensions above the elevation
+ */
+function drawHorizontalDimension(
+  pdf: jsPDF,
+  x1: number,
+  x2: number,
+  y: number,
+  dimensionText: string,
+  labelText?: string,
+  extensionLength: number = 8
+): void {
+  const arrowSize = 2
+  const textOffset = 3
+
+  pdf.setDrawColor(0, 0, 0)
+  pdf.setLineWidth(0.3)
+
+  // Extension lines (vertical)
+  pdf.line(x1, y + extensionLength, x1, y - extensionLength)
+  pdf.line(x2, y + extensionLength, x2, y - extensionLength)
+
+  // Dimension line (horizontal)
+  pdf.line(x1, y, x2, y)
+
+  // Left arrow
+  pdf.line(x1, y, x1 + arrowSize, y - arrowSize / 2)
+  pdf.line(x1, y, x1 + arrowSize, y + arrowSize / 2)
+
+  // Right arrow
+  pdf.line(x2, y, x2 - arrowSize, y - arrowSize / 2)
+  pdf.line(x2, y, x2 - arrowSize, y + arrowSize / 2)
+
+  // Dimension text (centered above the line) - large bold text
+  const centerX = (x1 + x2) / 2
+  pdf.setFontSize(14)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(dimensionText, centerX, y - textOffset - 1, { align: 'center' })
+
+  // Optional label below (e.g., "OPENING")
+  if (labelText) {
+    pdf.setFontSize(10)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text(labelText, centerX, y + textOffset + 3, { align: 'center' })
+  }
+}
+
+/**
+ * Draws a vertical dimension line with arrows and text
+ * Used for height dimensions to the right of the elevation
+ */
+function drawVerticalDimension(
+  pdf: jsPDF,
+  x: number,
+  y1: number,
+  y2: number,
+  dimensionText: string,
+  extensionLength: number = 8
+): void {
+  const arrowSize = 2
+  const textOffset = 5
+
+  pdf.setDrawColor(0, 0, 0)
+  pdf.setLineWidth(0.3)
+
+  // Extension lines (horizontal)
+  pdf.line(x - extensionLength, y1, x + extensionLength, y1)
+  pdf.line(x - extensionLength, y2, x + extensionLength, y2)
+
+  // Dimension line (vertical)
+  pdf.line(x, y1, x, y2)
+
+  // Top arrow
+  pdf.line(x, y1, x - arrowSize / 2, y1 + arrowSize)
+  pdf.line(x, y1, x + arrowSize / 2, y1 + arrowSize)
+
+  // Bottom arrow
+  pdf.line(x, y2, x - arrowSize / 2, y2 - arrowSize)
+  pdf.line(x, y2, x + arrowSize / 2, y2 - arrowSize)
+
+  // Dimension text (rotated 90 degrees, centered along the line) - large bold text
+  const centerY = (y1 + y2) / 2
+  pdf.setFontSize(14)
+  pdf.setFont('helvetica', 'bold')
+
+  // Save state, translate to position, rotate, draw text, restore
+  // jsPDF text rotation: use the angle parameter
+  pdf.text(dimensionText, x + textOffset + 2, centerY, {
+    angle: 90,
+    align: 'center'
+  })
+}
+
+/**
+ * Draws a hatched rectangle representing a wall section
+ * Uses diagonal lines at 45 degrees for standard architectural wall indication
+ */
+function drawHatchedWall(
+  pdf: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  hatchSpacing: number = 2
+): void {
+  // Draw outer rectangle
+  pdf.setDrawColor(0, 0, 0)
+  pdf.setLineWidth(0.3)
+  pdf.rect(x, y, width, height)
+
+  // Draw diagonal hatch lines at 45 degrees
+  // Lines go from lower-left to upper-right (in visual terms)
+  // In PDF coords: from (lower X, higher Y) to (higher X, lower Y)
+  pdf.setLineWidth(0.15)
+
+  // Parameter d represents offset along the diagonal
+  // Each line satisfies: (x' - x) + (y' - y) = d for points on the line
+  const totalDiagonal = width + height
+
+  for (let d = hatchSpacing; d < totalDiagonal; d += hatchSpacing) {
+    let x1: number, y1: number, x2: number, y2: number
+
+    // Find the two intersection points of the line with the rectangle
+    if (d <= width && d <= height) {
+      // Line intersects left edge and top edge
+      x1 = x
+      y1 = y + d
+      x2 = x + d
+      y2 = y
+    } else if (d <= width && d > height) {
+      // Line intersects bottom edge and top edge
+      x1 = x + (d - height)
+      y1 = y + height
+      x2 = x + d
+      y2 = y
+    } else if (d > width && d <= height) {
+      // Line intersects left edge and right edge
+      x1 = x
+      y1 = y + d
+      x2 = x + width
+      y2 = y + (d - width)
+    } else {
+      // d > width && d > height
+      // Line intersects bottom edge and right edge
+      x1 = x + (d - height)
+      y1 = y + height
+      x2 = x + width
+      y2 = y + (d - width)
+    }
+
+    pdf.line(x1, y1, x2, y2)
+  }
+}
+
+/**
  * Creates a PDF for a single opening with elevation and plan views
  * Uses 11x17 landscape format with both views on one page
  */
@@ -107,18 +314,9 @@ async function addCombinedViewPage(
 
   pdf.setFontSize(14)
   pdf.setFont('helvetica', 'normal')
-  pdf.text(`Opening ${openingData.openingNumber} - ${openingData.openingName}`, pageWidth / 2, 20, {
+  pdf.text(openingData.openingName, pageWidth / 2, 20, {
     align: 'center'
   })
-
-  // Dimensions
-  pdf.setFontSize(10)
-  pdf.text(
-    `Overall: ${openingData.totalWidth}" W × ${openingData.totalHeight}" H`,
-    pageWidth / 2,
-    27,
-    { align: 'center' }
-  )
 
   // Divider line
   pdf.setLineWidth(0.5)
@@ -130,23 +328,14 @@ async function addCombinedViewPage(
   const scheduleY = 38 // Below divider line
   const rowHeight = 6
 
-  // Schedule title and opening info
+  // Schedule title
   pdf.setFontSize(10)
   pdf.setFont('helvetica', 'bold')
   pdf.setTextColor(0, 0, 0)
   pdf.text('DOOR SCHEDULE', scheduleX, scheduleY)
 
-  // Opening info on second line
-  pdf.setFontSize(8)
-  pdf.setFont('helvetica', 'normal')
-  const maxNameLength = 40
-  const displayName = openingData.openingName.length > maxNameLength
-    ? openingData.openingName.substring(0, maxNameLength) + '...'
-    : openingData.openingName
-  pdf.text(`Opening ${openingData.openingNumber}: ${displayName} | ${openingData.totalWidth}" W × ${openingData.totalHeight}" H`, scheduleX, scheduleY + 5)
-
   // Component table with same columns as modal: Opening Name, Dimensions, Direction, Glass, Hardware
-  const tableStartY = scheduleY + 10
+  const tableStartY = scheduleY + 5
   const colWidths = {
     openingName: 50,  // Product name (reduced to make room for dimensions)
     dimensions: 30,   // Width x Height
@@ -253,13 +442,14 @@ async function addCombinedViewPage(
   const elevationX = scheduleX  // Align with door schedule left edge
   const elevationHeight = availableHeight * 0.65 - 2 * sectionPadding
   const footerLineY = pageHeight - 17 // Footer line position
-  const elevationY = footerLineY - elevationHeight - 16 // Minimal spacing, 16mm for labels
+  const elevationY = footerLineY - elevationHeight - 34 // Spacing for dimension lines + Elevation label + component text
 
   // Right section for plan view (40% of width, top section) - adjusted for larger elevation
   const planViewWidth = availableWidth * 0.40 - 2 * sectionPadding
   const planViewX = elevationX + elevationWidth + middleGap + sectionPadding
-  const planViewHeight = availableHeight * 0.6 - 2 * sectionPadding
-  const planViewY = 47 // Moved down 1 inch (25mm) from previous position of 22mm
+  // planViewY accounts for title (38mm) + wrapped labels (~15mm for 2-3 lines) + padding + 1 inch offset
+  const planViewY = 83.4  // 58 + 25.4mm (1 inch)
+  const planViewHeight = availableHeight * 0.55 - 2 * sectionPadding // Reduced to fit below labels
 
   // Draw elevation view at bottom left
   if (openingData.elevationImages && openingData.elevationImages.length > 0) {
@@ -280,17 +470,6 @@ async function addCombinedViewPage(
     // Push the last row
     if (currentRow.length > 0) {
       elevationRows.push(currentRow)
-    }
-
-    // Section label(s)
-    pdf.setFontSize(12)
-    pdf.setFont('helvetica', 'bold')
-
-    if (elevationRows.length === 1) {
-      pdf.text('ELEVATION VIEW', elevationX + elevationWidth / 2, elevationY - 5, { align: 'center' })
-    } else {
-      // Multiple rows - label them A, B, C, etc.
-      pdf.text('ELEVATION VIEWS', elevationX + elevationWidth / 2, elevationY - 5, { align: 'center' })
     }
 
     // Use fixed pixels-per-inch scale (same as modal: 4 pixels per inch)
@@ -328,8 +507,15 @@ async function addCombinedViewPage(
       const totalRowWidthMm = visibleImages.reduce((sum, img) => sum + (img.width * mmPerDisplayInch), 0)
       const scaledTotalWidth = totalRowWidthMm * globalScale
 
-      // Center horizontally within this row's space
-      let currentX = currentRowX + (availableWidthPerRow - scaledTotalWidth) / 2
+      // Calculate max height for dimension lines
+      const maxRowHeightMm = Math.max(...visibleImages.map((img) => img.height * mmPerDisplayInch)) * globalScale
+
+      // Calculate actual total width and height in inches (for dimension display)
+      const totalWidthInches = visibleImages.reduce((sum, img) => sum + img.width, 0)
+      const maxHeightInches = Math.max(...visibleImages.map((img) => img.height))
+
+      // Left align within this row's space
+      let currentX = currentRowX
 
       visibleImages.forEach((img) => {
         // Calculate size using uniform global scaling
@@ -354,13 +540,59 @@ async function addCombinedViewPage(
         currentX += imgWidthMm
       })
 
-      // Row label (Elevation A, B, etc.) right above component descriptors
+      // Calculate bounds for dimension lines
+      const leftX = currentRowX
+      const rightX = currentRowX + scaledTotalWidth
+      const topY = elevationY + elevationHeight - maxRowHeightMm
+      const bottomY = elevationY + elevationHeight
+
+      // Draw total width dimension above the elevation
+      const widthDimY = topY - 12 // Position above the elevation
+      drawHorizontalDimension(
+        pdf,
+        leftX,
+        rightX,
+        widthDimY,
+        formatDimensionInches(totalWidthInches),
+        undefined,
+        5
+      )
+
+      // Draw individual panel width dimensions at the bottom
+      const bottomDimY = bottomY + 8 // Position below the elevation
+      let panelX = leftX
+      visibleImages.forEach((img) => {
+        const imgWidthMm = img.width * mmPerDisplayInch * globalScale
+        drawHorizontalDimension(
+          pdf,
+          panelX,
+          panelX + imgWidthMm,
+          bottomDimY,
+          formatDimensionInches(img.width),
+          undefined,
+          5
+        )
+        panelX += imgWidthMm
+      })
+
+      // Draw height dimension to the right of the elevation
+      const heightDimX = rightX + 12 // Position to the right of the elevation
+      drawVerticalDimension(
+        pdf,
+        heightDimX,
+        topY,
+        bottomY,
+        formatDimensionInches(maxHeightInches),
+        5
+      )
+
+      // Row label (Elevation A, B, etc.) - positioned below bottom dimensions
       const rowLabel = String.fromCharCode(65 + rowIndex) // A, B, C, etc.
       pdf.setFontSize(9)
       pdf.setFont('helvetica', 'bold')
-      pdf.text(`Elevation ${rowLabel}`, currentRowX + availableWidthPerRow / 2, elevationY + elevationHeight + 5, { align: 'center' })
+      pdf.text(`Elevation ${rowLabel}`, currentRowX, bottomDimY + 14)
 
-      // Component labels below elevation label
+      // Component labels below elevation label - left aligned
       pdf.setFontSize(8)
       pdf.setFont('helvetica', 'italic')
       const rowLabelText = visibleImages
@@ -383,8 +615,7 @@ async function addCombinedViewPage(
           return label
         }).join(' + ')
 
-      pdf.text(rowLabelText, currentRowX + availableWidthPerRow / 2, elevationY + elevationHeight + 11, {
-        align: 'center',
+      pdf.text(rowLabelText, currentRowX, bottomDimY + 20, {
         maxWidth: availableWidthPerRow - 5
       })
 
@@ -394,10 +625,10 @@ async function addCombinedViewPage(
 
   // Draw plan view at top right
   if (openingData.planViews && openingData.planViews.length > 0) {
-    // Section label - positioned close to top divider line at 32mm
+    // Section label - moved down 1 inch from original position
     pdf.setFontSize(12)
     pdf.setFont('helvetica', 'bold')
-    pdf.text('PLAN VIEW', planViewX + planViewWidth / 2, 38, { align: 'center' })
+    pdf.text('PLAN VIEW', planViewX + planViewWidth / 2, 63.4, { align: 'center' })  // 38 + 25.4mm
 
     // Component labels right below title
     pdf.setFontSize(8)
@@ -406,7 +637,7 @@ async function addCombinedViewPage(
       .filter(v => v.productType !== 'CORNER_90')
       .map((img) => `${img.productName} (${img.planViewName || 'Plan'})`)
       .join(' + ')
-    pdf.text(labelText, planViewX + planViewWidth / 2, 44, {
+    pdf.text(labelText, planViewX + planViewWidth / 2, 69.4, {  // 44 + 25.4mm
       align: 'center',
       maxWidth: planViewWidth - 10
     })
@@ -461,6 +692,8 @@ async function addCombinedViewPage(
       translateY: number
       rotation: number
       imgData: string
+      sliderOffset: number // Offset for sliding doors to appear "open"
+      segmentIndex: number // Track which segment this panel belongs to
     }
 
     const panelPositions: PanelPosition[] = []
@@ -472,10 +705,34 @@ async function addCombinedViewPage(
     let cumulativeX = 0
     let cumulativeY = 0
 
-    for (const segment of segments) {
+    // Track segment endpoints for wall placement
+    interface SegmentEndpoint {
+      x: number
+      y: number
+      direction: 'horizontal' | 'vertical-up' | 'vertical-down'
+      isStart: boolean
+      frameDepth: number // Height/depth of the frame at this point
+    }
+    const segmentEndpoints: SegmentEndpoint[] = []
+
+    for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+      const segment = segments[segmentIndex]
       const isHorizontal = segment.direction === 'horizontal'
       const isVerticalDown = segment.direction === 'vertical-down'
       const isVerticalUp = segment.direction === 'vertical-up'
+
+      // Track start of segment for wall placement
+      const firstView = segment.views[0]
+      if (firstView && segmentIndex === 0) {
+        // First segment start - this is where we need a wall
+        segmentEndpoints.push({
+          x: cumulativeX,
+          y: cumulativeY,
+          direction: segment.direction,
+          isStart: true,
+          frameDepth: firstView.height * mmPerDisplayInch
+        })
+      }
 
       for (const view of segment.views) {
         const displayHeight = view.height * mmPerDisplayInch
@@ -486,16 +743,24 @@ async function addCombinedViewPage(
         let translateY = 0
         let rotation = 0
 
+        // Calculate slider offset - sliding doors are offset to appear "open"
+        // Offset perpendicular to the wall by the panel's depth (displayHeight)
+        let sliderOffset = 0
+        if (view.productType === 'SLIDING_DOOR') {
+          sliderOffset = displayHeight  // Offset by depth to show "open" position
+        }
+
         if (isHorizontal) {
           // Horizontal layout - no rotation
           translateY = view.orientation === 'bottom' ? -displayHeight : 0
 
-          // Update bounding box
+          // Update bounding box - include slider offset in Y bounds
           minX = Math.min(minX, x)
           maxX = Math.max(maxX, x + displayWidth)
           const yWithTranslate = y + translateY
           minY = Math.min(minY, yWithTranslate)
-          maxY = Math.max(maxY, yWithTranslate + displayHeight)
+          // For sliders, extend maxY to include the offset position
+          maxY = Math.max(maxY, yWithTranslate + displayHeight + sliderOffset)
 
           cumulativeX += displayWidth
         } else if (isVerticalDown) {
@@ -504,8 +769,9 @@ async function addCombinedViewPage(
 
           // After rotation: width becomes height, height becomes width
           // Position at current cumulative position
+          // For sliders in vertical segments, offset extends in X direction
           minX = Math.min(minX, x)
-          maxX = Math.max(maxX, x + displayHeight)
+          maxX = Math.max(maxX, x + displayHeight + sliderOffset)
           minY = Math.min(minY, y)
           maxY = Math.max(maxY, y + displayWidth)
 
@@ -513,11 +779,14 @@ async function addCombinedViewPage(
         } else if (isVerticalUp) {
           // Vertical up - rotate 90 degrees counter-clockwise
           rotation = -90
+          // Need translateY to position rotated image to extend upward
+          translateY = -displayWidth
 
           // After rotation: width becomes height, height becomes width
           // For vertical up, we need to offset to go upward
+          // For sliders, offset extends in X direction
           minX = Math.min(minX, x)
-          maxX = Math.max(maxX, x + displayHeight)
+          maxX = Math.max(maxX, x + displayHeight + sliderOffset)
           minY = Math.min(minY, y - displayWidth)
           maxY = Math.max(maxY, y)
 
@@ -536,10 +805,27 @@ async function addCombinedViewPage(
           displayHeight,
           translateY,
           rotation,
-          imgData
+          imgData,
+          sliderOffset,
+          segmentIndex
+        })
+      }
+
+      // Track end of segment for wall placement
+      const lastView = segment.views[segment.views.length - 1]
+      if (lastView && segmentIndex === segments.length - 1) {
+        // Last segment end - this is where we need a wall
+        segmentEndpoints.push({
+          x: cumulativeX,
+          y: cumulativeY,
+          direction: segment.direction,
+          isStart: false,
+          frameDepth: lastView.height * mmPerDisplayInch
         })
       }
     }
+
+    console.log(`PDF Plan: Tracked ${segmentEndpoints.length} segment endpoints for walls`)
 
     // Calculate center offset to center the entire assembly
     const assemblyWidth = maxX - minX
@@ -566,9 +852,25 @@ async function addCombinedViewPage(
       let scaledWidth = panel.displayWidth * planScale
       let scaledHeight = panel.displayHeight * planScale
 
+      // Calculate slider offset direction based on rotation
+      // For horizontal segments: offset in Y direction (perpendicular to wall)
+      // For vertical segments: offset in X direction (perpendicular to wall)
+      let sliderOffsetX = 0
+      let sliderOffsetY = 0
+      if (panel.sliderOffset > 0) {
+        if (panel.rotation === 0) {
+          // Horizontal segment - offset downward (positive Y)
+          sliderOffsetY = panel.sliderOffset * planScale
+        } else {
+          // Vertical segment - offset to the right (positive X)
+          sliderOffsetX = panel.sliderOffset * planScale
+        }
+      }
+
       // Apply center offset, then scale, then translate to center of section
-      const finalX = centerX + (panel.x + centerOffsetX) * planScale
-      const finalY = centerY + (panel.y + centerOffsetY + panel.translateY) * planScale
+      // Add slider offset for sliding doors
+      const finalX = centerX + (panel.x + centerOffsetX) * planScale + sliderOffsetX
+      const finalY = centerY + (panel.y + centerOffsetY + panel.translateY) * planScale + sliderOffsetY
 
       try {
         let imageToRender = panel.imgData
@@ -593,6 +895,117 @@ async function addCombinedViewPage(
         pdf.rect(finalX, finalY, scaledWidth, scaledHeight)
       }
     }
+
+    // === WALL SECTIONS ===
+    // Draw hatched wall sections at the ends of the plan view (not in the middle for L-shapes)
+    const mmPerDisplayInchForWalls = 25.4 / 4 // Same scale as plan view (6.35mm per inch)
+    const wallLengthInches = 6 // 6 inch walls
+    const wallLengthMm = wallLengthInches * mmPerDisplayInchForWalls * planScale
+
+    // Draw walls at segment endpoints (start of first segment, end of last segment)
+    for (const endpoint of segmentEndpoints) {
+      const wallThicknessMm = endpoint.frameDepth * planScale
+
+      // Calculate rendered position
+      const renderedX = centerX + (endpoint.x + centerOffsetX) * planScale
+      const renderedY = centerY + (endpoint.y + centerOffsetY) * planScale
+
+      if (endpoint.direction === 'horizontal') {
+        // Horizontal segment - walls extend horizontally
+        if (endpoint.isStart) {
+          // Start of horizontal segment - wall on left
+          // Adjust Y position based on frame depth (wall spans the frame depth)
+          const wallY = renderedY - wallThicknessMm
+          drawHatchedWall(
+            pdf,
+            renderedX - wallLengthMm,
+            wallY,
+            wallLengthMm,
+            wallThicknessMm,
+            1.5
+          )
+          console.log(`PDF Plan: Drew left wall at (${(renderedX - wallLengthMm).toFixed(1)}, ${wallY.toFixed(1)})`)
+        } else {
+          // End of horizontal segment - wall on right
+          const wallY = renderedY - wallThicknessMm
+          drawHatchedWall(
+            pdf,
+            renderedX,
+            wallY,
+            wallLengthMm,
+            wallThicknessMm,
+            1.5
+          )
+          console.log(`PDF Plan: Drew right wall at (${renderedX.toFixed(1)}, ${wallY.toFixed(1)})`)
+        }
+      } else if (endpoint.direction === 'vertical-down') {
+        // Vertical down segment - walls extend vertically
+        if (endpoint.isStart) {
+          // Start of vertical-down segment - wall at top
+          drawHatchedWall(
+            pdf,
+            renderedX,
+            renderedY - wallLengthMm,
+            wallThicknessMm,
+            wallLengthMm,
+            1.5
+          )
+          console.log(`PDF Plan: Drew top wall (vertical-down start) at (${renderedX.toFixed(1)}, ${(renderedY - wallLengthMm).toFixed(1)})`)
+        } else {
+          // End of vertical-down segment - wall at bottom
+          drawHatchedWall(
+            pdf,
+            renderedX,
+            renderedY,
+            wallThicknessMm,
+            wallLengthMm,
+            1.5
+          )
+          console.log(`PDF Plan: Drew bottom wall (vertical-down end) at (${renderedX.toFixed(1)}, ${renderedY.toFixed(1)})`)
+        }
+      } else if (endpoint.direction === 'vertical-up') {
+        // Vertical up segment - walls extend vertically
+        if (endpoint.isStart) {
+          // Start of vertical-up segment - wall at bottom
+          drawHatchedWall(
+            pdf,
+            renderedX,
+            renderedY,
+            wallThicknessMm,
+            wallLengthMm,
+            1.5
+          )
+          console.log(`PDF Plan: Drew bottom wall (vertical-up start) at (${renderedX.toFixed(1)}, ${renderedY.toFixed(1)})`)
+        } else {
+          // End of vertical-up segment - wall at top
+          drawHatchedWall(
+            pdf,
+            renderedX,
+            renderedY - wallLengthMm,
+            wallThicknessMm,
+            wallLengthMm,
+            1.5
+          )
+          console.log(`PDF Plan: Drew top wall (vertical-up end) at (${renderedX.toFixed(1)}, ${(renderedY - wallLengthMm).toFixed(1)})`)
+        }
+      }
+    }
+
+    // === INSIDE/OUTSIDE LABELS ===
+    // Add labels above and below the plan view assembly
+    const scaledAssemblyHeight = assemblyHeight * planScale
+    const assemblyTopY = centerY - scaledAssemblyHeight / 2
+    const assemblyBottomY = centerY + scaledAssemblyHeight / 2
+
+    pdf.setFontSize(10)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(0, 0, 0)
+
+    // "INSIDE" label above the assembly
+    pdf.text('INSIDE', centerX, assemblyTopY - 8, { align: 'center' })
+
+    // "OUTSIDE" label below the assembly
+    pdf.text('OUTSIDE', centerX, assemblyBottomY + 18, { align: 'center' })
   } else {
     // No plan view available message
     pdf.setFontSize(10)
@@ -604,7 +1017,7 @@ async function addCombinedViewPage(
   }
 
   // Footer
-  addFooter(pdf, projectName, `Opening ${openingData.openingNumber}`)
+  addFooter(pdf, projectName, '')
 }
 
 /**

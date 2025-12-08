@@ -4,6 +4,14 @@ import { useState, useEffect } from 'react'
 import { Plus, Edit, Calendar, DollarSign, Briefcase, CheckCircle, Clock, AlertCircle, Archive, FileText, X, Download, List, Search, Trash2 } from 'lucide-react'
 import { ProjectStatus, STATUS_CONFIG, LEAD_STATUSES, PROJECT_STATUSES } from '@/types'
 import { useAppStore } from '@/stores/appStore'
+
+// Statuses to show in the project filter (Quote Accepted, Active, Complete, Archive)
+const PROJECT_FILTER_STATUSES: ProjectStatus[] = [
+  ProjectStatus.QUOTE_ACCEPTED,
+  ProjectStatus.ACTIVE,
+  ProjectStatus.COMPLETE,
+  ProjectStatus.ARCHIVE
+]
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import LeadForm from './LeadForm'
 
@@ -38,9 +46,11 @@ interface CustomerProjectsProps {
   onProjectClick?: (projectId: number) => void
   showFullHeader?: boolean
   filterType?: 'all' | 'leads' | 'projects'  // Filter to show only leads, only projects, or all
+  refreshKey?: number  // When this changes, refetch projects
+  onStatusChange?: () => void  // Called when project status changes to trigger sibling refresh
 }
 
-export default function CustomerProjects({ customerId, customer, onProjectClick, showFullHeader = false, filterType = 'all' }: CustomerProjectsProps) {
+export default function CustomerProjects({ customerId, customer, onProjectClick, showFullHeader = false, filterType = 'all', refreshKey, onStatusChange }: CustomerProjectsProps) {
   const { setSelectedProjectId, setCurrentMenu, setAutoOpenAddOpening } = useAppStore()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -95,7 +105,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   useEffect(() => {
     fetchProjects()
     fetchPricingModes()
-  }, [customerId])
+  }, [customerId, refreshKey])
 
   const fetchProjects = async () => {
     setLoading(true)
@@ -176,6 +186,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
       if (response.ok) {
         await fetchProjects() // Refresh entire list to get updated data
         setStatusChangeConfirm(null)
+        onStatusChange?.() // Notify parent to refresh sibling components
       } else {
         console.error('Failed to update project status')
       }
@@ -198,6 +209,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
 
       if (response.ok) {
         await fetchProjects() // Refresh entire list to get updated data
+        onStatusChange?.() // Notify parent to refresh sibling components
       } else {
         console.error('Failed to update project status')
       }
@@ -262,6 +274,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
       if (response.ok) {
         await fetchProjects() // Refresh projects list
         cancelEdit()
+        onStatusChange?.() // Notify parent to refresh sibling components
       } else {
         console.error('Failed to update project')
       }
@@ -417,6 +430,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
       if (response.ok) {
         await fetchProjects()
         cancelEdit()
+        onStatusChange?.() // Notify parent to refresh sibling components
       } else {
         console.error('Failed to archive project')
       }
@@ -533,12 +547,13 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
               <div className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out ${
                 filtersExpanded ? 'max-w-[800px] opacity-100' : 'max-w-0 opacity-0'
               }`}>
-                {Object.entries(STATUS_CONFIG).map(([key, config]) => {
-                  const isActive = statusFilters.includes(key)
+                {(filterType === 'leads' ? LEAD_STATUSES : PROJECT_FILTER_STATUSES).map((status) => {
+                  const config = STATUS_CONFIG[status]
+                  const isActive = statusFilters.includes(status)
                   return (
                     <button
-                      key={key}
-                      onClick={() => toggleStatusFilter(key)}
+                      key={status}
+                      onClick={() => toggleStatusFilter(status)}
                       className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 whitespace-nowrap ${
                         isActive
                           ? `${config.bgColor} ${config.textColor}`
@@ -678,12 +693,13 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
               <div className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out ${
                 filtersExpanded ? 'max-w-[800px] opacity-100' : 'max-w-0 opacity-0'
               }`}>
-                {Object.entries(STATUS_CONFIG).map(([key, config]) => {
-                  const isActive = statusFilters.includes(key)
+                {(filterType === 'leads' ? LEAD_STATUSES : PROJECT_FILTER_STATUSES).map((status) => {
+                  const config = STATUS_CONFIG[status]
+                  const isActive = statusFilters.includes(status)
                   return (
                     <button
-                      key={key}
-                      onClick={() => toggleStatusFilter(key)}
+                      key={status}
+                      onClick={() => toggleStatusFilter(status)}
                       className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 whitespace-nowrap ${
                         isActive
                           ? `${config.bgColor} ${config.textColor}`

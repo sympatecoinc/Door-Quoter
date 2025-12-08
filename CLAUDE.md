@@ -96,6 +96,15 @@ After implementation:
 4. Verify no unintended side effects
 5. Document test results in planning file (if one exists)
 
+### Automated Testing with Playwright
+
+**Navigate to:** `http://localhost:[PORT]` (use the actual port from STEP 5)
+
+**Login Credentials:**
+- Email: `devtest@sympatecoinc.com`
+- Password: `password`
+
+
 ### STEP 6: COMPLETION
 Update the planning file (if created) with:
 - Mark all tasks complete: `- [x]`

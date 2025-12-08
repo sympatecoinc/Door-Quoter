@@ -151,6 +151,7 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
             // Check if using percentage-based costing method
             // Use percentage-based if: method is PERCENTAGE_BASED OR part is in excluded list
             const usePercentageBased = extrusionCostingMethod === 'PERCENTAGE_BASED' || isExcludedPart
+            const useHybrid = extrusionCostingMethod === 'HYBRID'
 
             if (usePercentageBased && bestRule.stockLength && bestRule.basePrice) {
               // Calculate usage percentage
@@ -191,6 +192,66 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
                 return { cost, breakdown }
               }
               // If 50% or less remains, fall through to full stock cost
+            }
+
+            // HYBRID costing method
+            // If usage >= 50%: used portion (markup applied at quote level) + remaining at cost (no markup)
+            // If usage < 50%: percentage-based (used portion only, markup at quote level)
+            if (useHybrid && bestRule.stockLength && bestRule.basePrice) {
+              const usagePercentage = requiredLength / bestRule.stockLength
+              const remainingPercentage = 1 - usagePercentage
+
+              if (usagePercentage >= 0.5) {
+                // >= 50% used: charge markup on used portion + cost on remaining
+                // At this level, we return the BASE costs - markup is applied at quote generation
+                // usedPortionCost will have markup applied, remainingPortionCost will not
+                const usedPortionCost = bestRule.basePrice * usagePercentage * (bom.quantity || 1)
+                const remainingPortionCost = bestRule.basePrice * remainingPercentage * (bom.quantity || 1)
+
+                cost = usedPortionCost + remainingPortionCost // Total base cost (full stock)
+                breakdown.method = 'extrusion_hybrid_split'
+                breakdown.details = `Hybrid (≥50% used): ${(usagePercentage * 100).toFixed(1)}% used ($${usedPortionCost.toFixed(2)} at markup) + ${(remainingPercentage * 100).toFixed(1)}% remaining ($${remainingPortionCost.toFixed(2)} at cost). Stock: ${bestRule.stockLength}", Used: ${requiredLength}"`
+                breakdown.unitCost = cost / (bom.quantity || 1)
+                breakdown.totalCost = cost
+                // Store hybrid breakdown for quote-level markup calculation
+                ;(breakdown as any).hybridBreakdown = {
+                  usedPercentage: usagePercentage,
+                  remainingPercentage: remainingPercentage,
+                  usedPortionCost: usedPortionCost,
+                  remainingPortionCost: remainingPortionCost
+                }
+              } else {
+                // < 50% used: percentage-based (only charge for used portion)
+                cost = bestRule.basePrice * usagePercentage * (bom.quantity || 1)
+                breakdown.method = 'extrusion_hybrid_percentage'
+                breakdown.details = `Hybrid (<50% used): ${(usagePercentage * 100).toFixed(1)}% of stock (${requiredLength}"/${bestRule.stockLength}") × $${bestRule.basePrice} × ${bom.quantity || 1} = $${cost.toFixed(2)}`
+                breakdown.unitCost = cost / (bom.quantity || 1)
+                breakdown.totalCost = cost
+              }
+
+              // Calculate finish cost for hybrid pricing (based on cut length used)
+              if (finishColor && finishColor !== 'Mill Finish' && !masterPart.isMillFinish) {
+                try {
+                  const finishPricing = await prisma.extrusionFinishPricing.findUnique({
+                    where: { finishType: finishColor, isActive: true }
+                  })
+
+                  if (finishPricing && finishPricing.costPerFoot > 0) {
+                    const cutLengthFeet = requiredLength / 12
+                    const finishCostPerPiece = cutLengthFeet * finishPricing.costPerFoot
+                    const totalFinishCost = finishCostPerPiece * (bom.quantity || 1)
+
+                    breakdown.finishCost = totalFinishCost
+                    breakdown.finishDetails = `${finishColor} finish: ${cutLengthFeet.toFixed(2)}' × $${finishPricing.costPerFoot}/ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
+                    cost += totalFinishCost
+                    breakdown.totalCost = cost
+                  }
+                } catch (error) {
+                  console.error('Error calculating finish cost:', error)
+                }
+              }
+
+              return { cost, breakdown }
             }
 
             // FULL_STOCK method or percentage fallback
@@ -302,7 +363,11 @@ export async function POST(
     const opening = await prisma.opening.findUnique({
       where: { id: openingId },
       include: {
-        project: true, // Include project to get extrusion costing method and excluded parts
+        project: {
+          include: {
+            pricingMode: true // Include pricing mode to get extrusion costing method
+          }
+        }, // Include project to get excluded parts
         panels: {
           include: {
             componentInstance: {
@@ -339,6 +404,7 @@ export async function POST(
       components: [] as any[],
       totalComponentCost: 0,
       totalStandardOptionCost: 0, // Track standard option costs separately (no markup)
+      totalHybridRemainingCost: 0, // Track HYBRID remaining costs (no markup)
       totalPrice: 0
     }
 
@@ -364,18 +430,25 @@ export async function POST(
       }
 
       // Calculate BOM costs using proper pricing rules
+      // Get extrusion costing method from pricing mode (fallback to project's setting for backward compatibility, then to FULL_STOCK)
+      const extrusionCostingMethod = opening.project.pricingMode?.extrusionCostingMethod || opening.project.extrusionCostingMethod || 'FULL_STOCK'
       for (const bom of product.productBOMs) {
         const { cost, breakdown } = await calculateBOMItemPrice(
           bom,
           panel.width,
           panel.height,
-          opening.project.extrusionCostingMethod || 'FULL_STOCK',
+          extrusionCostingMethod,
           opening.project.excludedPartNumbers || [],
           opening.finishColor
         )
         componentBreakdown.bomCosts.push(breakdown)
         componentBreakdown.totalBOMCost += cost
         componentCost += cost
+
+        // Track HYBRID remaining costs (no markup portion)
+        if ((breakdown as any).hybridBreakdown?.remainingPortionCost) {
+          priceBreakdown.totalHybridRemainingCost += (breakdown as any).hybridBreakdown.remainingPortionCost
+        }
       }
 
       // Calculate sub-option costs with standard hardware logic
@@ -576,6 +649,7 @@ export async function POST(
       data: {
         price: priceBreakdown.totalPrice,
         standardOptionCost: priceBreakdown.totalStandardOptionCost,
+        hybridRemainingCost: priceBreakdown.totalHybridRemainingCost,
         priceCalculatedAt: new Date()
       }
     })

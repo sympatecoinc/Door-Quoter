@@ -58,22 +58,23 @@ model ProjectStatusHistory {
 }
 
 model Opening {
-  id                 Int       @id @default(autoincrement())
-  projectId          Int
-  name               String
-  roughWidth         Float?
-  roughHeight        Float?
-  finishedWidth      Float?
-  finishedHeight     Float?
-  price              Float     @default(0)
-  standardOptionCost Float     @default(0) // Cost of standard options (no markup applied)
-  multiplier         Float     @default(1.0) // Price multiplier/markup for this opening (e.g., 1.2 = 20% markup)
-  priceCalculatedAt  DateTime? // Track when price was last calculated
-  finishColor       String?   // Finish type for extrusions (e.g., "Mill Finish", "Powder Coated", "Anodized")
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  panels            Panel[]
+  id                    Int       @id @default(autoincrement())
+  projectId             Int
+  name                  String
+  roughWidth            Float?
+  roughHeight           Float?
+  finishedWidth         Float?
+  finishedHeight        Float?
+  price                 Float     @default(0)
+  standardOptionCost    Float     @default(0) // Cost of standard options (no markup applied)
+  hybridRemainingCost   Float     @default(0) // HYBRID pricing: remaining extrusion cost (no markup applied)
+  multiplier            Float     @default(1.0) // Price multiplier/markup for this opening (e.g., 1.2 = 20% markup)
+  priceCalculatedAt     DateTime? // Track when price was last calculated
+  finishColor           String?   // Finish type for extrusions (e.g., "Mill Finish", "Powder Coated", "Anodized")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  project               Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  panels                Panel[]
 
   @@map("Openings")
 }
@@ -147,6 +148,7 @@ model SubOptionCategory {
   id                Int                @id @default(autoincrement())
   name              String
   description       String?
+  svgOriginId       String?            @unique  // Unique ID for SVG origin point (e.g., "origin-a1b2c3")
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   individualOptions IndividualOption[]
@@ -164,6 +166,10 @@ model IndividualOption {
   price                       Float              @default(0)
   addToPackingList            Boolean            @default(false)
   addFinishToPartNumber       Boolean            @default(false)
+  elevationImagePath          String?            // Path to elevation view image
+  elevationImageOriginalName  String?            // Original filename for elevation image
+  planImagePath               String?            // Path to plan view image
+  planImageOriginalName       String?            // Original filename for plan image
   createdAt                   DateTime           @default(now())
   updatedAt                   DateTime           @updatedAt
   category                    SubOptionCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
@@ -507,18 +513,19 @@ model GlassType {
 
 // Pricing Modes - Configurable pricing strategies for projects
 model PricingMode {
-  id              Int       @id @default(autoincrement())
-  name            String    @unique
-  description     String?
-  isDefault       Boolean   @default(false)
-  markup          Float     @default(0) // Global markup percentage (e.g., 20 for 20%) - kept for backward compatibility
-  extrusionMarkup Float     @default(0) // Extrusion-specific markup percentage
-  hardwareMarkup  Float     @default(0) // Hardware-specific markup percentage
-  glassMarkup     Float     @default(0) // Glass-specific markup percentage
-  discount        Float     @default(0) // Global discount percentage (e.g., 10 for 10%)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  projects        Project[]
+  id                     Int       @id @default(autoincrement())
+  name                   String    @unique
+  description            String?
+  isDefault              Boolean   @default(false)
+  markup                 Float     @default(0) // Global markup percentage (e.g., 20 for 20%) - kept for backward compatibility
+  extrusionMarkup        Float     @default(0) // Extrusion-specific markup percentage
+  hardwareMarkup         Float     @default(0) // Hardware-specific markup percentage
+  glassMarkup            Float     @default(0) // Glass-specific markup percentage
+  discount               Float     @default(0) // Global discount percentage (e.g., 10 for 10%)
+  extrusionCostingMethod String    @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED" | "HYBRID" - how to cost extrusions
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  projects               Project[]
 
   @@map("PricingModes")
 }

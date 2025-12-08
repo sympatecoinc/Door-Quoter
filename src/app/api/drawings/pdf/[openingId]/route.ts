@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { renderSvgToPng, isSvgFile, decodeSvgData } from '@/lib/svg-renderer'
+import { renderSvgToPng, isSvgFile, decodeSvgData, injectHardwareImages, HardwareImagePlacement } from '@/lib/svg-renderer'
 import { processParametricSVG } from '@/lib/parametric-svg-server'
+import { Resvg } from '@resvg/resvg-js'
+import fs from 'fs'
+import path from 'path'
 import {
   createSingleOpeningPDF,
   OpeningDrawingData,
@@ -102,17 +105,101 @@ export async function GET(
         const fileName = panel.componentInstance.product.elevationFileName ?? undefined
         const componentInstance = panel.componentInstance
 
-        // If SVG, render to PNG server-side
+        // If SVG, render to PNG server-side with hardware injection
         if (isSvgFile(fileName)) {
           try {
-            console.log(`Processing SVG elevation for panel ${panel.id}`)
-            const svgString = decodeSvgData(imageData)
-            imageData = await renderSvgToPng(svgString, {
+            console.log(`[Single PDF] Processing SVG elevation for panel ${panel.id}`)
+            let svgString = decodeSvgData(imageData)
+
+            // First, apply parametric scaling
+            const { scaledSVG } = processParametricSVG(svgString, {
               width: panel.width,
-              height: panel.height,
-              mode: 'elevation'
+              height: panel.height
+            }, 'elevation')
+
+            // Fetch and inject hardware images AFTER scaling
+            let finalSvg = scaledSVG
+            const hardwarePlacements: HardwareImagePlacement[] = []
+
+            if (componentInstance?.subOptionSelections) {
+              try {
+                const selections = JSON.parse(componentInstance.subOptionSelections)
+
+                for (const [categoryId, optionId] of Object.entries(selections)) {
+                  if (!optionId) continue
+
+                  const option = await prisma.individualOption.findUnique({
+                    where: { id: Number(optionId) },
+                    include: {
+                      category: {
+                        select: { svgOriginId: true }
+                      }
+                    }
+                  })
+
+                  if (option?.elevationImagePath && option?.category?.svgOriginId) {
+                    const imagePath = path.join(
+                      process.cwd(),
+                      'uploads',
+                      'option-images',
+                      String(option.id),
+                      option.elevationImagePath
+                    )
+
+                    if (fs.existsSync(imagePath)) {
+                      const isSvgHardware = option.elevationImagePath.toLowerCase().endsWith('.svg')
+
+                      let hwImageData: string
+                      if (isSvgHardware) {
+                        hwImageData = fs.readFileSync(imagePath, 'utf-8')
+                      } else {
+                        const imageBuffer = fs.readFileSync(imagePath)
+                        hwImageData = imageBuffer.toString('base64')
+                      }
+
+                      hardwarePlacements.push({
+                        originId: option.category.svgOriginId,
+                        imageData: hwImageData,
+                        width: 164,
+                        height: 2592,
+                        isSvg: isSvgHardware
+                      })
+
+                      console.log(`  [Single PDF] → Hardware: ${option.name} @ ${option.category.svgOriginId}`)
+                    }
+                  }
+                }
+              } catch (parseError) {
+                console.error('  [Single PDF] Error parsing hardware selections:', parseError)
+              }
+            }
+
+            // Inject hardware images into the SCALED SVG
+            if (hardwarePlacements.length > 0) {
+              console.log(`  [Single PDF] Injecting ${hardwarePlacements.length} hardware image(s)`)
+              finalSvg = injectHardwareImages(scaledSVG, hardwarePlacements)
+            }
+
+            // Render to PNG directly with Resvg
+            const pixelsPerInch = 24
+            const pngWidth = Math.round(panel.width * pixelsPerInch)
+
+            const resvg = new Resvg(finalSvg, {
+              background: '#ffffff',
+              fitTo: {
+                mode: 'width',
+                value: pngWidth
+              },
+              font: {
+                loadSystemFonts: true
+              }
             })
-            console.log(`Successfully rendered elevation SVG for panel ${panel.id}`)
+
+            const pngData = resvg.render()
+            const pngBuffer = pngData.asPng()
+            imageData = pngBuffer.toString('base64')
+
+            console.log(`[Single PDF] ✓ Rendered elevation PNG for panel ${panel.id}`)
           } catch (error) {
             console.error(`Error rendering elevation SVG for panel ${panel.id}:`, error)
           }
@@ -196,7 +283,17 @@ export async function GET(
           // For sliding doors, always use slidingDirection
           const panelDirection = panel.slidingDirection
           console.log(`Looking for sliding door plan view with direction: ${panelDirection}`)
+          // Try exact match first, then partial match
           matchingPlanView = product.planViews.find((pv: any) => pv.name === panelDirection)
+          if (!matchingPlanView) {
+            matchingPlanView = product.planViews.find((pv: any) =>
+              pv.name.toLowerCase().includes(panelDirection.toLowerCase())
+            )
+          }
+          if (!matchingPlanView && product.planViews.length > 0) {
+            matchingPlanView = product.planViews[0]
+            console.log(`Using fallback plan view: ${matchingPlanView.name}`)
+          }
           if (matchingPlanView) {
             console.log(`Found matching plan view: ${matchingPlanView.name}`)
           } else {
@@ -207,7 +304,17 @@ export async function GET(
           // For swing doors, use swingDirection
           const panelDirection = panel.swingDirection
           console.log(`Looking for swing door plan view with direction: ${panelDirection}`)
+          // Try exact match first, then partial match
           matchingPlanView = product.planViews.find((pv: any) => pv.name === panelDirection)
+          if (!matchingPlanView) {
+            matchingPlanView = product.planViews.find((pv: any) =>
+              pv.name.toLowerCase().includes(panelDirection.toLowerCase())
+            )
+          }
+          if (!matchingPlanView && product.planViews.length > 0) {
+            matchingPlanView = product.planViews[0]
+            console.log(`Using fallback plan view: ${matchingPlanView.name}`)
+          }
           if (matchingPlanView) {
             console.log(`Found matching plan view: ${matchingPlanView.name}`)
           } else {
@@ -219,6 +326,9 @@ export async function GET(
           const panelDirection =
             panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
           matchingPlanView = product.planViews.find((pv: any) => pv.name === panelDirection)
+          if (!matchingPlanView && product.planViews.length > 0) {
+            matchingPlanView = product.planViews[0]
+          }
         }
 
         if (matchingPlanView) {
@@ -227,12 +337,12 @@ export async function GET(
           let displayWidth = panel.width
           let displayHeight = panel.width * 0.1 // Default fallback
 
-          // If SVG, process parametrically then render to PNG server-side
+          // If SVG, process parametrically then render to PNG server-side with hardware injection
           if (isSvgFile(fileName)) {
             try {
-              console.log(`Processing SVG plan view for panel ${panel.id}: ${fileName}`)
+              console.log(`[Single PDF] Processing SVG plan view for panel ${panel.id}: ${fileName}`)
 
-              const svgString = decodeSvgData(imageData)
+              let svgString = decodeSvgData(imageData)
 
               // Extract original dimensions for calculating display height
               const viewBoxMatch = svgString.match(/viewBox="([^"]+)"/)
@@ -246,33 +356,92 @@ export async function GET(
               }
 
               // Calculate the constant height based on the original aspect ratio
-              // SVG is designed at 36" width, so calculate what the height represents
               const originalWidthInches = 36
               const aspectRatio = svgHeightPx / svgWidthPx
               const constantHeightInches = originalWidthInches * aspectRatio
 
               displayWidth = panel.width
-              displayHeight = constantHeightInches  // Stays constant regardless of width
+              displayHeight = constantHeightInches
 
-              console.log(`SVG original: ${svgWidthPx}px x ${svgHeightPx}px`)
-              console.log(`SVG display: width scales to ${displayWidth}", height CONSTANT at ${displayHeight.toFixed(2)}"`)
+              // Fetch hardware image placements for plan view
+              const planHardwarePlacements: HardwareImagePlacement[] = []
+              const componentInstance = panel.componentInstance
 
-              // Process SVG with parametric scaling (handles group transforms)
-              console.log(`Applying parametric transforms for plan view`)
+              if (componentInstance?.subOptionSelections) {
+                try {
+                  const selections = JSON.parse(componentInstance.subOptionSelections)
+
+                  for (const [categoryId, optionId] of Object.entries(selections)) {
+                    if (!optionId) continue
+
+                    const option = await prisma.individualOption.findUnique({
+                      where: { id: Number(optionId) },
+                      include: {
+                        category: {
+                          select: { svgOriginId: true }
+                        }
+                      }
+                    })
+
+                    if (option?.planImagePath && option?.category?.svgOriginId) {
+                      const imagePath = path.join(
+                        process.cwd(),
+                        'uploads',
+                        'option-images',
+                        String(option.id),
+                        option.planImagePath
+                      )
+
+                      if (fs.existsSync(imagePath)) {
+                        const isSvgHardware = option.planImagePath.toLowerCase().endsWith('.svg')
+
+                        let hwImageData: string
+                        if (isSvgHardware) {
+                          hwImageData = fs.readFileSync(imagePath, 'utf-8')
+                        } else {
+                          const imageBuffer = fs.readFileSync(imagePath)
+                          hwImageData = imageBuffer.toString('base64')
+                        }
+
+                        planHardwarePlacements.push({
+                          originId: option.category.svgOriginId,
+                          imageData: hwImageData,
+                          width: 50,
+                          height: 30,
+                          isSvg: isSvgHardware
+                        })
+
+                        console.log(`  [Single PDF] → Hardware (plan): ${option.name} @ ${option.category.svgOriginId}`)
+                      }
+                    }
+                  }
+                } catch (parseError) {
+                  console.error('  [Single PDF] Error parsing hardware selections for plan:', parseError)
+                }
+              }
+
+              // Process SVG with parametric scaling FIRST
+              console.log(`[Single PDF] Applying parametric transforms for plan view`)
               const { scaledSVG } = processParametricSVG(svgString, {
                 width: panel.width,
                 height: constantHeightInches
               }, 'plan')
 
+              // NOW inject hardware images into the SCALED SVG
+              let finalSvg = scaledSVG
+              if (planHardwarePlacements.length > 0) {
+                console.log(`  [Single PDF] Injecting ${planHardwarePlacements.length} hardware image(s) into scaled plan view`)
+                finalSvg = injectHardwareImages(scaledSVG, planHardwarePlacements)
+              }
+
               // Render the processed SVG to PNG
-              console.log(`Rendering processed SVG to PNG`)
-              imageData = await renderSvgToPng(scaledSVG, {
+              imageData = await renderSvgToPng(finalSvg, {
                 width: panel.width,
                 height: constantHeightInches,
                 mode: 'plan'
               })
 
-              console.log(`Successfully rendered plan view SVG for panel ${panel.id}`)
+              console.log(`[Single PDF] ✓ Rendered plan view SVG for panel ${panel.id}`)
             } catch (error) {
               console.error(`Error rendering plan view SVG for panel ${panel.id}:`, error)
             }
@@ -294,7 +463,9 @@ export async function GET(
             width: displayWidth,
             height: displayHeight,
             orientation: planViewOrientation,
-            planViewName: matchingPlanView.name
+            planViewName: matchingPlanView.name,
+            productType: product.productType,
+            slidingDirection: product.productType === 'SLIDING_DOOR' ? panel.slidingDirection : undefined
           })
 
           console.log(`Plan view added. Total plan views: ${planViews.length}`)

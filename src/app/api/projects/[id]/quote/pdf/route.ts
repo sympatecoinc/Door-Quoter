@@ -2,6 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createQuotePDF, QuoteData } from '@/lib/quote-pdf-generator'
 
+// Helper to get panel direction display name
+// Returns the exact direction name the user selected, or empty for corners
+function getDirectionDisplayName(direction: string, panelType: string): string {
+  // Skip corner directions entirely
+  if (panelType === 'CORNER_90') {
+    return ''
+  }
+
+  // For swing and sliding doors, return the exact direction name
+  if (direction === 'None' || direction === 'N/A' || !direction) {
+    return ''
+  }
+
+  return direction
+}
+
 // Helper function to calculate price with category-specific markup (copied from quote route)
 function calculateMarkupPrice(
   baseCost: number,
@@ -191,9 +207,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           }
         }
 
+        // Get standard option cost and HYBRID remaining cost (should NOT be marked up)
+        const standardOptionCost = opening.standardOptionCost || 0
+        const hybridRemainingCost = opening.hybridRemainingCost || 0
+
         // Distribute the opening base cost based on BOM counts
         const totalBOMCount = bomCounts.Extrusion + bomCounts.Hardware + bomCounts.Glass + bomCounts.Other
-        const remainingCost = opening.price - hardwareCost
+        // Subtract costs that should not have markup applied
+        const remainingCost = opening.price - hardwareCost - standardOptionCost - hybridRemainingCost
 
         if (totalBOMCount > 0 && remainingCost > 0) {
           extrusionCost += (remainingCost * bomCounts.Extrusion) / totalBOMCount
@@ -208,7 +229,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const markedUpGlassCost = calculateMarkupPrice(glassCost, 'Glass', pricingMode, globalPricingMultiplier)
         const markedUpOtherCost = calculateMarkupPrice(otherCost, 'Other', pricingMode, globalPricingMultiplier)
 
-        const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpOtherCost
+        // Add back standard option costs and HYBRID remaining costs WITHOUT markup
+        const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpOtherCost + standardOptionCost + hybridRemainingCost
 
         // Generate description
         const panelTypes = opening.panels
@@ -230,9 +252,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           })
           .join(', ')
 
+        // Extract opening directions from panels
+        const openingDirections: string[] = []
+        for (const panel of opening.panels) {
+          if (panel.componentInstance) {
+            const productType = panel.componentInstance.product.productType
+
+            let direction = ''
+            if (productType === 'SWING_DOOR' && panel.swingDirection) {
+              direction = panel.swingDirection
+            } else if (productType === 'SLIDING_DOOR' && panel.slidingDirection) {
+              direction = panel.slidingDirection
+            } else if (productType === 'CORNER_90' && panel.cornerDirection) {
+              direction = panel.cornerDirection
+            }
+
+            if (direction && direction !== 'None' && direction !== 'N/A') {
+              const displayName = getDirectionDisplayName(direction, productType)
+              if (displayName) {
+                openingDirections.push(displayName)
+              }
+            }
+          }
+        }
+
         return {
           openingId: opening.id,
           name: opening.name,
+          openingDirections: openingDirections,
           description: description || 'Custom Opening',
           dimensions: `${totalWidth}" W × ${maxHeight}" H`,
           color: opening.finishColor || 'Standard',
