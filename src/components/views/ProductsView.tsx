@@ -60,9 +60,15 @@ export default function ProductsView() {
   const [showArchiveDialog, setShowArchiveDialog] = useState<{product: Product, projects: string[]} | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<Product | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [showDuplicateConfirm, setShowDuplicateConfirm] = useState<Product | null>(null)
+  const [duplicating, setDuplicating] = useState(false)
 
   // Handle Escape key to close modals one at a time
   useEscapeKey([
+    { isOpen: showDeleteConfirm !== null, isBlocked: deleting, onClose: () => setShowDeleteConfirm(null) },
+    { isOpen: showDuplicateConfirm !== null, isBlocked: duplicating, onClose: () => setShowDuplicateConfirm(null) },
     { isOpen: showArchiveDialog !== null, onClose: () => setShowArchiveDialog(null) },
     { isOpen: editingProduct !== null, isBlocked: updating, onClose: () => setEditingProduct(null) },
     { isOpen: showCreateForm, onClose: () => setShowCreateForm(false) },
@@ -152,37 +158,43 @@ export default function ProductsView() {
   }
 
   function handleDeleteProduct(product: Product) {
-    if (!confirm(`Are you sure you want to delete "${product.name}"?`)) return
+    setShowDeleteConfirm(product)
+  }
 
-    // Async operation wrapped in promise
-    (async () => {
-      try {
-        const response = await fetch(`/api/products/${product.id}`, {
-          method: 'DELETE'
-        })
+  async function confirmDeleteProduct() {
+    if (!showDeleteConfirm) return
 
-        if (response.ok) {
-          fetchProducts()
-          // If we're currently viewing this product, go back to list
-          if (selectedProduct?.id === product.id) {
-            setSelectedProduct(null)
-          }
-        } else {
-          const errorData = await response.json()
-          if (errorData.canArchive) {
-            setShowArchiveDialog({
-              product: product,
-              projects: errorData.usedInProjects
-            })
-          } else {
-            alert(errorData.message || 'Failed to delete product')
-          }
+    setDeleting(true)
+    try {
+      const response = await fetch(`/api/products/${showDeleteConfirm.id}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        fetchProducts()
+        // If we're currently viewing this product, go back to list
+        if (selectedProduct?.id === showDeleteConfirm.id) {
+          setSelectedProduct(null)
         }
-      } catch (error) {
-        console.error('Error deleting product:', error)
-        alert('Error deleting product')
+        setShowDeleteConfirm(null)
+      } else {
+        const errorData = await response.json()
+        if (errorData.canArchive) {
+          setShowDeleteConfirm(null)
+          setShowArchiveDialog({
+            product: showDeleteConfirm,
+            projects: errorData.usedInProjects
+          })
+        } else {
+          alert(errorData.message || 'Failed to delete product')
+        }
       }
-    })()
+    } catch (error) {
+      console.error('Error deleting product:', error)
+      alert('Error deleting product')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   async function handleArchiveProduct(product: Product) {
@@ -207,17 +219,23 @@ export default function ProductsView() {
     }
   }
 
-  async function handleDuplicateProduct(product: Product) {
-    if (!confirm(`Duplicate product "${product.name}"?`)) return
-    
+  function handleDuplicateProduct(product: Product) {
+    setShowDuplicateConfirm(product)
+  }
+
+  async function confirmDuplicateProduct() {
+    if (!showDuplicateConfirm) return
+
+    setDuplicating(true)
     try {
-      const response = await fetch(`/api/products/${product.id}/duplicate`, {
+      const response = await fetch(`/api/products/${showDuplicateConfirm.id}/duplicate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
 
       if (response.ok) {
         fetchProducts()
+        setShowDuplicateConfirm(null)
       } else {
         const errorData = await response.json()
         alert(errorData.message || 'Failed to duplicate product')
@@ -225,6 +243,8 @@ export default function ProductsView() {
     } catch (error) {
       console.error('Error duplicating product:', error)
       alert('Error duplicating product')
+    } finally {
+      setDuplicating(false)
     }
   }
 
@@ -318,6 +338,82 @@ export default function ProductsView() {
           </>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Product</h3>
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to delete <strong>{showDeleteConfirm.name}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteProduct}
+                disabled={deleting}
+                className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 flex items-center"
+              >
+                {deleting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Confirmation Modal */}
+      {showDuplicateConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Duplicate Product</h3>
+            <p className="text-gray-600 mb-4">
+              Create a copy of <strong>{showDuplicateConfirm.name}</strong>? This will duplicate the product along with all its configurations.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDuplicateConfirm(null)}
+                disabled={duplicating}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDuplicateProduct}
+                disabled={duplicating}
+                className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 flex items-center"
+              >
+                {duplicating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Duplicating...
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 mr-2" />
+                    Duplicate
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Archive Dialog Modal */}
       {showArchiveDialog && (
@@ -437,7 +533,6 @@ function ProductsTab({
         setNewProductInstallationPrice(0)
         setShowCreateForm(false)
         onRefresh()
-        alert('Product created successfully!')
       }
     } catch (error) {
       console.error('Error creating product:', error)

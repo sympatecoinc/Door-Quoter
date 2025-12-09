@@ -97,11 +97,28 @@ export const LEAD_STATUSES: ProjectStatus[] = [
   ProjectStatus.QUOTE_SENT
 ]
 
+// Lead filter statuses (includes Archive for filtering)
+export const LEAD_FILTER_STATUSES: ProjectStatus[] = [
+  ProjectStatus.STAGING,
+  ProjectStatus.APPROVED,
+  ProjectStatus.REVISE,
+  ProjectStatus.QUOTE_SENT,
+  ProjectStatus.ARCHIVE
+]
+
 // Project phase statuses (post-acceptance / "Won")
 export const PROJECT_STATUSES: ProjectStatus[] = [
   ProjectStatus.QUOTE_ACCEPTED,
   ProjectStatus.ACTIVE,
   ProjectStatus.COMPLETE
+]
+
+// Project filter statuses (includes Archive for filtering)
+export const PROJECT_FILTER_STATUSES: ProjectStatus[] = [
+  ProjectStatus.QUOTE_ACCEPTED,
+  ProjectStatus.ACTIVE,
+  ProjectStatus.COMPLETE,
+  ProjectStatus.ARCHIVE
 ]
 
 // Helper to check if a status is in lead phase

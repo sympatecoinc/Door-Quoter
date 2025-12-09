@@ -1,14 +1,20 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, Check, X, Star, DollarSign } from 'lucide-react'
+import { Plus, Edit, Trash2, Check, X, Star, DollarSign, Loader2 } from 'lucide-react'
 import { PricingMode } from '@/types'
+import { useToast } from '@/hooks/useToast'
+import { ToastContainer } from '@/components/ui/Toast'
 
 export default function PricingModesTab() {
   const [modes, setModes] = useState<PricingMode[]>([])
   const [loading, setLoading] = useState(true)
+  const { toasts, removeToast, showSuccess, showError } = useToast()
   const [editingMode, setEditingMode] = useState<PricingMode | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState<PricingMode | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -88,6 +94,7 @@ export default function PricingModesTab() {
   }
 
   const handleSave = async () => {
+    setSaving(true)
     try {
       if (isCreating) {
         // Create new mode
@@ -100,10 +107,10 @@ export default function PricingModesTab() {
         if (response.ok) {
           await fetchModes()
           handleCancel()
-          alert('Pricing mode created successfully!')
+          showSuccess('Pricing mode created successfully!')
         } else {
           const errorData = await response.json()
-          alert(errorData.error || 'Failed to create pricing mode')
+          showError(errorData.error || 'Failed to create pricing mode')
         }
       } else if (editingMode) {
         // Update existing mode
@@ -116,38 +123,46 @@ export default function PricingModesTab() {
         if (response.ok) {
           await fetchModes()
           handleCancel()
-          alert('Pricing mode updated successfully!')
+          showSuccess('Pricing mode updated successfully!')
         } else {
           const errorData = await response.json()
-          alert(errorData.error || 'Failed to update pricing mode')
+          showError(errorData.error || 'Failed to update pricing mode')
         }
       }
     } catch (error) {
       console.error('Error saving pricing mode:', error)
-      alert('Error saving pricing mode')
+      showError('Error saving pricing mode')
+    } finally {
+      setSaving(false)
     }
   }
 
-  const handleDelete = async (mode: PricingMode) => {
-    if (!confirm(`Are you sure you want to delete "${mode.name}"? This cannot be undone.`)) {
-      return
-    }
+  const handleDelete = (mode: PricingMode) => {
+    setDeleteConfirm(mode)
+  }
 
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return
+
+    setDeleting(true)
     try {
-      const response = await fetch(`/api/pricing-modes/${mode.id}`, {
+      const response = await fetch(`/api/pricing-modes/${deleteConfirm.id}`, {
         method: 'DELETE'
       })
 
       if (response.ok) {
         await fetchModes()
-        alert('Pricing mode deleted successfully!')
+        showSuccess('Pricing mode deleted successfully!')
+        setDeleteConfirm(null)
       } else {
         const errorData = await response.json()
-        alert(errorData.error || 'Failed to delete pricing mode')
+        showError(errorData.error || 'Failed to delete pricing mode')
       }
     } catch (error) {
       console.error('Error deleting pricing mode:', error)
-      alert('Error deleting pricing mode')
+      showError('Error deleting pricing mode')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -161,13 +176,13 @@ export default function PricingModesTab() {
 
       if (response.ok) {
         await fetchModes()
-        alert('Default pricing mode updated!')
+        showSuccess('Default pricing mode updated!')
       } else {
-        alert('Failed to set default pricing mode')
+        showError('Failed to set default pricing mode')
       }
     } catch (error) {
       console.error('Error setting default:', error)
-      alert('Error setting default pricing mode')
+      showError('Error setting default pricing mode')
     }
   }
 
@@ -399,11 +414,15 @@ export default function PricingModesTab() {
             <div className="flex items-center gap-3 pt-4 border-t">
               <button
                 onClick={handleSave}
-                disabled={!formData.name.trim()}
+                disabled={!formData.name.trim() || saving}
                 className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Check className="w-4 h-4 mr-2" />
-                {isCreating ? 'Create' : 'Save Changes'}
+                {saving ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4 mr-2" />
+                )}
+                {saving ? 'Saving...' : isCreating ? 'Create' : 'Save Changes'}
               </button>
               <button
                 onClick={handleCancel}
@@ -524,6 +543,39 @@ export default function PricingModesTab() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">
+              Delete Pricing Mode
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete <strong>{deleteConfirm.name}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
     </div>
   )
 }

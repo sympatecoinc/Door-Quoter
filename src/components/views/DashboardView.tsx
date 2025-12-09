@@ -102,30 +102,32 @@ export default function DashboardView() {
 
           // Fetch CRM stats from multiple endpoints
           // Note: Use high limit to get all leads for accurate conversion rate calculation
-          const [customersRes, leadsRes, allLeadsRes] = await Promise.all([
+          const [customersRes, allLeadsRes] = await Promise.all([
             fetch('/api/customers?limit=1'),
-            fetch('/api/leads?limit=1'),
             fetch('/api/leads?limit=10000')
           ])
 
-          if (customersRes.ok && leadsRes.ok && allLeadsRes.ok) {
-            const [customersData, leadsData, allLeadsData] = await Promise.all([
+          if (customersRes.ok && allLeadsRes.ok) {
+            const [customersData, allLeadsData] = await Promise.all([
               customersRes.json(),
-              leadsRes.json(),
               allLeadsRes.json()
             ])
 
-            const pipelineValue = leadsData.leads?.reduce((sum: number, lead: any) => {
+            const allLeads = allLeadsData.leads || []
+
+            // Only count leads that are not Won or Lost as "active"
+            const activeLeads = allLeads.filter((lead: any) => !['Won', 'Lost'].includes(lead.stage))
+
+            const pipelineValue = activeLeads.reduce((sum: number, lead: any) => {
               return sum + (lead.value || 0)
             }, 0) || 0
 
-            const allLeads = allLeadsData.leads || []
             const wonLeads = allLeads.filter((lead: any) => lead.stage === 'Won')
             const conversionRate = allLeads.length > 0 ? Math.round((wonLeads.length / allLeads.length) * 100) : 0
 
             dashboardData.crmStats = {
               totalCustomers: customersData.pagination?.total || 0,
-              activeLeads: leadsData.pagination?.total || 0,
+              activeLeads: activeLeads.length,
               pipelineValue,
               conversionRate
             }
@@ -342,7 +344,7 @@ export default function DashboardView() {
             {/* Quick Actions */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <button
                   onClick={handleAddCustomer}
                   className="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors"
@@ -359,10 +361,6 @@ export default function DashboardView() {
                 >
                   <Plus className="w-5 h-5 text-gray-400 mr-2" />
                   <span className="text-gray-600">Create New Lead</span>
-                </button>
-                <button className="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-colors">
-                  <Plus className="w-5 h-5 text-gray-400 mr-2" />
-                  <span className="text-gray-600">Schedule Activity</span>
                 </button>
               </div>
             </div>
