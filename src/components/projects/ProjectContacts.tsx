@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, Save, X, Building2, HardHat, User } from 'lucide-react'
+import { Plus, Edit2, Trash2, Save, X, Building2, HardHat, User, Users, ChevronDown } from 'lucide-react'
 
 interface ProjectContact {
   id: number
@@ -16,8 +16,19 @@ interface ProjectContact {
   updatedAt: string
 }
 
+interface CustomerContact {
+  id: number
+  firstName: string
+  lastName: string
+  email: string | null
+  phone: string | null
+  title: string | null
+  isPrimary: boolean
+}
+
 interface ProjectContactsProps {
   projectId: number
+  customerId?: number
 }
 
 const contactTypeLabels = {
@@ -32,10 +43,12 @@ const contactTypeIcons = {
   OTHER: User
 }
 
-export default function ProjectContacts({ projectId }: ProjectContactsProps) {
+export default function ProjectContacts({ projectId, customerId }: ProjectContactsProps) {
   const [contacts, setContacts] = useState<ProjectContact[]>([])
+  const [customerContacts, setCustomerContacts] = useState<CustomerContact[]>([])
   const [loading, setLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
+  const [showImportDropdown, setShowImportDropdown] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,7 +64,23 @@ export default function ProjectContacts({ projectId }: ProjectContactsProps) {
 
   useEffect(() => {
     fetchContacts()
-  }, [projectId])
+    if (customerId) {
+      fetchCustomerContacts()
+    }
+  }, [projectId, customerId])
+
+  const fetchCustomerContacts = async () => {
+    if (!customerId) return
+    try {
+      const response = await fetch(`/api/customers/${customerId}/contacts`)
+      if (response.ok) {
+        const data = await response.json()
+        setCustomerContacts(data)
+      }
+    } catch (err) {
+      console.error('Error fetching customer contacts:', err)
+    }
+  }
 
   const fetchContacts = async () => {
     try {
@@ -102,6 +131,35 @@ export default function ProjectContacts({ projectId }: ProjectContactsProps) {
     } catch (err) {
       console.error('Error creating contact:', err)
       setError('Failed to create contact')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleImportCustomerContact = async (customerContact: CustomerContact) => {
+    try {
+      setSaving(true)
+      setError(null)
+      const response = await fetch(`/api/projects/${projectId}/contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contactType: 'OTHER',
+          companyName: '',
+          name: `${customerContact.firstName} ${customerContact.lastName}`,
+          email: customerContact.email || '',
+          phone: customerContact.phone || '',
+          notes: customerContact.title ? `Title: ${customerContact.title}` : ''
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to import contact')
+
+      await fetchContacts()
+      setShowImportDropdown(false)
+    } catch (err) {
+      console.error('Error importing contact:', err)
+      setError('Failed to import contact')
     } finally {
       setSaving(false)
     }
@@ -306,15 +364,63 @@ export default function ProjectContacts({ projectId }: ProjectContactsProps) {
         </div>
       )}
 
-      {/* Add Contact Button */}
+      {/* Add Contact Button with Import Option */}
       {!isAdding && (
-        <button
-          onClick={() => setIsAdding(true)}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          <span>Add Contact</span>
-        </button>
+        <div className="relative">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setIsAdding(true)}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+              <span>Add Contact</span>
+            </button>
+            {customerContacts.length > 0 && (
+              <button
+                onClick={() => setShowImportDropdown(!showImportDropdown)}
+                className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors"
+                title="Import from customer contacts"
+              >
+                <Users className="w-5 h-5" />
+                <ChevronDown className={`w-4 h-4 transition-transform ${showImportDropdown ? 'rotate-180' : ''}`} />
+              </button>
+            )}
+          </div>
+
+          {/* Customer Contacts Dropdown */}
+          {showImportDropdown && customerContacts.length > 0 && (
+            <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+              <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 rounded-t-lg">
+                <span className="text-sm font-medium text-gray-700">Import from Customer</span>
+              </div>
+              <div className="max-h-60 overflow-y-auto">
+                {customerContacts.map((cc) => (
+                  <button
+                    key={cc.id}
+                    onClick={() => handleImportCustomerContact(cc)}
+                    disabled={saving}
+                    className="w-full px-3 py-2 text-left hover:bg-blue-50 transition-colors disabled:opacity-50 border-b border-gray-50 last:border-b-0"
+                  >
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-gray-400" />
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {cc.firstName} {cc.lastName}
+                          {cc.isPrimary && (
+                            <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Primary</span>
+                          )}
+                        </div>
+                        {cc.title && (
+                          <div className="text-xs text-gray-500">{cc.title}</div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Add Contact Form */}

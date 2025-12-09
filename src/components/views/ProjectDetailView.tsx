@@ -219,6 +219,11 @@ export default function ProjectDetailView() {
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
 
+  // Quote accepted edit confirmation state
+  const [showQuoteAcceptedConfirm, setShowQuoteAcceptedConfirm] = useState(false)
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
+  const [pendingActionDescription, setPendingActionDescription] = useState('')
+
   // Handle back navigation
   const handleBack = () => {
     setSelectedProjectId(null)
@@ -229,8 +234,35 @@ export default function ProjectDetailView() {
     // Otherwise stay on projects menu (will show projects list)
   }
 
+  // Check if project has quote accepted status and require confirmation for modifications
+  const requireQuoteAcceptedConfirmation = (action: () => void, actionDescription: string): boolean => {
+    if (project?.status === ProjectStatus.QUOTE_ACCEPTED) {
+      setPendingAction(() => action)
+      setPendingActionDescription(actionDescription)
+      setShowQuoteAcceptedConfirm(true)
+      return true // Confirmation required, action deferred
+    }
+    return false // No confirmation needed, proceed immediately
+  }
+
+  const handleConfirmQuoteAcceptedEdit = () => {
+    if (pendingAction) {
+      pendingAction()
+    }
+    setShowQuoteAcceptedConfirm(false)
+    setPendingAction(null)
+    setPendingActionDescription('')
+  }
+
+  const handleCancelQuoteAcceptedEdit = () => {
+    setShowQuoteAcceptedConfirm(false)
+    setPendingAction(null)
+    setPendingActionDescription('')
+  }
+
   // Handle Escape key to close modals one at a time
   useEscapeKey([
+    { isOpen: showQuoteAcceptedConfirm, onClose: () => { setShowQuoteAcceptedConfirm(false); setPendingAction(null); setPendingActionDescription('') } },
     { isOpen: showDeleteModal, isBlocked: isDeleting, onClose: () => { setShowDeleteModal(false); setDeletingOpeningId(null); setDeletingOpeningName('') } },
     { isOpen: showDeleteComponentModal, isBlocked: isDeletingComponent, onClose: () => { setShowDeleteComponentModal(false); setDeletingComponentId(null); setDeletingComponentName('') } },
     { isOpen: showBulkDeleteModal, isBlocked: isBulkDeleting, onClose: () => setShowBulkDeleteModal(false) },
@@ -394,8 +426,15 @@ export default function ProjectDetailView() {
   // Auto-open Add Opening modal when navigating from "Add Openings" button
   useEffect(() => {
     if (autoOpenAddOpening && project) {
-      setShowAddOpening(true)
-      setAutoOpenAddOpening(false) // Reset the flag
+      setAutoOpenAddOpening(false) // Reset the flag first
+      // Check for quote accepted status before showing modal
+      if (project.status === ProjectStatus.QUOTE_ACCEPTED) {
+        setPendingAction(() => () => setShowAddOpening(true))
+        setPendingActionDescription('add an opening')
+        setShowQuoteAcceptedConfirm(true)
+      } else {
+        setShowAddOpening(true)
+      }
     }
   }, [autoOpenAddOpening, project, setAutoOpenAddOpening])
 
@@ -680,10 +719,26 @@ export default function ProjectDetailView() {
     }
   }
 
+  function handleShowAddOpeningModal() {
+    const proceedWithShowModal = () => {
+      setShowAddOpening(true)
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithShowModal, 'add an opening')) {
+      proceedWithShowModal()
+    }
+  }
+
   function handleShowDeleteModal(openingId: number, openingName: string) {
-    setDeletingOpeningId(openingId)
-    setDeletingOpeningName(openingName)
-    setShowDeleteModal(true)
+    const proceedWithDelete = () => {
+      setDeletingOpeningId(openingId)
+      setDeletingOpeningName(openingName)
+      setShowDeleteModal(true)
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithDelete, 'delete an opening')) {
+      proceedWithDelete()
+    }
   }
 
   async function handleConfirmDelete() {
@@ -738,6 +793,16 @@ export default function ProjectDetailView() {
     setSelectedOpeningIds(new Set())
   }
 
+  function handleShowBulkDeleteModal() {
+    const proceedWithBulkDelete = () => {
+      setShowBulkDeleteModal(true)
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithBulkDelete, 'delete multiple openings')) {
+      proceedWithBulkDelete()
+    }
+  }
+
   async function handleBulkDelete() {
     if (selectedOpeningIds.size === 0) return
 
@@ -772,10 +837,16 @@ export default function ProjectDetailView() {
   }
 
   function handleShowEditOpeningModal(opening: Opening) {
-    setEditingOpeningId(opening.id)
-    setEditingOpeningName(opening.name)
-    setEditingOpeningFinishColor(opening.finishColor || '')
-    setShowEditOpeningModal(true)
+    const proceedWithEdit = () => {
+      setEditingOpeningId(opening.id)
+      setEditingOpeningName(opening.name)
+      setEditingOpeningFinishColor(opening.finishColor || '')
+      setShowEditOpeningModal(true)
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithEdit, 'edit an opening')) {
+      proceedWithEdit()
+    }
   }
 
   async function handleUpdateOpening() {
@@ -824,13 +895,19 @@ export default function ProjectDetailView() {
     setShowDrawingViewer(true)
   }
 
-  async function handleShowDuplicateModal(openingId: number, openingName: string) {
-    setDuplicatingOpeningId(openingId)
-    setDuplicatingOpeningName(openingName)
-    setDuplicateNewName(openingName) // Default to original name
-    setDuplicateCount('1')
-    setAutoIncrement(false)
-    setShowDuplicateModal(true)
+  function handleShowDuplicateModal(openingId: number, openingName: string) {
+    const proceedWithDuplicate = () => {
+      setDuplicatingOpeningId(openingId)
+      setDuplicatingOpeningName(openingName)
+      setDuplicateNewName(openingName) // Default to original name
+      setDuplicateCount('1')
+      setAutoIncrement(false)
+      setShowDuplicateModal(true)
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithDuplicate, 'duplicate an opening')) {
+      proceedWithDuplicate()
+    }
   }
 
   // Helper function to safely parse and validate duplicate count
@@ -961,30 +1038,36 @@ export default function ProjectDetailView() {
   }
 
   async function handleShowAddComponent(openingId: number) {
-    setSelectedOpeningId(openingId)
+    const proceedWithAddComponent = async () => {
+      setSelectedOpeningId(openingId)
 
-    // Find the opening and check if it has existing panels
-    const opening = project?.openings.find(o => o.id === openingId)
-    if (opening && opening.panels && opening.panels.length > 0) {
-      // Opening has existing panels - get height from first panel
-      const existingHeight = opening.panels[0].height
-      setComponentHeight(existingHeight.toString())
-    } else {
-      // First panel in opening - reset height
-      setComponentHeight('')
+      // Find the opening and check if it has existing panels
+      const opening = project?.openings.find(o => o.id === openingId)
+      if (opening && opening.panels && opening.panels.length > 0) {
+        // Opening has existing panels - get height from first panel
+        const existingHeight = opening.panels[0].height
+        setComponentHeight(existingHeight.toString())
+      } else {
+        // First panel in opening - reset height
+        setComponentHeight('')
+      }
+
+      // Fetch products
+      try {
+        const response = await fetch('/api/products')
+        if (response.ok) {
+          const productsData = await response.json()
+          setProducts(productsData)
+          setShowAddComponent(true)
+        }
+      } catch (error) {
+        console.error('Error fetching products:', error)
+        alert('Error fetching products')
+      }
     }
 
-    // Fetch products
-    try {
-      const response = await fetch('/api/products')
-      if (response.ok) {
-        const productsData = await response.json()
-        setProducts(productsData)
-        setShowAddComponent(true)
-      }
-    } catch (error) {
-      console.error('Error fetching products:', error)
-      alert('Error fetching products')
+    if (!requireQuoteAcceptedConfirmation(proceedWithAddComponent, 'add a component')) {
+      proceedWithAddComponent()
     }
   }
 
@@ -1076,52 +1159,64 @@ export default function ProjectDetailView() {
   }
 
   async function handleEditComponent(componentInstanceId: number) {
-    setSelectedComponentId(componentInstanceId)
-    
-    try {
-      // Fetch component instance details
-      const componentResponse = await fetch(`/api/component-instances/${componentInstanceId}`)
-      if (componentResponse.ok) {
-        const componentData = await componentResponse.json()
-        
-        // Set current dimensions for editing
-        setEditingComponentWidth(componentData.panel.width?.toString() || '')
-        setEditingComponentHeight(componentData.panel.height?.toString() || '')
-        setCurrentPanelId(componentData.panel.id)
+    const proceedWithEditComponent = async () => {
+      setSelectedComponentId(componentInstanceId)
 
-        // Set glass type and direction for editing
-        setEditingGlassType(componentData.panel.glassType || '')
-        // Set direction based on product type
-        if (componentData.panel.swingDirection) {
-          setEditingDirection(componentData.panel.swingDirection)
-        } else if (componentData.panel.slidingDirection) {
-          setEditingDirection(componentData.panel.slidingDirection)
-        } else {
-          setEditingDirection('')
-        }
+      try {
+        // Fetch component instance details
+        const componentResponse = await fetch(`/api/component-instances/${componentInstanceId}`)
+        if (componentResponse.ok) {
+          const componentData = await componentResponse.json()
 
-        // Fetch available options for this product
-        const productResponse = await fetch(`/api/products/${componentData.productId}`)
-        if (productResponse.ok) {
-          const productData = await productResponse.json()
-          setComponentOptions(productData.productSubOptions || [])
-          setSelectedOptions(JSON.parse(componentData.subOptionSelections || '{}'))
-          setIncludedOptions(JSON.parse(componentData.includedOptions || '[]'))
-          setEditingProductType(productData.productType || '')
-          setEditingPlanViews(productData.planViews || [])
-          setShowComponentEdit(true)
+          // Set current dimensions for editing
+          setEditingComponentWidth(componentData.panel.width?.toString() || '')
+          setEditingComponentHeight(componentData.panel.height?.toString() || '')
+          setCurrentPanelId(componentData.panel.id)
+
+          // Set glass type and direction for editing
+          setEditingGlassType(componentData.panel.glassType || '')
+          // Set direction based on product type
+          if (componentData.panel.swingDirection) {
+            setEditingDirection(componentData.panel.swingDirection)
+          } else if (componentData.panel.slidingDirection) {
+            setEditingDirection(componentData.panel.slidingDirection)
+          } else {
+            setEditingDirection('')
+          }
+
+          // Fetch available options for this product
+          const productResponse = await fetch(`/api/products/${componentData.productId}`)
+          if (productResponse.ok) {
+            const productData = await productResponse.json()
+            setComponentOptions(productData.productSubOptions || [])
+            setSelectedOptions(JSON.parse(componentData.subOptionSelections || '{}'))
+            setIncludedOptions(JSON.parse(componentData.includedOptions || '[]'))
+            setEditingProductType(productData.productType || '')
+            setEditingPlanViews(productData.planViews || [])
+            setShowComponentEdit(true)
+          }
         }
+      } catch (error) {
+        console.error('Error fetching component details:', error)
+        alert('Error fetching component details')
       }
-    } catch (error) {
-      console.error('Error fetching component details:', error)
-      alert('Error fetching component details')
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithEditComponent, 'edit a component')) {
+      proceedWithEditComponent()
     }
   }
 
   function handleDeleteComponent(panelId: number, componentName: string) {
-    setDeletingComponentId(panelId)
-    setDeletingComponentName(componentName)
-    setShowDeleteComponentModal(true)
+    const proceedWithDeleteComponent = () => {
+      setDeletingComponentId(panelId)
+      setDeletingComponentName(componentName)
+      setShowDeleteComponentModal(true)
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithDeleteComponent, 'delete a component')) {
+      proceedWithDeleteComponent()
+    }
   }
 
   async function confirmDeleteComponent() {
@@ -1573,7 +1668,7 @@ export default function ProjectDetailView() {
             View BOM
           </button>
           <button
-            onClick={() => setShowAddOpening(true)}
+            onClick={handleShowAddOpeningModal}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             <Plus className="w-5 h-5 mr-2" />
@@ -2587,7 +2682,7 @@ export default function ProjectDetailView() {
                       {selectedOpeningIds.size} selected
                     </span>
                     <button
-                      onClick={() => setShowBulkDeleteModal(true)}
+                      onClick={handleShowBulkDeleteModal}
                       disabled={saving}
                       className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                     >
@@ -3119,6 +3214,42 @@ export default function ProjectDetailView() {
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                 )}
                 {isUpdatingOpening ? 'Updating...' : 'Update Opening'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quote Accepted Edit Confirmation Modal */}
+      {showQuoteAcceptedConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              Edit Accepted Quote
+            </h3>
+
+            <p className="text-sm text-gray-600 mb-4">
+              This project has a quote that has been <strong>accepted by the customer</strong>.
+            </p>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
+              <p className="text-sm text-amber-700">
+                You are about to {pendingActionDescription}. Making changes may affect the accepted quote. Are you sure you want to proceed?
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleCancelQuoteAcceptedEdit}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmQuoteAcceptedEdit}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              >
+                Yes, Proceed
               </button>
             </div>
           </div>

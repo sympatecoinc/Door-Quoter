@@ -653,9 +653,24 @@ export async function GET(
           ]
 
           const csvContent = csvRows.join('\n')
-          const filename = `${String(fileIndex).padStart(2, '0')}-${sanitizeFilename(componentGroup.productName)}-${componentGroup.width}x${componentGroup.height}.csv`
-          zip.file(filename, csvContent)
+          const filename = `${sanitizeFilename(componentGroup.productName)}-${componentGroup.width}x${componentGroup.height}.csv`
+          zip.file(`${String(fileIndex).padStart(2, '0')}-${filename}`, csvContent)
           fileIndex++
+        }
+
+        // If only one file, return it directly as CSV instead of ZIP
+        const fileCount = fileIndex - 1
+        if (fileCount === 1) {
+          const singleFile = Object.values(zip.files)[0]
+          const csvContent = await singleFile.async('string')
+          const filename = singleFile.name.replace(/^\d+-/, '') // Remove leading number prefix
+          return new NextResponse(csvContent, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/csv',
+              'Content-Disposition': `attachment; filename="${filename}"`
+            }
+          })
         }
 
         const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' })
@@ -724,9 +739,24 @@ export async function GET(
           ]
 
           const csvContent = csvRows.join('\n')
-          const filename = `${String(fileIndex).padStart(2, '0')}-${sanitizeFilename(opening.name)}-${sanitizeFilename(product.name)}-${panel.width}x${panel.height}.csv`
-          zip.file(filename, csvContent)
+          const filename = `${sanitizeFilename(opening.name)}-${sanitizeFilename(product.name)}-${panel.width}x${panel.height}.csv`
+          zip.file(`${String(fileIndex).padStart(2, '0')}-${filename}`, csvContent)
           fileIndex++
+        }
+
+        // If only one file, return it directly as CSV instead of ZIP
+        const fileCount = fileIndex - 1
+        if (fileCount === 1) {
+          const singleFile = Object.values(zip.files)[0]
+          const csvContent = await singleFile.async('string')
+          const filename = singleFile.name.replace(/^\d+-/, '') // Remove leading number prefix
+          return new NextResponse(csvContent, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/csv',
+              'Content-Disposition': `attachment; filename="${filename}"`
+            }
+          })
         }
 
         const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' })

@@ -92,8 +92,12 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   const [deleteConfirm, setDeleteConfirm] = useState<{ projectId: number; projectName: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // Quote accepted edit confirmation state
+  const [quoteAcceptedEditConfirm, setQuoteAcceptedEditConfirm] = useState<Project | null>(null)
+
   // Handle Escape key to close modals one at a time
   useEscapeKey([
+    { isOpen: quoteAcceptedEditConfirm !== null, onClose: () => setQuoteAcceptedEditConfirm(null) },
     { isOpen: deleteConfirm !== null, isBlocked: deleting, onClose: () => setDeleteConfirm(null) },
     { isOpen: showBOMDownloadDialog, onClose: () => setShowBOMDownloadDialog(false) },
     { isOpen: showBOM, onClose: () => setShowBOM(false) },
@@ -238,6 +242,16 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   }
 
   const openEditModal = (project: Project) => {
+    // Check if project has quote accepted status - require confirmation first
+    if (project.status === ProjectStatus.QUOTE_ACCEPTED) {
+      setQuoteAcceptedEditConfirm(project)
+      return
+    }
+    proceedWithEdit(project)
+  }
+
+  const proceedWithEdit = (project: Project) => {
+    setQuoteAcceptedEditConfirm(null)
     setEditingProject(project)
     setEditName(project.name)
     setEditStatus(project.status)
@@ -1142,6 +1156,39 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                 )}
                 {deleting ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quote Accepted Edit Confirmation Modal */}
+      {quoteAcceptedEditConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Edit Accepted Quote
+            </h3>
+            <p className="text-gray-600 mb-4">
+              The project <strong>{quoteAcceptedEditConfirm.name}</strong> has a quote that has been accepted by the customer.
+            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-amber-700">
+                Making changes to this project may affect the accepted quote. Are you sure you want to proceed with editing?
+              </p>
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setQuoteAcceptedEditConfirm(null)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => proceedWithEdit(quoteAcceptedEditConfirm)}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              >
+                Yes, Edit Project
               </button>
             </div>
           </div>

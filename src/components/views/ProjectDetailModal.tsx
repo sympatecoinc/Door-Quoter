@@ -777,7 +777,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
 
           {/* Contacts Tab */}
           {activeTab === 'contacts' && (
-            <ProjectContacts projectId={projectId} />
+            <ProjectContacts projectId={projectId} customerId={project?.customer?.id} />
           )}
 
           {/* Notes Tab */}
