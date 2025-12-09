@@ -533,6 +533,12 @@ export default function ProductDetailView({
   const [expandedCategory, setExpandedCategory] = useState<number | null>(null)
   const [settingStandard, setSettingStandard] = useState(false)
 
+  // Delete BOM Part Modal State
+  const [showDeletePartModal, setShowDeletePartModal] = useState(false)
+  const [deletingPartId, setDeletingPartId] = useState<number | null>(null)
+  const [deletingPartName, setDeletingPartName] = useState('')
+  const [isDeletingPart, setIsDeletingPart] = useState(false)
+
   // Fetch detailed product data including linked categories and plan views
   useEffect(() => {
     async function fetchProductDetails() {
@@ -569,6 +575,7 @@ export default function ProductDetailView({
 
   // Handle Escape key to close modals one at a time
   useEscapeKey([
+    { isOpen: showDeletePartModal, isBlocked: isDeletingPart, onClose: () => { setShowDeletePartModal(false); setDeletingPartId(null); setDeletingPartName('') } },
     { isOpen: showDeletePlanViewModal, isBlocked: isDeletingPlanView, onClose: () => { setShowDeletePlanViewModal(false); setDeletingPlanViewId(null); setDeletingPlanViewName('') } },
     { isOpen: showGlassModal, onClose: () => setShowGlassModal(false) },
     { isOpen: showPlanViewForm, isBlocked: uploadingPlanView, onClose: () => { setShowPlanViewForm(false); setNewPlanViewName(''); setNewPlanViewFile(null) } },
@@ -1159,16 +1166,21 @@ export default function ProductDetailView({
     }
   }
 
-  async function handleDeletePart(partId: number, partName: string) {
-    if (!confirm(`Are you sure you want to delete "${partName}"?`)) {
-      return
-    }
+  function handleDeletePart(partId: number, partName: string) {
+    setDeletingPartId(partId)
+    setDeletingPartName(partName)
+    setShowDeletePartModal(true)
+  }
 
+  async function confirmDeletePart() {
+    if (!deletingPartId) return
+
+    setIsDeletingPart(true)
     try {
       const response = await fetch('/api/product-boms', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: partId })
+        body: JSON.stringify({ id: deletingPartId })
       })
 
       if (response.ok) {
@@ -1179,13 +1191,17 @@ export default function ProductDetailView({
           setProductDetails(data)
         }
         onRefresh()
-        alert('Part deleted successfully!')
       } else {
-        alert('Error deleting part')
+        showError('Error deleting part')
       }
     } catch (error) {
       console.error('Error deleting part:', error)
-      alert('Error deleting part')
+      showError('Error deleting part')
+    } finally {
+      setIsDeletingPart(false)
+      setShowDeletePartModal(false)
+      setDeletingPartId(null)
+      setDeletingPartName('')
     }
   }
 
@@ -2444,6 +2460,42 @@ export default function ProductDetailView({
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                 )}
                 {isDeletingPlanView ? 'Deleting...' : 'Delete Plan View'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete BOM Part Confirmation Modal */}
+      {showDeletePartModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              Delete BOM Part
+            </h3>
+
+            <p className="text-sm text-gray-600 mb-6">
+              Are you sure you want to delete "<strong>{deletingPartName}</strong>" from this product's BOM? This action cannot be undone.
+            </p>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeletePartModal(false)
+                  setDeletingPartId(null)
+                  setDeletingPartName('')
+                }}
+                disabled={isDeletingPart}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeletePart}
+                disabled={isDeletingPart}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {isDeletingPart ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>

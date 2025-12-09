@@ -193,11 +193,16 @@ export default function ProjectDetailView() {
   const [editingProductType, setEditingProductType] = useState<string>('')
   const [editingPlanViews, setEditingPlanViews] = useState<any[]>([])
   const [currentPanelId, setCurrentPanelId] = useState<number | null>(null)
+  const [savingComponent, setSavingComponent] = useState(false)
   const [showBOM, setShowBOM] = useState(false)
   const [bomData, setBomData] = useState<any>(null)
   const [loadingBOM, setLoadingBOM] = useState(false)
   const [bomViewMode, setBomViewMode] = useState<'byOpening' | 'summary'>('byOpening')
   const [showBOMDownloadMenu, setShowBOMDownloadMenu] = useState(false)
+  const [showBOMDownloadDialog, setShowBOMDownloadDialog] = useState(false)
+  const [uniqueBomList, setUniqueBomList] = useState<any[]>([])
+  const [selectedBomHashes, setSelectedBomHashes] = useState<Set<string>>(new Set())
+  const [loadingUniqueBoms, setLoadingUniqueBoms] = useState(false)
   const [summaryData, setSummaryData] = useState<any>(null)
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [showDrawingViewer, setShowDrawingViewer] = useState(false)
@@ -214,6 +219,11 @@ export default function ProjectDetailView() {
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
 
+  // Quote accepted edit confirmation state
+  const [showQuoteAcceptedConfirm, setShowQuoteAcceptedConfirm] = useState(false)
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
+  const [pendingActionDescription, setPendingActionDescription] = useState('')
+
   // Handle back navigation
   const handleBack = () => {
     setSelectedProjectId(null)
@@ -224,8 +234,35 @@ export default function ProjectDetailView() {
     // Otherwise stay on projects menu (will show projects list)
   }
 
+  // Check if project has quote accepted status and require confirmation for modifications
+  const requireQuoteAcceptedConfirmation = (action: () => void, actionDescription: string): boolean => {
+    if (project?.status === ProjectStatus.QUOTE_ACCEPTED) {
+      setPendingAction(() => action)
+      setPendingActionDescription(actionDescription)
+      setShowQuoteAcceptedConfirm(true)
+      return true // Confirmation required, action deferred
+    }
+    return false // No confirmation needed, proceed immediately
+  }
+
+  const handleConfirmQuoteAcceptedEdit = () => {
+    if (pendingAction) {
+      pendingAction()
+    }
+    setShowQuoteAcceptedConfirm(false)
+    setPendingAction(null)
+    setPendingActionDescription('')
+  }
+
+  const handleCancelQuoteAcceptedEdit = () => {
+    setShowQuoteAcceptedConfirm(false)
+    setPendingAction(null)
+    setPendingActionDescription('')
+  }
+
   // Handle Escape key to close modals one at a time
   useEscapeKey([
+    { isOpen: showQuoteAcceptedConfirm, onClose: () => { setShowQuoteAcceptedConfirm(false); setPendingAction(null); setPendingActionDescription('') } },
     { isOpen: showDeleteModal, isBlocked: isDeleting, onClose: () => { setShowDeleteModal(false); setDeletingOpeningId(null); setDeletingOpeningName('') } },
     { isOpen: showDeleteComponentModal, isBlocked: isDeletingComponent, onClose: () => { setShowDeleteComponentModal(false); setDeletingComponentId(null); setDeletingComponentName('') } },
     { isOpen: showBulkDeleteModal, isBlocked: isBulkDeleting, onClose: () => setShowBulkDeleteModal(false) },
@@ -233,7 +270,7 @@ export default function ProjectDetailView() {
     { isOpen: showArchiveModal, onClose: () => setShowArchiveModal(false) },
     { isOpen: showDuplicateModal, isBlocked: isDuplicating, onClose: () => { setShowDuplicateModal(false); setDuplicatingOpeningId(null) } },
     { isOpen: showEditOpeningModal, isBlocked: isUpdatingOpening, onClose: () => { setShowEditOpeningModal(false); setEditingOpeningId(null) } },
-    { isOpen: showComponentEdit, onClose: () => setShowComponentEdit(false) },
+    { isOpen: showComponentEdit, isBlocked: savingComponent, onClose: () => setShowComponentEdit(false) },
     { isOpen: showAddComponent, onClose: () => setShowAddComponent(false) },
     { isOpen: showAddOpening, isBlocked: addingOpening, onClose: () => setShowAddOpening(false) },
     { isOpen: showDrawingViewer, onClose: () => setShowDrawingViewer(false) },
@@ -389,8 +426,15 @@ export default function ProjectDetailView() {
   // Auto-open Add Opening modal when navigating from "Add Openings" button
   useEffect(() => {
     if (autoOpenAddOpening && project) {
-      setShowAddOpening(true)
-      setAutoOpenAddOpening(false) // Reset the flag
+      setAutoOpenAddOpening(false) // Reset the flag first
+      // Check for quote accepted status before showing modal
+      if (project.status === ProjectStatus.QUOTE_ACCEPTED) {
+        setPendingAction(() => () => setShowAddOpening(true))
+        setPendingActionDescription('add an opening')
+        setShowQuoteAcceptedConfirm(true)
+      } else {
+        setShowAddOpening(true)
+      }
     }
   }, [autoOpenAddOpening, project, setAutoOpenAddOpening])
 
@@ -675,10 +719,26 @@ export default function ProjectDetailView() {
     }
   }
 
+  function handleShowAddOpeningModal() {
+    const proceedWithShowModal = () => {
+      setShowAddOpening(true)
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithShowModal, 'add an opening')) {
+      proceedWithShowModal()
+    }
+  }
+
   function handleShowDeleteModal(openingId: number, openingName: string) {
-    setDeletingOpeningId(openingId)
-    setDeletingOpeningName(openingName)
-    setShowDeleteModal(true)
+    const proceedWithDelete = () => {
+      setDeletingOpeningId(openingId)
+      setDeletingOpeningName(openingName)
+      setShowDeleteModal(true)
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithDelete, 'delete an opening')) {
+      proceedWithDelete()
+    }
   }
 
   async function handleConfirmDelete() {
@@ -733,6 +793,16 @@ export default function ProjectDetailView() {
     setSelectedOpeningIds(new Set())
   }
 
+  function handleShowBulkDeleteModal() {
+    const proceedWithBulkDelete = () => {
+      setShowBulkDeleteModal(true)
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithBulkDelete, 'delete multiple openings')) {
+      proceedWithBulkDelete()
+    }
+  }
+
   async function handleBulkDelete() {
     if (selectedOpeningIds.size === 0) return
 
@@ -767,10 +837,16 @@ export default function ProjectDetailView() {
   }
 
   function handleShowEditOpeningModal(opening: Opening) {
-    setEditingOpeningId(opening.id)
-    setEditingOpeningName(opening.name)
-    setEditingOpeningFinishColor(opening.finishColor || '')
-    setShowEditOpeningModal(true)
+    const proceedWithEdit = () => {
+      setEditingOpeningId(opening.id)
+      setEditingOpeningName(opening.name)
+      setEditingOpeningFinishColor(opening.finishColor || '')
+      setShowEditOpeningModal(true)
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithEdit, 'edit an opening')) {
+      proceedWithEdit()
+    }
   }
 
   async function handleUpdateOpening() {
@@ -819,13 +895,19 @@ export default function ProjectDetailView() {
     setShowDrawingViewer(true)
   }
 
-  async function handleShowDuplicateModal(openingId: number, openingName: string) {
-    setDuplicatingOpeningId(openingId)
-    setDuplicatingOpeningName(openingName)
-    setDuplicateNewName(openingName) // Default to original name
-    setDuplicateCount('1')
-    setAutoIncrement(false)
-    setShowDuplicateModal(true)
+  function handleShowDuplicateModal(openingId: number, openingName: string) {
+    const proceedWithDuplicate = () => {
+      setDuplicatingOpeningId(openingId)
+      setDuplicatingOpeningName(openingName)
+      setDuplicateNewName(openingName) // Default to original name
+      setDuplicateCount('1')
+      setAutoIncrement(false)
+      setShowDuplicateModal(true)
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithDuplicate, 'duplicate an opening')) {
+      proceedWithDuplicate()
+    }
   }
 
   // Helper function to safely parse and validate duplicate count
@@ -956,30 +1038,36 @@ export default function ProjectDetailView() {
   }
 
   async function handleShowAddComponent(openingId: number) {
-    setSelectedOpeningId(openingId)
+    const proceedWithAddComponent = async () => {
+      setSelectedOpeningId(openingId)
 
-    // Find the opening and check if it has existing panels
-    const opening = project?.openings.find(o => o.id === openingId)
-    if (opening && opening.panels && opening.panels.length > 0) {
-      // Opening has existing panels - get height from first panel
-      const existingHeight = opening.panels[0].height
-      setComponentHeight(existingHeight.toString())
-    } else {
-      // First panel in opening - reset height
-      setComponentHeight('')
+      // Find the opening and check if it has existing panels
+      const opening = project?.openings.find(o => o.id === openingId)
+      if (opening && opening.panels && opening.panels.length > 0) {
+        // Opening has existing panels - get height from first panel
+        const existingHeight = opening.panels[0].height
+        setComponentHeight(existingHeight.toString())
+      } else {
+        // First panel in opening - reset height
+        setComponentHeight('')
+      }
+
+      // Fetch products
+      try {
+        const response = await fetch('/api/products')
+        if (response.ok) {
+          const productsData = await response.json()
+          setProducts(productsData)
+          setShowAddComponent(true)
+        }
+      } catch (error) {
+        console.error('Error fetching products:', error)
+        alert('Error fetching products')
+      }
     }
 
-    // Fetch products
-    try {
-      const response = await fetch('/api/products')
-      if (response.ok) {
-        const productsData = await response.json()
-        setProducts(productsData)
-        setShowAddComponent(true)
-      }
-    } catch (error) {
-      console.error('Error fetching products:', error)
-      alert('Error fetching products')
+    if (!requireQuoteAcceptedConfirmation(proceedWithAddComponent, 'add a component')) {
+      proceedWithAddComponent()
     }
   }
 
@@ -1071,52 +1159,64 @@ export default function ProjectDetailView() {
   }
 
   async function handleEditComponent(componentInstanceId: number) {
-    setSelectedComponentId(componentInstanceId)
-    
-    try {
-      // Fetch component instance details
-      const componentResponse = await fetch(`/api/component-instances/${componentInstanceId}`)
-      if (componentResponse.ok) {
-        const componentData = await componentResponse.json()
-        
-        // Set current dimensions for editing
-        setEditingComponentWidth(componentData.panel.width?.toString() || '')
-        setEditingComponentHeight(componentData.panel.height?.toString() || '')
-        setCurrentPanelId(componentData.panel.id)
+    const proceedWithEditComponent = async () => {
+      setSelectedComponentId(componentInstanceId)
 
-        // Set glass type and direction for editing
-        setEditingGlassType(componentData.panel.glassType || '')
-        // Set direction based on product type
-        if (componentData.panel.swingDirection) {
-          setEditingDirection(componentData.panel.swingDirection)
-        } else if (componentData.panel.slidingDirection) {
-          setEditingDirection(componentData.panel.slidingDirection)
-        } else {
-          setEditingDirection('')
-        }
+      try {
+        // Fetch component instance details
+        const componentResponse = await fetch(`/api/component-instances/${componentInstanceId}`)
+        if (componentResponse.ok) {
+          const componentData = await componentResponse.json()
 
-        // Fetch available options for this product
-        const productResponse = await fetch(`/api/products/${componentData.productId}`)
-        if (productResponse.ok) {
-          const productData = await productResponse.json()
-          setComponentOptions(productData.productSubOptions || [])
-          setSelectedOptions(JSON.parse(componentData.subOptionSelections || '{}'))
-          setIncludedOptions(JSON.parse(componentData.includedOptions || '[]'))
-          setEditingProductType(productData.productType || '')
-          setEditingPlanViews(productData.planViews || [])
-          setShowComponentEdit(true)
+          // Set current dimensions for editing
+          setEditingComponentWidth(componentData.panel.width?.toString() || '')
+          setEditingComponentHeight(componentData.panel.height?.toString() || '')
+          setCurrentPanelId(componentData.panel.id)
+
+          // Set glass type and direction for editing
+          setEditingGlassType(componentData.panel.glassType || '')
+          // Set direction based on product type
+          if (componentData.panel.swingDirection) {
+            setEditingDirection(componentData.panel.swingDirection)
+          } else if (componentData.panel.slidingDirection) {
+            setEditingDirection(componentData.panel.slidingDirection)
+          } else {
+            setEditingDirection('')
+          }
+
+          // Fetch available options for this product
+          const productResponse = await fetch(`/api/products/${componentData.productId}`)
+          if (productResponse.ok) {
+            const productData = await productResponse.json()
+            setComponentOptions(productData.productSubOptions || [])
+            setSelectedOptions(JSON.parse(componentData.subOptionSelections || '{}'))
+            setIncludedOptions(JSON.parse(componentData.includedOptions || '[]'))
+            setEditingProductType(productData.productType || '')
+            setEditingPlanViews(productData.planViews || [])
+            setShowComponentEdit(true)
+          }
         }
+      } catch (error) {
+        console.error('Error fetching component details:', error)
+        alert('Error fetching component details')
       }
-    } catch (error) {
-      console.error('Error fetching component details:', error)
-      alert('Error fetching component details')
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithEditComponent, 'edit a component')) {
+      proceedWithEditComponent()
     }
   }
 
   function handleDeleteComponent(panelId: number, componentName: string) {
-    setDeletingComponentId(panelId)
-    setDeletingComponentName(componentName)
-    setShowDeleteComponentModal(true)
+    const proceedWithDeleteComponent = () => {
+      setDeletingComponentId(panelId)
+      setDeletingComponentName(componentName)
+      setShowDeleteComponentModal(true)
+    }
+
+    if (!requireQuoteAcceptedConfirmation(proceedWithDeleteComponent, 'delete a component')) {
+      proceedWithDeleteComponent()
+    }
   }
 
   async function confirmDeleteComponent() {
@@ -1184,21 +1284,24 @@ export default function ProjectDetailView() {
     }
   }
 
-  async function handleDownloadBOMCSV() {
+  async function handleDownloadBOMZip(uniqueOnly: boolean) {
     if (!selectedProjectId) return
-    setShowBOMDownloadMenu(false)
+    setShowBOMDownloadDialog(false)
 
     try {
-      const response = await fetch(`/api/projects/${selectedProjectId}/bom/csv`)
+      const url = uniqueOnly
+        ? `/api/projects/${selectedProjectId}/bom/csv?zip=true&unique=true`
+        : `/api/projects/${selectedProjectId}/bom/csv?zip=true`
+      const response = await fetch(url)
       if (response.ok) {
         const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
+        const blobUrl = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
-        link.href = url
+        link.href = blobUrl
 
         // Get filename from Content-Disposition header or use default
         const contentDisposition = response.headers.get('Content-Disposition')
-        let filename = 'project-bom.csv'
+        let filename = uniqueOnly ? 'unique-boms.zip' : 'all-boms.zip'
         if (contentDisposition && contentDisposition.includes('filename=')) {
           filename = contentDisposition.split('filename=')[1].replace(/"/g, '')
         }
@@ -1208,33 +1311,56 @@ export default function ProjectDetailView() {
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
-        window.URL.revokeObjectURL(url)
+        window.URL.revokeObjectURL(blobUrl)
 
-        showSuccess('BOM CSV downloaded successfully!')
+        showSuccess(uniqueOnly ? 'Unique BOMs ZIP downloaded!' : 'All BOMs ZIP downloaded!')
       } else {
-        showError('Failed to download BOM CSV')
+        showError('Failed to download BOMs')
       }
     } catch (error) {
-      console.error('Error downloading BOM CSV:', error)
-      showError('Error downloading BOM CSV')
+      console.error('Error downloading BOMs:', error)
+      showError('Error downloading BOMs')
     }
   }
 
-  async function handleDownloadUniqueBOMsZip() {
+  async function fetchUniqueBoms() {
     if (!selectedProjectId) return
-    setShowBOMDownloadMenu(false)
+    setLoadingUniqueBoms(true)
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}/bom/csv?listOnly=true`)
+      if (response.ok) {
+        const data = await response.json()
+        setUniqueBomList(data.uniqueComponents || [])
+        // Select all by default
+        setSelectedBomHashes(new Set(data.uniqueComponents?.map((c: any) => c.hash) || []))
+      } else {
+        showError('Failed to load unique BOMs')
+      }
+    } catch (error) {
+      console.error('Error fetching unique BOMs:', error)
+      showError('Error fetching unique BOMs')
+    } finally {
+      setLoadingUniqueBoms(false)
+    }
+  }
+
+  async function handleDownloadSelectedBOMs() {
+    if (!selectedProjectId || selectedBomHashes.size === 0) return
+    setShowBOMDownloadDialog(false)
 
     try {
-      const response = await fetch(`/api/projects/${selectedProjectId}/bom/csv?unique=true`)
+      const selectedParam = Array.from(selectedBomHashes).join('|')
+      const url = `/api/projects/${selectedProjectId}/bom/csv?zip=true&unique=true&selected=${encodeURIComponent(selectedParam)}`
+      const response = await fetch(url)
       if (response.ok) {
         const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
+        const blobUrl = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
-        link.href = url
+        link.href = blobUrl
 
         // Get filename from Content-Disposition header or use default
         const contentDisposition = response.headers.get('Content-Disposition')
-        let filename = 'unique-boms.zip'
+        let filename = 'selected-boms.zip'
         if (contentDisposition && contentDisposition.includes('filename=')) {
           filename = contentDisposition.split('filename=')[1].replace(/"/g, '')
         }
@@ -1244,15 +1370,15 @@ export default function ProjectDetailView() {
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
-        window.URL.revokeObjectURL(url)
+        window.URL.revokeObjectURL(blobUrl)
 
-        showSuccess('Unique BOMs ZIP downloaded successfully!')
+        showSuccess('Selected BOMs downloaded!')
       } else {
-        showError('Failed to download unique BOMs')
+        showError('Failed to download BOMs')
       }
     } catch (error) {
-      console.error('Error downloading unique BOMs:', error)
-      showError('Error downloading unique BOMs')
+      console.error('Error downloading BOMs:', error)
+      showError('Error downloading BOMs')
     }
   }
 
@@ -1542,7 +1668,7 @@ export default function ProjectDetailView() {
             View BOM
           </button>
           <button
-            onClick={() => setShowAddOpening(true)}
+            onClick={handleShowAddOpeningModal}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             <Plus className="w-5 h-5 mr-2" />
@@ -2327,22 +2453,24 @@ export default function ProjectDetailView() {
                   setEditingPlanViews([])
                   setCurrentPanelId(null)
                 }}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                disabled={savingComponent}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={async () => {
                   if (!selectedComponentId || !currentPanelId) return
-                  
+
                   const width = parseFloat(editingComponentWidth)
                   const height = parseFloat(editingComponentHeight)
-                  
+
                   if (!width || width <= 0 || !height || height <= 0) {
                     showError('Please enter valid dimensions')
                     return
                   }
-                  
+
+                  setSavingComponent(true)
                   try {
                     // Update panel dimensions, glass type, and direction
                     const panelUpdateData: Record<string, any> = {
@@ -2407,26 +2535,31 @@ export default function ProjectDetailView() {
                     // Fetch updated project data (silent refresh to preserve scroll)
                     await refreshProject()
 
+                    setShowComponentEdit(false)
+                    setSelectedComponentId(null)
+                    setSelectedOptions({})
+                    setIncludedOptions([])
+                    setEditingComponentWidth('')
+                    setEditingComponentHeight('')
+                    setEditingGlassType('')
+                    setEditingDirection('')
+                    setEditingProductType('')
+                    setEditingPlanViews([])
+                    setCurrentPanelId(null)
                   } catch (error) {
                     console.error('Error updating component:', error)
                     showError('Error updating component')
+                  } finally {
+                    setSavingComponent(false)
                   }
-
-                  setShowComponentEdit(false)
-                  setSelectedComponentId(null)
-                  setSelectedOptions({})
-                  setIncludedOptions([])
-                  setEditingComponentWidth('')
-                  setEditingComponentHeight('')
-                  setEditingGlassType('')
-                  setEditingDirection('')
-                  setEditingProductType('')
-                  setEditingPlanViews([])
-                  setCurrentPanelId(null)
                 }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                disabled={savingComponent}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
-                Save Changes
+                {savingComponent && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                )}
+                {savingComponent ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>
@@ -2549,7 +2682,7 @@ export default function ProjectDetailView() {
                       {selectedOpeningIds.size} selected
                     </span>
                     <button
-                      onClick={() => setShowBulkDeleteModal(true)}
+                      onClick={handleShowBulkDeleteModal}
                       disabled={saving}
                       className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                     >
@@ -2662,41 +2795,17 @@ export default function ProjectDetailView() {
                 </div>
                 <div className="flex items-center space-x-3">
                   {bomViewMode === 'byOpening' ? (
-                    <div className="relative">
-                      <button
-                        onClick={() => setShowBOMDownloadMenu(!showBOMDownloadMenu)}
-                        disabled={loadingBOM || !bomData}
-                        className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        Download
-                        <ChevronDown className="w-4 h-4 ml-2" />
-                      </button>
-                      {showBOMDownloadMenu && (
-                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                          <button
-                            onClick={handleDownloadBOMCSV}
-                            className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center border-b border-gray-100"
-                          >
-                            <FileText className="w-4 h-4 mr-3 text-gray-500" />
-                            <div>
-                              <div className="font-medium">Full BOM (CSV)</div>
-                              <div className="text-xs text-gray-500">All components in one file</div>
-                            </div>
-                          </button>
-                          <button
-                            onClick={handleDownloadUniqueBOMsZip}
-                            className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
-                          >
-                            <Package className="w-4 h-4 mr-3 text-gray-500" />
-                            <div>
-                              <div className="font-medium">Unique BOMs (ZIP)</div>
-                              <div className="text-xs text-gray-500">One CSV per unique component</div>
-                            </div>
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      onClick={() => {
+                        setShowBOMDownloadDialog(true)
+                        fetchUniqueBoms()
+                      }}
+                      disabled={loadingBOM || !bomData}
+                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download BOMs
+                    </button>
                   ) : (
                     <button
                       onClick={handleDownloadSummaryCSV}
@@ -3111,6 +3220,42 @@ export default function ProjectDetailView() {
         </div>
       )}
 
+      {/* Quote Accepted Edit Confirmation Modal */}
+      {showQuoteAcceptedConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              Edit Accepted Quote
+            </h3>
+
+            <p className="text-sm text-gray-600 mb-4">
+              This project has a quote that has been <strong>accepted by the customer</strong>.
+            </p>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
+              <p className="text-sm text-amber-700">
+                You are about to {pendingActionDescription}. Making changes may affect the accepted quote. Are you sure you want to proceed?
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleCancelQuoteAcceptedEdit}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmQuoteAcceptedEdit}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              >
+                Yes, Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
@@ -3182,6 +3327,113 @@ export default function ProjectDetailView() {
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                 )}
                 {isDeletingComponent ? 'Deleting...' : 'Delete Component'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BOM Download Dialog */}
+      {showBOMDownloadDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              Select BOMs to Download
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Select the unique component BOMs you want to include in the ZIP download.
+            </p>
+
+            {loadingUniqueBoms ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : uniqueBomList.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                No components found in this project.
+              </div>
+            ) : (
+              <>
+                {/* Select All / Deselect All */}
+                <div className="flex items-center space-x-3 mb-4">
+                  <button
+                    onClick={() => setSelectedBomHashes(new Set(uniqueBomList.map(c => c.hash)))}
+                    className="text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    onClick={() => setSelectedBomHashes(new Set())}
+                    className="text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+
+                {/* Checkbox List */}
+                <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                  {uniqueBomList.map((component) => (
+                    <label
+                      key={component.hash}
+                      className="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedBomHashes.has(component.hash)}
+                        onChange={(e) => {
+                          const newSelected = new Set(selectedBomHashes)
+                          if (e.target.checked) {
+                            newSelected.add(component.hash)
+                          } else {
+                            newSelected.delete(component.hash)
+                          }
+                          setSelectedBomHashes(newSelected)
+                        }}
+                        className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                      />
+                      <div className="ml-3 flex-1">
+                        <div className="font-medium text-gray-900">
+                          {component.productName}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {component.width}" × {component.height}" &bull; {component.finishColor} &bull; <span className="font-medium">×{component.quantity}</span>
+                        </div>
+                        {component.hardware && component.hardware.length > 0 && (
+                          <div className="text-xs text-blue-600 mt-1">
+                            Hardware: {component.hardware.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                {/* Selection Count */}
+                <div className="mt-3 text-sm text-gray-600">
+                  Selected: {selectedBomHashes.size} of {uniqueBomList.length}
+                </div>
+              </>
+            )}
+
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowBOMDownloadDialog(false)
+                  setUniqueBomList([])
+                  setSelectedBomHashes(new Set())
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDownloadSelectedBOMs}
+                disabled={selectedBomHashes.size === 0 || loadingUniqueBoms}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download ZIP
               </button>
             </div>
           </div>

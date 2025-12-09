@@ -133,6 +133,9 @@ export async function GET(
     // Parse query parameters
     const { searchParams } = new URL(request.url)
     const uniqueOnly = searchParams.get('unique') === 'true'
+    const zipFormat = searchParams.get('zip') === 'true'
+    const listOnly = searchParams.get('listOnly') === 'true'
+    const selectedHashes = searchParams.get('selected')?.split('|').filter(Boolean) || []
 
     if (isNaN(projectId)) {
       return NextResponse.json(
@@ -180,6 +183,66 @@ export async function GET(
         { error: 'Project not found' },
         { status: 404 }
       )
+    }
+
+    // Return unique component list for selection UI
+    if (listOnly) {
+      const uniqueComponents = new Map<string, {
+        hash: string,
+        productName: string,
+        width: number,
+        height: number,
+        finishColor: string,
+        quantity: number,
+        hardware: string[]
+      }>()
+
+      for (const opening of project.openings) {
+        for (const panel of opening.panels) {
+          if (!panel.componentInstance) continue
+          const hash = generateComponentHash(panel, opening)
+          if (!uniqueComponents.has(hash)) {
+            // Parse sub-option selections to get hardware names
+            const hardware: string[] = []
+            try {
+              const selections = JSON.parse(panel.componentInstance.subOptionSelections || '{}')
+              const product = panel.componentInstance.product
+
+              for (const [categoryId, optionId] of Object.entries(selections)) {
+                // Find the category and option from productSubOptions
+                const subOption = product.productSubOptions?.find(
+                  (so: any) => so.category?.id === parseInt(categoryId)
+                )
+                if (subOption?.category) {
+                  const option = subOption.category.individualOptions?.find(
+                    (opt: any) => opt.id === optionId
+                  )
+                  if (option) {
+                    hardware.push(option.name)
+                  }
+                }
+              }
+            } catch (e) {
+              // Ignore parse errors
+            }
+
+            uniqueComponents.set(hash, {
+              hash,
+              productName: panel.componentInstance.product.name,
+              width: panel.width,
+              height: panel.height,
+              finishColor: opening.finishColor || 'Standard',
+              quantity: 0,
+              hardware
+            })
+          }
+          uniqueComponents.get(hash)!.quantity++
+        }
+      }
+
+      return NextResponse.json({
+        uniqueComponents: Array.from(uniqueComponents.values())
+      })
     }
 
     const bomItems: any[] = []
@@ -491,21 +554,31 @@ export async function GET(
       return aOrder - bOrder
     })
 
-    // Handle unique BOMs mode - generate ZIP with one CSV per unique component
-    if (uniqueOnly) {
-      // Group panels by unique configuration
-      const uniqueComponents = new Map<string, {
-        panels: { panel: any, opening: any }[],
-        productName: string,
-        width: number,
-        height: number,
-        finishColor: string
-      }>()
+    // Handle ZIP format - generate ZIP with one CSV per component
+    if (zipFormat) {
+      const zip = new JSZip()
 
+      // Collect all components with their panel info
+      const allComponents: { panel: any, opening: any, panelIndex: number }[] = []
       for (const opening of project.openings) {
-        for (const panel of opening.panels) {
-          if (!panel.componentInstance) continue
+        opening.panels.forEach((panel: any, idx: number) => {
+          if (panel.componentInstance) {
+            allComponents.push({ panel, opening, panelIndex: idx })
+          }
+        })
+      }
 
+      if (uniqueOnly) {
+        // Group by unique configuration
+        const uniqueComponents = new Map<string, {
+          panels: { panel: any, opening: any }[],
+          productName: string,
+          width: number,
+          height: number,
+          finishColor: string
+        }>()
+
+        for (const { panel, opening } of allComponents) {
           const hash = generateComponentHash(panel, opening)
           if (!uniqueComponents.has(hash)) {
             uniqueComponents.set(hash, {
@@ -518,83 +591,183 @@ export async function GET(
           }
           uniqueComponents.get(hash)!.panels.push({ panel, opening })
         }
-      }
 
-      // Create ZIP with one CSV per unique component
-      const zip = new JSZip()
-      let componentIndex = 1
+        // Create one CSV per unique component (filtered by selected hashes if provided)
+        let fileIndex = 1
+        for (const [hash, componentGroup] of uniqueComponents) {
+          // Skip if selectedHashes is provided and this hash is not in the list
+          if (selectedHashes.length > 0 && !selectedHashes.includes(hash)) {
+            continue
+          }
+          const quantity = componentGroup.panels.length
 
-      for (const [hash, componentGroup] of uniqueComponents) {
-        const quantity = componentGroup.panels.length
-        const { panel: representativePanel, opening: representativeOpening } = componentGroup.panels[0]
+          // Filter BOM items for this specific component configuration
+          // Glass items have color 'N/A' so exclude them from color matching
+          const componentBomItems = sortedBomItems.filter(item =>
+            item.productName === componentGroup.productName &&
+            item.panelWidth === componentGroup.width &&
+            item.panelHeight === componentGroup.height &&
+            (item.partType === 'Glass' || item.color === (componentGroup.finishColor || 'N/A'))
+          )
 
-        // Filter BOM items for this specific component configuration
-        const componentBomItems = sortedBomItems.filter(item =>
-          item.productName === componentGroup.productName &&
-          item.panelWidth === componentGroup.width &&
-          item.panelHeight === componentGroup.height &&
-          item.color === (componentGroup.finishColor || 'N/A')
-        )
+          // Remove duplicates - include cutLength to distinguish same parts with different cuts
+          const seenItems = new Set<string>()
+          const uniqueBomItems = componentBomItems.filter(item => {
+            const key = `${item.partNumber}-${item.partName}-${item.partType}-${item.cutLength}`
+            if (seenItems.has(key)) return false
+            seenItems.add(key)
+            return true
+          })
 
-        // Remove duplicates (take first occurrence per opening)
-        const seenItems = new Set<string>()
-        const uniqueBomItems = componentBomItems.filter(item => {
-          const key = `${item.partNumber}-${item.partName}-${item.partType}`
-          if (seenItems.has(key)) return false
-          seenItems.add(key)
-          return true
-        })
+          const headers = [
+            'Product Name',
+            'Component Size',
+            'Qty in Project',
+            'Part Number',
+            'Part Name',
+            'Part Type',
+            'Quantity',
+            'Cut Length',
+            '% of Stock',
+            'Unit',
+            'Color',
+            'Description'
+          ]
 
-        // Generate CSV headers with Qty in Project column
-        const headers = [
-          'Product Name',
-          'Component Size',
-          'Qty in Project',
-          'Part Number',
-          'Part Name',
-          'Part Type',
-          'Quantity',
-          'Cut Length',
-          '% of Stock',
-          'Unit',
-          'Color',
-          'Description'
-        ]
+          const csvRows = [
+            headers.join(','),
+            ...uniqueBomItems.map(item => [
+              `"${item.productName}"`,
+              `"${item.panelWidth || 0}" × ${item.panelHeight || 0}""`,
+              quantity,
+              `"${item.partNumber}"`,
+              `"${item.partName}"`,
+              `"${item.partType}"`,
+              item.quantity,
+              `"${item.cutLength}"`,
+              `"${item.percentOfStock}"`,
+              `"${item.unit}"`,
+              `"${item.color}"`,
+              `"${item.description}"`
+            ].join(','))
+          ]
 
-        const csvRows = [
-          headers.join(','),
-          ...uniqueBomItems.map(item => [
-            `"${item.productName}"`,
-            `"${item.panelWidth || 0}" × ${item.panelHeight || 0}""`,
-            quantity,
-            `"${item.partNumber}"`,
-            `"${item.partName}"`,
-            `"${item.partType}"`,
-            item.quantity,
-            `"${item.cutLength}"`,
-            `"${item.percentOfStock}"`,
-            `"${item.unit}"`,
-            `"${item.color}"`,
-            `"${item.description}"`
-          ].join(','))
-        ]
-
-        const csvContent = csvRows.join('\n')
-        const filename = `${sanitizeFilename(componentGroup.productName)}-${componentGroup.width}x${componentGroup.height}.csv`
-        zip.file(filename, csvContent)
-        componentIndex++
-      }
-
-      // Generate ZIP file
-      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' })
-
-      return new NextResponse(zipBuffer, {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/zip',
-          'Content-Disposition': `attachment; filename="${project.name}-Unique-BOMs-${new Date().toISOString().slice(0, 10)}.zip"`
+          const csvContent = csvRows.join('\n')
+          const filename = `${sanitizeFilename(componentGroup.productName)}-${componentGroup.width}x${componentGroup.height}.csv`
+          zip.file(`${String(fileIndex).padStart(2, '0')}-${filename}`, csvContent)
+          fileIndex++
         }
-      })
+
+        // If only one file, return it directly as CSV instead of ZIP
+        const fileCount = fileIndex - 1
+        if (fileCount === 1) {
+          const singleFile = Object.values(zip.files)[0]
+          const csvContent = await singleFile.async('string')
+          const filename = singleFile.name.replace(/^\d+-/, '') // Remove leading number prefix
+          return new NextResponse(csvContent, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/csv',
+              'Content-Disposition': `attachment; filename="${filename}"`
+            }
+          })
+        }
+
+        const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' })
+        const filenamePrefix = selectedHashes.length > 0 ? 'Selected-BOMs' : 'Unique-BOMs'
+        return new NextResponse(zipBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/zip',
+            'Content-Disposition': `attachment; filename="${project.name}-${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.zip"`
+          }
+        })
+      } else {
+        // Generate one CSV per individual component (all components)
+        let fileIndex = 1
+        for (const { panel, opening } of allComponents) {
+          const product = panel.componentInstance.product
+
+          // Filter BOM items for this specific panel
+          const panelBomItems = sortedBomItems.filter(item =>
+            item.openingName === opening.name &&
+            item.productName === product.name &&
+            item.panelWidth === panel.width &&
+            item.panelHeight === panel.height
+          )
+
+          // Remove duplicates within this panel - include cutLength to distinguish same parts with different cuts
+          const seenItems = new Set<string>()
+          const uniquePanelBomItems = panelBomItems.filter(item => {
+            const key = `${item.partNumber}-${item.partName}-${item.partType}-${item.cutLength}`
+            if (seenItems.has(key)) return false
+            seenItems.add(key)
+            return true
+          })
+
+          const headers = [
+            'Opening',
+            'Product Name',
+            'Component Size',
+            'Part Number',
+            'Part Name',
+            'Part Type',
+            'Quantity',
+            'Cut Length',
+            '% of Stock',
+            'Unit',
+            'Color',
+            'Description'
+          ]
+
+          const csvRows = [
+            headers.join(','),
+            ...uniquePanelBomItems.map(item => [
+              `"${item.openingName}"`,
+              `"${item.productName}"`,
+              `"${item.panelWidth || 0}" × ${item.panelHeight || 0}""`,
+              `"${item.partNumber}"`,
+              `"${item.partName}"`,
+              `"${item.partType}"`,
+              item.quantity,
+              `"${item.cutLength}"`,
+              `"${item.percentOfStock}"`,
+              `"${item.unit}"`,
+              `"${item.color}"`,
+              `"${item.description}"`
+            ].join(','))
+          ]
+
+          const csvContent = csvRows.join('\n')
+          const filename = `${sanitizeFilename(opening.name)}-${sanitizeFilename(product.name)}-${panel.width}x${panel.height}.csv`
+          zip.file(`${String(fileIndex).padStart(2, '0')}-${filename}`, csvContent)
+          fileIndex++
+        }
+
+        // If only one file, return it directly as CSV instead of ZIP
+        const fileCount = fileIndex - 1
+        if (fileCount === 1) {
+          const singleFile = Object.values(zip.files)[0]
+          const csvContent = await singleFile.async('string')
+          const filename = singleFile.name.replace(/^\d+-/, '') // Remove leading number prefix
+          return new NextResponse(csvContent, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/csv',
+              'Content-Disposition': `attachment; filename="${filename}"`
+            }
+          })
+        }
+
+        const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' })
+        return new NextResponse(zipBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/zip',
+            'Content-Disposition': `attachment; filename="${project.name}-All-BOMs-${new Date().toISOString().slice(0, 10)}.zip"`
+          }
+        })
+      }
     }
 
     // Regular mode - generate single CSV with all BOMs

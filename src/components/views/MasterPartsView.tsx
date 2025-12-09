@@ -218,8 +218,16 @@ export default function MasterPartsView() {
   const [categoryName, setCategoryName] = useState('')
   const [categoryDescription, setCategoryDescription] = useState('')
 
+  // Delete Confirmation Modal State
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteModalType, setDeleteModalType] = useState<'masterPart' | 'stockRule' | 'pricingRule' | 'glassType' | 'finish' | 'category'>('masterPart')
+  const [deleteItemId, setDeleteItemId] = useState<number | null>(null)
+  const [deleteItemName, setDeleteItemName] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
+
   // Handle Escape key to close modals one at a time
   useEscapeKey([
+    { isOpen: showDeleteModal, isBlocked: isDeleting, onClose: () => { setShowDeleteModal(false); setDeleteItemId(null); setDeleteItemName('') } },
     { isOpen: showAddPartForm, isBlocked: creating, onClose: () => setShowAddPartForm(false) },
     { isOpen: editingPart !== null, isBlocked: updating, onClose: () => setEditingPart(null) },
     { isOpen: showAddRuleForm, isBlocked: creatingRule, onClose: () => setShowAddRuleForm(false) },
@@ -452,22 +460,97 @@ export default function MasterPartsView() {
     }
   }
 
-  async function handleDeleteMasterPart(id: number) {
-    if (!confirm('Are you sure you want to delete this master part?')) return
+  function showDeleteConfirmation(type: typeof deleteModalType, id: number, name: string) {
+    setDeleteModalType(type)
+    setDeleteItemId(id)
+    setDeleteItemName(name)
+    setShowDeleteModal(true)
+  }
 
+  async function handleConfirmDelete() {
+    if (!deleteItemId) return
+
+    setIsDeleting(true)
     try {
-      const response = await fetch(`/api/master-parts/${id}`, {
-        method: 'DELETE'
-      })
+      let url = ''
+      let successMessage = ''
+      let errorMessage = ''
+
+      switch (deleteModalType) {
+        case 'masterPart':
+          url = `/api/master-parts/${deleteItemId}`
+          successMessage = 'Master part deleted successfully!'
+          errorMessage = 'Error deleting master part'
+          break
+        case 'stockRule':
+          url = `/api/stock-length-rules/${deleteItemId}`
+          successMessage = 'Stock length rule deleted successfully!'
+          errorMessage = 'Error deleting stock length rule'
+          break
+        case 'pricingRule':
+          url = `/api/pricing-rules/${deleteItemId}`
+          successMessage = 'Pricing rule deleted successfully!'
+          errorMessage = 'Error deleting pricing rule'
+          break
+        case 'glassType':
+          url = `/api/glass-types/${deleteItemId}`
+          successMessage = 'Glass type deleted successfully!'
+          errorMessage = 'Error deleting glass type'
+          break
+        case 'finish':
+          url = `/api/settings/extrusion-finish-pricing/${deleteItemId}`
+          successMessage = 'Finish type deleted successfully!'
+          errorMessage = 'Failed to delete finish type'
+          break
+        case 'category':
+          url = `/api/categories/${deleteItemId}`
+          successMessage = 'Category deleted successfully!'
+          errorMessage = 'Cannot delete category that is linked to products'
+          break
+      }
+
+      const response = await fetch(url, { method: 'DELETE' })
 
       if (response.ok) {
-        fetchMasterParts()
-        showSuccess('Master part deleted successfully!')
+        // Refresh the appropriate data based on type
+        switch (deleteModalType) {
+          case 'masterPart':
+            fetchMasterParts()
+            break
+          case 'stockRule':
+            if (selectedMasterPartId) fetchStockRules(selectedMasterPartId)
+            break
+          case 'pricingRule':
+            if (selectedMasterPartId) fetchPricingRules(selectedMasterPartId)
+            break
+          case 'glassType':
+            fetchGlassTypes()
+            break
+          case 'finish':
+            fetchFinishPricing()
+            break
+          case 'category':
+            fetchCategories()
+            break
+        }
+        showSuccess(successMessage)
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        showError(errorData.error || errorMessage)
       }
     } catch (error) {
-      console.error('Error deleting master part:', error)
-      showError('Error deleting master part')
+      console.error('Error deleting item:', error)
+      showError('Error deleting item')
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteModal(false)
+      setDeleteItemId(null)
+      setDeleteItemName('')
     }
+  }
+
+  function handleDeleteMasterPart(id: number, name: string) {
+    showDeleteConfirmation('masterPart', id, name)
   }
 
 
@@ -583,22 +666,8 @@ export default function MasterPartsView() {
     }
   }
 
-  async function handleDeleteStockRule(id: number) {
-    if (!confirm('Are you sure you want to delete this stock length rule?')) return
-
-    try {
-      const response = await fetch(`/api/stock-length-rules/${id}`, {
-        method: 'DELETE'
-      })
-
-      if (response.ok) {
-        fetchStockRules(selectedMasterPartId!)
-        showSuccess('Stock length rule deleted successfully!')
-      }
-    } catch (error) {
-      console.error('Error deleting stock rule:', error)
-      showError('Error deleting stock rule')
-    }
+  function handleDeleteStockRule(id: number, name: string) {
+    showDeleteConfirmation('stockRule', id, name)
   }
 
   function startEditStockRule(rule: StockLengthRule) {
@@ -704,22 +773,8 @@ export default function MasterPartsView() {
     }
   }
 
-  async function handleDeletePricingRule(id: number) {
-    if (!confirm('Are you sure you want to delete this pricing rule?')) return
-
-    try {
-      const response = await fetch(`/api/pricing-rules/${id}`, {
-        method: 'DELETE'
-      })
-
-      if (response.ok) {
-        fetchPricingRules(selectedMasterPartId!)
-        showSuccess('Pricing rule deleted successfully!')
-      }
-    } catch (error) {
-      console.error('Error deleting pricing rule:', error)
-      showError('Error deleting pricing rule')
-    }
+  function handleDeletePricingRule(id: number, name: string) {
+    showDeleteConfirmation('pricingRule', id, name)
   }
 
   function startEditPricingRule(rule: PricingRule) {
@@ -828,22 +883,8 @@ export default function MasterPartsView() {
     }
   }
 
-  async function handleDeleteGlassType(id: number) {
-    if (!confirm('Are you sure you want to delete this glass type?')) return
-
-    try {
-      const response = await fetch(`/api/glass-types/${id}`, {
-        method: 'DELETE'
-      })
-
-      if (response.ok) {
-        fetchGlassTypes()
-        showSuccess('Glass type deleted successfully!')
-      }
-    } catch (error) {
-      console.error('Error deleting glass type:', error)
-      showError('Error deleting glass type')
-    }
+  function handleDeleteGlassType(id: number, name: string) {
+    showDeleteConfirmation('glassType', id, name)
   }
 
   function startEditGlassType(glassType: GlassType) {
@@ -945,26 +986,8 @@ export default function MasterPartsView() {
     }
   }
 
-  async function handleDeleteFinish(id: number) {
-    if (!confirm('Are you sure you want to delete this finish type?')) {
-      return
-    }
-
-    try {
-      const response = await fetch(`/api/settings/extrusion-finish-pricing/${id}`, {
-        method: 'DELETE'
-      })
-
-      if (response.ok) {
-        await fetchFinishPricing()
-        showSuccess('Finish type deleted successfully!')
-      } else {
-        showError('Failed to delete finish type')
-      }
-    } catch (error) {
-      console.error('Error deleting finish type:', error)
-      showError('Error deleting finish type')
-    }
+  function handleDeleteFinish(id: number, name: string) {
+    showDeleteConfirmation('finish', id, name)
   }
 
   function startEditFinish(finish: any) {
@@ -1060,25 +1083,8 @@ export default function MasterPartsView() {
     }
   }
 
-  async function handleDeleteCategory(id: number, name: string) {
-    if (!confirm(`Are you sure you want to delete the category "${name}"?`)) return
-
-    try {
-      const response = await fetch(`/api/categories/${id}`, {
-        method: 'DELETE'
-      })
-
-      if (response.ok) {
-        fetchCategories()
-        showSuccess('Category deleted successfully!')
-      } else {
-        const errorData = await response.json()
-        showError(errorData.error || 'Cannot delete category that is linked to products')
-      }
-    } catch (error) {
-      console.error('Error deleting category:', error)
-      showError('Error deleting category')
-    }
+  function handleDeleteCategory(id: number, name: string) {
+    showDeleteConfirmation('category', id, name)
   }
 
   function startEditCategory(category: Category) {
@@ -1327,7 +1333,7 @@ export default function MasterPartsView() {
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => handleDeleteMasterPart(part.id)}
+                              onClick={() => handleDeleteMasterPart(part.id, part.partNumber)}
                               className="p-1 text-gray-400 hover:text-red-600 transition-colors"
                               title="Delete part"
                             >
@@ -1521,7 +1527,7 @@ export default function MasterPartsView() {
                                   <Edit2 className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => handleDeleteStockRule(rule.id)}
+                                  onClick={() => handleDeleteStockRule(rule.id, rule.name)}
                                   className="p-1 text-gray-400 hover:text-red-600 transition-colors"
                                   title="Delete rule"
                                 >
@@ -1588,7 +1594,7 @@ export default function MasterPartsView() {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDeletePricingRule(rule.id)}
+                            onClick={() => handleDeletePricingRule(rule.id, rule.name)}
                             className="text-red-600 hover:text-red-900"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1672,7 +1678,7 @@ export default function MasterPartsView() {
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => handleDeleteGlassType(glassType.id)}
+                              onClick={() => handleDeleteGlassType(glassType.id, glassType.name)}
                               className="p-1 text-gray-400 hover:text-red-600 transition-colors"
                               title="Delete glass type"
                             >
@@ -1804,7 +1810,7 @@ export default function MasterPartsView() {
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleDeleteFinish(finish.id)}
+                                onClick={() => handleDeleteFinish(finish.id, finish.finishType)}
                                 className="text-red-600 hover:text-red-900"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -2762,6 +2768,46 @@ export default function MasterPartsView() {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              Delete {deleteModalType === 'masterPart' ? 'Master Part' :
+                     deleteModalType === 'stockRule' ? 'Stock Length Rule' :
+                     deleteModalType === 'pricingRule' ? 'Pricing Rule' :
+                     deleteModalType === 'glassType' ? 'Glass Type' :
+                     deleteModalType === 'finish' ? 'Finish Type' : 'Category'}
+            </h3>
+
+            <p className="text-sm text-gray-600 mb-6">
+              Are you sure you want to delete "<strong>{deleteItemName}</strong>"? This action cannot be undone.
+            </p>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false)
+                  setDeleteItemId(null)
+                  setDeleteItemName('')
+                }}
+                disabled={isDeleting}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

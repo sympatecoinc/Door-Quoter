@@ -6,10 +6,11 @@ const prisma = new PrismaClient()
 // GET /api/pricing-modes/[id] - Get a single pricing mode
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = parseInt(params.id)
+    const { id: idParam } = await params
+    const id = parseInt(idParam)
 
     if (isNaN(id)) {
       return NextResponse.json(
@@ -47,10 +48,11 @@ export async function GET(
 // PUT /api/pricing-modes/[id] - Update a pricing mode
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = parseInt(params.id)
+    const { id: idParam } = await params
+    const id = parseInt(idParam)
 
     if (isNaN(id)) {
       return NextResponse.json(
@@ -123,10 +125,11 @@ export async function PUT(
 // DELETE /api/pricing-modes/[id] - Delete a pricing mode
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = parseInt(params.id)
+    const { id: idParam } = await params
+    const id = parseInt(idParam)
 
     if (isNaN(id)) {
       return NextResponse.json(

@@ -2,16 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { Plus, Edit, Calendar, DollarSign, Briefcase, CheckCircle, Clock, AlertCircle, Archive, FileText, X, Download, List, Search, Trash2 } from 'lucide-react'
-import { ProjectStatus, STATUS_CONFIG, LEAD_STATUSES, PROJECT_STATUSES } from '@/types'
+import { ProjectStatus, STATUS_CONFIG, LEAD_STATUSES, PROJECT_STATUSES, LEAD_FILTER_STATUSES, PROJECT_FILTER_STATUSES } from '@/types'
 import { useAppStore } from '@/stores/appStore'
-
-// Statuses to show in the project filter (Quote Accepted, Active, Complete, Archive)
-const PROJECT_FILTER_STATUSES: ProjectStatus[] = [
-  ProjectStatus.QUOTE_ACCEPTED,
-  ProjectStatus.ACTIVE,
-  ProjectStatus.COMPLETE,
-  ProjectStatus.ARCHIVE
-]
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import LeadForm from './LeadForm'
 
@@ -84,6 +76,12 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   const [bomProjectId, setBomProjectId] = useState<number | null>(null)
   const [bomProjectName, setBomProjectName] = useState<string>('')
 
+  // Unique BOM selection state
+  const [showBOMDownloadDialog, setShowBOMDownloadDialog] = useState(false)
+  const [uniqueBomList, setUniqueBomList] = useState<any[]>([])
+  const [selectedBomHashes, setSelectedBomHashes] = useState<Set<string>>(new Set())
+  const [loadingUniqueBoms, setLoadingUniqueBoms] = useState(false)
+
   // Search and filter state
   const [searchTerm, setSearchTerm] = useState('')
   const [searchExpanded, setSearchExpanded] = useState(false)
@@ -94,9 +92,14 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   const [deleteConfirm, setDeleteConfirm] = useState<{ projectId: number; projectName: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // Quote accepted edit confirmation state
+  const [quoteAcceptedEditConfirm, setQuoteAcceptedEditConfirm] = useState<Project | null>(null)
+
   // Handle Escape key to close modals one at a time
   useEscapeKey([
+    { isOpen: quoteAcceptedEditConfirm !== null, onClose: () => setQuoteAcceptedEditConfirm(null) },
     { isOpen: deleteConfirm !== null, isBlocked: deleting, onClose: () => setDeleteConfirm(null) },
+    { isOpen: showBOMDownloadDialog, onClose: () => setShowBOMDownloadDialog(false) },
     { isOpen: showBOM, onClose: () => setShowBOM(false) },
     { isOpen: showLeadForm, onClose: () => setShowLeadForm(false) },
     { isOpen: editingProject !== null, onClose: () => setEditingProject(null) },
@@ -159,7 +162,12 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
     fetchProjects()
   }
 
-  const handleStatusButtonClick = (projectId: number, projectName: string, newStatus: string) => {
+  const handleStatusButtonClick = (projectId: number, projectName: string, newStatus: string, currentStatus: string) => {
+    // Don't show confirmation if already on this status
+    if (newStatus === currentStatus) {
+      return
+    }
+
     const statusLabel = getStatusLabel(newStatus)
     setStatusChangeConfirm({
       projectId,
@@ -234,6 +242,16 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   }
 
   const openEditModal = (project: Project) => {
+    // Check if project has quote accepted status - require confirmation first
+    if (project.status === ProjectStatus.QUOTE_ACCEPTED) {
+      setQuoteAcceptedEditConfirm(project)
+      return
+    }
+    proceedWithEdit(project)
+  }
+
+  const proceedWithEdit = (project: Project) => {
+    setQuoteAcceptedEditConfirm(null)
     setEditingProject(project)
     setEditName(project.name)
     setEditStatus(project.status)
@@ -372,6 +390,61 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
       }
     } catch (error) {
       console.error('Error downloading BOM CSV:', error)
+    }
+  }
+
+  async function fetchUniqueBoms() {
+    if (!bomProjectId) return
+    setLoadingUniqueBoms(true)
+    try {
+      const response = await fetch(`/api/projects/${bomProjectId}/bom/csv?listOnly=true`)
+      if (response.ok) {
+        const data = await response.json()
+        setUniqueBomList(data.uniqueComponents || [])
+        // Select all by default
+        setSelectedBomHashes(new Set(data.uniqueComponents?.map((c: any) => c.hash) || []))
+      } else {
+        console.error('Failed to load unique BOMs')
+      }
+    } catch (error) {
+      console.error('Error fetching unique BOMs:', error)
+    } finally {
+      setLoadingUniqueBoms(false)
+    }
+  }
+
+  async function handleDownloadSelectedBOMs() {
+    if (!bomProjectId || selectedBomHashes.size === 0) return
+    setShowBOMDownloadDialog(false)
+
+    try {
+      const selectedParam = Array.from(selectedBomHashes).join('|')
+      const url = `/api/projects/${bomProjectId}/bom/csv?zip=true&unique=true&selected=${encodeURIComponent(selectedParam)}`
+      const response = await fetch(url)
+      if (response.ok) {
+        const blob = await response.blob()
+        const blobUrl = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = blobUrl
+
+        // Get filename from Content-Disposition header or use default
+        const contentDisposition = response.headers.get('Content-Disposition')
+        let filename = 'selected-boms.zip'
+        if (contentDisposition && contentDisposition.includes('filename=')) {
+          filename = contentDisposition.split('filename=')[1].replace(/"/g, '')
+        }
+
+        link.setAttribute('download', filename)
+        link.style.visibility = 'hidden'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(blobUrl)
+      } else {
+        console.error('Failed to download BOMs')
+      }
+    } catch (error) {
+      console.error('Error downloading BOMs:', error)
     }
   }
 
@@ -547,7 +620,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
               <div className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out ${
                 filtersExpanded ? 'max-w-[800px] opacity-100' : 'max-w-0 opacity-0'
               }`}>
-                {(filterType === 'leads' ? LEAD_STATUSES : PROJECT_FILTER_STATUSES).map((status) => {
+                {(filterType === 'leads' ? LEAD_FILTER_STATUSES : PROJECT_FILTER_STATUSES).map((status) => {
                   const config = STATUS_CONFIG[status]
                   const isActive = statusFilters.includes(status)
                   return (
@@ -693,7 +766,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
               <div className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out ${
                 filtersExpanded ? 'max-w-[800px] opacity-100' : 'max-w-0 opacity-0'
               }`}>
-                {(filterType === 'leads' ? LEAD_STATUSES : PROJECT_FILTER_STATUSES).map((status) => {
+                {(filterType === 'leads' ? LEAD_FILTER_STATUSES : PROJECT_FILTER_STATUSES).map((status) => {
                   const config = STATUS_CONFIG[status]
                   const isActive = statusFilters.includes(status)
                   return (
@@ -837,7 +910,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                           key={key}
                           onClick={(e) => {
                             e.stopPropagation()
-                            handleStatusButtonClick(project.id, project.name, key)
+                            handleStatusButtonClick(project.id, project.name, key, project.status)
                           }}
                           className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${
                             isActive
@@ -1089,6 +1162,39 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
         </div>
       )}
 
+      {/* Quote Accepted Edit Confirmation Modal */}
+      {quoteAcceptedEditConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Edit Accepted Quote
+            </h3>
+            <p className="text-gray-600 mb-4">
+              The project <strong>{quoteAcceptedEditConfirm.name}</strong> has a quote that has been accepted by the customer.
+            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-amber-700">
+                Making changes to this project may affect the accepted quote. Are you sure you want to proceed with editing?
+              </p>
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setQuoteAcceptedEditConfirm(null)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => proceedWithEdit(quoteAcceptedEditConfirm)}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              >
+                Yes, Edit Project
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Lead Form Modal */}
       <LeadForm
         isOpen={showLeadForm}
@@ -1110,7 +1216,10 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
               </div>
               <div className="flex items-center space-x-3">
                 <button
-                  onClick={handleDownloadBOMCSV}
+                  onClick={() => {
+                    setShowBOMDownloadDialog(true)
+                    fetchUniqueBoms()
+                  }}
                   disabled={loadingBOM || !bomData}
                   className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
@@ -1259,6 +1368,101 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                   Failed to load BOM
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BOM Download Selection Dialog */}
+      {showBOMDownloadDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Select BOMs to Download
+            </h3>
+            <p className="text-gray-600 mb-4 text-sm">
+              Select the unique component BOMs you want to include in the ZIP download.
+            </p>
+
+            {loadingUniqueBoms ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : uniqueBomList.length > 0 ? (
+              <>
+                <div className="flex items-center space-x-2 mb-4">
+                  <button
+                    onClick={() => setSelectedBomHashes(new Set(uniqueBomList.map(c => c.hash)))}
+                    className="text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-gray-400">|</span>
+                  <button
+                    onClick={() => setSelectedBomHashes(new Set())}
+                    className="text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+
+                <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+                  {uniqueBomList.map((component) => (
+                    <div key={component.hash} className="flex items-start space-x-3 p-2 rounded hover:bg-gray-50">
+                      <input
+                        type="checkbox"
+                        checked={selectedBomHashes.has(component.hash)}
+                        onChange={(e) => {
+                          const newSet = new Set(selectedBomHashes)
+                          if (e.target.checked) {
+                            newSet.add(component.hash)
+                          } else {
+                            newSet.delete(component.hash)
+                          }
+                          setSelectedBomHashes(newSet)
+                        }}
+                        className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">{component.productName}</div>
+                        <div className="text-sm text-gray-500">
+                          {component.width}" × {component.height}" • {component.finishColor} • <span className="font-medium">×{component.quantity}</span>
+                        </div>
+                        {component.hardware && component.hardware.length > 0 && (
+                          <div className="text-xs text-blue-600 mt-1">
+                            Hardware: {component.hardware.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="text-sm text-gray-500 mb-4">
+                  Selected: {selectedBomHashes.size} of {uniqueBomList.length}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                No unique BOMs found
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowBOMDownloadDialog(false)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDownloadSelectedBOMs}
+                disabled={selectedBomHashes.size === 0}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download ZIP
+              </button>
             </div>
           </div>
         </div>

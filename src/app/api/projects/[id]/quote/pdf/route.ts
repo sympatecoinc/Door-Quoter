@@ -133,7 +133,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const maxHeight = Math.max(...opening.panels.map(panel => panel.height), 0)
 
         // Get hardware and glass types
-        const hardwareItems: Array<{name: string, price: number, isIncluded: boolean}> = []
+        const hardwareItems: Array<{name: string, price: number, isIncluded: boolean, isStandard: boolean}> = []
         const glassTypes = new Set<string>()
         let totalHardwarePrice = 0
 
@@ -184,14 +184,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                         for (const option of pso.category.individualOptions) {
                           if (option.id === optionId) {
                             const isIncluded = includedOptions.includes(Number(optionId))
-                            const optionPrice = isIncluded ? 0 : (option.price || 0)
+                            const isStandardOption = pso.standardOptionId === option.id
+                            // Standard options: price is 0 (cost tracked in opening.standardOptionCost)
+                            // Non-standard options: full price (will be marked up)
+                            const optionPrice = isIncluded ? 0 : (isStandardOption ? 0 : (option.price || 0))
                             hardwareItems.push({
                               name: `${pso.category.name}: ${option.name}`,
                               price: optionPrice,
-                              isIncluded: isIncluded
+                              isIncluded: isIncluded,
+                              isStandard: isStandardOption
                             })
-                            totalHardwarePrice += optionPrice
-                            hardwareCost += optionPrice
+                            // Only add non-standard hardware to costs (standard is in opening.standardOptionCost)
+                            if (!isStandardOption) {
+                              totalHardwarePrice += optionPrice
+                              hardwareCost += optionPrice
+                            }
                             break
                           }
                         }
@@ -283,7 +290,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           description: description || 'Custom Opening',
           dimensions: `${totalWidth}" W × ${maxHeight}" H`,
           color: opening.finishColor || 'Standard',
-          hardware: hardwareItems.length > 0 ? hardwareItems.map(item => `${item.name} | +$${item.price.toLocaleString()}${item.isIncluded ? ' | STANDARD' : ''}`).join(' • ') : 'Standard',
+          hardware: hardwareItems.length > 0 ? hardwareItems.map(item =>
+            item.isStandard
+              ? `${item.name} | STANDARD`
+              : `${item.name} | +$${item.price.toLocaleString()}${item.isIncluded ? ' | INCLUDED' : ''}`
+          ).join(' • ') : 'Standard',
           hardwarePrice: totalHardwarePrice,
           glassType: Array.from(glassTypes).join(', ') || 'Clear',
           costPrice: opening.price,
