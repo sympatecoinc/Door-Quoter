@@ -60,9 +60,28 @@ function calculateRequiredPartLength(bom: any, variables: any): number {
       return 0
     }
   }
-  
+
   // Fallback: If no formula, use quantity as length (for backwards compatibility)
   return bom.quantity || 0
+}
+
+// Function to calculate FRAME dimensions from sibling panels in the same opening
+function getFrameDimensions(panels: any[], currentPanelId: number): { width: number; height: number } {
+  // Get all panels except the current frame panel and other frame panels
+  const siblingPanels = panels.filter(p =>
+    p.id !== currentPanelId &&
+    p.componentInstance?.product?.productType !== 'FRAME'
+  )
+
+  if (siblingPanels.length === 0) {
+    return { width: 0, height: 0 }
+  }
+
+  // Frame width = sum of sibling widths, height = max sibling height
+  const width = siblingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
+  const height = Math.max(...siblingPanels.map(p => p.height || 0))
+
+  return { width, height }
 }
 
 // Function to calculate the price of a single BOM item using component dimensions
@@ -400,6 +419,27 @@ export async function POST(
       )
     }
 
+    // Auto-update frame panel dimensions based on sibling panels
+    // This ensures frames resize when components are added/removed/modified
+    for (const panel of opening.panels) {
+      if (panel.componentInstance?.product?.productType === 'FRAME') {
+        const frameDimensions = getFrameDimensions(opening.panels, panel.id)
+        // Only update if dimensions have changed
+        if (panel.width !== frameDimensions.width || panel.height !== frameDimensions.height) {
+          await prisma.panel.update({
+            where: { id: panel.id },
+            data: {
+              width: frameDimensions.width,
+              height: frameDimensions.height
+            }
+          })
+          // Update local panel object for accurate pricing in this calculation
+          ;(panel as any).width = frameDimensions.width
+          ;(panel as any).height = frameDimensions.height
+        }
+      }
+    }
+
     const priceBreakdown = {
       components: [] as any[],
       totalComponentCost: 0,
@@ -415,11 +455,23 @@ export async function POST(
       const component = panel.componentInstance
       const product = component.product
       let componentCost = 0
+
+      // For FRAME products, calculate dimensions dynamically from sibling panels
+      const isFrameProduct = product.productType === 'FRAME'
+      let effectiveWidth = panel.width
+      let effectiveHeight = panel.height
+
+      if (isFrameProduct) {
+        const frameDimensions = getFrameDimensions(opening.panels, panel.id)
+        effectiveWidth = frameDimensions.width
+        effectiveHeight = frameDimensions.height
+      }
+
       const componentBreakdown = {
         productName: product.name,
         panelId: panel.id,
-        width: panel.width,
-        height: panel.height,
+        width: effectiveWidth,
+        height: effectiveHeight,
         bomCosts: [] as any[],
         optionCosts: [] as any[],
         glassCost: null as any,
@@ -435,8 +487,8 @@ export async function POST(
       for (const bom of product.productBOMs) {
         const { cost, breakdown } = await calculateBOMItemPrice(
           bom,
-          panel.width,
-          panel.height,
+          effectiveWidth,
+          effectiveHeight,
           extrusionCostingMethod,
           opening.project.excludedPartNumbers || [],
           opening.finishColor

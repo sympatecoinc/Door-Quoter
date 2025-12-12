@@ -86,6 +86,25 @@ function evaluateFormula(formula: string, variables: Record<string, number>): nu
   }
 }
 
+// Helper function to calculate Frame dimensions from sibling panels in the same opening
+function getFrameDimensions(panels: any[], currentPanelId: number): { width: number; height: number } {
+  // Get all panels except the current frame panel and other frame panels
+  const siblingPanels = panels.filter(p =>
+    p.id !== currentPanelId &&
+    p.componentInstance?.product?.productType !== 'FRAME'
+  )
+
+  if (siblingPanels.length === 0) {
+    return { width: 0, height: 0 }
+  }
+
+  // Frame width = sum of sibling widths, height = max sibling height
+  const width = siblingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
+  const height = Math.max(...siblingPanels.map(p => p.height || 0))
+
+  return { width, height }
+}
+
 // Helper function to get finish code from database
 async function getFinishCode(finishType: string): Promise<string> {
   try {
@@ -540,14 +559,25 @@ export async function GET(
         if (!panel.componentInstance) continue
 
         const product = panel.componentInstance.product
-        
+
+        // For FRAME products, calculate dimensions dynamically from sibling panels
+        const isFrameProduct = product.productType === 'FRAME'
+        let effectiveWidth = panel.width || 0
+        let effectiveHeight = panel.height || 0
+
+        if (isFrameProduct) {
+          const frameDimensions = getFrameDimensions(opening.panels, panel.id)
+          effectiveWidth = frameDimensions.width
+          effectiveHeight = frameDimensions.height
+        }
+
         // Process each BOM item for this component
         for (const bom of product.productBOMs) {
           const variables = {
-            width: panel.width || 0,
-            height: panel.height || 0,
-            Width: panel.width || 0,    // Support both uppercase and lowercase
-            Height: panel.height || 0,  // Support both uppercase and lowercase
+            width: effectiveWidth,
+            height: effectiveHeight,
+            Width: effectiveWidth,    // Support both uppercase and lowercase
+            Height: effectiveHeight,  // Support both uppercase and lowercase
             quantity: bom.quantity || 1
           }
 
@@ -602,8 +632,8 @@ export async function GET(
             openingName: opening.name,
             panelId: panel.id,
             productName: product.name,
-            panelWidth: panel.width,
-            panelHeight: panel.height,
+            panelWidth: effectiveWidth,
+            panelHeight: effectiveHeight,
             partNumber: fullPartNumber,
             partName: bom.partName,
             partType: bom.partType,
@@ -620,8 +650,8 @@ export async function GET(
         // Add glass as a separate row if panel has glass and it's not N/A
         if (panel.glassType && panel.glassType !== 'None' && panel.glassType !== 'N/A') {
           // Calculate glass dimensions using product formulas if available
-          let glassWidth = panel.width
-          let glassHeight = panel.height
+          let glassWidth = effectiveWidth
+          let glassHeight = effectiveHeight
 
           if (product.glassWidthFormula) {
             // If formula doesn't contain 'width' or 'height', assume it's a simple offset from width
@@ -630,8 +660,8 @@ export async function GET(
               formula = `width ${formula.startsWith('-') ? '' : '+'}${formula}`
             }
             glassWidth = evaluateFormula(formula, {
-              width: panel.width,
-              height: panel.height
+              width: effectiveWidth,
+              height: effectiveHeight
             })
           }
 
@@ -642,8 +672,8 @@ export async function GET(
               formula = `height ${formula.startsWith('-') ? '' : '+'}${formula}`
             }
             glassHeight = evaluateFormula(formula, {
-              width: panel.width,
-              height: panel.height
+              width: effectiveWidth,
+              height: effectiveHeight
             })
           }
 
@@ -651,8 +681,8 @@ export async function GET(
             openingName: opening.name,
             panelId: panel.id,
             productName: product.name,
-            panelWidth: panel.width,
-            panelHeight: panel.height,
+            panelWidth: effectiveWidth,
+            panelHeight: effectiveHeight,
             partNumber: `GLASS-${panel.glassType.toUpperCase()}`,
             partName: `${panel.glassType} Glass`,
             partType: 'Glass',
@@ -717,8 +747,8 @@ export async function GET(
                     openingName: opening.name,
                     panelId: panel.id,
                     productName: product.name,
-                    panelWidth: panel.width,
-                    panelHeight: panel.height,
+                    panelWidth: effectiveWidth,
+                    panelHeight: effectiveHeight,
                     partNumber: partNumber,
                     partName: standardOption.name,
                     partType: 'Option',
@@ -774,8 +804,8 @@ export async function GET(
                   openingName: opening.name,
                   panelId: panel.id,
                   productName: product.name,
-                  panelWidth: panel.width,
-                  panelHeight: panel.height,
+                  panelWidth: effectiveWidth,
+                  panelHeight: effectiveHeight,
                   partNumber: partNumber,
                   partName: individualOption.name,
                   partType: 'Option',
@@ -825,8 +855,8 @@ export async function GET(
                 openingName: opening.name,
                 panelId: panel.id,
                 productName: product.name,
-                panelWidth: panel.width,
-                panelHeight: panel.height,
+                panelWidth: effectiveWidth,
+                panelHeight: effectiveHeight,
                 partNumber: partNumber,
                 partName: standardOption.name,
                 partType: 'Option',

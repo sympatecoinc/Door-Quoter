@@ -67,10 +67,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate productType
-    const validProductTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL', 'CORNER_90']
+    const validProductTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL', 'CORNER_90', 'FRAME']
     if (!validProductTypes.includes(productType)) {
       return NextResponse.json(
-        { error: 'Invalid product type. Must be one of: Swing Door, Sliding Door, Fixed Panel, 90 Degree Corner' },
+        { error: 'Invalid product type. Must be one of: Swing Door, Sliding Door, Fixed Panel, 90 Degree Corner, Frame' },
         { status: 400 }
       )
     }
