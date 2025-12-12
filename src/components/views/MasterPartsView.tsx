@@ -225,8 +225,14 @@ export default function MasterPartsView() {
   const [deleteItemName, setDeleteItemName] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
 
+  // Bulk Selection State
+  const [selectedPartIds, setSelectedPartIds] = useState<Set<number>>(new Set())
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+
   // Handle Escape key to close modals one at a time
   useEscapeKey([
+    { isOpen: showBulkDeleteModal, isBlocked: isBulkDeleting, onClose: () => setShowBulkDeleteModal(false) },
     { isOpen: showDeleteModal, isBlocked: isDeleting, onClose: () => { setShowDeleteModal(false); setDeleteItemId(null); setDeleteItemName('') } },
     { isOpen: showAddPartForm, isBlocked: creating, onClose: () => setShowAddPartForm(false) },
     { isOpen: editingPart !== null, isBlocked: updating, onClose: () => setEditingPart(null) },
@@ -553,6 +559,61 @@ export default function MasterPartsView() {
     showDeleteConfirmation('masterPart', id, name)
   }
 
+  // Bulk Selection Functions
+  function togglePartSelection(id: number) {
+    setSelectedPartIds(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(id)) {
+        newSet.delete(id)
+      } else {
+        newSet.add(id)
+      }
+      return newSet
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectedPartIds.size === filteredMasterParts.length) {
+      // Deselect all
+      setSelectedPartIds(new Set())
+    } else {
+      // Select all filtered parts
+      setSelectedPartIds(new Set(filteredMasterParts.map(p => p.id)))
+    }
+  }
+
+  function clearSelection() {
+    setSelectedPartIds(new Set())
+  }
+
+  async function handleBulkDelete() {
+    if (selectedPartIds.size === 0) return
+
+    setIsBulkDeleting(true)
+    try {
+      const response = await fetch('/api/master-parts/bulk', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedPartIds) })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        showSuccess(`${data.deletedCount} master part(s) deleted successfully`)
+        setSelectedPartIds(new Set())
+        fetchMasterParts()
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        showError(errorData.error || 'Error deleting master parts')
+      }
+    } catch (error) {
+      console.error('Error bulk deleting master parts:', error)
+      showError('Error deleting master parts')
+    } finally {
+      setIsBulkDeleting(false)
+      setShowBulkDeleteModal(false)
+    }
+  }
 
   function startEditMasterPart(part: MasterPart) {
     setEditingPart(part.id)
@@ -1188,8 +1249,33 @@ export default function MasterPartsView() {
       {activeTab === 'masterParts' && (
         <div>
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">Master Parts Database</h2>
+            <div className="flex items-center gap-4">
+              <h2 className="text-xl font-semibold text-gray-900">Master Parts Database</h2>
+              {selectedPartIds.size > 0 && (
+                <span className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
+                  {selectedPartIds.size} selected
+                </span>
+              )}
+            </div>
             <div className="flex space-x-3">
+              {selectedPartIds.size > 0 && (
+                <>
+                  <button
+                    onClick={clearSelection}
+                    className="flex items-center px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    <X className="w-5 h-5 mr-2" />
+                    Clear Selection
+                  </button>
+                  <button
+                    onClick={() => setShowBulkDeleteModal(true)}
+                    className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  >
+                    <Trash2 className="w-5 h-5 mr-2" />
+                    Delete Selected ({selectedPartIds.size})
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => setShowAddPartForm(true)}
                 className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -1255,6 +1341,15 @@ export default function MasterPartsView() {
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
+                      <th className="px-4 py-3 text-left">
+                        <input
+                          type="checkbox"
+                          checked={filteredMasterParts.length > 0 && selectedPartIds.size === filteredMasterParts.length}
+                          onChange={toggleSelectAll}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                          title={selectedPartIds.size === filteredMasterParts.length ? "Deselect all" : "Select all"}
+                        />
+                      </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Part Number
                       </th>
@@ -1280,7 +1375,15 @@ export default function MasterPartsView() {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {filteredMasterParts.map((part) => (
-                      <tr key={part.id} className="hover:bg-gray-50">
+                      <tr key={part.id} className={`hover:bg-gray-50 ${selectedPartIds.has(part.id) ? 'bg-blue-50' : ''}`}>
+                        <td className="px-4 py-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedPartIds.has(part.id)}
+                            onChange={() => togglePartSelection(part.id)}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                          />
+                        </td>
                         <td className="px-6 py-4">
                           <div className="text-sm font-medium text-gray-900">{part.partNumber}</div>
                         </td>
@@ -2805,6 +2908,43 @@ export default function MasterPartsView() {
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              Delete {selectedPartIds.size} Master Part{selectedPartIds.size !== 1 ? 's' : ''}
+            </h3>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Are you sure you want to delete <strong>{selectedPartIds.size}</strong> master part{selectedPartIds.size !== 1 ? 's' : ''}?
+              This action cannot be undone.
+            </p>
+
+            <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg mb-6">
+              This will also delete any related Individual Options and Product BOM entries that reference these parts.
+            </p>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowBulkDeleteModal(false)}
+                disabled={isBulkDeleting}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {isBulkDeleting ? 'Deleting...' : `Delete ${selectedPartIds.size} Part${selectedPartIds.size !== 1 ? 's' : ''}`}
               </button>
             </div>
           </div>
