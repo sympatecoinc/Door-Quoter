@@ -229,37 +229,22 @@ export default function DashboardView() {
   }
 
   const handleLeadSubmit = async (leadData: any) => {
-    // If the stage is a pipeline stage (Staging, Approved, Revise, Quote Sent), create a Project
-    // so it appears in the Sales Pipeline. Otherwise, create a Lead in the CRM.
-    const pipelineStages = ['STAGING', 'APPROVED', 'REVISE', 'QUOTE_SENT']
-    const isPipelineStage = pipelineStages.includes(leadData.stage)
-
-    if (isPipelineStage) {
-      // Create a Project for pipeline stages
-      const response = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: leadData.title,
-          status: leadData.stage,
-          customerId: leadData.customerId
-        }),
-      })
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to create project')
-      }
-    } else {
-      // Create a Lead for non-pipeline stages (e.g., 'New')
-      const response = await fetch('/api/leads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(leadData),
-      })
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to create lead')
-      }
+    // Always create a Project with STAGING status so it appears under the customer
+    // and in the sales pipeline. This ensures consistent behavior regardless of
+    // the stage selected in the form.
+    const response = await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: leadData.title,
+        customerId: leadData.customerId,
+        status: ProjectStatus.STAGING,
+        dueDate: leadData.expectedCloseDate || null
+      }),
+    })
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || 'Failed to create lead')
     }
     setRefreshKey(prev => prev + 1)
   }
