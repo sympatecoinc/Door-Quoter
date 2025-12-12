@@ -1041,14 +1041,17 @@ export default function ProjectDetailView() {
     const proceedWithAddComponent = async () => {
       setSelectedOpeningId(openingId)
 
-      // Find the opening and check if it has existing panels
+      // Find the opening and check if it has existing panels (excluding FRAME panels)
       const opening = project?.openings.find(o => o.id === openingId)
-      if (opening && opening.panels && opening.panels.length > 0) {
-        // Opening has existing panels - get height from first panel
-        const existingHeight = opening.panels[0].height
+      const nonFramePanels = opening?.panels?.filter(p =>
+        p.componentInstance?.product?.productType !== 'FRAME'
+      ) || []
+      if (nonFramePanels.length > 0) {
+        // Opening has existing non-frame panels - get height from first panel
+        const existingHeight = nonFramePanels[0].height
         setComponentHeight(existingHeight.toString())
       } else {
-        // First panel in opening - reset height
+        // First panel in opening (or only Frame panels) - reset height
         setComponentHeight('')
       }
 
@@ -1073,14 +1076,35 @@ export default function ProjectDetailView() {
 
   async function handleAddComponent() {
     if (!selectedOpeningId || !selectedProductId) return
-    
+
     const selectedProduct = products.find(p => p.id === selectedProductId)
     const isCorner = selectedProduct?.productType === 'CORNER_90'
-    
-    // Use default dimensions for corners, actual dimensions for other components
-    const width = isCorner ? 1 : (parseFloat(componentWidth) || 0)
-    const height = isCorner ? 1 : (parseFloat(componentHeight) || 0)
-    
+    const isFrame = selectedProduct?.productType === 'FRAME'
+
+    // Calculate dimensions based on product type
+    let width: number
+    let height: number
+
+    if (isCorner) {
+      // Corners use placeholder 1x1 dimensions
+      width = 1
+      height = 1
+    } else if (isFrame) {
+      // Frame dimensions = sum of existing panel widths × max panel height
+      const currentOpening = project?.openings.find(o => o.id === selectedOpeningId)
+      const existingPanels = currentOpening?.panels.filter(p =>
+        p.componentInstance?.product?.productType !== 'FRAME'
+      ) || []
+      width = existingPanels.reduce((sum, panel) => sum + (panel.width || 0), 0)
+      height = existingPanels.length > 0 ? Math.max(...existingPanels.map(p => p.height || 0)) : 0
+    } else {
+      width = parseFloat(componentWidth) || 0
+      height = parseFloat(componentHeight) || 0
+    }
+
+    // For FRAME products, always use 'N/A' glass type
+    const effectiveGlassType = isFrame ? 'N/A' : glassType
+
     try {
       // First create a default panel for this component
       const panelResponse = await fetch('/api/panels', {
@@ -1093,7 +1117,7 @@ export default function ProjectDetailView() {
           type: 'Component',
           width: width,
           height: height,
-          glassType: glassType,
+          glassType: effectiveGlassType,
           locking: 'N/A',
           swingDirection: swingDirection,
           slidingDirection: slidingDirection,
@@ -2016,11 +2040,12 @@ export default function ProjectDetailView() {
                   ))}
                 </select>
               </div>
-              {/* Dimensions - Hide for corner components */}
+              {/* Dimensions - Hide for corner and frame components */}
               {(() => {
                 const selectedProduct = products.find(p => p.id === selectedProductId)
                 const isCornerProduct = selectedProduct?.productType === 'CORNER_90'
-                
+                const isFrameProduct = selectedProduct?.productType === 'FRAME'
+
                 if (isCornerProduct) {
                   return (
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
@@ -2031,6 +2056,33 @@ export default function ProjectDetailView() {
                         <div>
                           <p className="text-sm font-medium text-orange-800">Directional Corner</p>
                           <p className="text-xs text-orange-600">No dimensions required - represents change in direction</p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+
+                if (isFrameProduct) {
+                  const currentOpening = project?.openings.find(o => o.id === selectedOpeningId)
+                  const existingPanels = currentOpening?.panels.filter(p =>
+                    p.componentInstance?.product?.productType !== 'FRAME'
+                  ) || []
+                  const calculatedWidth = existingPanels.reduce((sum, panel) => sum + (panel.width || 0), 0)
+                  const calculatedHeight = existingPanels.length > 0 ? Math.max(...existingPanels.map(p => p.height || 0)) : 0
+
+                  return (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-center">
+                        <div className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full mr-3">
+                          Frame
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-blue-800">Auto-Calculated Dimensions</p>
+                          <p className="text-xs text-blue-600">
+                            {existingPanels.length > 0
+                              ? `Width: ${calculatedWidth}" (sum of panels) × Height: ${calculatedHeight}" (max panel height)`
+                              : 'Add components first - frame dimensions calculated from opening components'}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -2069,12 +2121,18 @@ export default function ProjectDetailView() {
                         min="0"
                         disabled={(() => {
                           const opening = project?.openings.find(o => o.id === selectedOpeningId)
-                          return opening && opening.panels && opening.panels.length > 0
+                          const nonFramePanels = opening?.panels?.filter(p =>
+                            p.componentInstance?.product?.productType !== 'FRAME'
+                          ) || []
+                          return nonFramePanels.length > 0
                         })()}
                         className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
                           (() => {
                             const opening = project?.openings.find(o => o.id === selectedOpeningId)
-                            const isDisabled = opening && opening.panels && opening.panels.length > 0
+                            const nonFramePanels = opening?.panels?.filter(p =>
+                              p.componentInstance?.product?.productType !== 'FRAME'
+                            ) || []
+                            const isDisabled = nonFramePanels.length > 0
                             if (isDisabled) {
                               return 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-300'
                             }
@@ -2092,12 +2150,13 @@ export default function ProjectDetailView() {
                 )
               })()}
 
-              {/* Quantity field - show for all non-corner components */}
+              {/* Quantity field - show for all non-corner/non-frame components */}
               {(() => {
                 const selectedProduct = products.find(p => p.id === selectedProductId)
                 const isCornerProduct = selectedProduct?.productType === 'CORNER_90'
+                const isFrameProduct = selectedProduct?.productType === 'FRAME'
 
-                if (isCornerProduct) return null
+                if (isCornerProduct || isFrameProduct) return null
 
                 return (
                   <div>
@@ -2234,8 +2293,8 @@ export default function ProjectDetailView() {
                 </div>
               )}
 
-              {/* Glass Type Selection - Show for all components */}
-              {selectedProductId && (
+              {/* Glass Type Selection - Show for all components except FRAME */}
+              {selectedProductId && products.find(p => p.id === selectedProductId)?.productType !== 'FRAME' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Glass Type</label>
                   <select
@@ -2284,9 +2343,10 @@ export default function ProjectDetailView() {
                   if (!selectedProductId) return true
                   const selectedProduct = products.find(p => p.id === selectedProductId)
                   const isCorner = selectedProduct?.productType === 'CORNER_90'
+                  const isFrame = selectedProduct?.productType === 'FRAME'
 
-                  // For corner components, only product selection is required
-                  if (isCorner) return false
+                  // For corner and frame components, only product selection is required
+                  if (isCorner || isFrame) return false
 
                   // For other components, dimensions and valid quantity are required
                   const quantityValue = parseInt(componentQuantity)

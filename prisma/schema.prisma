@@ -118,6 +118,7 @@ enum ProductType {
   SLIDING_DOOR @map("Sliding Door")
   FIXED_PANEL  @map("Fixed Panel")
   CORNER_90    @map("90 Degree Corner")
+  FRAME        @map("Frame")
 }
 
 model Product {
