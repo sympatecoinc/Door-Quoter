@@ -193,6 +193,7 @@ export async function GET(
         width: number,
         height: number,
         finishColor: string,
+        glassType: string,
         quantity: number,
         hardware: string[]
       }>()
@@ -232,6 +233,7 @@ export async function GET(
               width: panel.width,
               height: panel.height,
               finishColor: opening.finishColor || 'Standard',
+              glassType: panel.glassType || 'None',
               quantity: 0,
               hardware
             })

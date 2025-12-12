@@ -1,26 +1,18 @@
-2025/12/03 18:58:15 Authorizing with gcloud user credentials
-2025/12/03 18:58:16 [door-quoter:us-central1:door-app-db] Listening on 127.0.0.1:5433
-2025/12/03 18:58:16 The proxy has started successfully and is ready for new connections!
-2025/12/03 18:59:33 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:57676
-2025/12/03 18:59:34 [door-quoter:us-central1:door-app-db] client closed the connection
-2025/12/03 19:00:00 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:40866
-2025/12/03 19:00:01 [door-quoter:us-central1:door-app-db] client closed the connection
-2025/12/03 19:04:29 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:60910
-2025/12/03 19:04:29 [door-quoter:us-central1:door-app-db] client closed the connection
-2025/12/03 19:04:49 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:33640
-2025/12/03 19:04:50 [door-quoter:us-central1:door-app-db] client closed the connection
-2025/12/03 19:05:00 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:53766
-2025/12/03 19:05:00 [door-quoter:us-central1:door-app-db] client closed the connection
-2025/12/03 19:05:08 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:48760
-2025/12/03 19:05:08 [door-quoter:us-central1:door-app-db] client closed the connection
-2025/12/03 19:05:20 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:35010
-2025/12/03 19:05:21 [door-quoter:us-central1:door-app-db] client closed the connection
-2025/12/03 19:05:33 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:38208
-2025/12/03 19:05:33 [door-quoter:us-central1:door-app-db] client closed the connection
-2025/12/03 19:05:47 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:39194
-2025/12/03 19:05:47 [door-quoter:us-central1:door-app-db] client closed the connection
-2025/12/03 19:05:56 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:50930
-2025/12/03 19:05:56 [door-quoter:us-central1:door-app-db] client closed the connection
-2025/12/03 19:06:01 Sending SIGTERM signal for proxy to shutdown.
-2025/12/03 19:06:01 SIGTERM signal received. Shutting down...
-2025/12/03 19:06:01 proxy server error: accept tcp 127.0.0.1:5433: use of closed network connection
+2025/12/11 23:15:53 Authorizing with Application Default Credentials
+2025/12/11 23:15:53 [door-quoter:us-central1:door-app-db] Listening on 127.0.0.1:5434
+2025/12/11 23:15:53 The proxy has started successfully and is ready for new connections!
+2025/12/11 23:41:11 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:53892
+2025/12/11 23:41:12 [door-quoter:us-central1:door-app-db] client closed the connection
+2025/12/11 23:41:12 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:53902
+2025/12/11 23:41:12 [door-quoter:us-central1:door-app-db] client closed the connection
+2025/12/11 23:46:19 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:47336
+2025/12/11 23:46:19 [door-quoter:us-central1:door-app-db] client closed the connection
+2025/12/11 23:46:19 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:47352
+2025/12/11 23:46:21 [door-quoter:us-central1:door-app-db] client closed the connection
+2025/12/11 23:48:38 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:58682
+2025/12/11 23:48:39 [door-quoter:us-central1:door-app-db] client closed the connection
+2025/12/11 23:48:39 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:58692
+2025/12/11 23:48:39 [door-quoter:us-central1:door-app-db] client closed the connection
+2025/12/11 23:48:43 Sending SIGTERM signal for proxy to shutdown.
+2025/12/11 23:48:43 SIGTERM signal received. Shutting down...
+2025/12/11 23:48:43 proxy server error: accept tcp 127.0.0.1:5434: use of closed network connection
