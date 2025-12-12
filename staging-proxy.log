@@ -1,18 +1,18 @@
-2025/12/03 18:01:02 Authorizing with gcloud user credentials
-2025/12/03 18:01:03 [door-quoter:us-central1:door-app-staging] Listening on 127.0.0.1:5434
-2025/12/03 18:01:03 The proxy has started successfully and is ready for new connections!
-2025/12/03 18:02:35 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:53304
-2025/12/03 18:02:35 [door-quoter:us-central1:door-app-staging] client closed the connection
-2025/12/03 18:02:35 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:55372
-2025/12/03 18:02:36 [door-quoter:us-central1:door-app-staging] client closed the connection
-2025/12/03 18:02:56 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:51858
-2025/12/03 18:02:57 [door-quoter:us-central1:door-app-staging] client closed the connection
-2025/12/03 18:02:57 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:51872
-2025/12/03 18:02:59 [door-quoter:us-central1:door-app-staging] client closed the connection
-2025/12/03 18:08:52 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:53194
-2025/12/03 18:08:53 [door-quoter:us-central1:door-app-staging] client closed the connection
-2025/12/03 18:08:53 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:53204
-2025/12/03 18:08:53 [door-quoter:us-central1:door-app-staging] client closed the connection
-2025/12/03 18:09:04 Sending SIGTERM signal for proxy to shutdown.
-2025/12/03 18:09:04 SIGTERM signal received. Shutting down...
-2025/12/03 18:09:04 proxy server error: accept tcp 127.0.0.1:5434: use of closed network connection
+2025/12/11 23:15:38 Authorizing with Application Default Credentials
+2025/12/11 23:15:38 [door-quoter:us-central1:door-app-staging] Listening on 127.0.0.1:5433
+2025/12/11 23:15:38 The proxy has started successfully and is ready for new connections!
+2025/12/11 23:18:09 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:44422
+2025/12/11 23:18:10 [door-quoter:us-central1:door-app-staging] client closed the connection
+2025/12/11 23:18:10 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:44432
+2025/12/11 23:18:10 [door-quoter:us-central1:door-app-staging] client closed the connection
+2025/12/11 23:41:25 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:42402
+2025/12/11 23:41:25 [door-quoter:us-central1:door-app-staging] client closed the connection
+2025/12/11 23:41:25 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:42414
+2025/12/11 23:41:27 [door-quoter:us-central1:door-app-staging] client closed the connection
+2025/12/11 23:48:36 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:55378
+2025/12/11 23:48:36 [door-quoter:us-central1:door-app-staging] client closed the connection
+2025/12/11 23:48:36 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:55380
+2025/12/11 23:48:37 [door-quoter:us-central1:door-app-staging] client closed the connection
+2025/12/11 23:48:43 Sending SIGTERM signal for proxy to shutdown.
+2025/12/11 23:48:43 SIGTERM signal received. Shutting down...
+2025/12/11 23:48:43 proxy server error: accept tcp 127.0.0.1:5433: use of closed network connection

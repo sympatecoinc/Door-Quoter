@@ -3397,7 +3397,7 @@ export default function ProjectDetailView() {
                           {component.productName}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {component.width}" × {component.height}" &bull; {component.finishColor} &bull; <span className="font-medium">×{component.quantity}</span>
+                          {component.width}" × {component.height}" &bull; {component.finishColor} &bull; {component.glassType || 'None'} &bull; <span className="font-medium">×{component.quantity}</span>
                         </div>
                         {component.hardware && component.hardware.length > 0 && (
                           <div className="text-xs text-blue-600 mt-1">

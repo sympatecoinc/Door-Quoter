@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { Plus, ArrowLeft, Tag, Wrench, Link, X, Edit2, Trash2, Save, Upload, Image as ImageIcon, ChevronDown, ChevronRight, Star } from 'lucide-react'
+import { Plus, ArrowLeft, Tag, Wrench, Link, X, Edit2, Trash2, Save, Upload, Image as ImageIcon, ChevronDown, ChevronRight, Star, Download } from 'lucide-react'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
@@ -1205,6 +1205,49 @@ export default function ProductDetailView({
     }
   }
 
+  function handleExportProduct() {
+    if (!productDetails?.productBOMs || productDetails.productBOMs.length === 0) {
+      showError('No parts to export')
+      return
+    }
+
+    // Build CSV in the exact same format as the upload expects
+    const headers = ['partNumber', 'quantity', 'formula']
+    const rows = productDetails.productBOMs.map((part: any) => {
+      // Escape values that contain commas or quotes
+      const escapeCSV = (value: string | number | null | undefined) => {
+        if (value === null || value === undefined) return ''
+        const str = String(value)
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`
+        }
+        return str
+      }
+
+      return [
+        escapeCSV(part.partNumber),
+        escapeCSV(part.quantity),
+        escapeCSV(part.formula)
+      ].join(',')
+    })
+
+    const csvContent = [headers.join(','), ...rows].join('\n')
+
+    // Create and download the file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', `${product.name.replace(/[^a-zA-Z0-9]/g, '_')}_BOM.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+
+    showSuccess(`Exported ${productDetails.productBOMs.length} parts to CSV`)
+  }
+
   return (
     <div>
       {/* Back Button - Outside of main content box */}
@@ -1904,6 +1947,33 @@ export default function ProductDetailView({
                   This price will be used for automatic installation cost calculations in quotes when "Per Product Total" method is selected.
                 </p>
               </div>
+            )}
+          </div>
+        </div>
+
+        {/* Export Product Section */}
+        <div className="col-span-full mt-6">
+          <div className="bg-gray-50 rounded-lg p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Export Product</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Export all extrusion quantities and formulas as a CSV file. The exported file uses the same format required for importing.
+                </p>
+              </div>
+              <button
+                onClick={handleExportProduct}
+                disabled={!productDetails?.productBOMs || productDetails.productBOMs.length === 0}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </button>
+            </div>
+            {productDetails?.productBOMs && productDetails.productBOMs.length > 0 && (
+              <p className="text-xs text-gray-500 mt-3">
+                {productDetails.productBOMs.length} part{productDetails.productBOMs.length !== 1 ? 's' : ''} will be exported (partNumber, quantity, formula)
+              </p>
             )}
           </div>
         </div>
