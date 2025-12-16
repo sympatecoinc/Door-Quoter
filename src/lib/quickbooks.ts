@@ -255,7 +255,9 @@ async function qbApiRequest(
   const accessToken = await getValidAccessToken(realmId)
   const baseUrl = getQBBaseUrl()
 
-  const url = `${baseUrl}/v3/company/${realmId}/${endpoint}?minorversion=${QB_API_VERSION}`
+  // Check if endpoint already has query params
+  const separator = endpoint.includes('?') ? '&' : '?'
+  const url = `${baseUrl}/v3/company/${realmId}/${endpoint}${separator}minorversion=${QB_API_VERSION}`
 
   const headers: Record<string, string> = {
     'Authorization': `Bearer ${accessToken}`,
