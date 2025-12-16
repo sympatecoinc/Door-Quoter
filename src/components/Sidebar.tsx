@@ -17,14 +17,16 @@ import {
   LogOut,
   User,
   DollarSign,
-  FileText
+  FileText,
+  Truck
 } from 'lucide-react'
 
 const menuItems = [
-  { id: 'dashboard' as MenuOption, label: 'Dashboard', icon: Home },
+  { id: 'dashboard' as MenuOption, label: 'Dashboard (Sales)', icon: Home },
   { id: 'projects' as MenuOption, label: 'Projects', icon: Folder },
   { id: 'products' as MenuOption, label: 'Products', icon: Package },
   { id: 'masterParts' as MenuOption, label: 'Master Parts', icon: Database },
+  { id: 'vendors' as MenuOption, label: 'Vendors', icon: Truck },
   { id: 'quoteDocuments' as MenuOption, label: 'Quote Settings', icon: FileText },
   { id: 'accounting' as MenuOption, label: 'Pricing', icon: DollarSign },
   { id: 'settings' as MenuOption, label: 'Settings', icon: Settings },
