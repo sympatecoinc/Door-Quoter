@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Download, Save, Upload, FileUp, Plus, Trash2, Edit } from 'lucide-react'
+import { Download, Save, Upload, FileUp, Plus, Trash2, Edit, RefreshCw, Link as LinkIcon, CheckCircle, AlertCircle, X } from 'lucide-react'
 import UserManagement from '../UserManagement'
 
 export default function SettingsView() {
@@ -17,6 +17,12 @@ export default function SettingsView() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<any>(null)
+
+  // QuickBooks state
+  const [qbConnected, setQbConnected] = useState(false)
+  const [qbCredentialsConfigured, setQbCredentialsConfigured] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [qbNotification, setQbNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
 
   // Load saved settings and current user on component mount
   useEffect(() => {
@@ -36,6 +42,9 @@ export default function SettingsView() {
 
     // Fetch current user session
     fetchCurrentUser()
+
+    // Check QuickBooks status
+    checkQBStatus()
   }, [])
 
   const fetchCurrentUser = async () => {
@@ -47,6 +56,58 @@ export default function SettingsView() {
       }
     } catch (error) {
       console.error('Error fetching current user:', error)
+    }
+  }
+
+  const checkQBStatus = async () => {
+    try {
+      const response = await fetch('/api/quickbooks/status')
+      if (response.ok) {
+        const data = await response.json()
+        setQbConnected(data.connected)
+        setQbCredentialsConfigured(data.credentialsConfigured)
+      }
+    } catch (error) {
+      console.error('Error checking QB status:', error)
+    }
+  }
+
+  const handleConnectQB = async () => {
+    try {
+      const response = await fetch('/api/quickbooks/connect')
+      if (response.ok) {
+        const data = await response.json()
+        window.location.href = data.authUrl
+      } else {
+        const error = await response.json()
+        setQbNotification({ type: 'error', message: error.error || 'Failed to initiate QuickBooks connection' })
+      }
+    } catch (error) {
+      console.error('Error connecting to QuickBooks:', error)
+      setQbNotification({ type: 'error', message: 'Failed to connect to QuickBooks' })
+    }
+  }
+
+  const handleSyncFromQB = async () => {
+    setSyncing(true)
+    setQbNotification(null)
+    try {
+      const response = await fetch('/api/vendors/sync')
+      const data = await response.json()
+
+      if (response.ok) {
+        setQbNotification({
+          type: 'success',
+          message: `Sync complete! Created: ${data.created}, Updated: ${data.updated}`
+        })
+      } else {
+        setQbNotification({ type: 'error', message: data.error || 'Sync failed' })
+      }
+    } catch (error) {
+      console.error('Error syncing from QuickBooks:', error)
+      setQbNotification({ type: 'error', message: 'Failed to sync from QuickBooks' })
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -293,6 +354,100 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,,3.2,TRUE,
               </button>
             </div>
           </div>
+        </div>
+
+        {/* QuickBooks Integration */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">QuickBooks Integration</h2>
+
+          {/* QB Notification */}
+          {qbNotification && (
+            <div className={`mb-4 p-3 rounded-lg flex items-center justify-between ${
+              qbNotification.type === 'success'
+                ? 'bg-green-50 text-green-800 border border-green-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                {qbNotification.type === 'success'
+                  ? <CheckCircle className="w-4 h-4" />
+                  : <AlertCircle className="w-4 h-4" />
+                }
+                <span className="text-sm">{qbNotification.message}</span>
+              </div>
+              <button
+                onClick={() => setQbNotification(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {!qbCredentialsConfigured ? (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+                <div>
+                  <h3 className="font-medium text-yellow-800">QuickBooks Not Configured</h3>
+                  <p className="text-sm text-yellow-700 mt-1">
+                    To enable QuickBooks integration, add your QuickBooks API credentials to the .env file.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  {qbConnected ? (
+                    <>
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <div>
+                        <p className="font-medium text-gray-900">Connected to QuickBooks</p>
+                        <p className="text-sm text-gray-600">Your account is linked and ready to sync</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-5 h-5 text-yellow-600" />
+                      <div>
+                        <p className="font-medium text-gray-900">Not Connected</p>
+                        <p className="text-sm text-gray-600">Connect to sync vendors with QuickBooks</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {!qbConnected && (
+                  <button
+                    onClick={handleConnectQB}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <LinkIcon className="w-4 h-4" />
+                    Connect QuickBooks
+                  </button>
+                )}
+              </div>
+
+              {qbConnected && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-gray-700">Sync Options</h3>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleSyncFromQB}
+                      disabled={syncing}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                      {syncing ? 'Syncing...' : 'Sync Vendors from QuickBooks'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Pulls all vendors from QuickBooks and creates/updates them in the local database.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Templates & Downloads */}

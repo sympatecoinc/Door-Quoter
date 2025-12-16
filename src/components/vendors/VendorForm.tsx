@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Vendor, VENDOR_CATEGORIES } from '@/types'
 import { X, Save, Loader2, Cloud, Building, User, Phone, Mail, MapPin, FileText, Tag } from 'lucide-react'
 
@@ -8,11 +8,26 @@ interface VendorFormProps {
   vendor: Vendor | null
   onClose: () => void
   onSave: () => void
-  qbConnected: boolean
 }
 
-export default function VendorForm({ vendor, onClose, onSave, qbConnected }: VendorFormProps) {
+export default function VendorForm({ vendor, onClose, onSave }: VendorFormProps) {
   const isEditing = !!vendor
+  const [qbConnected, setQbConnected] = useState(false)
+
+  useEffect(() => {
+    async function checkQBStatus() {
+      try {
+        const response = await fetch('/api/quickbooks/status')
+        if (response.ok) {
+          const data = await response.json()
+          setQbConnected(data.connected)
+        }
+      } catch (error) {
+        console.error('Error checking QB status:', error)
+      }
+    }
+    checkQBStatus()
+  }, [])
 
   const [formData, setFormData] = useState({
     displayName: vendor?.displayName || '',
@@ -42,7 +57,14 @@ export default function VendorForm({ vendor, onClose, onSave, qbConnected }: Ven
     isActive: vendor?.isActive ?? true
   })
 
-  const [syncToQB, setSyncToQB] = useState(!isEditing && qbConnected)
+  const [syncToQB, setSyncToQB] = useState(false)
+
+  // Update syncToQB when QB connection status is determined
+  useEffect(() => {
+    if (!isEditing && qbConnected) {
+      setSyncToQB(true)
+    }
+  }, [qbConnected, isEditing])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
