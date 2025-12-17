@@ -103,8 +103,12 @@ export default function VendorForm({ vendor, onClose, onSave }: VendorFormProps)
 
       const savedVendor = await response.json()
 
-      // If sync to QB is enabled and we're creating or updating
-      if (syncToQB && qbConnected) {
+      // Push to QuickBooks if:
+      // 1. New vendor with syncToQB enabled, OR
+      // 2. Existing vendor that's already linked to QB (always push updates)
+      const shouldSyncToQB = qbConnected && (syncToQB || savedVendor.quickbooksId)
+
+      if (shouldSyncToQB) {
         try {
           const syncResponse = await fetch('/api/vendors/sync', {
             method: 'POST',
@@ -113,10 +117,18 @@ export default function VendorForm({ vendor, onClose, onSave }: VendorFormProps)
           })
 
           if (!syncResponse.ok) {
-            console.error('Failed to sync to QuickBooks, but vendor was saved locally')
+            const syncError = await syncResponse.json()
+            console.error('Failed to sync to QuickBooks:', syncError)
+            // Still close the form since local save succeeded, but show warning
+            setError(`Saved locally but QuickBooks sync failed: ${syncError.error || 'Unknown error'}`)
+            setSaving(false)
+            return
           }
         } catch (syncError) {
           console.error('QuickBooks sync error:', syncError)
+          setError('Saved locally but QuickBooks sync failed')
+          setSaving(false)
+          return
         }
       }
 
@@ -170,13 +182,6 @@ export default function VendorForm({ vendor, onClose, onSave }: VendorFormProps)
               <p className="text-sm text-blue-700 mt-1 ml-8">
                 This vendor will be synced to your QuickBooks account
               </p>
-            </div>
-          )}
-
-          {vendor?.quickbooksId && (
-            <div className="mb-6 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-              <Cloud className="w-4 h-4 text-green-600" />
-              <span className="text-sm text-green-700">This vendor is synced with QuickBooks</span>
             </div>
           )}
 
@@ -528,7 +533,7 @@ export default function VendorForm({ vendor, onClose, onSave }: VendorFormProps)
                   type="text"
                   name="code"
                   value={formData.code}
-                  onChange={handleChange}
+                  onChange={(e) => setFormData(prev => ({ ...prev, code: e.target.value.toUpperCase() }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase"
                   placeholder="e.g., SYMPATECO"
                   maxLength={20}

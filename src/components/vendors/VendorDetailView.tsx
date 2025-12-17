@@ -13,13 +13,12 @@ import {
   MapPin,
   Building,
   Cloud,
-  CloudOff,
-  RefreshCw,
   User,
   Star,
   X,
   Save,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react'
 
 interface VendorDetailViewProps {
@@ -35,7 +34,6 @@ export default function VendorDetailView({ vendorId, onBack, onEdit, onRefresh }
   const [vendor, setVendor] = useState<Vendor | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>('overview')
-  const [syncing, setSyncing] = useState(false)
 
   // Contact form state
   const [showContactForm, setShowContactForm] = useState(false)
@@ -50,10 +48,38 @@ export default function VendorDetailView({ vendorId, onBack, onEdit, onRefresh }
     notes: ''
   })
   const [savingContact, setSavingContact] = useState(false)
+  const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
     fetchVendor()
   }, [vendorId])
+
+  // Auto-sync from QuickBooks on load if vendor is linked
+  useEffect(() => {
+    if (vendorId) {
+      syncFromQuickBooks()
+    }
+  }, [vendorId])
+
+  async function syncFromQuickBooks() {
+    setSyncing(true)
+    try {
+      const response = await fetch('/api/vendors/sync-single', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendorId })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setVendor(data.vendor)
+      }
+    } catch (error) {
+      console.error('Error syncing vendor from QuickBooks:', error)
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   async function fetchVendor() {
     setLoading(true)
@@ -67,31 +93,6 @@ export default function VendorDetailView({ vendorId, onBack, onEdit, onRefresh }
       console.error('Error fetching vendor:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function handleSyncToQB() {
-    if (!vendor) return
-    setSyncing(true)
-    try {
-      const response = await fetch('/api/vendors/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vendorId: vendor.id })
-      })
-
-      if (response.ok) {
-        await fetchVendor()
-        onRefresh()
-      } else {
-        const error = await response.json()
-        alert(error.error || 'Failed to sync to QuickBooks')
-      }
-    } catch (error) {
-      console.error('Error syncing to QuickBooks:', error)
-      alert('Failed to sync to QuickBooks')
-    } finally {
-      setSyncing(false)
     }
   }
 
@@ -213,14 +214,33 @@ export default function VendorDetailView({ vendorId, onBack, onEdit, onRefresh }
               <Building className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{vendor.displayName}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-gray-900">{vendor.displayName}</h1>
+                {vendor.quickbooksId && (
+                  <button
+                    onClick={syncFromQuickBooks}
+                    disabled={syncing}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50"
+                    title="Click to sync from QuickBooks"
+                  >
+                    {syncing ? (
+                      <RefreshCw className="w-4 h-4 text-green-600 animate-spin" />
+                    ) : (
+                      <Cloud className="w-4 h-4 text-green-600" />
+                    )}
+                    <span className="text-sm text-green-600">
+                      {syncing ? 'Syncing...' : 'Synced'}
+                    </span>
+                  </button>
+                )}
+              </div>
               {vendor.companyName && vendor.companyName !== vendor.displayName && (
                 <p className="text-gray-600">{vendor.companyName}</p>
               )}
               <div className="flex items-center gap-2 mt-1">
                 {vendor.code && (
                   <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                    {vendor.code}
+                    {vendor.code.toUpperCase()}
                   </span>
                 )}
                 {vendor.category && (
@@ -239,50 +259,14 @@ export default function VendorDetailView({ vendorId, onBack, onEdit, onRefresh }
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {vendor.quickbooksId ? (
-            <button
-              onClick={handleSyncToQB}
-              disabled={syncing}
-              className="flex items-center gap-2 px-3 py-2 text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100"
-            >
-              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Syncing...' : 'Sync to QB'}
-            </button>
-          ) : (
-            <button
-              onClick={handleSyncToQB}
-              disabled={syncing}
-              className="flex items-center gap-2 px-3 py-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
-            >
-              <Cloud className="w-4 h-4" />
-              Push to QB
-            </button>
-          )}
-          <button
-            onClick={() => onEdit(vendor)}
-            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            <Edit2 className="w-4 h-4" />
-            Edit
-          </button>
-        </div>
+        <button
+          onClick={() => onEdit(vendor)}
+          className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          <Edit2 className="w-4 h-4" />
+          Edit
+        </button>
       </div>
-
-      {/* QB Sync Status */}
-      {vendor.quickbooksId && (
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Cloud className="w-4 h-4 text-green-600" />
-            <span className="text-sm text-green-700">Synced with QuickBooks</span>
-          </div>
-          {vendor.lastSyncedAt && (
-            <span className="text-xs text-green-600">
-              Last synced: {new Date(vendor.lastSyncedAt).toLocaleString()}
-            </span>
-          )}
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
@@ -306,129 +290,194 @@ export default function VendorDetailView({ vendorId, onBack, onEdit, onRefresh }
       {/* Tab Content */}
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Basic Information */}
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
+            <h3 className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
+              <Building className="w-4 h-4" />
+              Basic Information
+            </h3>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Display Name</span>
+                <span className="text-gray-900">{vendor.displayName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Company Name</span>
+                <span className="text-gray-900">{vendor.companyName || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">First Name</span>
+                <span className="text-gray-900">{vendor.givenName || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Last Name</span>
+                <span className="text-gray-900">{vendor.familyName || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Print on Check Name</span>
+                <span className="text-gray-900">{vendor.printOnCheckName || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Category</span>
+                <span className="text-gray-900">{vendor.category || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Short Code</span>
+                <span className="text-gray-900 font-mono">{vendor.code?.toUpperCase() || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Status</span>
+                <span className={vendor.isActive ? 'text-green-600' : 'text-gray-400'}>
+                  {vendor.isActive ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Contact Info */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
-            <h3 className="text-sm font-medium text-gray-700 mb-4">Contact Information</h3>
+            <h3 className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
+              <Phone className="w-4 h-4" />
+              Contact Information
+            </h3>
             <div className="space-y-3">
-              {vendor.primaryEmail && (
-                <div className="flex items-center gap-3">
-                  <Mail className="w-4 h-4 text-gray-400" />
+              <div className="flex items-center gap-3">
+                <Mail className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="text-gray-500 min-w-[60px]">Email</span>
+                {vendor.primaryEmail ? (
                   <a href={`mailto:${vendor.primaryEmail}`} className="text-blue-600 hover:underline">
                     {vendor.primaryEmail}
                   </a>
-                </div>
-              )}
-              {vendor.primaryPhone && (
-                <div className="flex items-center gap-3">
-                  <Phone className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <span className="text-gray-400">-</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="text-gray-500 min-w-[60px]">Phone</span>
+                {vendor.primaryPhone ? (
                   <a href={`tel:${vendor.primaryPhone}`} className="text-gray-900">
                     {vendor.primaryPhone}
                   </a>
-                </div>
-              )}
-              {vendor.alternatePhone && (
-                <div className="flex items-center gap-3">
-                  <Phone className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-900">{vendor.alternatePhone}</span>
-                  <span className="text-xs text-gray-500">(Alt)</span>
-                </div>
-              )}
-              {vendor.mobile && (
-                <div className="flex items-center gap-3">
-                  <Phone className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-900">{vendor.mobile}</span>
-                  <span className="text-xs text-gray-500">(Mobile)</span>
-                </div>
-              )}
-              {vendor.fax && (
-                <div className="flex items-center gap-3">
-                  <Phone className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-900">{vendor.fax}</span>
-                  <span className="text-xs text-gray-500">(Fax)</span>
-                </div>
-              )}
-              {vendor.website && (
-                <div className="flex items-center gap-3">
-                  <Globe className="w-4 h-4 text-gray-400" />
-                  <a href={vendor.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                ) : (
+                  <span className="text-gray-400">-</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="text-gray-500 min-w-[60px]">Alt Phone</span>
+                <span className={vendor.alternatePhone ? 'text-gray-900' : 'text-gray-400'}>
+                  {vendor.alternatePhone || '-'}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="text-gray-500 min-w-[60px]">Mobile</span>
+                <span className={vendor.mobile ? 'text-gray-900' : 'text-gray-400'}>
+                  {vendor.mobile || '-'}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="text-gray-500 min-w-[60px]">Fax</span>
+                <span className={vendor.fax ? 'text-gray-900' : 'text-gray-400'}>
+                  {vendor.fax || '-'}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Globe className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="text-gray-500 min-w-[60px]">Website</span>
+                {vendor.website ? (
+                  <a href={vendor.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate">
                     {vendor.website}
                   </a>
-                </div>
-              )}
-              {!vendor.primaryEmail && !vendor.primaryPhone && !vendor.website && (
-                <p className="text-sm text-gray-400">No contact information</p>
-              )}
+                ) : (
+                  <span className="text-gray-400">-</span>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Address */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
-            <h3 className="text-sm font-medium text-gray-700 mb-4">Billing Address</h3>
-            {vendor.billAddressLine1 || vendor.billAddressCity ? (
-              <div className="flex items-start gap-3">
-                <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
-                <div className="text-gray-900">
-                  {vendor.billAddressLine1 && <div>{vendor.billAddressLine1}</div>}
-                  {vendor.billAddressLine2 && <div>{vendor.billAddressLine2}</div>}
-                  <div>
-                    {[vendor.billAddressCity, vendor.billAddressState, vendor.billAddressZip]
-                      .filter(Boolean)
-                      .join(', ')}
-                  </div>
-                  {vendor.billAddressCountry && <div>{vendor.billAddressCountry}</div>}
-                </div>
+            <h3 className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
+              <MapPin className="w-4 h-4" />
+              Billing Address
+            </h3>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Address Line 1</span>
+                <span className="text-gray-900">{vendor.billAddressLine1 || '-'}</span>
               </div>
-            ) : (
-              <p className="text-sm text-gray-400">No address on file</p>
-            )}
+              <div className="flex justify-between">
+                <span className="text-gray-500">Address Line 2</span>
+                <span className="text-gray-900">{vendor.billAddressLine2 || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">City</span>
+                <span className="text-gray-900">{vendor.billAddressCity || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">State</span>
+                <span className="text-gray-900">{vendor.billAddressState || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">ZIP Code</span>
+                <span className="text-gray-900">{vendor.billAddressZip || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Country</span>
+                <span className="text-gray-900">{vendor.billAddressCountry || '-'}</span>
+              </div>
+            </div>
           </div>
 
           {/* Tax & Payment */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
             <h3 className="text-sm font-medium text-gray-700 mb-4">Tax & Payment</h3>
             <div className="space-y-3">
-              {vendor.acctNum && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Account #</span>
-                  <span className="text-gray-900 font-mono">{vendor.acctNum}</span>
-                </div>
-              )}
-              {vendor.taxIdentifier && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Tax ID</span>
-                  <span className="text-gray-900 font-mono">{vendor.taxIdentifier}</span>
-                </div>
-              )}
-              {vendor.termRefName && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Payment Terms</span>
-                  <span className="text-gray-900">{vendor.termRefName}</span>
-                </div>
-              )}
+              <div className="flex justify-between">
+                <span className="text-gray-500">Account #</span>
+                <span className={`font-mono ${vendor.acctNum ? 'text-gray-900' : 'text-gray-400'}`}>
+                  {vendor.acctNum || '-'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Tax ID</span>
+                <span className={`font-mono ${vendor.taxIdentifier ? 'text-gray-900' : 'text-gray-400'}`}>
+                  {vendor.taxIdentifier || '-'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Payment Terms</span>
+                <span className={vendor.termRefName ? 'text-gray-900' : 'text-gray-400'}>
+                  {vendor.termRefName || '-'}
+                </span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">1099 Vendor</span>
                 <span className={vendor.vendor1099 ? 'text-green-600' : 'text-gray-400'}>
                   {vendor.vendor1099 ? 'Yes' : 'No'}
                 </span>
               </div>
-              {vendor.balance !== null && vendor.balance !== undefined && (
-                <div className="flex justify-between pt-2 border-t border-gray-100">
-                  <span className="text-gray-500">Balance (QB)</span>
-                  <span className="text-gray-900 font-medium">
-                    ${vendor.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              )}
+              <div className="flex justify-between pt-2 border-t border-gray-100">
+                <span className="text-gray-500">Balance (QB)</span>
+                <span className={`font-medium ${vendor.balance !== null && vendor.balance !== undefined ? 'text-gray-900' : 'text-gray-400'}`}>
+                  {vendor.balance !== null && vendor.balance !== undefined
+                    ? `$${vendor.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                    : '-'}
+                </span>
+              </div>
             </div>
           </div>
 
           {/* Notes */}
-          <div className="bg-white rounded-lg border border-gray-200 p-5">
+          <div className="bg-white rounded-lg border border-gray-200 p-5 lg:col-span-2">
             <h3 className="text-sm font-medium text-gray-700 mb-4">Notes</h3>
             {vendor.notes ? (
               <p className="text-gray-900 whitespace-pre-wrap">{vendor.notes}</p>
             ) : (
-              <p className="text-sm text-gray-400">No notes</p>
+              <p className="text-gray-400">-</p>
             )}
           </div>
         </div>

@@ -6,7 +6,7 @@ import VendorList from '@/components/vendors/VendorList'
 import VendorDetailView from '@/components/vendors/VendorDetailView'
 import VendorForm from '@/components/vendors/VendorForm'
 import { Vendor } from '@/types'
-import { Plus, CheckCircle, AlertCircle, X } from 'lucide-react'
+import { Plus, CheckCircle, AlertCircle, X, RefreshCw } from 'lucide-react'
 
 export default function VendorsView() {
   const searchParams = useSearchParams()
@@ -15,6 +15,29 @@ export default function VendorsView() {
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+  const [syncing, setSyncing] = useState(false)
+
+  async function handleSyncFromQuickBooks() {
+    setSyncing(true)
+    try {
+      const response = await fetch('/api/vendors/sync')
+      const data = await response.json()
+
+      if (response.ok) {
+        setNotification({
+          type: 'success',
+          message: `Synced from QuickBooks: ${data.created} created, ${data.updated} updated`
+        })
+        setRefreshKey(prev => prev + 1)
+      } else {
+        setNotification({ type: 'error', message: data.error || 'Failed to sync from QuickBooks' })
+      }
+    } catch (error) {
+      setNotification({ type: 'error', message: 'Failed to sync from QuickBooks' })
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   // Check for URL parameters on load (from QB callback)
   useEffect(() => {
@@ -68,22 +91,28 @@ export default function VendorsView() {
     setShowForm(false)
     setEditingVendor(null)
     setRefreshKey(prev => prev + 1)
-    if (selectedVendorId) {
-      // Refresh detail view
-      setSelectedVendorId(null)
-      setTimeout(() => setSelectedVendorId(selectedVendorId), 0)
-    }
   }
 
   // Show vendor detail view
   if (selectedVendorId) {
     return (
-      <VendorDetailView
-        vendorId={selectedVendorId}
-        onBack={handleBack}
-        onEdit={handleEdit}
-        onRefresh={() => setRefreshKey(prev => prev + 1)}
-      />
+      <>
+        <VendorDetailView
+          key={refreshKey}
+          vendorId={selectedVendorId}
+          onBack={handleBack}
+          onEdit={handleEdit}
+          onRefresh={() => setRefreshKey(prev => prev + 1)}
+        />
+        {/* Vendor Form Modal - must be outside detail view conditional */}
+        {showForm && (
+          <VendorForm
+            vendor={editingVendor}
+            onClose={handleFormClose}
+            onSave={handleFormSave}
+          />
+        )}
+      </>
     )
   }
 
@@ -115,7 +144,17 @@ export default function VendorsView() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Vendors</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-900">Vendors</h1>
+            <button
+              onClick={handleSyncFromQuickBooks}
+              disabled={syncing}
+              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+              title="Sync from QuickBooks"
+            >
+              <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
           <p className="text-gray-600 mt-1">
             Manage vendor relationships and QuickBooks integration
           </p>

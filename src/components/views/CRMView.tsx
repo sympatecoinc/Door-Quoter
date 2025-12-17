@@ -51,35 +51,31 @@ export default function CRMView() {
   useEffect(() => {
     async function fetchCRMData() {
       try {
-        // Fetch stats from multiple endpoints
-        const [customersRes, leadsRes, allLeadsRes] = await Promise.all([
+        // Fetch stats from dashboard API (single source of truth for leads = Projects with LEAD_STATUSES)
+        const [customersRes, dashboardRes] = await Promise.all([
           fetch('/api/customers?limit=1'),
-          fetch('/api/leads?limit=1'),
-          fetch('/api/leads') // Fetch all leads to calculate conversion rate
+          fetch('/api/dashboard')
         ])
 
-        if (customersRes.ok && leadsRes.ok && allLeadsRes.ok) {
-          const [customersData, leadsData, allLeadsData] = await Promise.all([
+        if (customersRes.ok && dashboardRes.ok) {
+          const [customersData, dashboardData] = await Promise.all([
             customersRes.json(),
-            leadsRes.json(),
-            allLeadsRes.json()
+            dashboardRes.json()
           ])
 
-          // Calculate pipeline value from leads
-          const pipelineValue = leadsData.leads?.reduce((sum: number, lead: any) => {
-            return sum + (lead.value || 0)
-          }, 0) || 0
-
-          // Calculate conversion rate from all leads
-          const allLeads = allLeadsData.leads || []
-          const wonLeads = allLeads.filter((lead: any) => lead.stage === 'Won')
-          const conversionRate = allLeads.length > 0 ? Math.round((wonLeads.length / allLeads.length) * 100) : 0
+          // Use Project-based lead data from dashboard API
+          // totalLeads = Projects with LEAD_STATUSES (STAGING, APPROVED, REVISE, QUOTE_SENT)
+          // totalProjects = Projects with PROJECT_STATUSES (QUOTE_ACCEPTED, ACTIVE, COMPLETE) = "Won"
+          const totalLeadsAndWon = dashboardData.stats.totalLeads + dashboardData.stats.totalProjects
+          const conversionRate = totalLeadsAndWon > 0
+            ? Math.round((dashboardData.stats.totalProjects / totalLeadsAndWon) * 100)
+            : 0
 
           setData({
             stats: {
               totalCustomers: customersData.pagination?.total || 0,
-              activeLeads: leadsData.pagination?.total || 0,
-              pipelineValue,
+              activeLeads: dashboardData.stats.totalLeads,
+              pipelineValue: dashboardData.stats.leadPipelineValue,
               conversionRate
             }
           })

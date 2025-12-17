@@ -8,12 +8,11 @@ import {
   ChevronRight,
   Edit2,
   Trash2,
-  Cloud,
-  CloudOff,
   Phone,
   Mail,
   Building,
-  MoreVertical
+  MoreVertical,
+  RefreshCw
 } from 'lucide-react'
 
 interface VendorListProps {
@@ -32,12 +31,37 @@ export default function VendorList({ onVendorSelect, onEdit, onRefresh }: Vendor
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [hasSynced, setHasSynced] = useState(false)
 
   const limit = 25
 
   useEffect(() => {
     fetchVendors()
   }, [page, search, category, status])
+
+  // Auto-sync from QuickBooks on initial load
+  useEffect(() => {
+    if (!hasSynced) {
+      syncFromQuickBooks()
+    }
+  }, [])
+
+  async function syncFromQuickBooks() {
+    setSyncing(true)
+    try {
+      const response = await fetch('/api/vendors/sync')
+      if (response.ok) {
+        setHasSynced(true)
+        // Refresh the vendor list after sync completes
+        fetchVendors()
+      }
+    } catch (error) {
+      console.error('Error syncing from QuickBooks:', error)
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -167,9 +191,6 @@ export default function VendorList({ onVendorSelect, onEdit, onRefresh }: Vendor
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                QB Sync
-              </th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
               </th>
@@ -178,13 +199,16 @@ export default function VendorList({ onVendorSelect, onEdit, onRefresh }: Vendor
           <tbody className="divide-y divide-gray-200">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                  Loading vendors...
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                  <div className="flex items-center justify-center gap-2">
+                    {syncing && <RefreshCw className="w-4 h-4 animate-spin" />}
+                    {syncing ? 'Syncing from QuickBooks...' : 'Loading vendors...'}
+                  </div>
                 </td>
               </tr>
             ) : vendors.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                   No vendors found
                 </td>
               </tr>
@@ -211,7 +235,7 @@ export default function VendorList({ onVendorSelect, onEdit, onRefresh }: Vendor
                         )}
                         {vendor.code && (
                           <div className="text-xs text-gray-400 font-mono">
-                            {vendor.code}
+                            {vendor.code.toUpperCase()}
                           </div>
                         )}
                       </div>
@@ -253,19 +277,6 @@ export default function VendorList({ onVendorSelect, onEdit, onRefresh }: Vendor
                     }`}>
                       {vendor.isActive ? 'Active' : 'Inactive'}
                     </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    {vendor.quickbooksId ? (
-                      <div className="flex items-center gap-1 text-green-600" title="Synced with QuickBooks">
-                        <Cloud className="w-4 h-4" />
-                        <span className="text-xs">Synced</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1 text-gray-400" title="Not synced with QuickBooks">
-                        <CloudOff className="w-4 h-4" />
-                        <span className="text-xs">Local</span>
-                      </div>
-                    )}
                   </td>
                   <td className="px-4 py-4 text-right">
                     <div className="relative vendor-menu">

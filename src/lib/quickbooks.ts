@@ -49,6 +49,7 @@ interface QBVendor {
   Balance?: number
   TermRef?: { value: string; name: string }
   Notes?: string
+  sparse?: boolean  // For partial updates
 }
 
 // Get QuickBooks configuration from environment
@@ -296,6 +297,12 @@ export async function fetchAllQBVendors(realmId: string): Promise<QBVendor[]> {
     const response = await qbApiRequest(realmId, `query?query=${encodeURIComponent(query)}`)
 
     const vendors = response.QueryResponse?.Vendor || []
+
+    // Debug: Log first vendor's notes to see what QB is returning
+    if (vendors.length > 0 && startPosition === 1) {
+      console.log(`[QB Sync] Sample QB vendor response:`, JSON.stringify(vendors[0], null, 2))
+    }
+
     allVendors.push(...vendors)
 
     if (vendors.length < maxResults) {
@@ -324,7 +331,9 @@ export async function updateQBVendor(realmId: string, vendor: QBVendor): Promise
   if (!vendor.Id || !vendor.SyncToken) {
     throw new Error('Vendor Id and SyncToken are required for updates')
   }
+  console.log(`[QB Sync] Sending update request to QB:`, JSON.stringify(vendor, null, 2))
   const response = await qbApiRequest(realmId, 'vendor', 'POST', vendor)
+  console.log(`[QB Sync] QB update response:`, JSON.stringify(response.Vendor, null, 2))
   return response.Vendor
 }
 
@@ -417,7 +426,8 @@ export function localVendorToQB(vendor: any): QBVendor {
   if (vendor.taxIdentifier) qbVendor.TaxIdentifier = vendor.taxIdentifier
   if (vendor.acctNum) qbVendor.AcctNum = vendor.acctNum
   if (vendor.vendor1099 !== undefined) qbVendor.Vendor1099 = vendor.vendor1099
-  if (vendor.notes) qbVendor.Notes = vendor.notes
+  // Always include notes (even if empty) to allow clearing them
+  if (vendor.notes !== undefined) qbVendor.Notes = vendor.notes || ''
   if (vendor.isActive !== undefined) qbVendor.Active = vendor.isActive
 
   // Terms (read-only on QB side for vendors, but include for completeness)
@@ -438,11 +448,17 @@ export async function syncVendorsFromQB(realmId: string): Promise<{
 
   try {
     const qbVendors = await fetchAllQBVendors(realmId)
-    console.log(`Fetched ${qbVendors.length} vendors from QuickBooks`)
+    console.log(`[QB Sync] Fetched ${qbVendors.length} vendors from QuickBooks`)
 
     for (const qbVendor of qbVendors) {
       try {
+        // Debug: Log notes for each vendor
+        if (qbVendor.Notes) {
+          console.log(`[QB Sync] Vendor "${qbVendor.DisplayName}" has Notes: "${qbVendor.Notes}"`)
+        }
+
         const localData = qbVendorToLocal(qbVendor)
+        console.log(`[QB Sync] Mapped notes for "${qbVendor.DisplayName}": "${localData.notes}"`)
 
         // Check if vendor exists locally
         const existingVendor = await prisma.vendor.findUnique({
@@ -496,15 +512,33 @@ export async function pushVendorToQB(vendorId: number): Promise<any> {
     throw new Error('Vendor not found')
   }
 
-  const qbVendor = localVendorToQB(vendor)
+  console.log(`[QB Sync] Pushing vendor ${vendorId} to QuickBooks`)
+  console.log(`[QB Sync] Local notes value: "${vendor.notes}"`)
 
   let result: QBVendor
   if (vendor.quickbooksId) {
-    // Update existing QB vendor
-    result = await updateQBVendor(realmId, qbVendor)
+    // For updates, fetch the current SyncToken from QuickBooks
+    const currentQBVendor = await fetchQBVendor(realmId, vendor.quickbooksId)
+    console.log(`[QB Sync] Current QB vendor SyncToken: ${currentQBVendor.SyncToken}`)
+
+    // Build sparse update - only include fields we want to change
+    // This avoids issues with read-only fields being rejected
+    const sparseUpdate = localVendorToQB(vendor)
+    sparseUpdate.Id = currentQBVendor.Id
+    sparseUpdate.SyncToken = currentQBVendor.SyncToken
+    sparseUpdate.sparse = true  // Tell QB this is a partial update
+
+    console.log(`[QB Sync] Sparse update Notes: "${sparseUpdate.Notes}"`)
+    console.log(`[QB Sync] Sending sparse update:`, JSON.stringify(sparseUpdate, null, 2))
+
+    result = await updateQBVendor(realmId, sparseUpdate)
+    console.log(`[QB Sync] QB response Notes: "${result.Notes}"`)
   } else {
     // Create new QB vendor
+    const qbVendor = localVendorToQB(vendor)
+    console.log(`[QB Sync] Creating new vendor, Notes: "${qbVendor.Notes}"`)
     result = await createQBVendor(realmId, qbVendor)
+    console.log(`[QB Sync] QB response Notes: "${result.Notes}"`)
   }
 
   // Update local vendor with QB response

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { DollarSign, Calendar, User, Plus, Edit } from 'lucide-react'
 import { ProjectStatus, STATUS_CONFIG, LEAD_STATUSES } from '@/types'
 
@@ -111,71 +112,143 @@ export default function LeadPipeline({ onAddLead, onProjectClick }: LeadPipeline
     return projectsByStage[stage]?.reduce((sum, project) => sum + getProjectValue(project), 0) || 0
   }
 
+  const handleDragEnd = async (result: DropResult) => {
+    const { destination, source, draggableId } = result
+
+    // Dropped outside a valid droppable
+    if (!destination) return
+
+    // Dropped in same location
+    if (destination.droppableId === source.droppableId && destination.index === source.index) return
+
+    const projectId = parseInt(draggableId.replace('lead-', ''))
+    const newStatus = destination.droppableId
+    const oldStatus = source.droppableId
+
+    // Find the project being moved
+    const project = projectsByStage[oldStatus]?.find(p => p.id === projectId)
+    if (!project) return
+
+    // Optimistic update
+    setProjectsByStage(prev => {
+      const newState = { ...prev }
+
+      // Remove from old stage
+      newState[oldStatus] = prev[oldStatus].filter(p => p.id !== projectId)
+
+      // Add to new stage at the correct position
+      const updatedProject = { ...project, status: newStatus }
+      const newStageProjects = [...(prev[newStatus] || [])]
+      newStageProjects.splice(destination.index, 0, updatedProject)
+      newState[newStatus] = newStageProjects
+
+      return newState
+    })
+
+    // Update on server
+    try {
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      })
+
+      if (!response.ok) {
+        // Revert on error
+        fetchProjects()
+      }
+    } catch (error) {
+      console.error('Error updating lead status:', error)
+      fetchProjects()
+    }
+  }
+
   const renderPipelineView = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-      {stages.map((stage) => (
-        <div key={stage.key} className="bg-gray-50 rounded-lg p-4">
-          {/* Stage Header */}
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <h3 className="font-semibold text-gray-900">{stage.label}</h3>
-              <p className="text-sm text-gray-600">
-                {projectsByStage[stage.key]?.length || 0} leads
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm font-medium text-gray-900">
-                {formatCurrency(getStageTotal(stage.key))}
-              </p>
-            </div>
-          </div>
-
-          {/* Project Cards */}
-          <div className="space-y-3">
-            {projectsByStage[stage.key]?.map((project) => (
+    <DragDropContext onDragEnd={handleDragEnd}>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {stages.map((stage) => (
+          <Droppable key={stage.key} droppableId={stage.key}>
+            {(provided, snapshot) => (
               <div
-                key={project.id}
-                onClick={() => onProjectClick?.(project.id)}
-                className="bg-white rounded-lg p-4 border border-gray-200 hover:shadow-md transition-shadow cursor-pointer"
+                ref={provided.innerRef}
+                {...provided.droppableProps}
+                className={`bg-gray-50 rounded-lg p-4 min-h-[200px] transition-colors ${
+                  snapshot.isDraggingOver ? 'bg-blue-50 ring-2 ring-blue-400' : ''
+                }`}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-medium text-gray-900 text-sm truncate">
-                    {project.name}
-                  </h4>
-                </div>
-
-                {project.customer && (
-                  <div className="flex items-center text-xs text-gray-600 mb-2">
-                    <User className="w-3 h-3 mr-1" />
-                    {project.customer.companyName}
+                {/* Stage Header */}
+                <div className="flex justify-between items-center mb-4">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{stage.label}</h3>
+                    <p className="text-sm text-gray-600">
+                      {projectsByStage[stage.key]?.length || 0} leads
+                    </p>
                   </div>
-                )}
-
-                <div className="flex items-center text-xs text-gray-600 mb-2">
-                  <DollarSign className="w-3 h-3 mr-1" />
-                  {formatCurrency(getProjectValue(project))}
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-900">
+                      {formatCurrency(getStageTotal(stage.key))}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="flex items-center text-xs text-gray-500">
-                  <Calendar className="w-3 h-3 mr-1" />
-                  {formatDate(project.createdAt)}
+                {/* Project Cards */}
+                <div className="space-y-3">
+                  {projectsByStage[stage.key]?.map((project, index) => (
+                    <Draggable key={project.id} draggableId={`lead-${project.id}`} index={index}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          onClick={() => onProjectClick?.(project.id)}
+                          className={`bg-white rounded-lg p-4 border border-gray-200 hover:shadow-md transition-shadow cursor-grab ${
+                            snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-400' : ''
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="font-medium text-gray-900 text-sm truncate">
+                              {project.name}
+                            </h4>
+                          </div>
+
+                          {project.customer && (
+                            <div className="flex items-center text-xs text-gray-600 mb-2">
+                              <User className="w-3 h-3 mr-1" />
+                              {project.customer.companyName}
+                            </div>
+                          )}
+
+                          <div className="flex items-center text-xs text-gray-600 mb-2">
+                            <DollarSign className="w-3 h-3 mr-1" />
+                            {formatCurrency(getProjectValue(project))}
+                          </div>
+
+                          <div className="flex items-center text-xs text-gray-500">
+                            <Calendar className="w-3 h-3 mr-1" />
+                            {formatDate(project.createdAt)}
+                          </div>
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+
+                  {/* Add Lead Button - hidden for revise stage */}
+                  {!NO_CREATE_STAGES.includes(stage.key as ProjectStatus) && (
+                    <button
+                      onClick={() => onAddLead?.(stage.key)}
+                      className="w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 hover:border-blue-400 hover:text-blue-600 transition-colors"
+                    >
+                      <Plus className="w-4 h-4 mx-auto" />
+                    </button>
+                  )}
                 </div>
               </div>
-            ))}
-
-            {/* Add Lead Button - hidden for revise stage */}
-            {!NO_CREATE_STAGES.includes(stage.key as ProjectStatus) && (
-              <button
-                onClick={() => onAddLead?.(stage.key)}
-                className="w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 hover:border-blue-400 hover:text-blue-600 transition-colors"
-              >
-                <Plus className="w-4 h-4 mx-auto" />
-              </button>
             )}
-          </div>
-        </div>
-      ))}
-    </div>
+          </Droppable>
+        ))}
+      </div>
+    </DragDropContext>
   )
 
   const renderListView = () => (
