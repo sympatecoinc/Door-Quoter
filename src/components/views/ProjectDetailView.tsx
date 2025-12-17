@@ -335,7 +335,20 @@ export default function ProjectDetailView() {
               )
 
               if (masterPartInfo) {
-                // Check if pricing rules were updated
+                // Check if master part itself was updated (e.g., hardware cost changed)
+                if (masterPartInfo.masterPartUpdatedAt) {
+                  const masterPartUpdateTime = new Date(masterPartInfo.masterPartUpdatedAt).getTime()
+                  if (masterPartUpdateTime > priceCalcTime) {
+                    openingNeedsSync = true
+                    changedMasterParts.add(`${masterPartInfo.baseName} (${partNumber})`)
+                    if (!affectedOpenings.has(opening.name)) {
+                      affectedOpenings.set(opening.name, new Set())
+                    }
+                    affectedOpenings.get(opening.name)!.add(`pricing updated for ${masterPartInfo.baseName}`)
+                  }
+                }
+
+                // Check if pricing rules were updated (for extrusions)
                 if (masterPartInfo.latestPricingRuleUpdate) {
                   const pricingUpdateTime = new Date(masterPartInfo.latestPricingRuleUpdate).getTime()
                   if (pricingUpdateTime > priceCalcTime) {
@@ -358,6 +371,28 @@ export default function ProjectDetailView() {
                       affectedOpenings.set(opening.name, new Set())
                     }
                     affectedOpenings.get(opening.name)!.add(`formula updated for ${masterPartInfo.baseName}`)
+                  }
+                }
+              }
+            }
+          }
+
+          // Check 3: Sub-option (IndividualOption) pricing changes
+          if (product.productSubOptions) {
+            for (const productSubOption of product.productSubOptions) {
+              const category = (productSubOption as any).category
+              if (category?.individualOptions) {
+                for (const option of category.individualOptions) {
+                  if (option.updatedAt) {
+                    const optionUpdateTime = new Date(option.updatedAt).getTime()
+                    if (optionUpdateTime > priceCalcTime) {
+                      openingNeedsSync = true
+                      changedMasterParts.add(`${option.name} (${category.name})`)
+                      if (!affectedOpenings.has(opening.name)) {
+                        affectedOpenings.set(opening.name, new Set())
+                      }
+                      affectedOpenings.get(opening.name)!.add(`option pricing updated for ${option.name}`)
+                    }
                   }
                 }
               }

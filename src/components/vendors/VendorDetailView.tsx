@@ -21,6 +21,62 @@ import {
   RefreshCw
 } from 'lucide-react'
 
+function DetailSkeleton({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="p-6 animate-pulse">
+      {/* Header Skeleton */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Vendors
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-gray-200 rounded-xl" />
+            <div className="space-y-2">
+              <div className="h-7 w-48 bg-gray-200 rounded" />
+              <div className="h-4 w-32 bg-gray-100 rounded" />
+              <div className="flex items-center gap-2">
+                <div className="h-5 w-16 bg-gray-100 rounded" />
+                <div className="h-5 w-20 bg-gray-100 rounded" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="h-10 w-20 bg-gray-200 rounded-lg" />
+      </div>
+
+      {/* Tabs Skeleton */}
+      <div className="border-b border-gray-200 mb-6">
+        <div className="flex gap-6">
+          <div className="h-4 w-20 bg-gray-200 rounded mb-3" />
+          <div className="h-4 w-24 bg-gray-100 rounded mb-3" />
+        </div>
+      </div>
+
+      {/* Content Skeleton */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-white rounded-lg border border-gray-200 p-5">
+            <div className="h-4 w-32 bg-gray-200 rounded mb-4" />
+            <div className="space-y-3">
+              {[...Array(6)].map((_, j) => (
+                <div key={j} className="flex justify-between">
+                  <div className="h-4 w-24 bg-gray-100 rounded" />
+                  <div className="h-4 w-32 bg-gray-200 rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 interface VendorDetailViewProps {
   vendorId: number
   onBack: () => void
@@ -50,16 +106,26 @@ export default function VendorDetailView({ vendorId, onBack, onEdit, onRefresh }
   const [savingContact, setSavingContact] = useState(false)
   const [syncing, setSyncing] = useState(false)
 
+  // Initial sync and fetch on mount
   useEffect(() => {
-    fetchVendor()
+    syncAndFetch()
   }, [vendorId])
 
-  // Auto-sync from QuickBooks on load if vendor is linked
-  useEffect(() => {
-    if (vendorId) {
-      syncFromQuickBooks()
+  async function syncAndFetch() {
+    setLoading(true)
+    try {
+      // Sync from QuickBooks first
+      await fetch('/api/vendors/sync-single', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendorId })
+      })
+    } catch (error) {
+      console.error('Error syncing vendor from QuickBooks:', error)
     }
-  }, [vendorId])
+    // Always fetch vendor after sync attempt
+    await fetchVendor()
+  }
 
   async function syncFromQuickBooks() {
     setSyncing(true)
@@ -82,7 +148,6 @@ export default function VendorDetailView({ vendorId, onBack, onEdit, onRefresh }
   }
 
   async function fetchVendor() {
-    setLoading(true)
     try {
       const response = await fetch(`/api/vendors/${vendorId}`)
       if (response.ok) {
@@ -175,11 +240,7 @@ export default function VendorDetailView({ vendorId, onBack, onEdit, onRefresh }
   }
 
   if (loading) {
-    return (
-      <div className="p-6 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-      </div>
-    )
+    return <DetailSkeleton onBack={onBack} />
   }
 
   if (!vendor) {
