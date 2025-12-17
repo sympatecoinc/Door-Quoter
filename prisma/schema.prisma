@@ -545,7 +545,7 @@ model User {
   name         String
   role         Role      @default(VIEWER)
   isActive     Boolean   @default(true)
-  permissions  String[]  @default(["dashboard", "projects", "crm", "products", "masterParts", "quoteDocuments", "accounting", "settings"]) // Available tabs for user
+  permissions  String[]  @default(["dashboard", "projects", "crm", "products", "masterParts", "vendors", "quoteDocuments", "accounting", "settings"]) // Available tabs for user
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   sessions     Session[]
@@ -608,4 +608,91 @@ model ExtrusionFinishPricing {
   updatedAt       DateTime @updatedAt
 
   @@map("ExtrusionFinishPricing")
+}
+
+// Vendor Management - QuickBooks integrated vendor database
+model Vendor {
+  id                  Int             @id @default(autoincrement())
+  // QuickBooks sync fields
+  quickbooksId        String?         @unique  // QB vendor Id
+  syncToken           String?         // QB sync token for updates
+  lastSyncedAt        DateTime?       // When last synced with QB
+
+  // Core vendor info (maps to QB fields)
+  displayName         String          // QB: DisplayName (required)
+  companyName         String?         // QB: CompanyName
+  givenName           String?         // QB: GivenName (first name if individual)
+  familyName          String?         // QB: FamilyName (last name if individual)
+  printOnCheckName    String?         // QB: PrintOnCheckName
+
+  // Contact info
+  primaryEmail        String?         // QB: PrimaryEmailAddr.Address
+  primaryPhone        String?         // QB: PrimaryPhone.FreeFormNumber
+  alternatePhone      String?         // QB: AlternatePhone.FreeFormNumber
+  mobile              String?         // QB: Mobile.FreeFormNumber
+  fax                 String?         // QB: Fax.FreeFormNumber
+  website             String?         // QB: WebAddr.URI
+
+  // Billing Address
+  billAddressLine1    String?         // QB: BillAddr.Line1
+  billAddressLine2    String?         // QB: BillAddr.Line2
+  billAddressCity     String?         // QB: BillAddr.City
+  billAddressState    String?         // QB: BillAddr.CountrySubDivisionCode
+  billAddressZip      String?         // QB: BillAddr.PostalCode
+  billAddressCountry  String?         // QB: BillAddr.Country
+
+  // Business details
+  taxIdentifier       String?         // QB: TaxIdentifier
+  acctNum             String?         // QB: AcctNum (account number)
+  vendor1099          Boolean         @default(false) // QB: Vendor1099
+  balance             Float?          // QB: Balance (read-only from QB)
+
+  // Terms and payment
+  termRefId           String?         // QB: TermRef.value (Net 30, etc.)
+  termRefName         String?         // QB: TermRef.name
+
+  // Notes
+  notes               String?         @db.Text // QB: Notes (max 1024 chars)
+
+  // AlumERP-specific fields (not synced to QB)
+  category            String?         // Aluminum, Hardware, Glass, etc.
+  code                String?         // Short code e.g., "SYMPATECO"
+  isActive            Boolean         @default(true) // QB: Active
+
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  contacts            VendorContact[]
+
+  @@map("Vendors")
+}
+
+model VendorContact {
+  id          Int      @id @default(autoincrement())
+  vendorId    Int
+  name        String
+  title       String?
+  email       String?
+  phone       String?
+  mobile      String?
+  isPrimary   Boolean  @default(false)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("VendorContacts")
+}
+
+// QuickBooks OAuth Token Storage
+model QuickBooksToken {
+  id            Int      @id @default(autoincrement())
+  realmId       String   @unique // QuickBooks company ID
+  accessToken   String   @db.Text
+  refreshToken  String   @db.Text
+  tokenType     String   @default("Bearer")
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("QuickBooksTokens")
 }

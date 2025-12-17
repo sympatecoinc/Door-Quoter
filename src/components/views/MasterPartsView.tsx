@@ -284,13 +284,15 @@ export default function MasterPartsView() {
   useEffect(() => {
     fetchMasterParts()
     fetchFinishPricing()
+    fetchGlassTypes()
+    fetchCategories()
   }, [])
 
-  // Function to calculate price range from pricing rules  
+  // Function to calculate price range from pricing rules
   function getPriceDisplay(part: MasterPart): string {
-    // Helper function to format price without unnecessary decimals
+    // Helper function to format price with 2 decimal places
     const formatPrice = (price: number): string => {
-      return price % 1 === 0 ? price.toString() : price.toFixed(2)
+      return price.toFixed(2)
     }
 
     // For hardware and fastener parts, show direct cost
@@ -310,7 +312,7 @@ export default function MasterPartsView() {
       } else if (prices.length === 1) {
         return `$${formatPrice(prices[0])}`
       } else {
-        return `$${formatPrice(prices[0])}-$${formatPrice(prices[prices.length - 1])}`
+        return `$${formatPrice(prices[0])} - $${formatPrice(prices[prices.length - 1])}`
       }
     }
 

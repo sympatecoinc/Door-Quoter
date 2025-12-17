@@ -222,7 +222,71 @@ export interface ComponentInstance {
   updatedAt: Date
 }
 
-export type MenuOption = 'dashboard' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments'
+export type MenuOption = 'dashboard' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'vendors' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments'
+
+// Vendor Management Types
+export interface Vendor {
+  id: number
+  quickbooksId?: string | null
+  syncToken?: string | null
+  lastSyncedAt?: Date | null
+  displayName: string
+  companyName?: string | null
+  givenName?: string | null
+  familyName?: string | null
+  printOnCheckName?: string | null
+  primaryEmail?: string | null
+  primaryPhone?: string | null
+  alternatePhone?: string | null
+  mobile?: string | null
+  fax?: string | null
+  website?: string | null
+  billAddressLine1?: string | null
+  billAddressLine2?: string | null
+  billAddressCity?: string | null
+  billAddressState?: string | null
+  billAddressZip?: string | null
+  billAddressCountry?: string | null
+  taxIdentifier?: string | null
+  acctNum?: string | null
+  vendor1099: boolean
+  balance?: number | null
+  termRefId?: string | null
+  termRefName?: string | null
+  notes?: string | null
+  category?: string | null
+  code?: string | null
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+  contacts?: VendorContact[]
+}
+
+export interface VendorContact {
+  id: number
+  vendorId: number
+  name: string
+  title?: string | null
+  email?: string | null
+  phone?: string | null
+  mobile?: string | null
+  isPrimary: boolean
+  notes?: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export const VENDOR_CATEGORIES = [
+  'Aluminum',
+  'Hardware',
+  'Glass',
+  'Finishing',
+  'Packaging',
+  'Shipping',
+  'Other'
+] as const
+
+export type VendorCategory = typeof VENDOR_CATEGORIES[number]
 
 export interface PricingMode {
   id: number
