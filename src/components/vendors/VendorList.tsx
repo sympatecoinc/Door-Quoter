@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Vendor, VENDOR_CATEGORIES } from '@/types'
 import {
   Search,
@@ -11,9 +11,39 @@ import {
   Phone,
   Mail,
   Building,
-  MoreVertical,
-  RefreshCw
+  MoreVertical
 } from 'lucide-react'
+
+function SkeletonRow() {
+  return (
+    <tr className="animate-pulse">
+      <td className="px-4 py-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gray-200 rounded-lg" />
+          <div className="space-y-2">
+            <div className="h-4 w-32 bg-gray-200 rounded" />
+            <div className="h-3 w-20 bg-gray-100 rounded" />
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-4">
+        <div className="space-y-2">
+          <div className="h-3 w-28 bg-gray-200 rounded" />
+          <div className="h-3 w-36 bg-gray-100 rounded" />
+        </div>
+      </td>
+      <td className="px-4 py-4">
+        <div className="h-5 w-20 bg-gray-200 rounded-full" />
+      </td>
+      <td className="px-4 py-4">
+        <div className="h-5 w-16 bg-gray-200 rounded-full" />
+      </td>
+      <td className="px-4 py-4 text-right">
+        <div className="h-6 w-6 bg-gray-200 rounded ml-auto" />
+      </td>
+    </tr>
+  )
+}
 
 interface VendorListProps {
   onVendorSelect: (vendor: Vendor) => void
@@ -31,36 +61,33 @@ export default function VendorList({ onVendorSelect, onEdit, onRefresh }: Vendor
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null)
-  const [syncing, setSyncing] = useState(false)
-  const [hasSynced, setHasSynced] = useState(false)
-
+  const isFirstRender = useRef(true)
   const limit = 25
 
+  // Initial sync on mount - runs once, then fetches vendors
   useEffect(() => {
+    syncAndFetch()
+  }, [])
+
+  // Fetch on filter/page changes (skip initial render since sync handles it)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
     fetchVendors()
   }, [page, search, category, status])
 
-  // Auto-sync from QuickBooks on initial load
-  useEffect(() => {
-    if (!hasSynced) {
-      syncFromQuickBooks()
-    }
-  }, [])
-
-  async function syncFromQuickBooks() {
-    setSyncing(true)
+  async function syncAndFetch() {
+    setLoading(true)
     try {
-      const response = await fetch('/api/vendors/sync')
-      if (response.ok) {
-        setHasSynced(true)
-        // Refresh the vendor list after sync completes
-        fetchVendors()
-      }
+      // Sync from QuickBooks first
+      await fetch('/api/vendors/sync')
     } catch (error) {
       console.error('Error syncing from QuickBooks:', error)
-    } finally {
-      setSyncing(false)
     }
+    // Always fetch vendors after sync attempt (whether it succeeded or failed)
+    await fetchVendors()
   }
 
   // Close menu when clicking outside
@@ -198,14 +225,11 @@ export default function VendorList({ onVendorSelect, onEdit, onRefresh }: Vendor
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                  <div className="flex items-center justify-center gap-2">
-                    {syncing && <RefreshCw className="w-4 h-4 animate-spin" />}
-                    {syncing ? 'Syncing from QuickBooks...' : 'Loading vendors...'}
-                  </div>
-                </td>
-              </tr>
+              <>
+                {[...Array(8)].map((_, i) => (
+                  <SkeletonRow key={i} />
+                ))}
+              </>
             ) : vendors.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-gray-500">

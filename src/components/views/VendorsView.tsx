@@ -6,7 +6,7 @@ import VendorList from '@/components/vendors/VendorList'
 import VendorDetailView from '@/components/vendors/VendorDetailView'
 import VendorForm from '@/components/vendors/VendorForm'
 import { Vendor } from '@/types'
-import { Plus, CheckCircle, AlertCircle, X, RefreshCw } from 'lucide-react'
+import { Plus, CheckCircle, AlertCircle, X, RefreshCw, Cloud } from 'lucide-react'
 
 export default function VendorsView() {
   const searchParams = useSearchParams()
@@ -149,10 +149,17 @@ export default function VendorsView() {
             <button
               onClick={handleSyncFromQuickBooks}
               disabled={syncing}
-              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50"
               title="Sync from QuickBooks"
             >
-              <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? (
+                <RefreshCw className="w-4 h-4 text-green-600 animate-spin" />
+              ) : (
+                <Cloud className="w-4 h-4 text-green-600" />
+              )}
+              <span className="text-sm text-green-600">
+                {syncing ? 'Syncing...' : 'Synced'}
+              </span>
             </button>
           </div>
           <p className="text-gray-600 mt-1">
