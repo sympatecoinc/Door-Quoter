@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// Statuses where pricing should be recalculated on quote load
+// These are "pre-quote-sent" statuses where changes can still be made
+const RECALCULATE_PRICING_STATUSES = ['STAGING', 'APPROVED', 'REVISE']
+
 // Helper to convert panel directions to abbreviations
 function convertDirectionToAbbreviation(direction: string, panelType: string): string {
   // Swing door directions
@@ -142,6 +146,44 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         { error: 'Project not found' },
         { status: 404 }
       )
+    }
+
+    // Recalculate pricing for all openings if project is in a pre-quote-sent status
+    // This ensures pricing rules changes are reflected when viewing the quote
+    if (RECALCULATE_PRICING_STATUSES.includes(project.status)) {
+      // Get the base URL for internal API calls
+      const protocol = request.headers.get('x-forwarded-proto') || 'http'
+      const host = request.headers.get('host') || 'localhost:3000'
+      const baseUrl = `${protocol}://${host}`
+
+      // Forward cookies from the original request for authentication
+      const cookieHeader = request.headers.get('cookie') || ''
+
+      // Recalculate price for each opening
+      const recalculationPromises = project.openings.map(async (opening) => {
+        try {
+          const response = await fetch(`${baseUrl}/api/openings/${opening.id}/calculate-price`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cookie': cookieHeader
+            }
+          })
+          if (response.ok) {
+            const data = await response.json()
+            // Update the opening object with the new price for use in this request
+            ;(opening as any).price = data.calculatedPrice
+            ;(opening as any).standardOptionCost = data.breakdown?.totalStandardOptionCost || 0
+            ;(opening as any).hybridRemainingCost = data.breakdown?.totalHybridRemainingCost || 0
+          } else {
+            console.error(`Failed to recalculate price for opening ${opening.id}: ${response.status}`)
+          }
+        } catch (error) {
+          console.error(`Error recalculating price for opening ${opening.id}:`, error)
+        }
+      })
+
+      await Promise.all(recalculationPromises)
     }
 
     // Store pricing mode for later use in component-specific markup calculations
