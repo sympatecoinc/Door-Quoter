@@ -500,6 +500,7 @@ export async function GET(
     const cutlist = searchParams.get('cutlist') === 'true'
     const format = searchParams.get('format')
     const productFilter = searchParams.get('product')
+    const sizeFilter = searchParams.get('size')  // e.g., "42x108"
     const batchSize = parseInt(searchParams.get('batch') || '1') || 1
 
     if (isNaN(projectId)) {
@@ -962,6 +963,11 @@ export async function GET(
         cutListItems = cutListItems.filter(item => item.productName === productFilter)
       }
 
+      // Filter by size if specified (e.g., "42x108")
+      if (sizeFilter) {
+        cutListItems = cutListItems.filter(item => item.sizeKey === sizeFilter)
+      }
+
       // Get original unit count before applying batch size
       const originalUnitCount = cutListItems[0]?.unitCount || 1
 
@@ -1008,8 +1014,9 @@ export async function GET(
 
         const csvContent = cutlistToCSV(project.name, batchedCutListItems, batchInfo)
         const productSuffix = productFilter ? `-${productFilter.replace(/\s+/g, '-')}` : ''
-        const batchSuffix = productFilter ? `-${batchSize}units` : ''
-        const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '-')}${productSuffix}${batchSuffix}-cutlist.csv`
+        const sizeSuffix = sizeFilter ? `-${sizeFilter}` : ''
+        const batchSuffix = (productFilter || sizeFilter) ? `-${batchSize}units` : ''
+        const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '-')}${productSuffix}${sizeSuffix}${batchSuffix}-cutlist.csv`
 
         return new NextResponse(csvContent, {
           status: 200,

@@ -445,6 +445,11 @@ export async function POST(
       totalComponentCost: 0,
       totalStandardOptionCost: 0, // Track standard option costs separately (no markup)
       totalHybridRemainingCost: 0, // Track HYBRID remaining costs (no markup)
+      // Track costs by category for accurate markup calculation
+      totalExtrusionCost: 0,
+      totalHardwareCost: 0,
+      totalGlassCost: 0,
+      totalOtherCost: 0,
       totalPrice: 0
     }
 
@@ -501,6 +506,17 @@ export async function POST(
         if ((breakdown as any).hybridBreakdown?.remainingPortionCost) {
           priceBreakdown.totalHybridRemainingCost += (breakdown as any).hybridBreakdown.remainingPortionCost
         }
+
+        // Track costs by category for accurate markup calculation
+        if (breakdown.partType === 'Extrusion') {
+          priceBreakdown.totalExtrusionCost += cost
+        } else if (breakdown.partType === 'Hardware') {
+          priceBreakdown.totalHardwareCost += cost
+        } else if (breakdown.partType === 'Glass') {
+          priceBreakdown.totalGlassCost += cost
+        } else {
+          priceBreakdown.totalOtherCost += cost
+        }
       }
 
       // Calculate sub-option costs with standard hardware logic
@@ -542,6 +558,7 @@ export async function POST(
                 componentBreakdown.totalOptionCost += standardOption.price
                 componentCost += standardOption.price
                 priceBreakdown.totalStandardOptionCost += standardOption.price // Track for no-markup
+                priceBreakdown.totalOtherCost += standardOption.price // Standard options tracked as "other" (no markup)
               }
               continue
             }
@@ -570,6 +587,7 @@ export async function POST(
                 componentBreakdown.totalOptionCost += optionPrice
                 componentCost += optionPrice
                 priceBreakdown.totalStandardOptionCost += optionPrice // Track for no-markup
+                priceBreakdown.totalOtherCost += optionPrice // Standard options tracked as "other" (no markup)
               } else {
                 // Non-standard option selected - full price (markup applied at project level)
                 const optionPrice = isIncluded ? 0 : selectedOption.price
@@ -585,6 +603,7 @@ export async function POST(
 
                 componentBreakdown.totalOptionCost += optionPrice
                 componentCost += optionPrice
+                priceBreakdown.totalHardwareCost += optionPrice // Non-standard options tracked as hardware (with markup)
               }
             }
           }
@@ -611,6 +630,7 @@ export async function POST(
             componentBreakdown.totalOptionCost += standardOption.price
             componentCost += standardOption.price
             priceBreakdown.totalStandardOptionCost += standardOption.price // Track for no-markup
+            priceBreakdown.totalOtherCost += standardOption.price // Standard options tracked as "other" (no markup)
           }
         }
       }
@@ -676,6 +696,8 @@ export async function POST(
 
             componentBreakdown.totalGlassCost = Math.round(glassCost * 100) / 100
             componentCost += componentBreakdown.totalGlassCost
+            // Track glass cost for accurate category markup calculation
+            priceBreakdown.totalGlassCost += componentBreakdown.totalGlassCost
 
             console.log(`[Glass Pricing] Calculated glass cost: $${componentBreakdown.totalGlassCost}`)
           } else {
@@ -700,6 +722,10 @@ export async function POST(
       where: { id: openingId },
       data: {
         price: priceBreakdown.totalPrice,
+        extrusionCost: priceBreakdown.totalExtrusionCost,
+        hardwareCost: priceBreakdown.totalHardwareCost,
+        glassCost: priceBreakdown.totalGlassCost,
+        otherCost: priceBreakdown.totalOtherCost,
         standardOptionCost: priceBreakdown.totalStandardOptionCost,
         hybridRemainingCost: priceBreakdown.totalHybridRemainingCost,
         priceCalculatedAt: new Date()

@@ -82,75 +82,46 @@ export default function ProjectsView() {
           _count: { openings: number };
           openings: {
             price: number;
-            panels: {
-              componentInstance: {
-                product: {
-                  productBOMs: { partType: string }[]
-                }
-              } | null
-            }[]
+            extrusionCost: number;
+            hardwareCost: number;
+            glassCost: number;
+            otherCost: number;
+            hybridRemainingCost: number;
           }[];
           updatedAt: string;
         }) => {
-          // Calculate COG (cost of goods)
+          // Calculate COG (cost of goods) - sum of base costs
           const costValue = project.openings.reduce((sum: number, opening: { price: number }) => sum + opening.price, 0)
+
+          // Sum actual cost breakdown from stored values (accurate, not estimated)
+          const totalExtrusionCost = project.openings.reduce((sum, o) => sum + (o.extrusionCost || 0), 0)
+          const totalHardwareCost = project.openings.reduce((sum, o) => sum + (o.hardwareCost || 0), 0)
+          const totalGlassCost = project.openings.reduce((sum, o) => sum + (o.glassCost || 0), 0)
+          const totalOtherCost = project.openings.reduce((sum, o) => sum + (o.otherCost || 0), 0)
 
           // Apply category-specific pricing mode to get sale price
           let saleValue = costValue
           if (project.pricingMode) {
-            // Count BOMs by type to estimate cost breakdown
-            const bomCounts = { Extrusion: 0, Hardware: 0, Glass: 0, Other: 0 }
-
-            for (const opening of project.openings) {
-              for (const panel of opening.panels) {
-                if (!panel.componentInstance) continue
-
-                for (const bom of panel.componentInstance.product.productBOMs || []) {
-                  if (bom.partType === 'Extrusion') {
-                    bomCounts.Extrusion++
-                  } else if (bom.partType === 'Hardware') {
-                    bomCounts.Hardware++
-                  } else if (bom.partType === 'Glass') {
-                    bomCounts.Glass++
-                  } else {
-                    bomCounts.Other++
-                  }
-                }
+            // Apply category-specific markups using actual cost breakdown
+            const applyMarkup = (cost: number, categoryMarkup: number) => {
+              const markup = categoryMarkup > 0 ? categoryMarkup : project.pricingMode!.markup
+              let price = cost * (1 + markup / 100)
+              if (project.pricingMode!.discount > 0) {
+                price *= (1 - project.pricingMode!.discount / 100)
               }
+              return price
             }
 
-            // Estimate cost breakdown
-            const totalBOMCount = bomCounts.Extrusion + bomCounts.Hardware + bomCounts.Glass + bomCounts.Other
-            if (totalBOMCount > 0) {
-              const extrusionCost = (costValue * bomCounts.Extrusion) / totalBOMCount
-              const hardwareCost = (costValue * bomCounts.Hardware) / totalBOMCount
-              const glassCost = (costValue * bomCounts.Glass) / totalBOMCount
-              const otherCost = (costValue * bomCounts.Other) / totalBOMCount
+            // Sum HYBRID remaining costs (extrusion at cost, no markup)
+            const totalHybridRemainingCost = project.openings.reduce((sum, o) => sum + (o.hybridRemainingCost || 0), 0)
 
-              // Apply category-specific markups
-              const applyMarkup = (cost: number, categoryMarkup: number) => {
-                const markup = categoryMarkup > 0 ? categoryMarkup : project.pricingMode!.markup
-                let price = cost * (1 + markup / 100)
-                if (project.pricingMode!.discount > 0) {
-                  price *= (1 - project.pricingMode!.discount / 100)
-                }
-                return price
-              }
-
-              saleValue =
-                applyMarkup(extrusionCost, project.pricingMode.extrusionMarkup) +
-                applyMarkup(hardwareCost, project.pricingMode.hardwareMarkup) +
-                applyMarkup(glassCost, project.pricingMode.glassMarkup) +
-                applyMarkup(otherCost, 0) // Other uses global markup
-            } else {
-              // Fallback to global markup if no BOMs
-              if (project.pricingMode.markup > 0) {
-                saleValue = saleValue * (1 + project.pricingMode.markup / 100)
-              }
-              if (project.pricingMode.discount > 0) {
-                saleValue = saleValue * (1 - project.pricingMode.discount / 100)
-              }
-            }
+            // Use actual stored cost breakdown for accurate markup calculation
+            saleValue =
+              applyMarkup(totalExtrusionCost, project.pricingMode.extrusionMarkup) +
+              applyMarkup(totalHardwareCost, project.pricingMode.hardwareMarkup) +
+              applyMarkup(totalGlassCost, project.pricingMode.glassMarkup) +
+              totalOtherCost + // Other costs (standard options) don't get markup
+              totalHybridRemainingCost // HYBRID remaining costs are at cost (no markup)
           }
 
           return {

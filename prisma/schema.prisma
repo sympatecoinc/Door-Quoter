@@ -66,6 +66,10 @@ model Opening {
   finishedWidth         Float?
   finishedHeight        Float?
   price                 Float     @default(0)
+  extrusionCost         Float     @default(0) // Base cost of extrusions (for accurate markup calculation)
+  hardwareCost          Float     @default(0) // Base cost of hardware (for accurate markup calculation)
+  glassCost             Float     @default(0) // Base cost of glass (for accurate markup calculation)
+  otherCost             Float     @default(0) // Base cost of other items (for accurate markup calculation)
   standardOptionCost    Float     @default(0) // Cost of standard options (no markup applied)
   hybridRemainingCost   Float     @default(0) // HYBRID pricing: remaining extrusion cost (no markup applied)
   multiplier            Float     @default(1.0) // Price multiplier/markup for this opening (e.g., 1.2 = 20% markup)
