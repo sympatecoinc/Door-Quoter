@@ -426,6 +426,8 @@ export default function QuoteView() {
                 <p className="mt-2 text-sm text-gray-500">
                   Extrusion Costing: {quoteData.project.pricingMode.extrusionCostingMethod === 'PERCENTAGE_BASED'
                     ? 'Percentage-Based (charge for % of stock used when >50% remains unused)'
+                    : quoteData.project.pricingMode.extrusionCostingMethod === 'HYBRID'
+                    ? 'Hybrid (markup on used portion, cost-only on remainder)'
                     : 'Full Stock (charge for full stock length)'}
                 </p>
               )}
