@@ -63,7 +63,7 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { masterPartId, formula, quantity, addFinishToPartNumber, addToPackingList } = body
+    const { masterPartId, formula, quantity } = body
 
     if (!masterPartId) {
       return NextResponse.json({ error: 'Master part ID is required' }, { status: 400 })
@@ -107,9 +107,7 @@ export async function POST(
         glassTypeId,
         masterPartId,
         formula: formula?.trim() || null,
-        quantity: quantity ? parseFloat(quantity) : null,
-        addFinishToPartNumber: addFinishToPartNumber ?? false,
-        addToPackingList: addToPackingList ?? true
+        quantity: quantity ? parseFloat(quantity) : null
       },
       include: {
         masterPart: {
@@ -147,7 +145,7 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { partId, formula, quantity, addFinishToPartNumber, addToPackingList } = body
+    const { partId, formula, quantity } = body
 
     if (!partId) {
       return NextResponse.json({ error: 'Part ID is required' }, { status: 400 })
@@ -170,9 +168,7 @@ export async function PUT(
       where: { id: partId },
       data: {
         formula: formula?.trim() || null,
-        quantity: quantity !== undefined && quantity !== null && quantity !== '' ? parseFloat(quantity) : null,
-        addFinishToPartNumber: addFinishToPartNumber ?? existingPart.addFinishToPartNumber,
-        addToPackingList: addToPackingList ?? existingPart.addToPackingList
+        quantity: quantity !== undefined && quantity !== null && quantity !== '' ? parseFloat(quantity) : null
       },
       include: {
         masterPart: {

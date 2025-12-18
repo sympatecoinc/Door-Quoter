@@ -90,8 +90,6 @@ interface GlassTypePart {
   masterPartId: number
   formula?: string
   quantity?: number
-  addFinishToPartNumber: boolean
-  addToPackingList: boolean
   masterPart: {
     id: number
     partNumber: string
@@ -224,8 +222,6 @@ export default function MasterPartsView() {
   const [glassPartMasterPartId, setGlassPartMasterPartId] = useState<string>('')
   const [glassPartFormula, setGlassPartFormula] = useState('')
   const [glassPartQuantity, setGlassPartQuantity] = useState('1')
-  const [glassPartAddFinish, setGlassPartAddFinish] = useState(false)
-  const [glassPartAddToPacking, setGlassPartAddToPacking] = useState(true)
 
   // Extrusion Finish Pricing State
   const [finishPricing, setFinishPricing] = useState<any[]>([])
@@ -919,8 +915,6 @@ export default function MasterPartsView() {
     setGlassPartMasterPartId('')
     setGlassPartFormula('')
     setGlassPartQuantity('1')
-    setGlassPartAddFinish(false)
-    setGlassPartAddToPacking(true)
   }
 
   async function handleAddGlassTypePart(glassTypeId: number) {
@@ -937,9 +931,7 @@ export default function MasterPartsView() {
         body: JSON.stringify({
           masterPartId: parseInt(glassPartMasterPartId),
           formula: glassPartFormula.trim() || null,
-          quantity: glassPartFormula.trim() ? null : parseFloat(glassPartQuantity) || 1,
-          addFinishToPartNumber: glassPartAddFinish,
-          addToPackingList: glassPartAddToPacking
+          quantity: glassPartFormula.trim() ? null : parseFloat(glassPartQuantity) || 1
         })
       })
 
@@ -969,9 +961,7 @@ export default function MasterPartsView() {
         body: JSON.stringify({
           partId,
           formula: glassPartFormula.trim() || null,
-          quantity: glassPartFormula.trim() ? null : parseFloat(glassPartQuantity) || 1,
-          addFinishToPartNumber: glassPartAddFinish,
-          addToPackingList: glassPartAddToPacking
+          quantity: glassPartFormula.trim() ? null : parseFloat(glassPartQuantity) || 1
         })
       })
 
@@ -1019,8 +1009,6 @@ export default function MasterPartsView() {
     setGlassPartMasterPartId(part.masterPartId.toString())
     setGlassPartFormula(part.formula || '')
     setGlassPartQuantity(part.quantity?.toString() || '1')
-    setGlassPartAddFinish(part.addFinishToPartNumber)
-    setGlassPartAddToPacking(part.addToPackingList)
   }
 
   async function handleCreateGlassType(e: React.FormEvent) {
@@ -2026,26 +2014,6 @@ export default function MasterPartsView() {
                                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
                                         />
                                       </div>
-                                      <div className="flex items-end space-x-4">
-                                        <label className="flex items-center space-x-2 text-sm">
-                                          <input
-                                            type="checkbox"
-                                            checked={glassPartAddFinish}
-                                            onChange={(e) => setGlassPartAddFinish(e.target.checked)}
-                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                          />
-                                          <span>Add Finish Code</span>
-                                        </label>
-                                        <label className="flex items-center space-x-2 text-sm">
-                                          <input
-                                            type="checkbox"
-                                            checked={glassPartAddToPacking}
-                                            onChange={(e) => setGlassPartAddToPacking(e.target.checked)}
-                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                          />
-                                          <span>Add to Packing List</span>
-                                        </label>
-                                      </div>
                                     </div>
                                     <div className="flex justify-end space-x-2 mt-4">
                                       <button
@@ -2078,7 +2046,6 @@ export default function MasterPartsView() {
                                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Formula/Qty</th>
                                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Cost</th>
-                                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Options</th>
                                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                                         </tr>
                                       </thead>
@@ -2109,17 +2076,6 @@ export default function MasterPartsView() {
                                                   )}
                                                 </td>
                                                 <td className="px-4 py-2 text-gray-600">${part.masterPart.cost?.toFixed(2) || '0.00'}</td>
-                                                <td className="px-4 py-2">
-                                                  <label className="flex items-center space-x-1 text-xs">
-                                                    <input
-                                                      type="checkbox"
-                                                      checked={glassPartAddToPacking}
-                                                      onChange={(e) => setGlassPartAddToPacking(e.target.checked)}
-                                                      className="rounded border-gray-300 text-blue-600"
-                                                    />
-                                                    <span>Packing</span>
-                                                  </label>
-                                                </td>
                                                 <td className="px-4 py-2 text-right">
                                                   <button
                                                     onClick={() => handleUpdateGlassTypePart(glassType.id, part.id)}
@@ -2153,10 +2109,6 @@ export default function MasterPartsView() {
                                                   )}
                                                 </td>
                                                 <td className="px-4 py-2 text-gray-600">${part.masterPart.cost?.toFixed(2) || '0.00'}/{part.masterPart.unit || 'EA'}</td>
-                                                <td className="px-4 py-2 text-gray-600">
-                                                  {part.addToPackingList && <span className="text-xs bg-green-100 text-green-700 px-1 rounded mr-1">Packing</span>}
-                                                  {part.addFinishToPartNumber && <span className="text-xs bg-blue-100 text-blue-700 px-1 rounded">Finish</span>}
-                                                </td>
                                                 <td className="px-4 py-2 text-right">
                                                   <button
                                                     onClick={() => startEditGlassTypePart(glassType.id, part)}

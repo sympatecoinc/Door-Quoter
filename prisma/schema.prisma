@@ -525,17 +525,15 @@ model GlassType {
 
 // Glass Type Parts - Hardware/Other parts attached to glass types (like vinyl frosting)
 model GlassTypePart {
-  id                    Int        @id @default(autoincrement())
-  glassTypeId           Int
-  masterPartId          Int
-  formula               String?    // e.g., "height" or "height / 12" for linear feet, "2" for fixed qty
-  quantity              Float?     // Fixed quantity if no formula (default: 1)
-  addFinishToPartNumber Boolean    @default(false)
-  addToPackingList      Boolean    @default(true)
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-  glassType             GlassType  @relation(fields: [glassTypeId], references: [id], onDelete: Cascade)
-  masterPart            MasterPart @relation(fields: [masterPartId], references: [id], onDelete: Cascade)
+  id           Int        @id @default(autoincrement())
+  glassTypeId  Int
+  masterPartId Int
+  formula      String?    // e.g., "height" or "height / 12" for linear feet, "2" for fixed qty
+  quantity     Float?     // Fixed quantity if no formula (default: 1)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  glassType    GlassType  @relation(fields: [glassTypeId], references: [id], onDelete: Cascade)
+  masterPart   MasterPart @relation(fields: [masterPartId], references: [id], onDelete: Cascade)
 
   @@unique([glassTypeId, masterPartId])
   @@map("GlassTypeParts")

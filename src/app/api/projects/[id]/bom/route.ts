@@ -728,9 +728,9 @@ export async function GET(
                 partQuantity = evaluateFormula(gtp.formula, partVariables)
               }
 
-              // Build part number with finish code if applicable
+              // Build part number with finish code if applicable (using master part settings)
               let fullPartNumber = gtp.masterPart.partNumber
-              if (gtp.addFinishToPartNumber && opening.finishColor) {
+              if (gtp.masterPart.addFinishToPartNumber && opening.finishColor) {
                 const finishCode = await getFinishCode(opening.finishColor)
                 if (finishCode) {
                   fullPartNumber = `${fullPartNumber}${finishCode}`
@@ -752,8 +752,8 @@ export async function GET(
                 percentOfStock: null,
                 unit: gtp.masterPart.unit || 'EA',
                 description: `Glass Type Part: ${panel.glassType}`,
-                color: gtp.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
-                addToPackingList: gtp.addToPackingList
+                color: gtp.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
+                addToPackingList: gtp.masterPart.addToPackingList
               })
             }
           }
