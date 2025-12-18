@@ -76,6 +76,8 @@ function calculateMarkupPrice(
     categoryMarkup = pricingMode.hardwareMarkup
   } else if (partType === 'Glass' && pricingMode.glassMarkup > 0) {
     categoryMarkup = pricingMode.glassMarkup
+  } else if (partType === 'Packaging' && pricingMode.packagingMarkup > 0) {
+    categoryMarkup = pricingMode.packagingMarkup
   } else if (pricingMode.markup > 0) {
     // Fallback to global markup if category-specific markup is not set
     categoryMarkup = pricingMode.markup
@@ -171,10 +173,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           })
           if (response.ok) {
             const data = await response.json()
-            // Update the opening object with the new price for use in this request
+            // Update the opening object with the new price and cost breakdown for use in this request
             ;(opening as any).price = data.calculatedPrice
             ;(opening as any).standardOptionCost = data.breakdown?.totalStandardOptionCost || 0
             ;(opening as any).hybridRemainingCost = data.breakdown?.totalHybridRemainingCost || 0
+            ;(opening as any).extrusionCost = data.breakdown?.totalExtrusionCost || 0
+            ;(opening as any).hardwareCost = data.breakdown?.totalHardwareCost || 0
+            ;(opening as any).glassCost = data.breakdown?.totalGlassCost || 0
+            ;(opening as any).packagingCost = data.breakdown?.totalPackagingCost || 0
+            ;(opening as any).otherCost = data.breakdown?.totalOtherCost || 0
           } else {
             console.error(`Failed to recalculate price for opening ${opening.id}: ${response.status}`)
           }
@@ -222,86 +229,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const glassTypes = new Set<string>()
         let totalHardwarePrice = 0
 
-        // Calculate cost breakdown by component type for category-specific markup
-        // We need to analyze the BOMs to determine cost by part type
-        let extrusionCost = 0
-        let hardwareCost = 0
-        let glassCost = 0
-        let otherCost = 0
+        // Use stored cost breakdown from calculate-price API (accurate tracking by part type)
+        // These values are stored in the database after each price recalculation
+        const extrusionCost = (opening as any).extrusionCost || 0
+        const hardwareCost = (opening as any).hardwareCost || 0
+        const glassCost = (opening as any).glassCost || 0
+        const packagingCost = (opening as any).packagingCost || 0
+        const otherCost = (opening as any).otherCost || 0
 
-        // Track BOM counts by type to create a weighted distribution
-        const bomCounts = { Extrusion: 0, Hardware: 0, Glass: 0, Other: 0 }
+        // Get standard option cost for this opening (should NOT be marked up)
+        const standardOptionCost = opening.standardOptionCost || 0
+        // Get HYBRID remaining cost (extrusion portion at cost, no markup)
+        const hybridRemainingCost = opening.hybridRemainingCost || 0
 
         for (const panel of opening.panels) {
           if (!panel.componentInstance) continue
 
           const product = panel.componentInstance.product
 
-          // Count BOMs by type
-          for (const bom of product.productBOMs || []) {
-            if (bom.partType === 'Extrusion') {
-              bomCounts.Extrusion++
-            } else if (bom.partType === 'Hardware') {
-              bomCounts.Hardware++
-            } else if (bom.partType === 'Glass') {
-              bomCounts.Glass++
-            } else {
-              bomCounts.Other++
-            }
-          }
-
-          // Track glass types and calculate glass cost directly
+          // Track glass types for display
           if (panel.glassType && panel.glassType !== 'N/A') {
             glassTypes.add(panel.glassType)
-
-            // Calculate glass cost for this panel (same logic as calculate-price route)
-            try {
-              const glassTypeData = await prisma.glassType.findUnique({
-                where: { name: panel.glassType }
-              })
-
-              if (glassTypeData && product.glassWidthFormula && product.glassHeightFormula) {
-                const variables = { width: panel.width, height: panel.height }
-
-                // Simple formula evaluation for glass dimensions
-                const evaluateFormula = (formula: string, vars: Record<string, number>): number => {
-                  if (!formula) return 0
-                  let expression = formula.trim()
-                  for (const [key, value] of Object.entries(vars)) {
-                    const regex = new RegExp(`\\b${key}\\b`, 'gi')
-                    expression = expression.replace(regex, value.toString())
-                  }
-                  try {
-                    const result = eval(expression)
-                    return isNaN(result) ? 0 : Math.max(0, result)
-                  } catch {
-                    return 0
-                  }
-                }
-
-                const glassWidth = evaluateFormula(product.glassWidthFormula, variables)
-                const glassHeight = evaluateFormula(product.glassHeightFormula, variables)
-                const glassQuantity = product.glassQuantityFormula
-                  ? evaluateFormula(product.glassQuantityFormula, variables)
-                  : 1
-
-                // Calculate square footage and cost
-                const sqft = (glassWidth * glassHeight / 144) * glassQuantity
-                const panelGlassCost = sqft * glassTypeData.pricePerSqFt
-                glassCost += panelGlassCost
-              }
-            } catch (error) {
-              console.error('Error calculating glass cost for markup:', error)
-            }
           }
 
-          // Extract hardware from component options and calculate their costs
+          // Extract hardware from component options for display (costs already in stored hardwareCost)
           if (panel.componentInstance?.subOptionSelections) {
             try {
               const selections = JSON.parse(panel.componentInstance.subOptionSelections)
               const includedOptions = JSON.parse(panel.componentInstance.includedOptions || '[]')
 
-              // Resolve hardware options
+              // Resolve hardware options for display
               for (const [categoryId, optionId] of Object.entries(selections)) {
                 if (optionId) {
                   for (const pso of product.productSubOptions || []) {
@@ -313,8 +270,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                           if (option.id === optionId) {
                             const isIncluded = includedOptions.includes(Number(optionId))
                             const isStandardOption = pso.standardOptionId === option.id
-                            // Standard options: price is 0 (cost tracked in opening.standardOptionCost)
-                            // Non-standard options: full price (will be marked up)
+                            // Display price for non-standard options
                             const optionPrice = isIncluded ? 0 : (isStandardOption ? 0 : (option.price || 0))
                             hardwareItems.push({
                               name: `${pso.category.name}: ${option.name}`,
@@ -322,10 +278,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                               isIncluded: isIncluded,
                               isStandard: isStandardOption
                             })
-                            // Only add non-standard hardware to costs (standard is in opening.standardOptionCost)
                             if (!isStandardOption) {
                               totalHardwarePrice += optionPrice
-                              hardwareCost += optionPrice
                             }
                             break
                           }
@@ -342,40 +296,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           }
         }
 
-        // Get standard option cost for this opening (should NOT be marked up)
-        const standardOptionCost = opening.standardOptionCost || 0
-        // Get HYBRID remaining cost (extrusion portion at cost, no markup)
-        const hybridRemainingCost = opening.hybridRemainingCost || 0
-
-        // Distribute the opening base cost based on BOM counts
-        // This is an approximation - ideally we'd recalculate exact costs per component
-        const totalBOMCount = bomCounts.Extrusion + bomCounts.Hardware + bomCounts.Glass + bomCounts.Other
-        // Subtract already-calculated costs: hardware options, glass cost, standard option costs, and HYBRID remaining costs
-        // Glass cost is now calculated directly above, so we exclude it from the BOM distribution
-        const remainingCost = opening.price - hardwareCost - glassCost - standardOptionCost - hybridRemainingCost
-
-        if (totalBOMCount > 0 && remainingCost > 0) {
-          // Only distribute remaining cost among non-glass BOM types
-          const nonGlassBOMCount = bomCounts.Extrusion + bomCounts.Hardware + bomCounts.Other
-          if (nonGlassBOMCount > 0) {
-            extrusionCost += (remainingCost * bomCounts.Extrusion) / nonGlassBOMCount
-            hardwareCost += (remainingCost * bomCounts.Hardware) / nonGlassBOMCount
-            otherCost += (remainingCost * bomCounts.Other) / nonGlassBOMCount
-          } else {
-            // If no non-glass BOMs, put remaining in extrusion
-            extrusionCost += remainingCost
-          }
-        }
-
         // Apply category-specific markups to each cost component
         const markedUpExtrusionCost = calculateMarkupPrice(extrusionCost, 'Extrusion', pricingMode, globalPricingMultiplier)
         const markedUpHardwareCost = calculateMarkupPrice(hardwareCost, 'Hardware', pricingMode, globalPricingMultiplier)
         const markedUpGlassCost = calculateMarkupPrice(glassCost, 'Glass', pricingMode, globalPricingMultiplier)
+        const markedUpPackagingCost = calculateMarkupPrice(packagingCost, 'Packaging', pricingMode, globalPricingMultiplier)
         const markedUpOtherCost = calculateMarkupPrice(otherCost, 'Other', pricingMode, globalPricingMultiplier)
 
         // Total marked-up price with category-specific markups
-        // Standard option costs and HYBRID remaining costs are added back WITHOUT markup (at cost)
-        const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpOtherCost + standardOptionCost + hybridRemainingCost
+        // Note: standardOptionCost is already included in otherCost (stored that way by calculate-price API)
+        // HYBRID remaining costs are added back WITHOUT markup (at cost)
+        const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpPackagingCost + markedUpOtherCost + hybridRemainingCost
 
         // Generate description
         const panelTypes = opening.panels
@@ -445,6 +376,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             extrusion: { base: extrusionCost, markedUp: markedUpExtrusionCost },
             hardware: { base: hardwareCost, markedUp: markedUpHardwareCost },
             glass: { base: glassCost, markedUp: markedUpGlassCost },
+            packaging: { base: packagingCost, markedUp: markedUpPackagingCost },
             other: { base: otherCost, markedUp: markedUpOtherCost },
             standardOptions: { base: standardOptionCost, markedUp: standardOptionCost }, // No markup on standard options
             hybridRemaining: { base: hybridRemainingCost, markedUp: hybridRemainingCost } // HYBRID remaining at cost (no markup)

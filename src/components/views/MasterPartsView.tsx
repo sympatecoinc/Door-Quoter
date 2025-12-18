@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, ChevronDown, Sparkles, Brush, Tag } from 'lucide-react'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
@@ -84,11 +84,28 @@ interface PricingRule {
   updatedAt: string
 }
 
+interface GlassTypePart {
+  id: number
+  glassTypeId: number
+  masterPartId: number
+  formula?: string
+  quantity?: number
+  masterPart: {
+    id: number
+    partNumber: string
+    baseName: string
+    unit?: string
+    cost?: number
+    partType: string
+  }
+}
+
 interface GlassType {
   id: number
   name: string
   description?: string
   pricePerSqFt: number
+  parts?: GlassTypePart[]
   createdAt: string
   updatedAt: string
 }
@@ -193,6 +210,19 @@ export default function MasterPartsView() {
   const [glassDescription, setGlassDescription] = useState('')
   const [glassPricePerSqFt, setGlassPricePerSqFt] = useState('')
 
+  // Glass Type Parts State
+  const [expandedGlassTypeId, setExpandedGlassTypeId] = useState<number | null>(null)
+  const [showAddGlassPartForm, setShowAddGlassPartForm] = useState<number | null>(null)
+  const [addingGlassPart, setAddingGlassPart] = useState(false)
+  const [deletingGlassPart, setDeletingGlassPart] = useState(false)
+  const [editingGlassPart, setEditingGlassPart] = useState<{glassTypeId: number, partId: number} | null>(null)
+  const [updatingGlassPart, setUpdatingGlassPart] = useState(false)
+
+  // Glass Type Part Form State
+  const [glassPartMasterPartId, setGlassPartMasterPartId] = useState<string>('')
+  const [glassPartFormula, setGlassPartFormula] = useState('')
+  const [glassPartQuantity, setGlassPartQuantity] = useState('1')
+
   // Extrusion Finish Pricing State
   const [finishPricing, setFinishPricing] = useState<any[]>([])
   const [loadingFinishPricing, setLoadingFinishPricing] = useState(false)
@@ -295,8 +325,8 @@ export default function MasterPartsView() {
       return price.toFixed(2)
     }
 
-    // For hardware and fastener parts, show direct cost
-    if (part.partType === 'Hardware' || part.partType === 'Fastener') {
+    // For hardware, fastener, and packaging parts, show direct cost
+    if (part.partType === 'Hardware' || part.partType === 'Fastener' || part.partType === 'Packaging') {
       return part.cost ? `$${formatPrice(part.cost)}` : '-'
     }
 
@@ -376,8 +406,8 @@ export default function MasterPartsView() {
     e.preventDefault()
     if (!partNumber.trim() || !baseName.trim()) return
     
-    // Validate cost for Hardware and Fastener parts
-    if ((partType === 'Hardware' || partType === 'Fastener') && (!cost.trim() || isNaN(parseFloat(cost)))) {
+    // Validate cost for Hardware, Fastener, and Packaging parts
+    if ((partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') && (!cost.trim() || isNaN(parseFloat(cost)))) {
       showError(`${partType} parts require a valid cost`)
       return
     }
@@ -424,8 +454,8 @@ export default function MasterPartsView() {
     e.preventDefault()
     if (!partNumber.trim() || !baseName.trim() || !editingPart) return
     
-    // Validate cost for Hardware and Fastener parts
-    if ((partType === 'Hardware' || partType === 'Fastener') && (!cost.trim() || isNaN(parseFloat(cost)))) {
+    // Validate cost for Hardware, Fastener, and Packaging parts
+    if ((partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') && (!cost.trim() || isNaN(parseFloat(cost)))) {
       showError(`${partType} parts require a valid cost`)
       return
     }
@@ -624,8 +654,8 @@ export default function MasterPartsView() {
     setDescription(part.description || '')
     setUnit(part.unit || '')
     setCost(part.cost?.toString() || '')
-    // For hardware/fastener use weightPerUnit, for extrusions use weightPerFoot (both stored in same input field)
-    setWeightPerUnit(((part.partType === 'Hardware' || part.partType === 'Fastener') ? part.weightPerUnit : part.weightPerFoot)?.toString() || '')
+    // For hardware/fastener/packaging use weightPerUnit, for extrusions use weightPerFoot (both stored in same input field)
+    setWeightPerUnit(((part.partType === 'Hardware' || part.partType === 'Fastener' || part.partType === 'Packaging') ? part.weightPerUnit : part.weightPerFoot)?.toString() || '')
     setPartType(part.partType)
     setIsOption(part.isOption || false)
     setIsMillFinish(part.isMillFinish || false)
@@ -867,7 +897,7 @@ export default function MasterPartsView() {
   async function fetchGlassTypes() {
     setLoadingGlass(true)
     try {
-      const response = await fetch('/api/glass-types')
+      const response = await fetch('/api/glass-types?includeParts=true')
       if (response.ok) {
         const data = await response.json()
         setGlassTypes(data)
@@ -878,6 +908,107 @@ export default function MasterPartsView() {
     } finally {
       setLoadingGlass(false)
     }
+  }
+
+  // Glass Type Parts Functions
+  function resetGlassPartForm() {
+    setGlassPartMasterPartId('')
+    setGlassPartFormula('')
+    setGlassPartQuantity('1')
+  }
+
+  async function handleAddGlassTypePart(glassTypeId: number) {
+    if (!glassPartMasterPartId) {
+      showError('Please select a master part')
+      return
+    }
+
+    setAddingGlassPart(true)
+    try {
+      const response = await fetch(`/api/glass-types/${glassTypeId}/parts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          masterPartId: parseInt(glassPartMasterPartId),
+          formula: glassPartFormula.trim() || null,
+          quantity: glassPartFormula.trim() ? null : parseFloat(glassPartQuantity) || 1
+        })
+      })
+
+      if (response.ok) {
+        resetGlassPartForm()
+        setShowAddGlassPartForm(null)
+        fetchGlassTypes()
+        showSuccess('Part added to glass type')
+      } else {
+        const error = await response.json()
+        showError(error.error || 'Failed to add part')
+      }
+    } catch (error) {
+      console.error('Error adding glass type part:', error)
+      showError('Error adding part to glass type')
+    } finally {
+      setAddingGlassPart(false)
+    }
+  }
+
+  async function handleUpdateGlassTypePart(glassTypeId: number, partId: number) {
+    setUpdatingGlassPart(true)
+    try {
+      const response = await fetch(`/api/glass-types/${glassTypeId}/parts`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          partId,
+          formula: glassPartFormula.trim() || null,
+          quantity: glassPartFormula.trim() ? null : parseFloat(glassPartQuantity) || 1
+        })
+      })
+
+      if (response.ok) {
+        resetGlassPartForm()
+        setEditingGlassPart(null)
+        fetchGlassTypes()
+        showSuccess('Part updated')
+      } else {
+        const error = await response.json()
+        showError(error.error || 'Failed to update part')
+      }
+    } catch (error) {
+      console.error('Error updating glass type part:', error)
+      showError('Error updating part')
+    } finally {
+      setUpdatingGlassPart(false)
+    }
+  }
+
+  async function handleDeleteGlassTypePart(glassTypeId: number, partId: number) {
+    setDeletingGlassPart(true)
+    try {
+      const response = await fetch(`/api/glass-types/${glassTypeId}/parts?partId=${partId}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        fetchGlassTypes()
+        showSuccess('Part removed from glass type')
+      } else {
+        const error = await response.json()
+        showError(error.error || 'Failed to remove part')
+      }
+    } catch (error) {
+      console.error('Error deleting glass type part:', error)
+      showError('Error removing part from glass type')
+    } finally {
+      setDeletingGlassPart(false)
+    }
+  }
+
+  function startEditGlassTypePart(glassTypeId: number, part: GlassTypePart) {
+    setEditingGlassPart({ glassTypeId, partId: part.id })
+    setGlassPartMasterPartId(part.masterPartId.toString())
+    setGlassPartFormula(part.formula || '')
+    setGlassPartQuantity(part.quantity?.toString() || '1')
   }
 
   async function handleCreateGlassType(e: React.FormEvent) {
@@ -1198,7 +1329,7 @@ export default function MasterPartsView() {
             <Package className="w-5 h-5 inline-block mr-2" />
             Master Parts ({masterParts.length})
           </button>
-          {selectedMasterPart && selectedMasterPart.partType !== 'Hardware' && selectedMasterPart.partType !== 'Fastener' && (
+          {selectedMasterPart && selectedMasterPart.partType !== 'Hardware' && selectedMasterPart.partType !== 'Fastener' && selectedMasterPart.partType !== 'Packaging' && (
             <button
               onClick={() => setActiveTab('partRules')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
@@ -1401,6 +1532,8 @@ export default function MasterPartsView() {
                               ? 'bg-green-100 text-green-800'
                               : part.partType === 'Fastener'
                               ? 'bg-orange-100 text-orange-800'
+                              : part.partType === 'Packaging'
+                              ? 'bg-purple-100 text-purple-800'
                               : 'bg-blue-100 text-blue-800'
                           }`}>
                             {part.partType}
@@ -1410,7 +1543,7 @@ export default function MasterPartsView() {
                           {part.unit || '-'}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900">
-                          {(part.partType === 'Hardware' || part.partType === 'Fastener') && part.weightPerUnit
+                          {(part.partType === 'Hardware' || part.partType === 'Fastener' || part.partType === 'Packaging') && part.weightPerUnit
                             ? `${part.weightPerUnit} oz`
                             : part.partType === 'Extrusion' && part.weightPerFoot
                             ? `${part.weightPerFoot} oz/ft`
@@ -1421,7 +1554,7 @@ export default function MasterPartsView() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex space-x-2 justify-end">
-                            {part.partType !== 'Hardware' && part.partType !== 'Fastener' && (
+                            {part.partType !== 'Hardware' && part.partType !== 'Fastener' && part.partType !== 'Packaging' && (
                               <button
                                 onClick={() => viewMasterPartRules(part)}
                                 className="p-1 text-gray-400 hover:text-green-600 transition-colors"
@@ -1654,8 +1787,8 @@ export default function MasterPartsView() {
             </div>
           </div>
 
-          {/* Pricing Rules for this part - only show for non-extrusion, non-hardware, and non-fastener parts */}
-          {selectedMasterPart?.partType !== 'Extrusion' && selectedMasterPart?.partType !== 'Hardware' && selectedMasterPart?.partType !== 'Fastener' && (
+          {/* Pricing Rules for this part - only show for non-extrusion, non-hardware, non-fastener, and non-packaging parts */}
+          {selectedMasterPart?.partType !== 'Extrusion' && selectedMasterPart?.partType !== 'Hardware' && selectedMasterPart?.partType !== 'Fastener' && selectedMasterPart?.partType !== 'Packaging' && (
             <div className="bg-white shadow-sm rounded-lg border border-gray-200 mt-6">
               <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                 <h3 className="text-lg font-medium text-gray-900">Pricing Rules ({pricingRules.length})</h3>
@@ -1743,6 +1876,8 @@ export default function MasterPartsView() {
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-8">
+                      </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Name
                       </th>
@@ -1753,45 +1888,261 @@ export default function MasterPartsView() {
                         Price per SqFt
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Attached Parts
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {glassTypes.map((glassType) => (
-                      <tr key={glassType.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4">
-                          <div className="text-sm font-medium text-gray-900">{glassType.name}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-600">
-                            {glassType.description || '-'}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            ${glassType.pricePerSqFt.toFixed(2)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex space-x-2 justify-end">
+                      <React.Fragment key={glassType.id}>
+                        <tr className="hover:bg-gray-50">
+                          <td className="px-6 py-4">
                             <button
-                              onClick={() => startEditGlassType(glassType)}
-                              className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
-                              title="Edit glass type"
+                              onClick={() => setExpandedGlassTypeId(expandedGlassTypeId === glassType.id ? null : glassType.id)}
+                              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                              title={expandedGlassTypeId === glassType.id ? 'Collapse' : 'Expand'}
                             >
-                              <Edit2 className="w-4 h-4" />
+                              <ChevronDown className={`w-4 h-4 transform transition-transform ${expandedGlassTypeId === glassType.id ? 'rotate-180' : ''}`} />
                             </button>
-                            <button
-                              onClick={() => handleDeleteGlassType(glassType.id, glassType.name)}
-                              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                              title="Delete glass type"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm font-medium text-gray-900">{glassType.name}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm text-gray-600">
+                              {glassType.description || '-'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm font-medium text-gray-900">
+                              ${glassType.pricePerSqFt.toFixed(2)}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm text-gray-600">
+                              {glassType.parts?.length || 0} part{(glassType.parts?.length || 0) !== 1 ? 's' : ''}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex space-x-2 justify-end">
+                              <button
+                                onClick={() => startEditGlassType(glassType)}
+                                className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                                title="Edit glass type"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteGlassType(glassType.id, glassType.name)}
+                                className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                title="Delete glass type"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Expanded Parts Section */}
+                        {expandedGlassTypeId === glassType.id && (
+                          <tr key={`${glassType.id}-parts`}>
+                            <td colSpan={6} className="px-6 py-4 bg-gray-50">
+                              <div className="ml-8">
+                                <div className="flex justify-between items-center mb-3">
+                                  <h4 className="text-sm font-medium text-gray-700">Attached Parts</h4>
+                                  <button
+                                    onClick={() => {
+                                      resetGlassPartForm()
+                                      setShowAddGlassPartForm(glassType.id)
+                                    }}
+                                    className="flex items-center px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                                  >
+                                    <Plus className="w-3 h-3 mr-1" />
+                                    Add Part
+                                  </button>
+                                </div>
+
+                                {/* Add Part Form */}
+                                {showAddGlassPartForm === glassType.id && (
+                                  <div className="mb-4 p-4 border border-blue-200 rounded-lg bg-white">
+                                    <h5 className="text-sm font-medium text-gray-700 mb-3">Add Part to Glass Type</h5>
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Master Part</label>
+                                        <select
+                                          value={glassPartMasterPartId}
+                                          onChange={(e) => setGlassPartMasterPartId(e.target.value)}
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        >
+                                          <option value="">Select a part...</option>
+                                          {masterParts
+                                            .filter(p => p.partType === 'Hardware' || p.partType === 'Other')
+                                            .map(part => (
+                                              <option key={part.id} value={part.id}>
+                                                {part.partNumber} - {part.baseName} (${part.cost?.toFixed(2) || '0.00'}/{part.unit || 'EA'})
+                                              </option>
+                                            ))
+                                          }
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                                          Formula <span className="text-gray-400">(e.g., height / 12)</span>
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={glassPartFormula}
+                                          onChange={(e) => setGlassPartFormula(e.target.value)}
+                                          placeholder="height, width, glassHeight, glassWidth"
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                                          Fixed Quantity <span className="text-gray-400">(if no formula)</span>
+                                        </label>
+                                        <input
+                                          type="number"
+                                          value={glassPartQuantity}
+                                          onChange={(e) => setGlassPartQuantity(e.target.value)}
+                                          disabled={!!glassPartFormula.trim()}
+                                          step="0.01"
+                                          min="0"
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-end space-x-2 mt-4">
+                                      <button
+                                        onClick={() => {
+                                          resetGlassPartForm()
+                                          setShowAddGlassPartForm(null)
+                                        }}
+                                        className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        onClick={() => handleAddGlassTypePart(glassType.id)}
+                                        disabled={addingGlassPart || !glassPartMasterPartId}
+                                        className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                                      >
+                                        {addingGlassPart ? 'Adding...' : 'Add Part'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Parts List */}
+                                {glassType.parts && glassType.parts.length > 0 ? (
+                                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                    <table className="w-full text-sm">
+                                      <thead className="bg-gray-100">
+                                        <tr>
+                                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Part Number</th>
+                                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Formula/Qty</th>
+                                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Cost</th>
+                                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-200 bg-white">
+                                        {glassType.parts.map((part) => (
+                                          <tr key={part.id} className="hover:bg-gray-50">
+                                            {editingGlassPart?.glassTypeId === glassType.id && editingGlassPart?.partId === part.id ? (
+                                              <>
+                                                <td className="px-4 py-2 text-gray-900">{part.masterPart.partNumber}</td>
+                                                <td className="px-4 py-2 text-gray-600">{part.masterPart.baseName}</td>
+                                                <td className="px-4 py-2">
+                                                  <input
+                                                    type="text"
+                                                    value={glassPartFormula}
+                                                    onChange={(e) => setGlassPartFormula(e.target.value)}
+                                                    placeholder="height / 12"
+                                                    className="w-24 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                  />
+                                                  {!glassPartFormula.trim() && (
+                                                    <input
+                                                      type="number"
+                                                      value={glassPartQuantity}
+                                                      onChange={(e) => setGlassPartQuantity(e.target.value)}
+                                                      step="0.01"
+                                                      min="0"
+                                                      className="w-16 ml-1 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                    />
+                                                  )}
+                                                </td>
+                                                <td className="px-4 py-2 text-gray-600">${part.masterPart.cost?.toFixed(2) || '0.00'}</td>
+                                                <td className="px-4 py-2 text-right">
+                                                  <button
+                                                    onClick={() => handleUpdateGlassTypePart(glassType.id, part.id)}
+                                                    disabled={updatingGlassPart}
+                                                    className="p-1 text-green-600 hover:text-green-800 mr-1"
+                                                    title="Save"
+                                                  >
+                                                    <Save className="w-4 h-4" />
+                                                  </button>
+                                                  <button
+                                                    onClick={() => {
+                                                      resetGlassPartForm()
+                                                      setEditingGlassPart(null)
+                                                    }}
+                                                    className="p-1 text-gray-400 hover:text-gray-600"
+                                                    title="Cancel"
+                                                  >
+                                                    <X className="w-4 h-4" />
+                                                  </button>
+                                                </td>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <td className="px-4 py-2 text-gray-900">{part.masterPart.partNumber}</td>
+                                                <td className="px-4 py-2 text-gray-600">{part.masterPart.baseName}</td>
+                                                <td className="px-4 py-2 text-gray-600">
+                                                  {part.formula ? (
+                                                    <span className="font-mono text-xs bg-gray-100 px-1 rounded">{part.formula}</span>
+                                                  ) : (
+                                                    <span>{part.quantity || 1}</span>
+                                                  )}
+                                                </td>
+                                                <td className="px-4 py-2 text-gray-600">${part.masterPart.cost?.toFixed(2) || '0.00'}/{part.masterPart.unit || 'EA'}</td>
+                                                <td className="px-4 py-2 text-right">
+                                                  <button
+                                                    onClick={() => startEditGlassTypePart(glassType.id, part)}
+                                                    className="p-1 text-gray-400 hover:text-blue-600"
+                                                    title="Edit"
+                                                  >
+                                                    <Edit2 className="w-4 h-4" />
+                                                  </button>
+                                                  <button
+                                                    onClick={() => handleDeleteGlassTypePart(glassType.id, part.id)}
+                                                    disabled={deletingGlassPart}
+                                                    className="p-1 text-gray-400 hover:text-red-600"
+                                                    title="Delete"
+                                                  >
+                                                    <Trash2 className="w-4 h-4" />
+                                                  </button>
+                                                </td>
+                                              </>
+                                            )}
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ) : (
+                                  <div className="text-sm text-gray-500 italic py-4">
+                                    No parts attached. Click &quot;Add Part&quot; to attach hardware parts to this glass type.
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -2062,6 +2413,7 @@ export default function MasterPartsView() {
                   <option value="Hardware">Hardware</option>
                   <option value="Extrusion">Extrusion</option>
                   <option value="Fastener">Fastener</option>
+                  <option value="Packaging">Packaging</option>
                 </select>
               </div>
 
@@ -2196,6 +2548,51 @@ export default function MasterPartsView() {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Cost ($) *
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={cost}
+                          onChange={(e) => setCost(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="0.00"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Weight (oz)
+                          <span className="text-xs text-gray-500 ml-1">(Optional)</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={weightPerUnit}
+                          onChange={(e) => setWeightPerUnit(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Packaging specific fields */}
+                  {partType === 'Packaging' && (
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                        <input
+                          type="text"
+                          value={unit}
+                          onChange={(e) => setUnit(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="e.g., EA, BOX, ROLL"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Cost ($) *
+                          <span className="text-xs text-gray-500 ml-1">(Required)</span>
                         </label>
                         <input
                           type="number"

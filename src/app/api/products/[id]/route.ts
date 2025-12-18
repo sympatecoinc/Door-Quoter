@@ -9,7 +9,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const product = await prisma.product.findUnique({
       where: { id: productId },
       include: {
-        productBOMs: true,
+        productBOMs: {
+          include: {
+            option: true
+          }
+        },
         productSubOptions: {
           include: {
             category: {
@@ -102,7 +106,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       where: { id: productId },
       data: updateData,
       include: {
-        productBOMs: true,
+        productBOMs: {
+          include: {
+            option: true
+          }
+        },
         productSubOptions: {
           include: {
             category: {

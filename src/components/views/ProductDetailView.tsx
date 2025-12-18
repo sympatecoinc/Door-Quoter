@@ -532,6 +532,11 @@ export default function ProductDetailView({
   const [savingInstallationPrice, setSavingInstallationPrice] = useState(false)
   const [expandedCategory, setExpandedCategory] = useState<number | null>(null)
   const [settingStandard, setSettingStandard] = useState(false)
+  const [optionBomModalOpen, setOptionBomModalOpen] = useState(false)
+  const [editingOptionBom, setEditingOptionBom] = useState<any>(null)
+  const [optionBomFormula, setOptionBomFormula] = useState('')
+  const [optionBomQuantity, setOptionBomQuantity] = useState('1')
+  const [savingOptionBom, setSavingOptionBom] = useState(false)
 
   // Delete BOM Part Modal State
   const [showDeletePartModal, setShowDeletePartModal] = useState(false)
@@ -1018,6 +1023,58 @@ export default function ProductDetailView({
     }
   }
 
+  function openOptionBomModal(option: any, existingBom: any) {
+    setEditingOptionBom({ option, existingBom })
+    setOptionBomFormula(existingBom?.formula || '')
+    setOptionBomQuantity(existingBom?.quantity?.toString() || '1')
+    setOptionBomModalOpen(true)
+  }
+
+  async function handleSaveOptionBom() {
+    if (!editingOptionBom?.option) return
+
+    setSavingOptionBom(true)
+    try {
+      const method = editingOptionBom.existingBom ? 'PUT' : 'POST'
+
+      const response = await fetch('/api/product-boms', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingOptionBom.existingBom?.id,
+          productId: product.id,
+          optionId: editingOptionBom.option.id,
+          partType: 'Extrusion',
+          partName: editingOptionBom.option.name,
+          partNumber: editingOptionBom.option.partNumber,
+          formula: optionBomFormula,
+          quantity: parseFloat(optionBomQuantity) || 1,
+          unit: 'IN'
+        })
+      })
+
+      if (response.ok) {
+        // Refresh product details
+        const detailsResponse = await fetch(`/api/products/${product.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setProductDetails(data)
+        }
+        setOptionBomModalOpen(false)
+        setEditingOptionBom(null)
+        showSuccess('Option BOM saved!')
+      } else {
+        const errorData = await response.json()
+        showError(errorData.error || 'Failed to save option BOM')
+      }
+    } catch (error) {
+      console.error('Error saving option BOM:', error)
+      showError('Failed to save option BOM')
+    } finally {
+      setSavingOptionBom(false)
+    }
+  }
+
   function toggleCategoryExpand(categoryId: number) {
     setExpandedCategory(expandedCategory === categoryId ? null : categoryId)
   }
@@ -1206,14 +1263,17 @@ export default function ProductDetailView({
   }
 
   function handleExportProduct() {
-    if (!productDetails?.productBOMs || productDetails.productBOMs.length === 0) {
+    // Filter out option-based BOM entries
+    const regularBOMs = productDetails?.productBOMs?.filter((b: any) => !b.optionId) || []
+
+    if (regularBOMs.length === 0) {
       showError('No parts to export')
       return
     }
 
     // Build CSV in the exact same format as the upload expects
     const headers = ['partNumber', 'quantity', 'formula']
-    const rows = productDetails.productBOMs.map((part: any) => {
+    const rows = regularBOMs.map((part: any) => {
       // Escape values that contain commas or quotes
       const escapeCSV = (value: string | number | null | undefined) => {
         if (value === null || value === undefined) return ''
@@ -1245,7 +1305,7 @@ export default function ProductDetailView({
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
 
-    showSuccess(`Exported ${productDetails.productBOMs.length} parts to CSV`)
+    showSuccess(`Exported ${regularBOMs.length} parts to CSV`)
   }
 
   return (
@@ -1308,10 +1368,15 @@ export default function ProductDetailView({
           {/* Parts Section */}
           <div className="col-span-full">
             <div className="bg-gray-50 rounded-lg p-6">
+          {/* Filter out option-based BOM entries - those should only show in linked categories */}
+          {(() => {
+            const regularBOMs = productDetails?.productBOMs?.filter((b: any) => !b.optionId) || []
+            return (
+              <>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Parts & BOM</h3>
             <span className="text-sm text-gray-500">
-              {productDetails?.productBOMs?.length || 0} parts
+              {regularBOMs.length} parts
             </span>
           </div>
 
@@ -1322,7 +1387,7 @@ export default function ProductDetailView({
                 <div className="flex justify-center py-8">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                 </div>
-              ) : productDetails?.productBOMs?.length > 0 ? (
+              ) : regularBOMs.length > 0 ? (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -1355,7 +1420,7 @@ export default function ProductDetailView({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {productDetails.productBOMs.map((part: any) => (
+                    {regularBOMs.map((part: any) => (
                       <tr key={part.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4">
                           <div>
@@ -1385,7 +1450,7 @@ export default function ProductDetailView({
                         <td className="px-6 py-4 text-sm text-gray-900">
                           {part.quantity || '-'}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">
+                        <td className="px-6 py-4 text-sm text-gray-900 min-w-[180px] whitespace-nowrap">
                           {part.formula ? (
                             <div className="font-mono text-xs">
                               {renderFormulaWithHighlights(part.formula)}
@@ -1492,7 +1557,7 @@ export default function ProductDetailView({
                       placeholder="e.g., Width/4-4.094, height + 2, width * 0.5"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Use "width" and "height" variables (case-insensitive). Supports +, -, *, /, parentheses, and decimal numbers.
+                      Use width/height variables. See Settings for full reference.
                     </p>
                   </div>
                   <div>
@@ -1575,6 +1640,9 @@ export default function ProductDetailView({
               </div>
             </div>
           </div>
+              </>
+            )
+          })()}
         </div>
         </div>
 
@@ -1787,24 +1855,32 @@ export default function ProductDetailView({
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                       {productSubOption.category.individualOptions.map((option: any) => {
                                         const isStandard = productSubOption.standardOptionId === option.id
+                                        const optionBom = productDetails?.productBOMs?.find((b: any) => b.optionId === option.id)
                                         return (
                                           <div
                                             key={option.id}
                                             className={`p-3 rounded-lg border ${
                                               isStandard
                                                 ? 'border-yellow-400 bg-yellow-50'
-                                                : 'border-gray-200 bg-white hover:border-gray-300'
+                                                : option.isCutListItem
+                                                  ? 'border-orange-200 bg-orange-50'
+                                                  : 'border-gray-200 bg-white hover:border-gray-300'
                                             }`}
                                           >
                                             <div className="flex items-start justify-between">
                                               <div className="flex-1">
-                                                <div className="flex items-center space-x-2">
+                                                <div className="flex items-center space-x-2 flex-wrap gap-1">
                                                   {isStandard && (
                                                     <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
                                                   )}
                                                   <span className="text-sm font-medium text-gray-900">
                                                     {option.name}
                                                   </span>
+                                                  {option.isCutListItem && (
+                                                    <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">
+                                                      BOM
+                                                    </span>
+                                                  )}
                                                 </div>
                                                 <div className="text-sm text-gray-600 mt-1">
                                                   ${option.price.toFixed(2)}
@@ -1814,24 +1890,43 @@ export default function ProductDetailView({
                                                     {option.description}
                                                   </div>
                                                 )}
+                                                {option.isCutListItem && optionBom && (
+                                                  <div className="text-xs text-orange-600 mt-2 p-2 bg-orange-100 rounded">
+                                                    Formula: <code>{optionBom.formula || 'Not set'}</code>
+                                                    {optionBom.quantity && ` × ${optionBom.quantity}`}
+                                                  </div>
+                                                )}
                                               </div>
-                                              <button
-                                                onClick={(e) => {
-                                                  e.stopPropagation()
-                                                  handleSetStandard(
-                                                    productSubOption.categoryId,
-                                                    isStandard ? null : option.id
-                                                  )
-                                                }}
-                                                disabled={settingStandard}
-                                                className={`ml-2 px-3 py-1 text-xs rounded-lg transition-colors ${
-                                                  isStandard
-                                                    ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                                                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                                                } disabled:opacity-50`}
-                                              >
-                                                {settingStandard ? '...' : isStandard ? 'Clear' : 'Set Standard'}
-                                              </button>
+                                              <div className="flex flex-col gap-1 ml-2">
+                                                {option.isCutListItem && (
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      openOptionBomModal(option, optionBom)
+                                                    }}
+                                                    className="px-3 py-1 text-xs rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
+                                                  >
+                                                    Configure
+                                                  </button>
+                                                )}
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    handleSetStandard(
+                                                      productSubOption.categoryId,
+                                                      isStandard ? null : option.id
+                                                    )
+                                                  }}
+                                                  disabled={settingStandard}
+                                                  className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                                                    isStandard
+                                                      ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                                                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                                  } disabled:opacity-50`}
+                                                >
+                                                  {settingStandard ? '...' : isStandard ? 'Clear' : 'Set Standard'}
+                                                </button>
+                                              </div>
                                             </div>
                                           </div>
                                         )
@@ -1961,20 +2056,28 @@ export default function ProductDetailView({
                   Export all extrusion quantities and formulas as a CSV file. The exported file uses the same format required for importing.
                 </p>
               </div>
-              <button
-                onClick={handleExportProduct}
-                disabled={!productDetails?.productBOMs || productDetails.productBOMs.length === 0}
-                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export CSV
-              </button>
+              {(() => {
+                const exportableBOMs = productDetails?.productBOMs?.filter((b: any) => !b.optionId) || []
+                return (
+                  <button
+                    onClick={handleExportProduct}
+                    disabled={exportableBOMs.length === 0}
+                    className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export CSV
+                  </button>
+                )
+              })()}
             </div>
-            {productDetails?.productBOMs && productDetails.productBOMs.length > 0 && (
-              <p className="text-xs text-gray-500 mt-3">
-                {productDetails.productBOMs.length} part{productDetails.productBOMs.length !== 1 ? 's' : ''} will be exported (partNumber, quantity, formula)
-              </p>
-            )}
+            {(() => {
+              const exportableBOMs = productDetails?.productBOMs?.filter((b: any) => !b.optionId) || []
+              return exportableBOMs.length > 0 ? (
+                <p className="text-xs text-gray-500 mt-3">
+                  {exportableBOMs.length} part{exportableBOMs.length !== 1 ? 's' : ''} will be exported (partNumber, quantity, formula)
+                </p>
+              ) : null
+            })()}
           </div>
         </div>
       </div>
@@ -2199,6 +2302,70 @@ export default function ProductDetailView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Option BOM Modal */}
+      {optionBomModalOpen && editingOptionBom && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">
+              Configure BOM for {editingOptionBom.option?.name}
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Part Number</label>
+                <input
+                  type="text"
+                  value={editingOptionBom.option?.partNumber || 'No part number'}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cut Length Formula *</label>
+                <FormulaInput
+                  value={optionBomFormula}
+                  onChange={setOptionBomFormula}
+                  placeholder="e.g., height - 8, width / 2"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Variables: width, height
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={optionBomQuantity}
+                  onChange={(e) => setOptionBomQuantity(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  placeholder="e.g., 2"
+                />
+              </div>
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOptionBomModalOpen(false)
+                    setEditingOptionBom(null)
+                  }}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveOptionBom}
+                  disabled={savingOptionBom || !optionBomFormula || !optionBomQuantity}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                >
+                  {savingOptionBom ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

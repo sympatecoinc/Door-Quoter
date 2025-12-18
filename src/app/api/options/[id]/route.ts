@@ -31,7 +31,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const optionId = parseInt(id)
-    const { name, description, price, partNumber, addToPackingList, addFinishToPartNumber } = await request.json()
+    const {
+      name,
+      description,
+      price,
+      partNumber,
+      addToPackingList,
+      addFinishToPartNumber,
+      isCutListItem
+    } = await request.json()
 
     if (!name) {
       return NextResponse.json(
@@ -48,7 +56,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         price: parseFloat(price) || 0,
         partNumber: partNumber || null,
         addToPackingList: addToPackingList !== undefined ? Boolean(addToPackingList) : undefined,
-        addFinishToPartNumber: addFinishToPartNumber !== undefined ? Boolean(addFinishToPartNumber) : undefined
+        addFinishToPartNumber: addFinishToPartNumber !== undefined ? Boolean(addFinishToPartNumber) : undefined,
+        isCutListItem: isCutListItem !== undefined ? Boolean(isCutListItem) : undefined
       },
       include: {
         category: true

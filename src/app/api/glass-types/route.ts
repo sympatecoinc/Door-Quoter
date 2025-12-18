@@ -5,8 +5,27 @@ const prisma = new PrismaClient()
 
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const includeParts = searchParams.get('includeParts') === 'true'
+
     const glassTypes = await prisma.glassType.findMany({
-      orderBy: { name: 'asc' }
+      orderBy: { name: 'asc' },
+      include: includeParts ? {
+        parts: {
+          include: {
+            masterPart: {
+              select: {
+                id: true,
+                partNumber: true,
+                baseName: true,
+                unit: true,
+                cost: true,
+                partType: true
+              }
+            }
+          }
+        }
+      } : undefined
     })
     return NextResponse.json(glassTypes)
   } catch (error) {

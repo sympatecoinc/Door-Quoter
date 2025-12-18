@@ -30,7 +30,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { categoryId, name, description, price = 0, partNumber, addToPackingList = false, addFinishToPartNumber = false } = await request.json()
+    const {
+      categoryId,
+      name,
+      description,
+      price = 0,
+      partNumber,
+      addToPackingList = false,
+      addFinishToPartNumber = false,
+      isCutListItem = false
+    } = await request.json()
 
     if (!name || !categoryId) {
       return NextResponse.json(
@@ -64,7 +73,8 @@ export async function POST(request: NextRequest) {
         price: parseFloat(price),
         partNumber: partNumber || null,
         addToPackingList: Boolean(addToPackingList),
-        addFinishToPartNumber: Boolean(addFinishToPartNumber)
+        addFinishToPartNumber: Boolean(addFinishToPartNumber),
+        isCutListItem: Boolean(isCutListItem)
       },
       include: {
         category: true

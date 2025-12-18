@@ -262,20 +262,25 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
     }
   }
 
-  const handleDownloadProductCutListCSV = async (productName: string) => {
+  const handleDownloadProductCutListCSV = async (productSizeKey: string) => {
     try {
-      setDownloadingProduct(productName)
-      // Get the unit count from cutListData for this product, default to total units if not found
-      const productItems = cutListData?.cutListItems.filter(item => item.productName === productName) || []
+      setDownloadingProduct(productSizeKey)
+      // Parse the product+size key (format: "productName|sizeKey")
+      const [productName, sizeKey] = productSizeKey.split('|')
+      // Get the unit count from cutListData for this product+size combo
+      const productItems = cutListData?.cutListItems.filter(
+        item => item.productName === productName && item.sizeKey === sizeKey
+      ) || []
       const unitCount = productItems[0]?.unitCount || 1
-      const batchSize = batchSizes[productName] || unitCount
-      const response = await fetch(`/api/projects/${projectId}/bom?cutlist=true&format=csv&product=${encodeURIComponent(productName)}&batch=${batchSize}`)
+      const batchSize = batchSizes[productSizeKey] || unitCount
+      // Include size filter in API call
+      const response = await fetch(`/api/projects/${projectId}/bom?cutlist=true&format=csv&product=${encodeURIComponent(productName)}&size=${encodeURIComponent(sizeKey)}&batch=${batchSize}`)
       if (response.ok) {
         const blob = await response.blob()
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `${project?.name || 'project'}-${productName.replace(/\s+/g, '-')}-${batchSize}units-cutlist.csv`
+        a.download = `${project?.name || 'project'}-${productName.replace(/\s+/g, '-')}-${sizeKey}-${batchSize}units-cutlist.csv`
         document.body.appendChild(a)
         a.click()
         window.URL.revokeObjectURL(url)
@@ -1068,36 +1073,40 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                 </div>
               ) : cutListData && cutListData.cutListItems.length > 0 ? (
                 <>
-                  {/* Product Cut List Cards */}
+                  {/* Product Cut List Cards - grouped by product AND size */}
                   <div className="space-y-4">
-                    <h4 className="font-medium text-gray-900">Download Cut Lists by Product</h4>
+                    <h4 className="font-medium text-gray-900">Download Cut Lists by Product & Size</h4>
                     {(() => {
-                      const productGroups = cutListData.cutListItems.reduce((acc, item) => {
-                        if (!acc[item.productName]) {
-                          acc[item.productName] = []
+                      // Group by product + size to properly show unit counts for each size
+                      const productSizeGroups = cutListData.cutListItems.reduce((acc, item) => {
+                        const key = `${item.productName}|${item.sizeKey}`
+                        if (!acc[key]) {
+                          acc[key] = []
                         }
-                        acc[item.productName].push(item)
+                        acc[key].push(item)
                         return acc
                       }, {} as Record<string, CutListItem[]>)
 
-                      return Object.entries(productGroups).map(([productName, items]) => {
-                        // Calculate total units (sum of unique unit counts across all sizes)
-                        const totalUnits = items.reduce((sum, item) => sum + item.unitCount, 0) / items.reduce((sum, item) => sum + item.qtyPerUnit, 0) * items[0]?.qtyPerUnit || 0
-                        // Get unique unit count (number of product instances)
-                        const uniqueSizes = new Set(items.map(item => item.sizeKey)).size
+                      return Object.entries(productSizeGroups).map(([key, items]) => {
+                        const [productName, sizeKey] = key.split('|')
+                        // All items in this group have the same unitCount since they're same product+size
                         const unitCount = items[0]?.unitCount || 1
                         const uniqueCuts = items.length
                         const totalParts = items.reduce((sum, item) => sum + item.totalQty, 0)
                         const partsPerUnit = items.reduce((sum, item) => sum + item.qtyPerUnit, 0)
+                        const panelWidth = items[0]?.panelWidth || 0
+                        const panelHeight = items[0]?.panelHeight || 0
 
-                        const batchSize = batchSizes[productName] || unitCount
+                        const batchKey = `${productName}|${sizeKey}`
+                        const batchSize = batchSizes[batchKey] || unitCount
                         const partsInBatch = partsPerUnit * batchSize
 
                         return (
-                          <div key={productName} className="bg-white border border-gray-200 rounded-lg p-4">
+                          <div key={key} className="bg-white border border-gray-200 rounded-lg p-4">
                             <div className="flex items-center justify-between">
                               <div className="flex-1">
                                 <h5 className="font-semibold text-gray-900 text-lg">{productName}</h5>
+                                <div className="text-sm text-gray-600 mt-1">{panelWidth}" x {panelHeight}"</div>
                                 <div className="mt-2 grid grid-cols-4 gap-4 text-sm">
                                   <div>
                                     <span className="text-gray-500">Total Units:</span>
@@ -1127,7 +1136,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                                     value={batchSize}
                                     onChange={(e) => setBatchSizes(prev => ({
                                       ...prev,
-                                      [productName]: Math.min(unitCount, Math.max(1, parseInt(e.target.value) || 1))
+                                      [batchKey]: Math.min(unitCount, Math.max(1, parseInt(e.target.value) || 1))
                                     }))}
                                     className="w-20 px-2 py-1.5 border border-gray-300 rounded text-center text-sm"
                                   />
@@ -1136,11 +1145,11 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                                   </div>
                                 </div>
                                 <button
-                                  onClick={() => handleDownloadProductCutListCSV(productName)}
-                                  disabled={downloadingProduct === productName}
+                                  onClick={() => handleDownloadProductCutListCSV(`${productName}|${sizeKey}`)}
+                                  disabled={downloadingProduct === `${productName}|${sizeKey}`}
                                   className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50"
                                 >
-                                  {downloadingProduct === productName ? (
+                                  {downloadingProduct === `${productName}|${sizeKey}` ? (
                                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
                                   ) : (
                                     <Download className="w-4 h-4 mr-2" />

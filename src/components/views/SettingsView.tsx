@@ -356,6 +356,80 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,,3.2,TRUE,
           </div>
         </div>
 
+        {/* Calculation Equations Reference */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Calculation Equations Reference</h2>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Reference guide for formulas used in Product BOMs, extrusion lengths, and glass calculations.
+            </p>
+
+            <div className="bg-blue-50 rounded-lg p-4 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-blue-900 mb-2">Available Variables</h3>
+                <div className="flex flex-wrap gap-2">
+                  <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">width</span>
+                  <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">height</span>
+                </div>
+                <p className="text-xs text-blue-700 mt-2">
+                  Variables are case-insensitive (WIDTH, Width, width all work the same)
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-blue-900 mb-2">Supported Operations</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                  <div className="bg-white rounded p-2 text-center">
+                    <span className="font-mono text-blue-800 text-lg">+</span>
+                    <p className="text-xs text-gray-600">Addition</p>
+                  </div>
+                  <div className="bg-white rounded p-2 text-center">
+                    <span className="font-mono text-blue-800 text-lg">-</span>
+                    <p className="text-xs text-gray-600">Subtraction</p>
+                  </div>
+                  <div className="bg-white rounded p-2 text-center">
+                    <span className="font-mono text-blue-800 text-lg">*</span>
+                    <p className="text-xs text-gray-600">Multiplication</p>
+                  </div>
+                  <div className="bg-white rounded p-2 text-center">
+                    <span className="font-mono text-blue-800 text-lg">/</span>
+                    <p className="text-xs text-gray-600">Division</p>
+                  </div>
+                </div>
+                <p className="text-xs text-blue-700 mt-2">
+                  Parentheses ( ) and decimal numbers are also supported
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-blue-900 mb-2">Formula Examples</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="bg-white rounded p-2 flex justify-between items-center">
+                    <code className="font-mono text-gray-800">width + 2</code>
+                    <span className="text-xs text-gray-500">Add 2 inches to width</span>
+                  </div>
+                  <div className="bg-white rounded p-2 flex justify-between items-center">
+                    <code className="font-mono text-gray-800">height - 4.094</code>
+                    <span className="text-xs text-gray-500">Subtract from height</span>
+                  </div>
+                  <div className="bg-white rounded p-2 flex justify-between items-center">
+                    <code className="font-mono text-gray-800">width / 4 - 4.094</code>
+                    <span className="text-xs text-gray-500">Quarter width minus offset</span>
+                  </div>
+                  <div className="bg-white rounded p-2 flex justify-between items-center">
+                    <code className="font-mono text-gray-800">(width + height) * 2</code>
+                    <span className="text-xs text-gray-500">Perimeter calculation</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-500">
+              These formulas are used when adding extrusion parts to Product BOMs and for glass size calculations.
+            </p>
+          </div>
+        </div>
+
         {/* QuickBooks Integration */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">QuickBooks Integration</h2>

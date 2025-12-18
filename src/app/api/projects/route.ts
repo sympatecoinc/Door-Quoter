@@ -9,20 +9,15 @@ export async function GET() {
       include: {
         openings: {
           orderBy: { id: 'asc' },
-          include: {
-            panels: {
-              include: {
-                componentInstance: {
-                  include: {
-                    product: {
-                      include: {
-                        productBOMs: true // Include BOMs for category-specific markup calculation
-                      }
-                    }
-                  }
-                }
-              }
-            }
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            extrusionCost: true,
+            hardwareCost: true,
+            glassCost: true,
+            otherCost: true,
+            hybridRemainingCost: true
           }
         },
         pricingMode: true, // Include pricing mode for sale price calculation

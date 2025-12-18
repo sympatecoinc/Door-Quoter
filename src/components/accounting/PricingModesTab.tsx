@@ -22,6 +22,7 @@ export default function PricingModesTab() {
     extrusionMarkup: 0,
     hardwareMarkup: 0,
     glassMarkup: 0,
+    packagingMarkup: 0,
     discount: 0,
     isDefault: false,
     extrusionCostingMethod: 'FULL_STOCK' as 'FULL_STOCK' | 'PERCENTAGE_BASED' | 'HYBRID'
@@ -55,6 +56,7 @@ export default function PricingModesTab() {
       extrusionMarkup: 0,
       hardwareMarkup: 0,
       glassMarkup: 0,
+      packagingMarkup: 0,
       discount: 0,
       isDefault: false,
       extrusionCostingMethod: 'FULL_STOCK'
@@ -71,6 +73,7 @@ export default function PricingModesTab() {
       extrusionMarkup: mode.extrusionMarkup || 0,
       hardwareMarkup: mode.hardwareMarkup || 0,
       glassMarkup: mode.glassMarkup || 0,
+      packagingMarkup: mode.packagingMarkup || 0,
       discount: mode.discount,
       isDefault: mode.isDefault,
       extrusionCostingMethod: (mode.extrusionCostingMethod as 'FULL_STOCK' | 'PERCENTAGE_BASED' | 'HYBRID') || 'FULL_STOCK'
@@ -87,6 +90,7 @@ export default function PricingModesTab() {
       extrusionMarkup: 0,
       hardwareMarkup: 0,
       glassMarkup: 0,
+      packagingMarkup: 0,
       discount: 0,
       isDefault: false,
       extrusionCostingMethod: 'FULL_STOCK'
@@ -246,7 +250,7 @@ export default function PricingModesTab() {
               <div>
                 <h4 className="text-sm font-medium text-gray-900 mb-3">Category-Specific Markups</h4>
                 <p className="text-xs text-gray-600 mb-3">Set individual markups for each component type, or use global markup below</p>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-4 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Extrusions (%)
@@ -260,7 +264,7 @@ export default function PricingModesTab() {
                           ...formData,
                           extrusionMarkup: value,
                           // Clear global markup if setting category-specific
-                          markup: value > 0 || formData.hardwareMarkup > 0 || formData.glassMarkup > 0 ? 0 : formData.markup
+                          markup: value > 0 || formData.hardwareMarkup > 0 || formData.glassMarkup > 0 || formData.packagingMarkup > 0 ? 0 : formData.markup
                         })
                       }}
                       disabled={formData.markup > 0}
@@ -285,7 +289,7 @@ export default function PricingModesTab() {
                           ...formData,
                           hardwareMarkup: value,
                           // Clear global markup if setting category-specific
-                          markup: value > 0 || formData.extrusionMarkup > 0 || formData.glassMarkup > 0 ? 0 : formData.markup
+                          markup: value > 0 || formData.extrusionMarkup > 0 || formData.glassMarkup > 0 || formData.packagingMarkup > 0 ? 0 : formData.markup
                         })
                       }}
                       disabled={formData.markup > 0}
@@ -310,7 +314,7 @@ export default function PricingModesTab() {
                           ...formData,
                           glassMarkup: value,
                           // Clear global markup if setting category-specific
-                          markup: value > 0 || formData.extrusionMarkup > 0 || formData.hardwareMarkup > 0 ? 0 : formData.markup
+                          markup: value > 0 || formData.extrusionMarkup > 0 || formData.hardwareMarkup > 0 || formData.packagingMarkup > 0 ? 0 : formData.markup
                         })
                       }}
                       disabled={formData.markup > 0}
@@ -321,6 +325,31 @@ export default function PricingModesTab() {
                       step="0.1"
                     />
                     <p className="text-xs text-gray-500 mt-1">Markup for glass</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Packaging (%)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.packagingMarkup}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value) || 0
+                        setFormData({
+                          ...formData,
+                          packagingMarkup: value,
+                          // Clear global markup if setting category-specific
+                          markup: value > 0 || formData.extrusionMarkup > 0 || formData.hardwareMarkup > 0 || formData.glassMarkup > 0 ? 0 : formData.markup
+                        })
+                      }}
+                      disabled={formData.markup > 0}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      placeholder="0"
+                      min="0"
+                      max="1000"
+                      step="0.1"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Markup for packaging items</p>
                   </div>
                 </div>
               </div>
@@ -341,10 +370,11 @@ export default function PricingModesTab() {
                         // Clear category-specific markups if setting global
                         extrusionMarkup: value > 0 ? 0 : formData.extrusionMarkup,
                         hardwareMarkup: value > 0 ? 0 : formData.hardwareMarkup,
-                        glassMarkup: value > 0 ? 0 : formData.glassMarkup
+                        glassMarkup: value > 0 ? 0 : formData.glassMarkup,
+                        packagingMarkup: value > 0 ? 0 : formData.packagingMarkup
                       })
                     }}
-                    disabled={formData.extrusionMarkup > 0 || formData.hardwareMarkup > 0 || formData.glassMarkup > 0}
+                    disabled={formData.extrusionMarkup > 0 || formData.hardwareMarkup > 0 || formData.glassMarkup > 0 || formData.packagingMarkup > 0}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 disabled:bg-gray-100 disabled:cursor-not-allowed"
                     placeholder="0"
                     min="0"
@@ -352,7 +382,7 @@ export default function PricingModesTab() {
                     step="0.1"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    {formData.extrusionMarkup > 0 || formData.hardwareMarkup > 0 || formData.glassMarkup > 0
+                    {formData.extrusionMarkup > 0 || formData.hardwareMarkup > 0 || formData.glassMarkup > 0 || formData.packagingMarkup > 0
                       ? 'Disabled when category markups are set'
                       : 'Applied to all component types'}
                   </p>
