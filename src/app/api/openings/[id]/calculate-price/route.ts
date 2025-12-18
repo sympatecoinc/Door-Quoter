@@ -393,7 +393,11 @@ export async function POST(
               include: {
                 product: {
                   include: {
-                    productBOMs: true,
+                    productBOMs: {
+                      include: {
+                        option: true
+                      }
+                    },
                     productSubOptions: {
                       include: {
                         category: {
@@ -449,6 +453,7 @@ export async function POST(
       totalExtrusionCost: 0,
       totalHardwareCost: 0,
       totalGlassCost: 0,
+      totalPackagingCost: 0,
       totalOtherCost: 0,
       totalPrice: 0
     }
@@ -514,6 +519,8 @@ export async function POST(
           priceBreakdown.totalHardwareCost += cost
         } else if (breakdown.partType === 'Glass') {
           priceBreakdown.totalGlassCost += cost
+        } else if (breakdown.partType === 'Packaging') {
+          priceBreakdown.totalPackagingCost += cost
         } else {
           priceBreakdown.totalOtherCost += cost
         }
@@ -548,17 +555,24 @@ export async function POST(
             if (!optionId) {
               // No option selected - if there's a standard, include its cost at cost (no markup)
               if (standardOption) {
+                // Look up quantity from ProductBOM if this is a cut-list option
+                const optionBom = standardOption.isCutListItem
+                  ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
+                  : null
+                const quantity = optionBom?.quantity || 1
+                const totalPrice = standardOption.price * quantity
+
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
                   optionName: standardOption.name,
-                  price: standardOption.price, // Cost price, no markup
+                  price: totalPrice, // Cost price * quantity, no markup
                   isStandard: true,
                   isIncluded: false
                 })
-                componentBreakdown.totalOptionCost += standardOption.price
-                componentCost += standardOption.price
-                priceBreakdown.totalStandardOptionCost += standardOption.price // Track for no-markup
-                priceBreakdown.totalOtherCost += standardOption.price // Standard options tracked as "other" (no markup)
+                componentBreakdown.totalOptionCost += totalPrice
+                componentCost += totalPrice
+                priceBreakdown.totalStandardOptionCost += totalPrice // Track for no-markup
+                priceBreakdown.totalOtherCost += totalPrice // Standard options tracked as "other" (no markup)
               }
               continue
             }
@@ -572,9 +586,15 @@ export async function POST(
               const isIncluded = includedOptions.includes(selectedOption.id)
               const isStandardSelected = standardOptionId === selectedOption.id
 
+              // Look up quantity from ProductBOM if this is a cut-list option
+              const optionBom = selectedOption.isCutListItem
+                ? product.productBOMs?.find((bom: any) => bom.optionId === selectedOption.id)
+                : null
+              const quantity = optionBom?.quantity || 1
+
               if (isStandardSelected) {
                 // Standard option selected - cost only, no markup
-                const optionPrice = isIncluded ? 0 : selectedOption.price
+                const optionPrice = isIncluded ? 0 : selectedOption.price * quantity
 
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
@@ -590,7 +610,7 @@ export async function POST(
                 priceBreakdown.totalOtherCost += optionPrice // Standard options tracked as "other" (no markup)
               } else {
                 // Non-standard option selected - full price (markup applied at project level)
-                const optionPrice = isIncluded ? 0 : selectedOption.price
+                const optionPrice = isIncluded ? 0 : selectedOption.price * quantity
 
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
@@ -620,17 +640,24 @@ export async function POST(
             (io: any) => io.id === productSubOption.standardOptionId
           )
           if (standardOption) {
+            // Look up quantity from ProductBOM if this is a cut-list option
+            const optionBom = standardOption.isCutListItem
+              ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
+              : null
+            const quantity = optionBom?.quantity || 1
+            const totalPrice = standardOption.price * quantity
+
             componentBreakdown.optionCosts.push({
               categoryName: productSubOption.category.name,
               optionName: standardOption.name,
-              price: standardOption.price, // At cost
+              price: totalPrice, // At cost * quantity
               isStandard: true,
               isIncluded: false
             })
-            componentBreakdown.totalOptionCost += standardOption.price
-            componentCost += standardOption.price
-            priceBreakdown.totalStandardOptionCost += standardOption.price // Track for no-markup
-            priceBreakdown.totalOtherCost += standardOption.price // Standard options tracked as "other" (no markup)
+            componentBreakdown.totalOptionCost += totalPrice
+            componentCost += totalPrice
+            priceBreakdown.totalStandardOptionCost += totalPrice // Track for no-markup
+            priceBreakdown.totalOtherCost += totalPrice // Standard options tracked as "other" (no markup)
           }
         }
       }
@@ -639,9 +666,16 @@ export async function POST(
       if (panel.glassType && panel.glassType !== 'N/A') {
         console.log(`[Glass Pricing] Panel ${panel.id} has glass type: ${panel.glassType}`)
         try {
-          // Fetch glass type pricing from database
+          // Fetch glass type pricing from database (include attached parts)
           const glassType = await prisma.glassType.findUnique({
-            where: { name: panel.glassType }
+            where: { name: panel.glassType },
+            include: {
+              parts: {
+                include: {
+                  masterPart: true
+                }
+              }
+            }
           })
 
           console.log(`[Glass Pricing] Found glass type in DB:`, glassType)
@@ -700,6 +734,49 @@ export async function POST(
             priceBreakdown.totalGlassCost += componentBreakdown.totalGlassCost
 
             console.log(`[Glass Pricing] Calculated glass cost: $${componentBreakdown.totalGlassCost}`)
+
+            // Process glass type parts (e.g., vinyl frosting by linear feet)
+            if (glassType.parts && glassType.parts.length > 0) {
+              console.log(`[Glass Type Parts] Processing ${glassType.parts.length} attached parts`)
+
+              // Initialize glass type parts array in breakdown
+              ;(componentBreakdown as any).glassTypeParts = []
+
+              for (const gtp of glassType.parts) {
+                const partVariables = {
+                  width: panel.width,
+                  height: panel.height,
+                  glassWidth: glassWidth,
+                  glassHeight: glassHeight
+                }
+
+                // Calculate quantity from formula or use fixed quantity
+                let partQuantity = gtp.quantity || 1
+                if (gtp.formula) {
+                  partQuantity = evaluateFormula(gtp.formula, partVariables)
+                }
+
+                // Get part cost from MasterPart
+                const unitCost = gtp.masterPart.cost || 0
+                const partCost = unitCost * partQuantity
+
+                console.log(`[Glass Type Parts] Part ${gtp.masterPart.partNumber}: qty=${partQuantity.toFixed(2)}, cost=$${partCost.toFixed(2)}`)
+
+                // Add to breakdown
+                ;(componentBreakdown as any).glassTypeParts.push({
+                  partNumber: gtp.masterPart.partNumber,
+                  partName: gtp.masterPart.baseName,
+                  formula: gtp.formula,
+                  quantity: Math.round(partQuantity * 100) / 100,
+                  unitCost: unitCost,
+                  totalCost: Math.round(partCost * 100) / 100
+                })
+
+                // Add to component cost and hardware category
+                componentCost += partCost
+                priceBreakdown.totalHardwareCost += partCost
+              }
+            }
           } else {
             console.log(`[Glass Pricing] Missing data - glassType: ${!!glassType}, widthFormula: ${!!product.glassWidthFormula}, heightFormula: ${!!product.glassHeightFormula}`)
           }
@@ -725,6 +802,7 @@ export async function POST(
         extrusionCost: priceBreakdown.totalExtrusionCost,
         hardwareCost: priceBreakdown.totalHardwareCost,
         glassCost: priceBreakdown.totalGlassCost,
+        packagingCost: priceBreakdown.totalPackagingCost,
         otherCost: priceBreakdown.totalOtherCost,
         standardOptionCost: priceBreakdown.totalStandardOptionCost,
         hybridRemainingCost: priceBreakdown.totalHybridRemainingCost,

@@ -295,8 +295,8 @@ export default function MasterPartsView() {
       return price.toFixed(2)
     }
 
-    // For hardware and fastener parts, show direct cost
-    if (part.partType === 'Hardware' || part.partType === 'Fastener') {
+    // For hardware, fastener, and packaging parts, show direct cost
+    if (part.partType === 'Hardware' || part.partType === 'Fastener' || part.partType === 'Packaging') {
       return part.cost ? `$${formatPrice(part.cost)}` : '-'
     }
 
@@ -376,8 +376,8 @@ export default function MasterPartsView() {
     e.preventDefault()
     if (!partNumber.trim() || !baseName.trim()) return
     
-    // Validate cost for Hardware and Fastener parts
-    if ((partType === 'Hardware' || partType === 'Fastener') && (!cost.trim() || isNaN(parseFloat(cost)))) {
+    // Validate cost for Hardware, Fastener, and Packaging parts
+    if ((partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') && (!cost.trim() || isNaN(parseFloat(cost)))) {
       showError(`${partType} parts require a valid cost`)
       return
     }
@@ -424,8 +424,8 @@ export default function MasterPartsView() {
     e.preventDefault()
     if (!partNumber.trim() || !baseName.trim() || !editingPart) return
     
-    // Validate cost for Hardware and Fastener parts
-    if ((partType === 'Hardware' || partType === 'Fastener') && (!cost.trim() || isNaN(parseFloat(cost)))) {
+    // Validate cost for Hardware, Fastener, and Packaging parts
+    if ((partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') && (!cost.trim() || isNaN(parseFloat(cost)))) {
       showError(`${partType} parts require a valid cost`)
       return
     }
@@ -624,8 +624,8 @@ export default function MasterPartsView() {
     setDescription(part.description || '')
     setUnit(part.unit || '')
     setCost(part.cost?.toString() || '')
-    // For hardware/fastener use weightPerUnit, for extrusions use weightPerFoot (both stored in same input field)
-    setWeightPerUnit(((part.partType === 'Hardware' || part.partType === 'Fastener') ? part.weightPerUnit : part.weightPerFoot)?.toString() || '')
+    // For hardware/fastener/packaging use weightPerUnit, for extrusions use weightPerFoot (both stored in same input field)
+    setWeightPerUnit(((part.partType === 'Hardware' || part.partType === 'Fastener' || part.partType === 'Packaging') ? part.weightPerUnit : part.weightPerFoot)?.toString() || '')
     setPartType(part.partType)
     setIsOption(part.isOption || false)
     setIsMillFinish(part.isMillFinish || false)
@@ -1198,7 +1198,7 @@ export default function MasterPartsView() {
             <Package className="w-5 h-5 inline-block mr-2" />
             Master Parts ({masterParts.length})
           </button>
-          {selectedMasterPart && selectedMasterPart.partType !== 'Hardware' && selectedMasterPart.partType !== 'Fastener' && (
+          {selectedMasterPart && selectedMasterPart.partType !== 'Hardware' && selectedMasterPart.partType !== 'Fastener' && selectedMasterPart.partType !== 'Packaging' && (
             <button
               onClick={() => setActiveTab('partRules')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
@@ -1401,6 +1401,8 @@ export default function MasterPartsView() {
                               ? 'bg-green-100 text-green-800'
                               : part.partType === 'Fastener'
                               ? 'bg-orange-100 text-orange-800'
+                              : part.partType === 'Packaging'
+                              ? 'bg-purple-100 text-purple-800'
                               : 'bg-blue-100 text-blue-800'
                           }`}>
                             {part.partType}
@@ -1410,7 +1412,7 @@ export default function MasterPartsView() {
                           {part.unit || '-'}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900">
-                          {(part.partType === 'Hardware' || part.partType === 'Fastener') && part.weightPerUnit
+                          {(part.partType === 'Hardware' || part.partType === 'Fastener' || part.partType === 'Packaging') && part.weightPerUnit
                             ? `${part.weightPerUnit} oz`
                             : part.partType === 'Extrusion' && part.weightPerFoot
                             ? `${part.weightPerFoot} oz/ft`
@@ -1421,7 +1423,7 @@ export default function MasterPartsView() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex space-x-2 justify-end">
-                            {part.partType !== 'Hardware' && part.partType !== 'Fastener' && (
+                            {part.partType !== 'Hardware' && part.partType !== 'Fastener' && part.partType !== 'Packaging' && (
                               <button
                                 onClick={() => viewMasterPartRules(part)}
                                 className="p-1 text-gray-400 hover:text-green-600 transition-colors"
@@ -1654,8 +1656,8 @@ export default function MasterPartsView() {
             </div>
           </div>
 
-          {/* Pricing Rules for this part - only show for non-extrusion, non-hardware, and non-fastener parts */}
-          {selectedMasterPart?.partType !== 'Extrusion' && selectedMasterPart?.partType !== 'Hardware' && selectedMasterPart?.partType !== 'Fastener' && (
+          {/* Pricing Rules for this part - only show for non-extrusion, non-hardware, non-fastener, and non-packaging parts */}
+          {selectedMasterPart?.partType !== 'Extrusion' && selectedMasterPart?.partType !== 'Hardware' && selectedMasterPart?.partType !== 'Fastener' && selectedMasterPart?.partType !== 'Packaging' && (
             <div className="bg-white shadow-sm rounded-lg border border-gray-200 mt-6">
               <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                 <h3 className="text-lg font-medium text-gray-900">Pricing Rules ({pricingRules.length})</h3>
@@ -2062,6 +2064,7 @@ export default function MasterPartsView() {
                   <option value="Hardware">Hardware</option>
                   <option value="Extrusion">Extrusion</option>
                   <option value="Fastener">Fastener</option>
+                  <option value="Packaging">Packaging</option>
                 </select>
               </div>
 
@@ -2196,6 +2199,51 @@ export default function MasterPartsView() {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Cost ($) *
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={cost}
+                          onChange={(e) => setCost(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="0.00"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Weight (oz)
+                          <span className="text-xs text-gray-500 ml-1">(Optional)</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={weightPerUnit}
+                          onChange={(e) => setWeightPerUnit(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Packaging specific fields */}
+                  {partType === 'Packaging' && (
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                        <input
+                          type="text"
+                          value={unit}
+                          onChange={(e) => setUnit(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="e.g., EA, BOX, ROLL"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Cost ($) *
+                          <span className="text-xs text-gray-500 ml-1">(Required)</span>
                         </label>
                         <input
                           type="number"

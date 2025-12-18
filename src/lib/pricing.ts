@@ -5,6 +5,7 @@ export interface PricingMode {
   extrusionMarkup: number
   hardwareMarkup: number
   glassMarkup: number
+  packagingMarkup: number
   discount: number
 }
 
@@ -12,6 +13,7 @@ export interface CostBreakdown {
   extrusion: number
   hardware: number
   glass: number
+  packaging: number
   other: number
 }
 
@@ -20,7 +22,7 @@ export interface CostBreakdown {
  */
 export function calculateMarkupPrice(
   baseCost: number,
-  partType: 'Extrusion' | 'Hardware' | 'Glass' | 'Other',
+  partType: 'Extrusion' | 'Hardware' | 'Glass' | 'Packaging' | 'Other',
   pricingMode: PricingMode | null
 ): number {
   if (!pricingMode) return baseCost
@@ -34,6 +36,8 @@ export function calculateMarkupPrice(
     categoryMarkup = pricingMode.hardwareMarkup
   } else if (partType === 'Glass' && pricingMode.glassMarkup > 0) {
     categoryMarkup = pricingMode.glassMarkup
+  } else if (partType === 'Packaging' && pricingMode.packagingMarkup > 0) {
+    categoryMarkup = pricingMode.packagingMarkup
   } else if (pricingMode.markup > 0) {
     // Fallback to global markup if category-specific markup is not set
     categoryMarkup = pricingMode.markup
@@ -60,9 +64,10 @@ export function calculateTotalMarkedUpPrice(
   const markedUpExtrusion = calculateMarkupPrice(costBreakdown.extrusion, 'Extrusion', pricingMode)
   const markedUpHardware = calculateMarkupPrice(costBreakdown.hardware, 'Hardware', pricingMode)
   const markedUpGlass = calculateMarkupPrice(costBreakdown.glass, 'Glass', pricingMode)
+  const markedUpPackaging = calculateMarkupPrice(costBreakdown.packaging, 'Packaging', pricingMode)
   const markedUpOther = calculateMarkupPrice(costBreakdown.other, 'Other', pricingMode)
 
-  return markedUpExtrusion + markedUpHardware + markedUpGlass + markedUpOther
+  return markedUpExtrusion + markedUpHardware + markedUpGlass + markedUpPackaging + markedUpOther
 }
 
 /**
@@ -71,16 +76,17 @@ export function calculateTotalMarkedUpPrice(
  */
 export function estimateCostBreakdown(
   totalCost: number,
-  bomCounts: { Extrusion: number; Hardware: number; Glass: number; Other: number },
+  bomCounts: { Extrusion: number; Hardware: number; Glass: number; Packaging: number; Other: number },
   hardwareOptionsCost: number = 0
 ): CostBreakdown {
-  const totalBOMCount = bomCounts.Extrusion + bomCounts.Hardware + bomCounts.Glass + bomCounts.Other
+  const totalBOMCount = bomCounts.Extrusion + bomCounts.Hardware + bomCounts.Glass + bomCounts.Packaging + bomCounts.Other
   const remainingCost = totalCost - hardwareOptionsCost
 
   let breakdown: CostBreakdown = {
     extrusion: 0,
     hardware: hardwareOptionsCost,
     glass: 0,
+    packaging: 0,
     other: 0
   }
 
@@ -88,6 +94,7 @@ export function estimateCostBreakdown(
     breakdown.extrusion = (remainingCost * bomCounts.Extrusion) / totalBOMCount
     breakdown.hardware += (remainingCost * bomCounts.Hardware) / totalBOMCount
     breakdown.glass = (remainingCost * bomCounts.Glass) / totalBOMCount
+    breakdown.packaging = (remainingCost * bomCounts.Packaging) / totalBOMCount
     breakdown.other = (remainingCost * bomCounts.Other) / totalBOMCount
   }
 

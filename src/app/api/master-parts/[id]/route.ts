@@ -58,11 +58,11 @@ export async function PUT(
       }, { status: 400 })
     }
 
-    // Validate cost requirements: Hardware parts require cost, Extrusions don't
-    if (partType === 'Hardware') {
+    // Validate cost requirements: Hardware, Fastener, and Packaging parts require cost, Extrusions don't
+    if (partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') {
       if (!cost || isNaN(parseFloat(cost.toString()))) {
         return NextResponse.json({
-          error: 'Hardware parts require a valid cost'
+          error: `${partType} parts require a valid cost`
         }, { status: 400 })
       }
       // Validate weight if provided
@@ -101,7 +101,7 @@ export async function PUT(
         description,
         unit: (partType === 'Extrusion') ? 'IN' : unit, // Always set unit to 'IN' for extrusions
         cost: (partType === 'Extrusion') ? null : (cost ? parseFloat(cost) : null),
-        weightPerUnit: (partType === 'Hardware' && weightPerUnit) ? parseFloat(weightPerUnit) : null,
+        weightPerUnit: ((partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') && weightPerUnit) ? parseFloat(weightPerUnit) : null,
         weightPerFoot: (partType === 'Extrusion' && weightPerFoot) ? parseFloat(weightPerFoot) : null,
         partType: partType || 'Hardware',
         isOption: (partType === 'Hardware') ? (isOption || false) : false, // Only hardware can be options

@@ -69,6 +69,7 @@ model Opening {
   extrusionCost         Float     @default(0) // Base cost of extrusions (for accurate markup calculation)
   hardwareCost          Float     @default(0) // Base cost of hardware (for accurate markup calculation)
   glassCost             Float     @default(0) // Base cost of glass (for accurate markup calculation)
+  packagingCost         Float     @default(0) // Base cost of packaging (for accurate markup calculation)
   otherCost             Float     @default(0) // Base cost of other items (for accurate markup calculation)
   standardOptionCost    Float     @default(0) // Cost of standard options (no markup applied)
   hybridRemainingCost   Float     @default(0) // HYBRID pricing: remaining extrusion cost (no markup applied)
@@ -175,10 +176,12 @@ model IndividualOption {
   elevationImageOriginalName  String?            // Original filename for elevation image
   planImagePath               String?            // Path to plan view image
   planImageOriginalName       String?            // Original filename for plan image
+  isCutListItem               Boolean            @default(false) // When true, shows in ProductBOM for formula assignment
   createdAt                   DateTime           @default(now())
   updatedAt                   DateTime           @updatedAt
   category                    SubOptionCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   productSubOptionsAsStandard ProductSubOption[] @relation("StandardOption")
+  productBOMs                 ProductBOM[]       // BOM entries for this option (per product)
 
   @@map("IndividualOptions")
 }
@@ -215,6 +218,7 @@ model BOM {
 model ProductBOM {
   id          Int      @id @default(autoincrement())
   productId   Int
+  optionId    Int?     // When set, this BOM entry is for a cut-list option (linked via IndividualOption)
   partType    String   @default("Hardware")
   partName    String
   description String?
@@ -230,6 +234,7 @@ model ProductBOM {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   product               Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  option                IndividualOption? @relation(fields: [optionId], references: [id], onDelete: Cascade)
 
   @@map("ProductBOMs")
 }
@@ -268,6 +273,7 @@ model MasterPart {
   updatedAt               DateTime           @updatedAt
   stockLengthRules        StockLengthRule[]
   pricingRules            PricingRule[]
+  glassTypeParts          GlassTypePart[]
 
   @@map("MasterParts")
 }
@@ -506,14 +512,33 @@ model ProductPlanView {
 
 // Glass Types - Pricing for glass by square foot
 model GlassType {
-  id           Int      @id @default(autoincrement())
-  name         String   @unique
+  id           Int             @id @default(autoincrement())
+  name         String          @unique
   description  String?
   pricePerSqFt Float
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  parts        GlassTypePart[]
 
   @@map("GlassTypes")
+}
+
+// Glass Type Parts - Hardware/Other parts attached to glass types (like vinyl frosting)
+model GlassTypePart {
+  id                    Int        @id @default(autoincrement())
+  glassTypeId           Int
+  masterPartId          Int
+  formula               String?    // e.g., "height" or "height / 12" for linear feet, "2" for fixed qty
+  quantity              Float?     // Fixed quantity if no formula (default: 1)
+  addFinishToPartNumber Boolean    @default(false)
+  addToPackingList      Boolean    @default(true)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  glassType             GlassType  @relation(fields: [glassTypeId], references: [id], onDelete: Cascade)
+  masterPart            MasterPart @relation(fields: [masterPartId], references: [id], onDelete: Cascade)
+
+  @@unique([glassTypeId, masterPartId])
+  @@map("GlassTypeParts")
 }
 
 // Pricing Modes - Configurable pricing strategies for projects
@@ -526,6 +551,7 @@ model PricingMode {
   extrusionMarkup        Float     @default(0) // Extrusion-specific markup percentage
   hardwareMarkup         Float     @default(0) // Hardware-specific markup percentage
   glassMarkup            Float     @default(0) // Glass-specific markup percentage
+  packagingMarkup        Float     @default(0) // Packaging-specific markup percentage
   discount               Float     @default(0) // Global discount percentage (e.g., 10 for 10%)
   extrusionCostingMethod String    @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED" | "HYBRID" - how to cost extrusions
   createdAt              DateTime  @default(now())

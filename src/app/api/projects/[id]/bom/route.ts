@@ -523,7 +523,11 @@ export async function GET(
                   include: {
                     product: {
                       include: {
-                        productBOMs: true,
+                        productBOMs: {
+                          include: {
+                            option: true
+                          }
+                        },
                         productSubOptions: {
                           include: {
                             category: {
@@ -698,6 +702,61 @@ export async function GET(
             glassArea: Math.round((glassWidth * glassHeight / 144) * 100) / 100, // Convert to sq ft
             color: 'N/A'
           })
+
+          // Add glass type parts to BOM (e.g., vinyl frosting by linear feet)
+          const dbGlassType = await prisma.glassType.findUnique({
+            where: { name: panel.glassType },
+            include: {
+              parts: {
+                include: { masterPart: true }
+              }
+            }
+          })
+
+          if (dbGlassType?.parts && dbGlassType.parts.length > 0) {
+            for (const gtp of dbGlassType.parts) {
+              const partVariables = {
+                width: effectiveWidth,
+                height: effectiveHeight,
+                glassWidth: glassWidth,
+                glassHeight: glassHeight
+              }
+
+              // Calculate quantity from formula or use fixed quantity
+              let partQuantity = gtp.quantity || 1
+              if (gtp.formula) {
+                partQuantity = evaluateFormula(gtp.formula, partVariables)
+              }
+
+              // Build part number with finish code if applicable
+              let fullPartNumber = gtp.masterPart.partNumber
+              if (gtp.addFinishToPartNumber && opening.finishColor) {
+                const finishCode = await getFinishCode(opening.finishColor)
+                if (finishCode) {
+                  fullPartNumber = `${fullPartNumber}${finishCode}`
+                }
+              }
+
+              bomItems.push({
+                openingName: opening.name,
+                panelId: panel.id,
+                productName: product.name,
+                panelWidth: effectiveWidth,
+                panelHeight: effectiveHeight,
+                partNumber: fullPartNumber,
+                partName: gtp.masterPart.baseName,
+                partType: gtp.masterPart.partType || 'Hardware',
+                quantity: Math.round(partQuantity * 100) / 100,
+                cutLength: null,
+                stockLength: null,
+                percentOfStock: null,
+                unit: gtp.masterPart.unit || 'EA',
+                description: `Glass Type Part: ${panel.glassType}`,
+                color: gtp.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
+                addToPackingList: gtp.addToPackingList
+              })
+            }
+          }
         }
 
         // Add product options (sub-options) to BOM with standard hardware logic
@@ -736,13 +795,63 @@ export async function GET(
                     }
                   }
 
-                  // Apply finish code if addFinishToPartNumber is set
-                  if (standardOption.addFinishToPartNumber && opening.finishColor && standardOption.partNumber) {
-                    const finishCode = await getFinishCode(opening.finishColor)
-                    if (finishCode) {
-                      partNumber = `${partNumber}${finishCode}`
+                  // Check if this option has a ProductBOM entry (for cut list items)
+                  const optionBom = standardOption.isCutListItem
+                    ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
+                    : null
+
+                  let cutLength: number | null = null
+                  let stockLength: number | null = null
+                  let isMillFinish = false
+                  let percentOfStock: number | null = null
+
+                  if (optionBom && optionBom.formula) {
+                    // Calculate cut length using the formula from ProductBOM
+                    cutLength = evaluateFormula(optionBom.formula, {
+                      width: effectiveWidth,
+                      height: effectiveHeight,
+                      Width: effectiveWidth,
+                      Height: effectiveHeight
+                    })
+
+                    // Look up stock length from MasterPart if partNumber exists
+                    if (standardOption.partNumber) {
+                      const stockInfo = await findStockLength(
+                        standardOption.partNumber,
+                        { formula: optionBom.formula, partType: 'Extrusion' },
+                        { width: effectiveWidth, height: effectiveHeight }
+                      )
+                      stockLength = stockInfo.stockLength
+                      isMillFinish = stockInfo.isMillFinish
+
+                      // Build full part number with finish code and stock length
+                      if (opening.finishColor && !isMillFinish && standardOption.addFinishToPartNumber) {
+                        const finishCode = await getFinishCode(opening.finishColor)
+                        if (finishCode) {
+                          partNumber = `${partNumber}${finishCode}`
+                        }
+                      }
+                      if (stockLength) {
+                        partNumber = `${partNumber}-${stockLength}`
+                      }
+
+                      // Calculate percent of stock
+                      if (cutLength && stockLength && stockLength > 0) {
+                        percentOfStock = (cutLength / stockLength) * 100
+                      }
+                    }
+                  } else {
+                    // Apply finish code if addFinishToPartNumber is set (non-cut-list options)
+                    if (standardOption.addFinishToPartNumber && opening.finishColor && standardOption.partNumber) {
+                      const finishCode = await getFinishCode(opening.finishColor)
+                      if (finishCode) {
+                        partNumber = `${partNumber}${finishCode}`
+                      }
                     }
                   }
+
+                  // Use quantity from ProductBOM if available, otherwise default to 1
+                  const optionQuantity = optionBom?.quantity || 1
 
                   bomItems.push({
                     openingName: opening.name,
@@ -752,12 +861,12 @@ export async function GET(
                     panelHeight: effectiveHeight,
                     partNumber: partNumber,
                     partName: standardOption.name,
-                    partType: 'Option',
-                    quantity: 1,
-                    cutLength: null,
-                    stockLength: null,
-                    percentOfStock: null,
-                    unit: 'EA',
+                    partType: optionBom ? 'Extrusion' : 'Option',
+                    quantity: optionQuantity,
+                    cutLength: cutLength,
+                    stockLength: stockLength,
+                    percentOfStock: percentOfStock,
+                    unit: optionBom ? 'IN' : 'EA',
                     description: `${productSubOption.category.name}: ${standardOption.name} (Standard - Included)`,
                     color: opening.finishColor || 'N/A',
                     isIncluded: false,
@@ -786,11 +895,58 @@ export async function GET(
                   }
                 }
 
-                // Apply finish code if addFinishToPartNumber is set
-                if (individualOption.addFinishToPartNumber && opening.finishColor && individualOption.partNumber) {
-                  const finishCode = await getFinishCode(opening.finishColor)
-                  if (finishCode) {
-                    partNumber = `${partNumber}${finishCode}`
+                // Check if this option has a ProductBOM entry (for cut list items)
+                const optionBom = individualOption.isCutListItem
+                  ? product.productBOMs?.find((bom: any) => bom.optionId === individualOption.id)
+                  : null
+
+                let cutLength: number | null = null
+                let stockLength: number | null = null
+                let isMillFinish = false
+                let percentOfStock: number | null = null
+
+                if (optionBom && optionBom.formula) {
+                  // Calculate cut length using the formula from ProductBOM
+                  cutLength = evaluateFormula(optionBom.formula, {
+                    width: effectiveWidth,
+                    height: effectiveHeight,
+                    Width: effectiveWidth,
+                    Height: effectiveHeight
+                  })
+
+                  // Look up stock length from MasterPart if partNumber exists
+                  if (individualOption.partNumber) {
+                    const stockInfo = await findStockLength(
+                      individualOption.partNumber,
+                      { formula: optionBom.formula, partType: 'Extrusion' },
+                      { width: effectiveWidth, height: effectiveHeight }
+                    )
+                    stockLength = stockInfo.stockLength
+                    isMillFinish = stockInfo.isMillFinish
+
+                    // Build full part number with finish code and stock length
+                    if (opening.finishColor && !isMillFinish && individualOption.addFinishToPartNumber) {
+                      const finishCode = await getFinishCode(opening.finishColor)
+                      if (finishCode) {
+                        partNumber = `${partNumber}${finishCode}`
+                      }
+                    }
+                    if (stockLength) {
+                      partNumber = `${partNumber}-${stockLength}`
+                    }
+
+                    // Calculate percent of stock
+                    if (cutLength && stockLength && stockLength > 0) {
+                      percentOfStock = (cutLength / stockLength) * 100
+                    }
+                  }
+                } else {
+                  // Apply finish code if addFinishToPartNumber is set (non-cut-list options)
+                  if (individualOption.addFinishToPartNumber && opening.finishColor && individualOption.partNumber) {
+                    const finishCode = await getFinishCode(opening.finishColor)
+                    if (finishCode) {
+                      partNumber = `${partNumber}${finishCode}`
+                    }
                   }
                 }
 
@@ -801,6 +957,9 @@ export async function GET(
                   description += ' (Included)'
                 }
 
+                // Use quantity from ProductBOM if available, otherwise default to 1
+                const optionQuantity = optionBom?.quantity || 1
+
                 bomItems.push({
                   openingName: opening.name,
                   panelId: panel.id,
@@ -809,12 +968,12 @@ export async function GET(
                   panelHeight: effectiveHeight,
                   partNumber: partNumber,
                   partName: individualOption.name,
-                  partType: 'Option',
-                  quantity: 1,
-                  cutLength: null,
-                  stockLength: null,
-                  percentOfStock: null,
-                  unit: 'EA',
+                  partType: optionBom ? 'Extrusion' : 'Option',
+                  quantity: optionQuantity,
+                  cutLength: cutLength,
+                  stockLength: stockLength,
+                  percentOfStock: percentOfStock,
+                  unit: optionBom ? 'IN' : 'EA',
                   description: description,
                   color: opening.finishColor || 'N/A',
                   isIncluded: isIncluded,
@@ -844,13 +1003,63 @@ export async function GET(
                 }
               }
 
-              // Apply finish code if addFinishToPartNumber is set
-              if (standardOption.addFinishToPartNumber && opening.finishColor && standardOption.partNumber) {
-                const finishCode = await getFinishCode(opening.finishColor)
-                if (finishCode) {
-                  partNumber = `${partNumber}${finishCode}`
+              // Check if this option has a ProductBOM entry (for cut list items)
+              const optionBom = standardOption.isCutListItem
+                ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
+                : null
+
+              let cutLength: number | null = null
+              let stockLength: number | null = null
+              let isMillFinish = false
+              let percentOfStock: number | null = null
+
+              if (optionBom && optionBom.formula) {
+                // Calculate cut length using the formula from ProductBOM
+                cutLength = evaluateFormula(optionBom.formula, {
+                  width: effectiveWidth,
+                  height: effectiveHeight,
+                  Width: effectiveWidth,
+                  Height: effectiveHeight
+                })
+
+                // Look up stock length from MasterPart if partNumber exists
+                if (standardOption.partNumber) {
+                  const stockInfo = await findStockLength(
+                    standardOption.partNumber,
+                    { formula: optionBom.formula, partType: 'Extrusion' },
+                    { width: effectiveWidth, height: effectiveHeight }
+                  )
+                  stockLength = stockInfo.stockLength
+                  isMillFinish = stockInfo.isMillFinish
+
+                  // Build full part number with finish code and stock length
+                  if (opening.finishColor && !isMillFinish && standardOption.addFinishToPartNumber) {
+                    const finishCode = await getFinishCode(opening.finishColor)
+                    if (finishCode) {
+                      partNumber = `${partNumber}${finishCode}`
+                    }
+                  }
+                  if (stockLength) {
+                    partNumber = `${partNumber}-${stockLength}`
+                  }
+
+                  // Calculate percent of stock
+                  if (cutLength && stockLength && stockLength > 0) {
+                    percentOfStock = (cutLength / stockLength) * 100
+                  }
+                }
+              } else {
+                // Apply finish code if addFinishToPartNumber is set (non-cut-list options)
+                if (standardOption.addFinishToPartNumber && opening.finishColor && standardOption.partNumber) {
+                  const finishCode = await getFinishCode(opening.finishColor)
+                  if (finishCode) {
+                    partNumber = `${partNumber}${finishCode}`
+                  }
                 }
               }
+
+              // Use quantity from ProductBOM if available, otherwise default to 1
+              const optionQuantity = optionBom?.quantity || 1
 
               bomItems.push({
                 openingName: opening.name,
@@ -860,12 +1069,12 @@ export async function GET(
                 panelHeight: effectiveHeight,
                 partNumber: partNumber,
                 partName: standardOption.name,
-                partType: 'Option',
-                quantity: 1,
-                cutLength: null,
-                stockLength: null,
-                percentOfStock: null,
-                unit: 'EA',
+                partType: optionBom ? 'Extrusion' : 'Option',
+                quantity: optionQuantity,
+                cutLength: cutLength,
+                stockLength: stockLength,
+                percentOfStock: percentOfStock,
+                unit: optionBom ? 'IN' : 'EA',
                 description: `${productSubOption.category.name}: ${standardOption.name} (Standard - Included)`,
                 color: opening.finishColor || 'N/A',
                 isIncluded: false,

@@ -76,6 +76,8 @@ function calculateMarkupPrice(
     categoryMarkup = pricingMode.hardwareMarkup
   } else if (partType === 'Glass' && pricingMode.glassMarkup > 0) {
     categoryMarkup = pricingMode.glassMarkup
+  } else if (partType === 'Packaging' && pricingMode.packagingMarkup > 0) {
+    categoryMarkup = pricingMode.packagingMarkup
   } else if (pricingMode.markup > 0) {
     // Fallback to global markup if category-specific markup is not set
     categoryMarkup = pricingMode.markup
@@ -178,6 +180,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             ;(opening as any).extrusionCost = data.breakdown?.totalExtrusionCost || 0
             ;(opening as any).hardwareCost = data.breakdown?.totalHardwareCost || 0
             ;(opening as any).glassCost = data.breakdown?.totalGlassCost || 0
+            ;(opening as any).packagingCost = data.breakdown?.totalPackagingCost || 0
             ;(opening as any).otherCost = data.breakdown?.totalOtherCost || 0
           } else {
             console.error(`Failed to recalculate price for opening ${opening.id}: ${response.status}`)
@@ -231,6 +234,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const extrusionCost = (opening as any).extrusionCost || 0
         const hardwareCost = (opening as any).hardwareCost || 0
         const glassCost = (opening as any).glassCost || 0
+        const packagingCost = (opening as any).packagingCost || 0
         const otherCost = (opening as any).otherCost || 0
 
         // Get standard option cost for this opening (should NOT be marked up)
@@ -296,12 +300,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const markedUpExtrusionCost = calculateMarkupPrice(extrusionCost, 'Extrusion', pricingMode, globalPricingMultiplier)
         const markedUpHardwareCost = calculateMarkupPrice(hardwareCost, 'Hardware', pricingMode, globalPricingMultiplier)
         const markedUpGlassCost = calculateMarkupPrice(glassCost, 'Glass', pricingMode, globalPricingMultiplier)
+        const markedUpPackagingCost = calculateMarkupPrice(packagingCost, 'Packaging', pricingMode, globalPricingMultiplier)
         const markedUpOtherCost = calculateMarkupPrice(otherCost, 'Other', pricingMode, globalPricingMultiplier)
 
         // Total marked-up price with category-specific markups
         // Note: standardOptionCost is already included in otherCost (stored that way by calculate-price API)
         // HYBRID remaining costs are added back WITHOUT markup (at cost)
-        const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpOtherCost + hybridRemainingCost
+        const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpPackagingCost + markedUpOtherCost + hybridRemainingCost
 
         // Generate description
         const panelTypes = opening.panels
@@ -371,6 +376,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             extrusion: { base: extrusionCost, markedUp: markedUpExtrusionCost },
             hardware: { base: hardwareCost, markedUp: markedUpHardwareCost },
             glass: { base: glassCost, markedUp: markedUpGlassCost },
+            packaging: { base: packagingCost, markedUp: markedUpPackagingCost },
             other: { base: otherCost, markedUp: markedUpOtherCost },
             standardOptions: { base: standardOptionCost, markedUp: standardOptionCost }, // No markup on standard options
             hybridRemaining: { base: hybridRemainingCost, markedUp: hybridRemainingCost } // HYBRID remaining at cost (no markup)

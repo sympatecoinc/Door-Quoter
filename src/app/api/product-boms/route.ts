@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
   try {
     const {
       productId,
+      optionId,
       partType,
       partName,
       description,
@@ -53,9 +54,42 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // If optionId is provided, check if BOM already exists for this option
+    if (optionId) {
+      const existingBom = await prisma.productBOM.findFirst({
+        where: {
+          productId: parseInt(productId),
+          optionId: parseInt(optionId)
+        }
+      })
+      if (existingBom) {
+        // Update existing instead of creating duplicate
+        const updatedBOM = await prisma.productBOM.update({
+          where: { id: existingBom.id },
+          data: {
+            partType: partType || 'Extrusion',
+            partName,
+            description: description || null,
+            formula: formula || null,
+            variable: variable || null,
+            unit: unit || null,
+            quantity: quantity || null,
+            stockLength: stockLength || null,
+            partNumber: partNumber || null,
+            cost: cost || null,
+            addFinishToPartNumber: addFinishToPartNumber || false,
+            addToPackingList: addToPackingList || false
+          },
+          include: { product: true, option: true }
+        })
+        return NextResponse.json(updatedBOM)
+      }
+    }
+
     const productBOM = await prisma.productBOM.create({
       data: {
         productId: parseInt(productId),
+        optionId: optionId ? parseInt(optionId) : null,
         partType: partType || 'Hardware',
         partName,
         description: description || null,
@@ -70,7 +104,8 @@ export async function POST(request: NextRequest) {
         addToPackingList: addToPackingList || false
       },
       include: {
-        product: true
+        product: true,
+        option: true
       }
     })
 

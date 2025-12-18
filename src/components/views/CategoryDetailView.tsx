@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, ArrowLeft, Trash2, Search, Camera, X, Upload, Copy, Check } from 'lucide-react'
+import { Plus, ArrowLeft, Trash2, Search, Camera, X, Upload, Copy, Check, Pencil, Scissors } from 'lucide-react'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface Category {
@@ -29,6 +29,7 @@ interface IndividualOption {
   elevationImageOriginalName?: string
   planImagePath?: string
   planImageOriginalName?: string
+  isCutListItem?: boolean
   category?: {
     name: string
   }
@@ -55,6 +56,8 @@ export default function CategoryDetailView({
   const [uploadingElevation, setUploadingElevation] = useState(false)
   const [uploadingPlan, setUploadingPlan] = useState(false)
   const [copiedOriginId, setCopiedOriginId] = useState(false)
+  const [editingOption, setEditingOption] = useState<IndividualOption | null>(null)
+  const [saving, setSaving] = useState(false)
 
   // Copy SVG Origin ID to clipboard
   const handleCopyOriginId = async () => {
@@ -68,6 +71,7 @@ export default function CategoryDetailView({
 
   // Handle Escape key to close modals one at a time
   useEscapeKey([
+    { isOpen: editingOption !== null, isBlocked: saving, onClose: () => setEditingOption(null) },
     { isOpen: selectedOptionForImages !== null, isBlocked: uploadingElevation || uploadingPlan, onClose: () => setSelectedOptionForImages(null) },
     { isOpen: showAddOptionForm, isBlocked: creating, onClose: () => setShowAddOptionForm(false) },
   ])
@@ -203,6 +207,47 @@ export default function CategoryDetailView({
     } catch (error) {
       console.error('Error deleting option:', error)
       alert('Error deleting option')
+    }
+  }
+
+  async function handleSaveOption(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingOption) return
+
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/options/${editingOption.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editingOption.name,
+          description: editingOption.description,
+          price: editingOption.price,
+          partNumber: editingOption.partNumber,
+          addToPackingList: editingOption.addToPackingList,
+          addFinishToPartNumber: editingOption.addFinishToPartNumber,
+          isCutListItem: editingOption.isCutListItem || false
+        })
+      })
+
+      if (response.ok) {
+        onRefresh()
+        // Refresh category details
+        const detailsResponse = await fetch(`/api/categories/${category.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setCategoryDetails(data)
+        }
+        setEditingOption(null)
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to save option')
+      }
+    } catch (error) {
+      console.error('Error saving option:', error)
+      alert('Error saving option')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -368,6 +413,16 @@ export default function CategoryDetailView({
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
+                        setEditingOption(option)
+                      }}
+                      className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                      title="Edit option"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
                         handleDeleteOption(option.id, option.name)
                       }}
                       className="p-1 text-gray-400 hover:text-red-600 transition-colors"
@@ -387,7 +442,13 @@ export default function CategoryDetailView({
                   <span className="text-sm font-medium text-green-600">
                     {option.price > 0 ? `+$${option.price.toFixed(2)}` : 'Free'}
                   </span>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 flex-wrap">
+                    {option.isCutListItem && (
+                      <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded flex items-center gap-1">
+                        <Scissors className="w-3 h-3" />
+                        BOM Item
+                      </span>
+                    )}
                     {option.addToPackingList && (
                       <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Packing List</span>
                     )}
@@ -685,6 +746,95 @@ export default function CategoryDetailView({
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Option Modal */}
+      {editingOption && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-900">Edit Option</h2>
+              <button
+                onClick={() => setEditingOption(null)}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveOption} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={editingOption.name}
+                  onChange={(e) => setEditingOption({ ...editingOption, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Part Number</label>
+                <input
+                  type="text"
+                  value={editingOption.partNumber || ''}
+                  onChange={(e) => setEditingOption({ ...editingOption, partNumber: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editingOption.price}
+                  onChange={(e) => setEditingOption({ ...editingOption, price: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                />
+              </div>
+
+              {/* Show in Product BOM */}
+              <div className="border-t pt-4 mt-4">
+                <label className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                      <Scissors className="w-4 h-4" />
+                      Show in Product BOM
+                    </span>
+                    <p className="text-xs text-gray-500 mt-1">
+                      When enabled, this option appears in the Product BOM section where formulas can be assigned per-product
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editingOption.isCutListItem || false}
+                    onChange={(e) => setEditingOption({ ...editingOption, isCutListItem: e.target.checked })}
+                    className="h-5 w-5 text-orange-600 rounded"
+                  />
+                </label>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setEditingOption(null)}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
