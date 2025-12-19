@@ -1,7 +1,7 @@
-2025/12/18 20:04:35 Authorizing with Application Default Credentials
-2025/12/18 20:04:35 [door-quoter:us-central1:door-app-db] Listening on 127.0.0.1:5433
-2025/12/18 20:04:35 The proxy has started successfully and is ready for new connections!
-2025/12/18 20:07:17 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:45996
-2025/12/18 20:07:17 [door-quoter:us-central1:door-app-db] client closed the connection
-2025/12/18 20:09:33 Sending SIGTERM signal for proxy to shutdown.
-2025/12/18 20:09:33 SIGTERM signal received. Shutting down...
+2025/12/19 16:15:45 Authorizing with Application Default Credentials
+2025/12/19 16:15:45 [door-quoter:us-central1:door-app-db] Listening on 127.0.0.1:5433
+2025/12/19 16:15:45 The proxy has started successfully and is ready for new connections!
+2025/12/19 16:16:07 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:43890
+2025/12/19 16:16:07 [door-quoter:us-central1:door-app-db] client closed the connection
+2025/12/19 16:16:07 [door-quoter:us-central1:door-app-db] Accepted connection from 127.0.0.1:43898
+2025/12/19 16:16:08 [door-quoter:us-central1:door-app-db] client closed the connection

@@ -610,9 +610,11 @@ export async function GET(
           }
 
           // Calculate length for Hardware/Fastener parts with LF or IN units
+          // Also populate cutLength so it shows in the Cut Length column
           let calculatedLength: number | null = null
           if (bom.formula && (bom.partType === 'Hardware' || bom.partType === 'Fastener') && (bom.unit === 'LF' || bom.unit === 'IN')) {
             calculatedLength = evaluateFormula(bom.formula, variables)
+            cutLength = calculatedLength  // Show in Cut Length column
           }
 
           // Generate part number with finish code and stock length for extrusions
