@@ -3046,8 +3046,12 @@ export default function ProjectDetailView() {
                                                   <div className="font-medium">{item.glassWidth?.toFixed(2)}" × {item.glassHeight?.toFixed(2)}"</div>
                                                   <div className="text-xs text-gray-500">({item.glassArea} SQ FT)</div>
                                                 </div>
+                                              ) : item.cutLength ? (
+                                                `${item.cutLength.toFixed(2)}"`
+                                              ) : (item.partType === 'Hardware' || item.partType === 'Fastener') && item.calculatedLength ? (
+                                                `${item.calculatedLength.toFixed(2)} ${item.unit || 'LF'}`
                                               ) : (
-                                                item.cutLength ? `${item.cutLength.toFixed(2)}"` : '-'
+                                                '-'
                                               )}
                                             </td>
                                             <td className="border border-gray-200 px-3 py-2 text-sm text-center text-gray-900">
@@ -3185,6 +3189,24 @@ export default function ProjectDetailView() {
                                           {item.glassDimensions.length > 4 && (
                                             <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
                                               +{item.glassDimensions.length - 4} more
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : (item.partType === 'Hardware' || item.partType === 'Fastener') && item.calculatedLengths?.length > 0 ? (
+                                      <div className="max-w-xs">
+                                        <div className="text-xs text-gray-500 mb-1">
+                                          {item.calculatedLengths.length} length{item.calculatedLengths.length !== 1 ? 's' : ''} ({item.totalCalculatedLength?.toFixed(2)} {item.unit} total)
+                                        </div>
+                                        <div className="flex flex-wrap gap-1">
+                                          {item.calculatedLengths.slice(0, 6).map((len: number, i: number) => (
+                                            <span key={i} className="inline-block px-1.5 py-0.5 bg-green-50 text-green-700 rounded text-xs">
+                                              {len.toFixed(2)} {item.unit}
+                                            </span>
+                                          ))}
+                                          {item.calculatedLengths.length > 6 && (
+                                            <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                                              +{item.calculatedLengths.length - 6} more
                                             </span>
                                           )}
                                         </div>

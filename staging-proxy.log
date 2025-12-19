@@ -1,3 +1,8 @@
-2025/12/12 16:17:32 Authorizing with Application Default Credentials
-2025/12/12 16:17:33 [door-quoter:us-central1:door-app-staging] Listening on 127.0.0.1:5434
-2025/12/12 16:17:33 The proxy has started successfully and is ready for new connections!
+2025/12/18 20:03:46 Authorizing with Application Default Credentials
+2025/12/18 20:03:46 [door-quoter:us-central1:door-app-staging] Listening on 127.0.0.1:5434
+2025/12/18 20:03:46 The proxy has started successfully and is ready for new connections!
+2025/12/18 20:04:23 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:58998
+2025/12/18 20:04:24 [door-quoter:us-central1:door-app-staging] client closed the connection
+2025/12/18 20:09:33 Sending SIGTERM signal for proxy to shutdown.
+2025/12/18 20:09:33 SIGTERM signal received. Shutting down...
+2025/12/18 20:09:33 proxy server error: accept tcp 127.0.0.1:5434: use of closed network connection

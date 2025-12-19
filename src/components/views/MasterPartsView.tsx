@@ -2450,13 +2450,21 @@ export default function MasterPartsView() {
                       <div className="grid grid-cols-3 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
-                          <input
-                            type="text"
+                          <select
                             value={unit}
                             onChange={(e) => setUnit(e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="e.g., EA, LF, SF"
-                          />
+                          >
+                            <option value="">Select Unit</option>
+                            <option value="EA">EA (Each)</option>
+                            <option value="LF">LF (Linear Feet)</option>
+                            <option value="IN">IN (Inches)</option>
+                            <option value="SQ FT">SQ FT (Square Feet)</option>
+                            <option value="SET">SET</option>
+                            <option value="PAIR">PAIR</option>
+                            <option value="BOX">BOX</option>
+                            <option value="ROLL">ROLL</option>
+                          </select>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2544,7 +2552,25 @@ export default function MasterPartsView() {
 
                   {/* Fastener specific fields */}
                   {partType === 'Fastener' && (
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                        <select
+                          value={unit}
+                          onChange={(e) => setUnit(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="">Select Unit</option>
+                          <option value="EA">EA (Each)</option>
+                          <option value="LF">LF (Linear Feet)</option>
+                          <option value="IN">IN (Inches)</option>
+                          <option value="SQ FT">SQ FT (Square Feet)</option>
+                          <option value="SET">SET</option>
+                          <option value="PAIR">PAIR</option>
+                          <option value="BOX">BOX</option>
+                          <option value="ROLL">ROLL</option>
+                        </select>
+                      </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Cost ($) *
@@ -2581,13 +2607,21 @@ export default function MasterPartsView() {
                     <div className="grid grid-cols-3 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
-                        <input
-                          type="text"
+                        <select
                           value={unit}
                           onChange={(e) => setUnit(e.target.value)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="e.g., EA, BOX, ROLL"
-                        />
+                        >
+                          <option value="">Select Unit</option>
+                          <option value="EA">EA (Each)</option>
+                          <option value="LF">LF (Linear Feet)</option>
+                          <option value="IN">IN (Inches)</option>
+                          <option value="SQ FT">SQ FT (Square Feet)</option>
+                          <option value="SET">SET</option>
+                          <option value="PAIR">PAIR</option>
+                          <option value="BOX">BOX</option>
+                          <option value="ROLL">ROLL</option>
+                        </select>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">

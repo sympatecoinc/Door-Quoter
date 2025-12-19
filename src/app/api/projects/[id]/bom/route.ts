@@ -209,6 +209,8 @@ function aggregateBomItems(bomItems: any[]): any[] {
         stockLength: item.stockLength,
         cutLengths: [],
         totalCutLength: 0,
+        calculatedLengths: [],  // For Hardware/Fastener items with LF/IN units
+        totalCalculatedLength: 0,
         glassDimensions: [],
         totalArea: 0,
         // Glass size fields (for unique glass sizes)
@@ -238,6 +240,16 @@ function aggregateBomItems(bomItems: any[]): any[] {
         area: item.glassArea
       })
       aggregated[key].totalArea += item.glassArea || 0
+    }
+
+    // For Hardware/Fastener with LF or IN units, collect calculated lengths
+    if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
+        (item.unit === 'LF' || item.unit === 'IN') &&
+        item.calculatedLength) {
+      for (let i = 0; i < (item.quantity || 1); i++) {
+        aggregated[key].calculatedLengths.push(item.calculatedLength)
+      }
+      aggregated[key].totalCalculatedLength += (item.calculatedLength * (item.quantity || 1))
     }
   }
 
@@ -592,6 +604,12 @@ export async function GET(
             cutLength = evaluateFormula(bom.formula, variables)
           }
 
+          // Calculate length for Hardware/Fastener parts with LF or IN units
+          let calculatedLength: number | null = null
+          if (bom.formula && (bom.partType === 'Hardware' || bom.partType === 'Fastener') && (bom.unit === 'LF' || bom.unit === 'IN')) {
+            calculatedLength = evaluateFormula(bom.formula, variables)
+          }
+
           // Generate part number with finish code and stock length for extrusions
           let fullPartNumber = bom.partNumber || ''
           let stockLength: number | null = null
@@ -644,6 +662,7 @@ export async function GET(
             partType: bom.partType,
             quantity: bom.quantity || 1,
             cutLength: cutLength,
+            calculatedLength: calculatedLength,
             stockLength: stockLength,
             percentOfStock: percentOfStock,
             unit: bom.unit || '',

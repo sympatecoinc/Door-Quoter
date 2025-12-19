@@ -744,6 +744,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                                     <th className="px-2 py-1 text-left">Part</th>
                                     <th className="px-2 py-1 text-left">Part #</th>
                                     <th className="px-2 py-1 text-left">Qty</th>
+                                    <th className="px-2 py-1 text-left">Length</th>
                                     <th className="px-2 py-1 text-left">Unit</th>
                                   </tr>
                                 </thead>
@@ -753,6 +754,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                                       <td className="px-2 py-1">{hw.partName}</td>
                                       <td className="px-2 py-1 font-mono text-xs">{hw.partNumber || '-'}</td>
                                       <td className="px-2 py-1">{hw.quantity || '-'}</td>
+                                      <td className="px-2 py-1">{hw.calculatedLength ? hw.calculatedLength.toFixed(2) : '-'}</td>
                                       <td className="px-2 py-1">{hw.unit || '-'}</td>
                                     </tr>
                                   ))}
@@ -922,6 +924,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                                   <th className="px-2 py-1 text-left">Part</th>
                                   <th className="px-2 py-1 text-left">Part #</th>
                                   <th className="px-2 py-1 text-left">Qty</th>
+                                  <th className="px-2 py-1 text-left">Length</th>
                                   <th className="px-2 py-1 text-left">Unit</th>
                                 </tr>
                               </thead>
@@ -931,6 +934,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                                     <td className="px-2 py-1">{hw.partName}</td>
                                     <td className="px-2 py-1 font-mono text-xs">{hw.partNumber || '-'}</td>
                                     <td className="px-2 py-1">{hw.quantity || '-'}</td>
+                                    <td className="px-2 py-1">{hw.calculatedLength ? hw.calculatedLength.toFixed(2) : '-'}</td>
                                     <td className="px-2 py-1">{hw.unit || '-'}</td>
                                   </tr>
                                 ))}
