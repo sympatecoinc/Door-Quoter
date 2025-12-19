@@ -1112,9 +1112,10 @@ export default function ProductDetailView({
         partType: masterPartFound.partType,
         partName: masterPartFound.baseName,
         description: masterPartFound.description || null,
-        formula: masterPartFound.partType === 'Extrusion' ? newPartFormula : null,
+        formula: masterPartFound.partType === 'Extrusion' ? newPartFormula :
+                 ((masterPartFound.unit === 'LF' || masterPartFound.unit === 'IN') && newPartFormula ? newPartFormula : null),
         variable: null,
-        unit: masterPartFound.unit || null,
+        unit: masterPartFound.unit || 'EA',
         quantity: parseFloat(newPartQuantity),
         stockLength: null,
         partNumber: masterPartFound.partNumber,
@@ -1452,8 +1453,15 @@ export default function ProductDetailView({
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900 min-w-[180px] whitespace-nowrap">
                           {part.formula ? (
-                            <div className="font-mono text-xs">
-                              {renderFormulaWithHighlights(part.formula)}
+                            <div>
+                              <div className="font-mono text-xs">
+                                {renderFormulaWithHighlights(part.formula)}
+                              </div>
+                              {(part.unit === 'LF' || part.unit === 'IN') && part.partType !== 'Extrusion' && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  = {part.quantity} pc × length
+                                </div>
+                              )}
                             </div>
                           ) : '-'}
                         </td>
@@ -1591,22 +1599,50 @@ export default function ProductDetailView({
                       required
                     />
                   </div>
+                  {(masterPartFound.unit === 'LF' || masterPartFound.unit === 'IN') && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Length Formula</label>
+                      <FormulaInput
+                        value={newPartFormula}
+                        onChange={setNewPartFormula}
+                        placeholder="e.g., width + height, (width * 2) + (height * 2)"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Use width/height variables to calculate length. Leave blank to use fixed quantity.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
               {masterPartFound && masterPartFound.partType === 'Fastener' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
-                  <input
-                    type="number"
-                    value={newPartQuantity}
-                    onChange={(e) => setNewPartQuantity(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                    placeholder="e.g., 2"
-                    step="0.01"
-                    min="0"
-                    required
-                  />
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                    <input
+                      type="number"
+                      value={newPartQuantity}
+                      onChange={(e) => setNewPartQuantity(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      placeholder="e.g., 2"
+                      step="0.01"
+                      min="0"
+                      required
+                    />
+                  </div>
+                  {(masterPartFound.unit === 'LF' || masterPartFound.unit === 'IN') && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Length Formula</label>
+                      <FormulaInput
+                        value={newPartFormula}
+                        onChange={setNewPartFormula}
+                        placeholder="e.g., width + height, (width * 2) + (height * 2)"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Use width/height variables to calculate length. Leave blank to use fixed quantity.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
