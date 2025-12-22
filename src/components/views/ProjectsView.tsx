@@ -6,6 +6,7 @@ import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
+import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 import { PricingMode, ProjectStatus, STATUS_CONFIG } from '@/types'
 import StatusBadge from '@/components/projects/StatusBadge'
 
@@ -20,6 +21,39 @@ interface Project {
   openingsCount: number
   value: number
   updatedAt: string
+}
+
+// Skeleton Loading Component for Project Rows
+function ProjectRowSkeleton() {
+  return (
+    <tr className="animate-pulse">
+      <td className="px-6 py-4">
+        <div className="h-4 w-40 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-5 w-20 bg-gray-200 rounded-full" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-8 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-20 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-24 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-24 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="flex space-x-2">
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+        </div>
+      </td>
+    </tr>
+  )
 }
 
 export default function ProjectsView() {
@@ -52,6 +86,9 @@ export default function ProjectsView() {
     { isOpen: editingProject !== null, isBlocked: updating, onClose: () => setEditingProject(null) },
     { isOpen: showCreateForm, isBlocked: creating, onClose: () => setShowCreateForm(false) },
   ])
+
+  // Cmd+N to create new project
+  useNewShortcut(() => setShowCreateForm(true), { disabled: showCreateForm || editingProject !== null })
 
   useEffect(() => {
     fetchProjects()
@@ -565,8 +602,25 @@ export default function ProjectsView() {
       {/* Projects Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Project</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Openings</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Updated</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {[...Array(6)].map((_, i) => (
+                  <ProjectRowSkeleton key={i} />
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : projects.length > 0 ? (
           <div className="overflow-x-auto">

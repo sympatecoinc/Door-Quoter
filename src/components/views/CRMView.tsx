@@ -9,6 +9,7 @@ import CustomerForm from '../crm/CustomerForm'
 import LeadForm from '../crm/LeadForm'
 import { useAppStore } from '@/stores/appStore'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
+import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 import { ProjectStatus } from '@/types'
 
 interface CRMStats {
@@ -47,6 +48,18 @@ export default function CRMView() {
     { isOpen: showCustomerForm, onClose: () => setShowCustomerForm(false) },
     { isOpen: customerDetailView && selectedCustomerId !== null, onClose: () => { setCustomerDetailView(false); setSelectedCustomerId(null) } },
   ])
+
+  // Cmd+N to create new customer or lead based on active tab
+  useNewShortcut(
+    () => {
+      if (activeTab === 'leads') {
+        setShowLeadForm(true)
+      } else {
+        setShowCustomerForm(true)
+      }
+    },
+    { disabled: showCustomerForm || showLeadForm || (customerDetailView && selectedCustomerId !== null) }
+  )
 
   useEffect(() => {
     async function fetchCRMData() {

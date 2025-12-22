@@ -64,7 +64,7 @@ export async function PUT(
       )
     }
 
-    const { name, roughWidth, roughHeight, finishedWidth, finishedHeight, price, multiplier, finishColor } = await request.json()
+    const { name, roughWidth, roughHeight, finishedWidth, finishedHeight, price, multiplier, finishColor, includeStarterChannels } = await request.json()
 
     const updateData: any = {
       name,
@@ -84,6 +84,10 @@ export async function PUT(
 
     if (finishColor !== undefined) {
       updateData.finishColor = finishColor
+    }
+
+    if (includeStarterChannels !== undefined) {
+      updateData.includeStarterChannels = Boolean(includeStarterChannels)
     }
 
     const updatedOpening = await prisma.opening.update({
