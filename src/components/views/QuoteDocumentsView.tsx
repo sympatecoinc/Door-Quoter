@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { FileText, Plus } from 'lucide-react'
 import DocumentUpload from '../quote-documents/DocumentUpload'
 import DocumentsList from '../quote-documents/DocumentsList'
+import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 
 interface QuoteDocument {
   id: number
@@ -26,6 +27,9 @@ export default function QuoteDocumentsView() {
   const [documents, setDocuments] = useState<QuoteDocument[]>([])
   const [loading, setLoading] = useState(true)
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
+
+  // Cmd+N to upload new document
+  useNewShortcut(() => setUploadModalOpen(true), { disabled: uploadModalOpen })
 
   useEffect(() => {
     fetchDocuments()

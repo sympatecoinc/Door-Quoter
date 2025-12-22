@@ -123,6 +123,7 @@ export async function POST(
             finishedHeight: originalOpening.finishedHeight,
             multiplier: originalOpening.multiplier,
             finishColor: originalOpening.finishColor,
+            includeStarterChannels: originalOpening.includeStarterChannels,
             price: 0,
             priceCalculatedAt: null,
             panels: {
@@ -214,6 +215,7 @@ export async function POST(
             finishedHeight: originalOpening.finishedHeight,
             multiplier: originalOpening.multiplier,
             finishColor: originalOpening.finishColor,
+            includeStarterChannels: originalOpening.includeStarterChannels,
             price: 0,
             priceCalculatedAt: null,
             panels: {

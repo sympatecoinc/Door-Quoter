@@ -11,6 +11,7 @@ import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
+import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 import DrawingViewer from '../ui/DrawingViewer'
 import { ProjectStatus, STATUS_CONFIG } from '@/types'
 
@@ -164,7 +165,8 @@ export default function ProjectDetailView() {
   const [addingOpening, setAddingOpening] = useState(false)
   const [newOpening, setNewOpening] = useState({
     name: '',
-    finishColor: ''
+    finishColor: '',
+    includeStarterChannels: false
   })
   const [finishTypes, setFinishTypes] = useState<any[]>([])
   const [showAddComponent, setShowAddComponent] = useState(false)
@@ -277,6 +279,12 @@ export default function ProjectDetailView() {
     { isOpen: showBOM, onClose: () => setShowBOM(false) },
     { isOpen: showEditModal, isBlocked: saving, onClose: () => setShowEditModal(false) },
   ])
+
+  // Cmd+N to add new opening
+  const anyModalOpen = showAddOpening || showAddComponent || showEditModal || showBOM || showDrawingViewer ||
+    showEditOpeningModal || showDuplicateModal || showArchiveModal || showSyncConfirmation ||
+    showBulkDeleteModal || showDeleteComponentModal || showDeleteModal || showQuoteAcceptedConfirm || showComponentEdit
+  useNewShortcut(() => setShowAddOpening(true), { disabled: anyModalOpen })
 
   // Check if pricing needs sync and generate details
   useEffect(() => {
@@ -717,7 +725,8 @@ export default function ProjectDetailView() {
         body: JSON.stringify({
           projectId: selectedProjectId,
           name: newOpening.name,
-          finishColor: newOpening.finishColor
+          finishColor: newOpening.finishColor,
+          includeStarterChannels: newOpening.includeStarterChannels
         })
       })
 
@@ -725,7 +734,8 @@ export default function ProjectDetailView() {
         // Reset form and close modal first
         setNewOpening({
           name: '',
-          finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : ''
+          finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
+          includeStarterChannels: false
         })
         setShowAddOpening(false)
 
@@ -1997,6 +2007,21 @@ export default function ProjectDetailView() {
                   This finish will apply to all extrusions in this opening
                 </p>
               </div>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="includeStarterChannels"
+                  checked={newOpening.includeStarterChannels}
+                  onChange={(e) => setNewOpening({...newOpening, includeStarterChannels: e.target.checked})}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="includeStarterChannels" className="ml-2 block text-sm text-gray-700">
+                  Include Starter Channels (E-12306)
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 -mt-2">
+                Adds starter channel extrusions with cut length = height + 0.5"
+              </p>
             </div>
             <div className="flex justify-end space-x-3 pt-6">
               <button
@@ -2005,7 +2030,8 @@ export default function ProjectDetailView() {
                     setShowAddOpening(false)
                     setNewOpening({
                       name: '',
-                      finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : ''
+                      finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
+                      includeStarterChannels: false
                     })
                   }
                 }}
@@ -3047,9 +3073,7 @@ export default function ProjectDetailView() {
                                                   <div className="text-xs text-gray-500">({item.glassArea} SQ FT)</div>
                                                 </div>
                                               ) : item.cutLength ? (
-                                                `${item.cutLength.toFixed(2)}"`
-                                              ) : (item.partType === 'Hardware' || item.partType === 'Fastener') && item.calculatedLength ? (
-                                                `${item.calculatedLength.toFixed(2)} ${item.unit || 'LF'}`
+                                                `${item.cutLength.toFixed(2)}${item.unit === 'LF' ? "'" : '"'}`
                                               ) : (
                                                 '-'
                                               )}

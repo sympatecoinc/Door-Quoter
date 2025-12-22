@@ -50,7 +50,8 @@ export async function POST(request: NextRequest) {
       height, // Support the form field name
       price = 0,
       multiplier,
-      finishColor
+      finishColor,
+      includeStarterChannels
     } = await request.json()
 
     // Use name if provided, otherwise use openingNumber
@@ -91,6 +92,10 @@ export async function POST(request: NextRequest) {
 
     if (finishColor) {
       openingData.finishColor = finishColor
+    }
+
+    if (includeStarterChannels !== undefined) {
+      openingData.includeStarterChannels = Boolean(includeStarterChannels)
     }
 
     // Add size fields only if they have values

@@ -45,8 +45,8 @@ door-app-staging  POSTGRES_15       us-central1-c  db-custom-1-3840  RUNNABLE
 # Kill any existing production proxy (optional)
 pkill -f "cloud_sql_proxy.*door-app-db" || echo "No existing production proxy found"
 
-# Start proxy for production database on port 5433
-~/cloud_sql_proxy -instances=door-quoter:us-central1:door-app-db=tcp:5433 > prod-proxy.log 2>&1 &
+# Start proxy for production database on port 5433 (v2 syntax)
+~/cloud_sql_proxy door-quoter:us-central1:door-app-db --port 5433 > prod-proxy.log 2>&1 &
 
 # Wait for startup
 sleep 3

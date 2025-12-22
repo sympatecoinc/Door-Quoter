@@ -5,6 +5,7 @@ import { Plus, Package, Tag, Settings, Edit2, Trash2, Save, X, Copy } from 'luci
 import ProductDetailView from './ProductDetailView'
 import CategoryDetailView from './CategoryDetailView'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
+import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 
 interface Product {
   id: number
@@ -43,6 +44,27 @@ interface IndividualOption {
   }
 }
 
+// Skeleton Loading Component for Product Cards
+function ProductCardSkeleton() {
+  return (
+    <div className="border border-gray-200 rounded-lg p-4 animate-pulse">
+      <div className="flex justify-between items-start mb-2">
+        <div className="flex-1">
+          <div className="h-5 w-32 bg-gray-200 rounded mb-2" />
+          <div className="h-4 w-48 bg-gray-100 rounded" />
+        </div>
+      </div>
+      <div className="flex justify-between items-center text-sm mb-3">
+        <div className="h-4 w-24 bg-gray-200 rounded" />
+        <div className="flex space-x-1">
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+        </div>
+      </div>
+      <div className="h-10 w-full bg-gray-100 rounded-lg" />
+    </div>
+  )
+}
 
 export default function ProductsView() {
   const [activeTab, setActiveTab] = useState('products')
@@ -73,6 +95,12 @@ export default function ProductsView() {
     { isOpen: editingProduct !== null, isBlocked: updating, onClose: () => setEditingProduct(null) },
     { isOpen: showCreateForm, onClose: () => setShowCreateForm(false) },
   ])
+
+  // Cmd+N to create new product (only on products tab)
+  useNewShortcut(
+    () => setShowCreateForm(true),
+    { disabled: showCreateForm || editingProduct !== null || activeTab !== 'products' || selectedProduct !== null }
+  )
 
   useEffect(() => {
     loadData()
@@ -294,8 +322,10 @@ export default function ProductsView() {
       {/* Tab Content */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <ProductCardSkeleton key={i} />
+            ))}
           </div>
         ) : (
           <>

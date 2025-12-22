@@ -76,6 +76,7 @@ model Opening {
   multiplier            Float     @default(1.0) // Price multiplier/markup for this opening (e.g., 1.2 = 20% markup)
   priceCalculatedAt     DateTime? // Track when price was last calculated
   finishColor           String?   // Finish type for extrusions (e.g., "Mill Finish", "Powder Coated", "Anodized")
+  includeStarterChannels Boolean  @default(false) // Whether to include starter channels (E-12306) in BOM
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   project               Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)

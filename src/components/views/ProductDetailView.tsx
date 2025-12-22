@@ -611,13 +611,13 @@ export default function ProductDetailView({
         setEditing(false)
         setShowEditModal(false)
         onRefresh()
-        alert('Product updated successfully!')
+        showSuccess('Product updated successfully!')
       } else {
-        alert('Error updating product')
+        showError('Error updating product')
       }
     } catch (error) {
       console.error('Error updating product:', error)
-      alert('Error updating product')
+      showError('Error updating product')
     } finally {
       setSaving(false)
     }
@@ -1214,11 +1214,11 @@ export default function ProductDetailView({
           setProductDetails(data)
         }
         onRefresh()
-        alert('Part updated successfully!')
+        showSuccess('Part updated successfully!')
       }
     } catch (error) {
       console.error('Error updating part:', error)
-      alert('Error updating part')
+      showError('Error updating part')
     } finally {
       setUpdating(false)
     }

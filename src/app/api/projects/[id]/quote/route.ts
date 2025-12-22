@@ -297,7 +297,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
 
         // Apply category-specific markups to each cost component
-        const markedUpExtrusionCost = calculateMarkupPrice(extrusionCost, 'Extrusion', pricingMode, globalPricingMultiplier)
+        // IMPORTANT: For HYBRID pricing, subtract hybridRemainingCost from extrusion before markup
+        // The hybridRemainingCost is part of extrusionCost but should NOT receive markup
+        const extrusionCostForMarkup = extrusionCost - hybridRemainingCost
+        const markedUpExtrusionCost = calculateMarkupPrice(extrusionCostForMarkup, 'Extrusion', pricingMode, globalPricingMultiplier)
         const markedUpHardwareCost = calculateMarkupPrice(hardwareCost, 'Hardware', pricingMode, globalPricingMultiplier)
         const markedUpGlassCost = calculateMarkupPrice(glassCost, 'Glass', pricingMode, globalPricingMultiplier)
         const markedUpPackagingCost = calculateMarkupPrice(packagingCost, 'Packaging', pricingMode, globalPricingMultiplier)
@@ -373,7 +376,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           elevationImages: elevationImages,
           // Include cost breakdown for debugging/transparency (optional)
           costBreakdown: {
-            extrusion: { base: extrusionCost, markedUp: markedUpExtrusionCost },
+            extrusion: { base: extrusionCostForMarkup, markedUp: markedUpExtrusionCost }, // Base excludes hybrid remaining
             hardware: { base: hardwareCost, markedUp: markedUpHardwareCost },
             glass: { base: glassCost, markedUp: markedUpGlassCost },
             packaging: { base: packagingCost, markedUp: markedUpPackagingCost },

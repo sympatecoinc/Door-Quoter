@@ -7,6 +7,7 @@ import VendorDetailView from '@/components/vendors/VendorDetailView'
 import VendorForm from '@/components/vendors/VendorForm'
 import { Vendor } from '@/types'
 import { Plus, CheckCircle, AlertCircle, X, RefreshCw, Cloud } from 'lucide-react'
+import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 
 export default function VendorsView() {
   const searchParams = useSearchParams()
@@ -63,6 +64,15 @@ export default function VendorsView() {
       return () => clearTimeout(timer)
     }
   }, [notification])
+
+  // Cmd+N to create new vendor
+  useNewShortcut(
+    () => {
+      setEditingVendor(null)
+      setShowForm(true)
+    },
+    { disabled: showForm || selectedVendorId !== null }
+  )
 
   function handleVendorSelect(vendor: Vendor) {
     setSelectedVendorId(vendor.id)

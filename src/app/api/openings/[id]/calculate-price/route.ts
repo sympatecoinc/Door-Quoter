@@ -106,6 +106,33 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
     finishDetails: ''
   }
 
+  // Method 0: Check for Hardware items with LF (linear foot) unit and formula
+  // These need special handling - formula gives dimension in inches, convert to LF for pricing
+  if (bom.formula && bom.partNumber) {
+    try {
+      const lfCheck = await prisma.masterPart.findUnique({
+        where: { partNumber: bom.partNumber },
+        select: { unit: true, cost: true, partType: true }
+      })
+
+      if (lfCheck?.partType === 'Hardware' && lfCheck?.unit === 'LF' && lfCheck?.cost && lfCheck.cost > 0) {
+        // Evaluate the formula to get dimension in inches
+        const dimensionInches = evaluateFormula(bom.formula, variables)
+        // Convert inches to linear feet
+        const linearFeet = dimensionInches / 12
+        // Calculate cost: price per LF × linear feet × quantity
+        cost = lfCheck.cost * linearFeet * (bom.quantity || 1)
+        breakdown.method = 'master_part_hardware_lf'
+        breakdown.unitCost = lfCheck.cost
+        breakdown.totalCost = cost
+        breakdown.details = `Hardware (LF): Formula "${bom.formula}" = ${dimensionInches}" = ${linearFeet.toFixed(2)} LF × $${lfCheck.cost}/LF × ${bom.quantity || 1} = $${cost.toFixed(2)}`
+        return { cost, breakdown }
+      }
+    } catch (error) {
+      console.error('Error checking LF hardware:', error)
+    }
+  }
+
   // Method 1: Direct cost from ProductBOM
   if (bom.cost && bom.cost > 0) {
     cost = bom.cost * (bom.quantity || 1)
@@ -141,6 +168,7 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
 
       if (masterPart) {
         // For Hardware: Use direct cost from MasterPart
+        // Note: LF (linear foot) hardware with formulas is handled in Method 0 above
         if (masterPart.partType === 'Hardware' && masterPart.cost && masterPart.cost > 0) {
           cost = masterPart.cost * (bom.quantity || 1)
           breakdown.method = 'master_part_hardware'

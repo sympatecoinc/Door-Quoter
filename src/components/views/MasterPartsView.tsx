@@ -5,6 +5,7 @@ import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, Chevro
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
+import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 import CategoryDetailView from './CategoryDetailView'
 
 interface MasterPart {
@@ -132,6 +133,120 @@ interface IndividualOption {
   category?: {
     name: string
   }
+}
+
+// Skeleton Loading Components
+function MasterPartsSkeletonRow() {
+  return (
+    <tr className="animate-pulse">
+      <td className="px-4 py-4">
+        <div className="w-4 h-4 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-24 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="space-y-2">
+          <div className="h-4 w-32 bg-gray-200 rounded" />
+          <div className="h-3 w-48 bg-gray-100 rounded" />
+        </div>
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-5 w-20 bg-gray-200 rounded-full" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-12 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-16 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-16 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="flex space-x-2 justify-end">
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function GlassTypesSkeletonRow() {
+  return (
+    <tr className="animate-pulse">
+      <td className="px-6 py-4">
+        <div className="w-4 h-4 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-32 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-48 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-16 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-20 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="flex space-x-2 justify-end">
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function FinishesSkeletonRow() {
+  return (
+    <tr className="animate-pulse">
+      <td className="px-6 py-4">
+        <div className="h-4 w-36 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-12 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-16 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="flex space-x-2">
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function CategoriesSkeletonRow() {
+  return (
+    <tr className="animate-pulse">
+      <td className="px-6 py-4">
+        <div className="h-4 w-28 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-48 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-20 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="h-4 w-16 bg-gray-200 rounded" />
+      </td>
+      <td className="px-6 py-4 text-right">
+        <div className="flex space-x-2 justify-end">
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+          <div className="w-6 h-6 bg-gray-200 rounded" />
+        </div>
+      </td>
+    </tr>
+  )
 }
 
 export default function MasterPartsView() {
@@ -277,6 +392,34 @@ export default function MasterPartsView() {
     { isOpen: showAddCategoryForm, isBlocked: creatingCategory, onClose: () => setShowAddCategoryForm(false) },
     { isOpen: editingCategory !== null, isBlocked: updatingCategory, onClose: () => setEditingCategory(null) },
   ])
+
+  // Cmd+N to add new item based on active tab
+  const anyModalOpen = showAddPartForm || editingPart !== null || showAddRuleForm || editingRule !== null ||
+    showAddPricingForm || editingPricingRule !== null || showAddGlassForm || editingGlassType !== null ||
+    showAddFinish || editingFinishId !== null || showAddCategoryForm || editingCategory !== null ||
+    showDeleteModal || showBulkDeleteModal
+  useNewShortcut(
+    () => {
+      switch (activeTab) {
+        case 'masterParts':
+          setShowAddPartForm(true)
+          break
+        case 'partRules':
+          setShowAddRuleForm(true)
+          break
+        case 'glass':
+          setShowAddGlassForm(true)
+          break
+        case 'finishes':
+          setShowAddFinish(true)
+          break
+        case 'categories':
+          setShowAddCategoryForm(true)
+          break
+      }
+    },
+    { disabled: anyModalOpen }
+  )
 
   // Filter and sort master parts
   const filteredMasterParts = masterParts
@@ -1465,8 +1608,28 @@ export default function MasterPartsView() {
           </div>
 
           {loading ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left w-10"></th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Part Number</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Weight</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {[...Array(8)].map((_, i) => (
+                      <MasterPartsSkeletonRow key={i} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : filteredMasterParts.length > 0 ? (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -1867,8 +2030,26 @@ export default function MasterPartsView() {
           </div>
 
           {loadingGlass ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-8"></th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price per SqFt</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attached Parts</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {[...Array(5)].map((_, i) => (
+                      <GlassTypesSkeletonRow key={i} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : glassTypes.length > 0 ? (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -2177,8 +2358,22 @@ export default function MasterPartsView() {
           </div>
 
           {loadingFinishPricing ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Finish Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Finish Code</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost Per Foot</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {[...Array(4)].map((_, i) => (
+                    <FinishesSkeletonRow key={i} />
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
             <>
@@ -3103,8 +3298,25 @@ export default function MasterPartsView() {
               </div>
 
               {loadingCategories ? (
-                <div className="flex justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category Name</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Options</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Used in Products</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {[...Array(5)].map((_, i) => (
+                          <CategoriesSkeletonRow key={i} />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               ) : categories.length > 0 ? (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200">

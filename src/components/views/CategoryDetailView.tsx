@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, ArrowLeft, Trash2, Search, Camera, X, Upload, Copy, Check, Pencil, Scissors } from 'lucide-react'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
+import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 
 interface Category {
   id: number
@@ -75,6 +76,12 @@ export default function CategoryDetailView({
     { isOpen: selectedOptionForImages !== null, isBlocked: uploadingElevation || uploadingPlan, onClose: () => setSelectedOptionForImages(null) },
     { isOpen: showAddOptionForm, isBlocked: creating, onClose: () => setShowAddOptionForm(false) },
   ])
+
+  // Cmd+N to add new option
+  useNewShortcut(
+    () => setShowAddOptionForm(true),
+    { disabled: showAddOptionForm || editingOption !== null || selectedOptionForImages !== null }
+  )
 
   // Fetch detailed category data and available master parts
   useEffect(() => {
