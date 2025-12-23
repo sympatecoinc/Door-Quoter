@@ -230,8 +230,13 @@ model ProductBOM {
   stockLength Float?
   partNumber            String?
   cost                  Float?
+  isMilled              Boolean  @default(true) // Whether this extrusion requires milling (machining)
   addFinishToPartNumber Boolean  @default(false) // When true, append finish color code to hardware part number in BOM
   addToPackingList      Boolean  @default(false) // When true, this hardware item appears in the packing list
+  quantityMode          String?  @default("FIXED") // "FIXED" or "RANGE" - determines if user can select quantity
+  minQuantity           Float?   // For RANGE mode: minimum selectable quantity
+  maxQuantity           Float?   // For RANGE mode: maximum selectable quantity
+  defaultQuantity       Float?   // For RANGE mode: pre-selected default quantity
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   product               Product  @relation(fields: [productId], references: [id], onDelete: Cascade)

@@ -43,8 +43,13 @@ export async function POST(request: NextRequest) {
       stockLength,
       partNumber,
       cost,
+      isMilled,
       addFinishToPartNumber,
-      addToPackingList
+      addToPackingList,
+      quantityMode,
+      minQuantity,
+      maxQuantity,
+      defaultQuantity
     } = await request.json()
 
     if (!productId || !partName) {
@@ -52,6 +57,17 @@ export async function POST(request: NextRequest) {
         { error: 'Product ID and part name are required' },
         { status: 400 }
       )
+    }
+
+    // Validate RANGE mode has min/max
+    if (quantityMode === 'RANGE') {
+      if (minQuantity === undefined || minQuantity === null ||
+          maxQuantity === undefined || maxQuantity === null) {
+        return NextResponse.json(
+          { error: 'RANGE mode requires minQuantity and maxQuantity' },
+          { status: 400 }
+        )
+      }
     }
 
     // If optionId is provided, check if BOM already exists for this option
@@ -77,8 +93,13 @@ export async function POST(request: NextRequest) {
             stockLength: stockLength || null,
             partNumber: partNumber || null,
             cost: cost || null,
+            isMilled: isMilled !== undefined ? isMilled : true,
             addFinishToPartNumber: addFinishToPartNumber || false,
-            addToPackingList: addToPackingList || false
+            addToPackingList: addToPackingList || false,
+            quantityMode: quantityMode || 'FIXED',
+            minQuantity: minQuantity || null,
+            maxQuantity: maxQuantity || null,
+            defaultQuantity: defaultQuantity || null
           },
           include: { product: true, option: true }
         })
@@ -100,8 +121,13 @@ export async function POST(request: NextRequest) {
         stockLength: stockLength || null,
         partNumber: partNumber || null,
         cost: cost || null,
+        isMilled: isMilled !== undefined ? isMilled : true,
         addFinishToPartNumber: addFinishToPartNumber || false,
-        addToPackingList: addToPackingList || false
+        addToPackingList: addToPackingList || false,
+        quantityMode: quantityMode || 'FIXED',
+        minQuantity: minQuantity || null,
+        maxQuantity: maxQuantity || null,
+        defaultQuantity: defaultQuantity || null
       },
       include: {
         product: true,
@@ -133,8 +159,13 @@ export async function PUT(request: NextRequest) {
       stockLength,
       partNumber,
       cost,
+      isMilled,
       addFinishToPartNumber,
-      addToPackingList
+      addToPackingList,
+      quantityMode,
+      minQuantity,
+      maxQuantity,
+      defaultQuantity
     } = await request.json()
 
     if (!id || !partName) {
@@ -142,6 +173,17 @@ export async function PUT(request: NextRequest) {
         { error: 'ID and part name are required' },
         { status: 400 }
       )
+    }
+
+    // Validate RANGE mode has min/max
+    if (quantityMode === 'RANGE') {
+      if (minQuantity === undefined || minQuantity === null ||
+          maxQuantity === undefined || maxQuantity === null) {
+        return NextResponse.json(
+          { error: 'RANGE mode requires minQuantity and maxQuantity' },
+          { status: 400 }
+        )
+      }
     }
 
     const productBOM = await prisma.productBOM.update({
@@ -157,8 +199,13 @@ export async function PUT(request: NextRequest) {
         stockLength: stockLength || null,
         partNumber: partNumber || null,
         cost: cost || null,
+        isMilled: isMilled !== undefined ? isMilled : undefined,
         addFinishToPartNumber: addFinishToPartNumber !== undefined ? addFinishToPartNumber : undefined,
-        addToPackingList: addToPackingList !== undefined ? addToPackingList : undefined
+        addToPackingList: addToPackingList !== undefined ? addToPackingList : undefined,
+        quantityMode: quantityMode !== undefined ? quantityMode : undefined,
+        minQuantity: minQuantity !== undefined ? minQuantity : undefined,
+        maxQuantity: maxQuantity !== undefined ? maxQuantity : undefined,
+        defaultQuantity: defaultQuantity !== undefined ? defaultQuantity : undefined
       },
       include: {
         product: true

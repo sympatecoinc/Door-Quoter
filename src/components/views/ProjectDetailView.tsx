@@ -165,8 +165,8 @@ export default function ProjectDetailView() {
   const [addingOpening, setAddingOpening] = useState(false)
   const [newOpening, setNewOpening] = useState({
     name: '',
-    finishColor: '',
-    includeStarterChannels: false
+    finishColor: ''
+    // Note: includeStarterChannels removed - now handled via category options
   })
   const [finishTypes, setFinishTypes] = useState<any[]>([])
   const [showAddComponent, setShowAddComponent] = useState(false)
@@ -183,6 +183,7 @@ export default function ProjectDetailView() {
   // Hardware options for add component modal
   const [addComponentOptions, setAddComponentOptions] = useState<any[]>([])
   const [addComponentSelectedOptions, setAddComponentSelectedOptions] = useState<Record<number, number | null>>({})
+  const [addComponentOptionQuantities, setAddComponentOptionQuantities] = useState<Record<string, number>>({})
   const [showComponentEdit, setShowComponentEdit] = useState(false)
   const [selectedComponentId, setSelectedComponentId] = useState<number | null>(null)
   const [componentOptions, setComponentOptions] = useState<any[]>([])
@@ -725,8 +726,7 @@ export default function ProjectDetailView() {
         body: JSON.stringify({
           projectId: selectedProjectId,
           name: newOpening.name,
-          finishColor: newOpening.finishColor,
-          includeStarterChannels: newOpening.includeStarterChannels
+          finishColor: newOpening.finishColor
         })
       })
 
@@ -734,8 +734,7 @@ export default function ProjectDetailView() {
         // Reset form and close modal first
         setNewOpening({
           name: '',
-          finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
-          includeStarterChannels: false
+          finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : ''
         })
         setShowAddOpening(false)
 
@@ -1176,6 +1175,12 @@ export default function ProjectDetailView() {
         const panelsData = await panelResponse.json()  // Now an array
 
         // Create component instances for all panels
+        // Merge option selections with quantity selections
+        const mergedSelections = {
+          ...addComponentSelectedOptions,
+          ...addComponentOptionQuantities
+        }
+
         for (const panelData of panelsData) {
           const componentResponse = await fetch('/api/component-instances', {
             method: 'POST',
@@ -1185,7 +1190,7 @@ export default function ProjectDetailView() {
             body: JSON.stringify({
               panelId: panelData.id,
               productId: selectedProductId,
-              subOptionSelections: addComponentSelectedOptions
+              subOptionSelections: mergedSelections
             })
           })
 
@@ -1206,6 +1211,7 @@ export default function ProjectDetailView() {
         setGlassType('Clear')
         setAddComponentOptions([])
         setAddComponentSelectedOptions({})
+        setAddComponentOptionQuantities({})
 
         // Recalculate opening price
         if (selectedOpeningId) {
@@ -2007,21 +2013,7 @@ export default function ProjectDetailView() {
                   This finish will apply to all extrusions in this opening
                 </p>
               </div>
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="includeStarterChannels"
-                  checked={newOpening.includeStarterChannels}
-                  onChange={(e) => setNewOpening({...newOpening, includeStarterChannels: e.target.checked})}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="includeStarterChannels" className="ml-2 block text-sm text-gray-700">
-                  Include Starter Channels (E-12306)
-                </label>
-              </div>
-              <p className="text-xs text-gray-500 -mt-2">
-                Adds starter channel extrusions with cut length = height + 0.5"
-              </p>
+              {/* Note: Starter channels checkbox removed - now configured via category options in Products */}
             </div>
             <div className="flex justify-end space-x-3 pt-6">
               <button
@@ -2030,8 +2022,7 @@ export default function ProjectDetailView() {
                     setShowAddOpening(false)
                     setNewOpening({
                       name: '',
-                      finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
-                      includeStarterChannels: false
+                      finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : ''
                     })
                   }
                 }}
@@ -2323,34 +2314,88 @@ export default function ProjectDetailView() {
               {selectedProductId && addComponentOptions.length > 0 && (
                 <div className="space-y-3">
                   <h3 className="text-sm font-semibold text-gray-700">Hardware Options</h3>
-                  {addComponentOptions.map((option) => (
-                    <div key={option.id}>
-                      <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
-                        {option.category.name}
-                        {addComponentSelectedOptions[option.category.id] === option.standardOptionId && (
-                          <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard Option Applied</span>
+                  {addComponentOptions.map((option) => {
+                    const selectedOptionId = addComponentSelectedOptions[option.category.id]
+                    const selectedProduct = products.find(p => p.id === selectedProductId)
+                    const optionBom = selectedProduct?.productBOMs?.find(
+                      (bom: any) => bom.optionId === selectedOptionId
+                    )
+                    const isRangeMode = optionBom?.quantityMode === 'RANGE'
+                    const quantityKey = `${option.category.id}_qty`
+
+                    return (
+                      <div key={option.id}>
+                        <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
+                          {option.category.name}
+                          {addComponentSelectedOptions[option.category.id] === option.standardOptionId && (
+                            <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard Option Applied</span>
+                          )}
+                        </label>
+                        <div className="flex gap-2">
+                          <select
+                            value={addComponentSelectedOptions[option.category.id] || ''}
+                            onChange={(e) => {
+                              const newValue = e.target.value ? parseInt(e.target.value) : null
+                              setAddComponentSelectedOptions({
+                                ...addComponentSelectedOptions,
+                                [option.category.id]: newValue
+                              })
+                              // Check if new option has RANGE mode and set default quantity
+                              const newOptionBom = selectedProduct?.productBOMs?.find(
+                                (bom: any) => bom.optionId === newValue
+                              )
+                              if (newOptionBom?.quantityMode === 'RANGE') {
+                                setAddComponentOptionQuantities({
+                                  ...addComponentOptionQuantities,
+                                  [quantityKey]: newOptionBom.defaultQuantity || newOptionBom.minQuantity || 0
+                                })
+                              } else {
+                                // Remove quantity selection if not RANGE mode
+                                const newQuantities = { ...addComponentOptionQuantities }
+                                delete newQuantities[quantityKey]
+                                setAddComponentOptionQuantities(newQuantities)
+                              }
+                            }}
+                            className={`${isRangeMode ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900`}
+                          >
+                            <option value="">Select option...</option>
+                            {option.category.individualOptions?.map((individualOption: any) => (
+                              <option key={individualOption.id} value={individualOption.id}>
+                                {individualOption.name}
+                              </option>
+                            ))}
+                          </select>
+                          {isRangeMode && (
+                            <select
+                              value={addComponentOptionQuantities[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}
+                              onChange={(e) => {
+                                setAddComponentOptionQuantities({
+                                  ...addComponentOptionQuantities,
+                                  [quantityKey]: parseInt(e.target.value)
+                                })
+                              }}
+                              className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                              title="Select quantity"
+                            >
+                              {Array.from(
+                                { length: (optionBom.maxQuantity || 4) - (optionBom.minQuantity || 0) + 1 },
+                                (_, i) => (optionBom.minQuantity || 0) + i
+                              ).map((qty) => (
+                                <option key={qty} value={qty}>
+                                  {qty}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                        {isRangeMode && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Select quantity ({optionBom.minQuantity}-{optionBom.maxQuantity})
+                          </p>
                         )}
-                      </label>
-                      <select
-                        value={addComponentSelectedOptions[option.category.id] || ''}
-                        onChange={(e) => {
-                          const newValue = e.target.value ? parseInt(e.target.value) : null
-                          setAddComponentSelectedOptions({
-                            ...addComponentSelectedOptions,
-                            [option.category.id]: newValue
-                          })
-                        }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                      >
-                        <option value="">Select option...</option>
-                        {option.category.individualOptions?.map((individualOption: any) => (
-                          <option key={individualOption.id} value={individualOption.id}>
-                            {individualOption.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 
@@ -2393,6 +2438,7 @@ export default function ProjectDetailView() {
                   setGlassType('Clear')
                   setAddComponentOptions([])
                   setAddComponentSelectedOptions({})
+                  setAddComponentOptionQuantities({})
                 }}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
               >

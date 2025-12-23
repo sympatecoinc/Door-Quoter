@@ -122,6 +122,38 @@ cd /home/kylepalmer/Door-Quoter && DATABASE_URL="postgresql://postgres:SimplePas
 cd /home/kylepalmer/Door-Quoter && DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate deploy
 ```
 
+### 4.3 Handle Schema Drift (Missing Columns)
+
+Sometimes migrations show "up to date" but schema.prisma has columns not in the database.
+This happens when columns are added to schema.prisma without creating proper migrations.
+
+**Detection:** If app errors show `column X does not exist` but migrations are up to date.
+
+**Fix: Apply missing columns directly via SQL:**
+
+```bash
+# Example: Add missing Boolean column with default
+npx prisma db execute --url "postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" --stdin <<EOF
+ALTER TABLE "TableName" ADD COLUMN IF NOT EXISTS "columnName" BOOLEAN NOT NULL DEFAULT false;
+EOF
+```
+
+**Common drift fixes (add as needed):**
+
+```bash
+# includeStarterChannels on Openings table
+npx prisma db execute --url "postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" --stdin <<EOF
+ALTER TABLE "Openings" ADD COLUMN IF NOT EXISTS "includeStarterChannels" BOOLEAN NOT NULL DEFAULT false;
+EOF
+```
+
+**To find schema drift:** Compare schema.prisma fields against database columns:
+
+```bash
+# Check Cloud Run logs for "column X does not exist" errors
+~/google-cloud-sdk/bin/gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="door-quoter-app" AND "does not exist"' --project=door-quoter --limit=5 --format=json | jq -r '.[].jsonPayload.message // .[].textPayload' 2>/dev/null
+```
+
 ---
 
 ## STEP 5: Verify Sync

@@ -164,9 +164,14 @@ export async function GET(
 
           // Calculate length for Hardware/Fastener parts with LF or IN units
           // Also populate cutLength so it shows in the Cut Length column
+          // Formulas are expected to produce inches - automatically convert to feet for LF units
           let calculatedLength: number | null = null
           if (bom.formula && (bom.partType === 'Hardware' || bom.partType === 'Fastener') && (bom.unit === 'LF' || bom.unit === 'IN')) {
             calculatedLength = evaluateFormula(bom.formula, variables)
+            // Convert inches to feet if unit is LF
+            if (bom.unit === 'LF' && calculatedLength !== null) {
+              calculatedLength = calculatedLength / 12
+            }
             cutLength = calculatedLength  // Show in Cut Length column
           }
 
@@ -429,8 +434,14 @@ export async function GET(
                     }
                   }
 
-                  // Use quantity from ProductBOM if available, otherwise default to 1
-                  const optionQuantity = optionBom?.quantity || 1
+                  // Determine quantity for standard option
+                  // For RANGE mode use defaultQuantity, for FIXED use quantity
+                  let optionQuantity = 1
+                  if (optionBom?.quantityMode === 'RANGE') {
+                    optionQuantity = optionBom.defaultQuantity || optionBom.minQuantity || 1
+                  } else {
+                    optionQuantity = optionBom?.quantity || 1
+                  }
 
                   bomItems.push({
                     openingName: opening.name,
@@ -536,8 +547,22 @@ export async function GET(
                   description += ' (Included)'
                 }
 
-                // Use quantity from ProductBOM if available, otherwise default to 1
-                const optionQuantity = optionBom?.quantity || 1
+                // Determine quantity: check for user selection first (RANGE mode), then BOM quantity
+                const quantityKey = `${categoryId}_qty`
+                let optionQuantity = 1
+                if (selections[quantityKey] !== undefined) {
+                  // User-selected quantity (RANGE mode)
+                  optionQuantity = Number(selections[quantityKey])
+                } else if (optionBom?.quantityMode === 'RANGE') {
+                  // RANGE mode but no selection - use default
+                  optionQuantity = optionBom.defaultQuantity || optionBom.minQuantity || 1
+                } else {
+                  // FIXED mode - use BOM quantity
+                  optionQuantity = optionBom?.quantity || 1
+                }
+
+                // Skip if quantity is 0 (user explicitly chose to exclude)
+                if (optionQuantity === 0) continue
 
                 bomItems.push({
                   openingName: opening.name,
@@ -637,8 +662,14 @@ export async function GET(
                 }
               }
 
-              // Use quantity from ProductBOM if available, otherwise default to 1
-              const optionQuantity = optionBom?.quantity || 1
+              // Determine quantity for standard option not in selections
+              // For RANGE mode use defaultQuantity, for FIXED use quantity
+              let optionQuantity = 1
+              if (optionBom?.quantityMode === 'RANGE') {
+                optionQuantity = optionBom.defaultQuantity || optionBom.minQuantity || 1
+              } else {
+                optionQuantity = optionBom?.quantity || 1
+              }
 
               bomItems.push({
                 openingName: opening.name,
@@ -665,61 +696,8 @@ export async function GET(
         }
       }
 
-      // Add starter channels if enabled for this opening
-      if (opening.includeStarterChannels) {
-        // Get the opening height - use finishedHeight, roughHeight, or max panel height
-        let openingHeight = opening.finishedHeight || opening.roughHeight
-        if (!openingHeight && opening.panels.length > 0) {
-          openingHeight = Math.max(...opening.panels.map(p => p.height || 0))
-        }
-
-        if (openingHeight && openingHeight > 0) {
-          // Calculate cut length = height + 0.5"
-          const cutLength = openingHeight + 0.5
-
-          // Build part number with finish code
-          let starterPartNumber = 'E-12306'
-          if (opening.finishColor) {
-            const finishCode = await getFinishCode(opening.finishColor)
-            if (finishCode) {
-              starterPartNumber = `${starterPartNumber}${finishCode}`
-            }
-          }
-
-          // Find stock length for this part
-          const stockInfo = await findStockLength('E-12306', { formula: 'height + 0.5', partType: 'Extrusion' }, { height: openingHeight })
-          const stockLength = stockInfo.stockLength
-
-          // Add stock length to part number if found
-          if (stockLength) {
-            starterPartNumber = `${starterPartNumber}-${stockLength}`
-          }
-
-          // Calculate percent of stock used
-          let percentOfStock: number | null = null
-          if (stockLength && stockLength > 0) {
-            percentOfStock = (cutLength / stockLength) * 100
-          }
-
-          bomItems.push({
-            openingName: opening.name,
-            panelId: null,
-            productName: 'Starter Channel',
-            panelWidth: null,
-            panelHeight: openingHeight,
-            partNumber: starterPartNumber,
-            partName: 'Starter Channel',
-            partType: 'Extrusion',
-            quantity: 2, // 2 starter channels per opening (left and right)
-            cutLength: cutLength,
-            stockLength: stockLength,
-            percentOfStock: percentOfStock,
-            unit: 'IN',
-            description: 'Starter Channel - Opening accessory',
-            color: opening.finishColor || 'N/A'
-          })
-        }
-      }
+      // Note: Starter channels are now handled via category options with RANGE mode
+      // The old hardcoded includeStarterChannels logic has been removed
     }
 
     // Group BOM items by opening and component
@@ -800,7 +778,36 @@ export async function GET(
 
     // If cutlist mode is requested, return cut list data (extrusions only, grouped by product + size)
     if (cutlist) {
-      let cutListItems = aggregateCutListItems(bomItems)
+      // Separate miscellaneous items from regular BOM items
+      const regularBomItems = bomItems.filter(item => !item.isMiscellaneous)
+      const miscBomItems = bomItems.filter(item => item.isMiscellaneous)
+
+      let cutListItems = aggregateCutListItems(regularBomItems)
+
+      // Create miscellaneous cut list (aggregated by part number and cut length)
+      const miscCutListMap: Record<string, any> = {}
+      for (const item of miscBomItems) {
+        if (item.partType !== 'Extrusion') continue
+        const cutLengthKey = item.cutLength ? item.cutLength.toFixed(2) : 'none'
+        const key = `${item.partNumber}|${cutLengthKey}`
+
+        if (!miscCutListMap[key]) {
+          miscCutListMap[key] = {
+            partNumber: item.partNumber,
+            partName: item.partName,
+            stockLength: item.stockLength,
+            cutLength: item.cutLength,
+            totalQty: 0,
+            color: item.color,
+            openings: [] as string[]
+          }
+        }
+        miscCutListMap[key].totalQty += (item.quantity || 1)
+        if (!miscCutListMap[key].openings.includes(item.openingName)) {
+          miscCutListMap[key].openings.push(item.openingName)
+        }
+      }
+      const miscellaneousCutList = Object.values(miscCutListMap)
 
       // Filter by product if specified
       if (productFilter) {
@@ -875,6 +882,7 @@ export async function GET(
         projectId,
         projectName: project.name,
         cutListItems: batchedCutListItems,
+        miscellaneousCutList,
         stockOptimization,
         totalParts,
         totalUniqueProducts

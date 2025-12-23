@@ -479,6 +479,7 @@ export default function ProductDetailView({
   const [newPartFormula, setNewPartFormula] = useState('')
   const [newPartQuantity, setNewPartQuantity] = useState('')
   const [newPartNumber, setNewPartNumber] = useState('')
+  const [newPartIsMilled, setNewPartIsMilled] = useState(true)
   const [creating, setCreating] = useState(false)
   const [editingPart, setEditingPart] = useState<number | null>(null)
   const [editPartType, setEditPartType] = useState('')
@@ -489,6 +490,7 @@ export default function ProductDetailView({
   const [editPartUnit, setEditPartUnit] = useState('')
   const [editPartQuantity, setEditPartQuantity] = useState('')
   const [editPartNumber, setEditPartNumber] = useState('')
+  const [editPartIsMilled, setEditPartIsMilled] = useState(true)
   const [editPartAddFinish, setEditPartAddFinish] = useState(false)
   const [editPartAddToPacking, setEditPartAddToPacking] = useState(false)
   const [updating, setUpdating] = useState(false)
@@ -536,6 +538,10 @@ export default function ProductDetailView({
   const [editingOptionBom, setEditingOptionBom] = useState<any>(null)
   const [optionBomFormula, setOptionBomFormula] = useState('')
   const [optionBomQuantity, setOptionBomQuantity] = useState('1')
+  const [optionBomQuantityMode, setOptionBomQuantityMode] = useState<'FIXED' | 'RANGE'>('FIXED')
+  const [optionBomMinQuantity, setOptionBomMinQuantity] = useState('')
+  const [optionBomMaxQuantity, setOptionBomMaxQuantity] = useState('')
+  const [optionBomDefaultQuantity, setOptionBomDefaultQuantity] = useState('')
   const [savingOptionBom, setSavingOptionBom] = useState(false)
 
   // Delete BOM Part Modal State
@@ -1027,11 +1033,29 @@ export default function ProductDetailView({
     setEditingOptionBom({ option, existingBom })
     setOptionBomFormula(existingBom?.formula || '')
     setOptionBomQuantity(existingBom?.quantity?.toString() || '1')
+    setOptionBomQuantityMode(existingBom?.quantityMode || 'FIXED')
+    setOptionBomMinQuantity(existingBom?.minQuantity?.toString() || '')
+    setOptionBomMaxQuantity(existingBom?.maxQuantity?.toString() || '')
+    setOptionBomDefaultQuantity(existingBom?.defaultQuantity?.toString() || '')
     setOptionBomModalOpen(true)
   }
 
   async function handleSaveOptionBom() {
     if (!editingOptionBom?.option) return
+
+    // Validate RANGE mode
+    if (optionBomQuantityMode === 'RANGE') {
+      if (!optionBomMinQuantity || !optionBomMaxQuantity) {
+        showError('RANGE mode requires min and max quantity values')
+        return
+      }
+      const min = parseFloat(optionBomMinQuantity)
+      const max = parseFloat(optionBomMaxQuantity)
+      if (min >= max) {
+        showError('Min quantity must be less than max quantity')
+        return
+      }
+    }
 
     setSavingOptionBom(true)
     try {
@@ -1049,7 +1073,11 @@ export default function ProductDetailView({
           partNumber: editingOptionBom.option.partNumber,
           formula: optionBomFormula,
           quantity: parseFloat(optionBomQuantity) || 1,
-          unit: 'IN'
+          unit: 'IN',
+          quantityMode: optionBomQuantityMode,
+          minQuantity: optionBomQuantityMode === 'RANGE' ? parseFloat(optionBomMinQuantity) : null,
+          maxQuantity: optionBomQuantityMode === 'RANGE' ? parseFloat(optionBomMaxQuantity) : null,
+          defaultQuantity: optionBomQuantityMode === 'RANGE' && optionBomDefaultQuantity ? parseFloat(optionBomDefaultQuantity) : null
         })
       })
 
@@ -1120,6 +1148,7 @@ export default function ProductDetailView({
         stockLength: null,
         partNumber: masterPartFound.partNumber,
         cost: masterPartFound.cost || null,
+        isMilled: masterPartFound.partType === 'Extrusion' ? newPartIsMilled : true,
         addFinishToPartNumber: masterPartFound.partType === 'Hardware' ? (masterPartFound.addFinishToPartNumber || false) : false,
         addToPackingList: masterPartFound.partType === 'Hardware' ? (masterPartFound.addToPackingList || false) : false
       }
@@ -1135,6 +1164,7 @@ export default function ProductDetailView({
         setNewPartNumber('')
         setNewPartFormula('')
         setNewPartQuantity('')
+        setNewPartIsMilled(true)
         setMasterPartFound(null)
         setMasterPartSuggestions([])
         setShowSuggestions(false)
@@ -1165,6 +1195,7 @@ export default function ProductDetailView({
     setEditPartUnit(part.unit || '')
     setEditPartQuantity(part.quantity?.toString() || '')
     setEditPartNumber(part.partNumber || '')
+    setEditPartIsMilled(part.isMilled !== false) // Default to true if not set
     setEditPartAddFinish(part.addFinishToPartNumber || false)
     setEditPartAddToPacking(part.addToPackingList || false)
   }
@@ -1179,6 +1210,7 @@ export default function ProductDetailView({
     setEditPartUnit('')
     setEditPartQuantity('')
     setEditPartNumber('')
+    setEditPartIsMilled(true)
   }
 
   async function handleUpdatePart(e: React.FormEvent) {
@@ -1201,6 +1233,7 @@ export default function ProductDetailView({
           quantity: editPartQuantity ? parseFloat(editPartQuantity) : null,
           stockLength: null,
           partNumber: editPartNumber || null,
+          isMilled: editPartType === 'Extrusion' ? editPartIsMilled : undefined,
           // addFinishToPartNumber and addToPackingList are set from master part, not editable per-product
         })
       })
@@ -1581,6 +1614,21 @@ export default function ProductDetailView({
                       required
                     />
                   </div>
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="newPartIsMilled"
+                      checked={newPartIsMilled}
+                      onChange={(e) => setNewPartIsMilled(e.target.checked)}
+                      className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="newPartIsMilled" className="text-sm font-medium text-gray-700">
+                      Milled
+                    </label>
+                    <span className="ml-2 text-xs text-gray-500">
+                      (This part requires milling)
+                    </span>
+                  </div>
                 </div>
               )}
               
@@ -1654,6 +1702,7 @@ export default function ProductDetailView({
                       setNewPartNumber('')
                       setNewPartFormula('')
                       setNewPartQuantity('')
+                      setNewPartIsMilled(true)
                       setMasterPartFound(null)
                       setMasterPartSuggestions([])
                       setShowSuggestions(false)
@@ -1929,7 +1978,14 @@ export default function ProductDetailView({
                                                 {option.isCutListItem && optionBom && (
                                                   <div className="text-xs text-orange-600 mt-2 p-2 bg-orange-100 rounded">
                                                     Formula: <code>{optionBom.formula || 'Not set'}</code>
-                                                    {optionBom.quantity && ` × ${optionBom.quantity}`}
+                                                    {optionBom.quantityMode === 'RANGE' ? (
+                                                      <span className="ml-2">
+                                                        Qty: {optionBom.minQuantity}-{optionBom.maxQuantity}
+                                                        {optionBom.defaultQuantity && ` (default: ${optionBom.defaultQuantity})`}
+                                                      </span>
+                                                    ) : (
+                                                      optionBom.quantity && ` × ${optionBom.quantity}`
+                                                    )}
                                                   </div>
                                                 )}
                                               </div>
@@ -2318,6 +2374,21 @@ export default function ProductDetailView({
                       required
                     />
                   </div>
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="editPartIsMilled"
+                      checked={editPartIsMilled}
+                      onChange={(e) => setEditPartIsMilled(e.target.checked)}
+                      className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="editPartIsMilled" className="text-sm font-medium text-gray-700">
+                      Milled
+                    </label>
+                    <span className="ml-2 text-xs text-gray-500">
+                      (This part requires milling)
+                    </span>
+                  </div>
                 </div>
               )}
               
@@ -2371,17 +2442,81 @@ export default function ProductDetailView({
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={optionBomQuantity}
-                  onChange={(e) => setOptionBomQuantity(e.target.value)}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Quantity Mode</label>
+                <select
+                  value={optionBomQuantityMode}
+                  onChange={(e) => setOptionBomQuantityMode(e.target.value as 'FIXED' | 'RANGE')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                  placeholder="e.g., 2"
-                />
+                >
+                  <option value="FIXED">Fixed Quantity</option>
+                  <option value="RANGE">User Selectable Range</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {optionBomQuantityMode === 'FIXED'
+                    ? 'Quantity is fixed when adding component to opening'
+                    : 'User can select quantity from a range when adding component'}
+                </p>
               </div>
+
+              {optionBomQuantityMode === 'FIXED' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={optionBomQuantity}
+                    onChange={(e) => setOptionBomQuantity(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    placeholder="e.g., 2"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Min *</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={optionBomMinQuantity}
+                        onChange={(e) => setOptionBomMinQuantity(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Max *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={optionBomMaxQuantity}
+                        onChange={(e) => setOptionBomMaxQuantity(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        placeholder="4"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Default</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={optionBomDefaultQuantity}
+                        onChange={(e) => setOptionBomDefaultQuantity(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        placeholder="2"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    User will select from {optionBomMinQuantity || '0'} to {optionBomMaxQuantity || '?'} when adding to opening
+                  </p>
+                </div>
+              )}
+
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
@@ -2395,7 +2530,12 @@ export default function ProductDetailView({
                 </button>
                 <button
                   onClick={handleSaveOptionBom}
-                  disabled={savingOptionBom || !optionBomFormula || !optionBomQuantity}
+                  disabled={
+                    savingOptionBom ||
+                    !optionBomFormula ||
+                    (optionBomQuantityMode === 'FIXED' && !optionBomQuantity) ||
+                    (optionBomQuantityMode === 'RANGE' && (!optionBomMinQuantity || !optionBomMaxQuantity))
+                  }
                   className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
                 >
                   {savingOptionBom ? 'Saving...' : 'Save'}

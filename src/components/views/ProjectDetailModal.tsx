@@ -109,10 +109,21 @@ interface StockOptimization {
   wastePercent: number
 }
 
+interface MiscellaneousCutListItem {
+  partNumber: string
+  partName: string
+  stockLength: number | null
+  cutLength: number | null
+  totalQty: number
+  color: string
+  openings: string[]
+}
+
 interface CutListData {
   projectId: number
   projectName: string
   cutListItems: CutListItem[]
+  miscellaneousCutList?: MiscellaneousCutListItem[]
   stockOptimization: StockOptimization[]
   totalParts: number
   totalUniqueProducts: number
@@ -150,6 +161,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
   const [loadingCutList, setLoadingCutList] = useState(false)
   const [batchSizes, setBatchSizes] = useState<Record<string, number>>({})
   const [downloadingProduct, setDownloadingProduct] = useState<string | null>(null)
+  const [downloadingMisc, setDownloadingMisc] = useState(false)
 
   // Handle Escape key to close modal
   useEscapeKey([
@@ -259,6 +271,37 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
       console.error('Error fetching cut list:', err)
     } finally {
       setLoadingCutList(false)
+    }
+  }
+
+  const handleDownloadMiscCutListCSV = () => {
+    if (!cutListData?.miscellaneousCutList || cutListData.miscellaneousCutList.length === 0) return
+
+    setDownloadingMisc(true)
+    try {
+      const headers = ['Part Number', 'Part Name', 'Color', 'Cut Length', 'Stock Length', 'Qty', 'Openings']
+      const rows = cutListData.miscellaneousCutList.map(item => [
+        item.partNumber,
+        item.partName,
+        item.color,
+        item.cutLength ? `${item.cutLength.toFixed(2)}"` : '',
+        item.stockLength ? `${item.stockLength}"` : 'N/A',
+        item.totalQty,
+        item.openings.join('; ')
+      ].map(field => `"${String(field).replace(/"/g, '""')}"`))
+
+      const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${project?.name || 'project'}-miscellaneous-cutlist.csv`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } finally {
+      setDownloadingMisc(false)
     }
   }
 
@@ -1075,9 +1118,10 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                 <div className="flex justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
-              ) : cutListData && cutListData.cutListItems.length > 0 ? (
+              ) : cutListData && (cutListData.cutListItems.length > 0 || (cutListData.miscellaneousCutList && cutListData.miscellaneousCutList.length > 0)) ? (
                 <>
                   {/* Product Cut List Cards - grouped by product AND size */}
+                  {cutListData.cutListItems.length > 0 && (
                   <div className="space-y-4">
                     <h4 className="font-medium text-gray-900">Download Cut Lists by Product & Size</h4>
                     {(() => {
@@ -1167,6 +1211,61 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                       })
                     })()}
                   </div>
+                  )}
+
+                  {/* Miscellaneous Cut List Section */}
+                  {cutListData.miscellaneousCutList && cutListData.miscellaneousCutList.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <div>
+                          <h4 className="font-medium text-amber-900">Miscellaneous Cut List</h4>
+                          <p className="text-sm text-amber-700">
+                            Additional extrusions for opening accessories (starter channels, trim, etc.)
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleDownloadMiscCutListCSV}
+                          disabled={downloadingMisc}
+                          className="flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm disabled:opacity-50"
+                        >
+                          {downloadingMisc ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                          ) : (
+                            <Download className="w-4 h-4 mr-2" />
+                          )}
+                          Download CSV
+                        </button>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-amber-100">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-amber-700 uppercase">Part Number</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-amber-700 uppercase">Part Name</th>
+                              <th className="px-3 py-2 text-center text-xs font-medium text-amber-700 uppercase">Color</th>
+                              <th className="px-3 py-2 text-center text-xs font-medium text-amber-700 uppercase">Cut Length</th>
+                              <th className="px-3 py-2 text-center text-xs font-medium text-amber-700 uppercase">Stock Length</th>
+                              <th className="px-3 py-2 text-center text-xs font-medium text-amber-700 uppercase">Qty</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-amber-700 uppercase">Openings</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-amber-200">
+                            {cutListData.miscellaneousCutList.map((item, index) => (
+                              <tr key={index} className="hover:bg-amber-100">
+                                <td className="px-3 py-2 font-mono text-xs">{item.partNumber}</td>
+                                <td className="px-3 py-2">{item.partName}</td>
+                                <td className="px-3 py-2 text-center">{item.color}</td>
+                                <td className="px-3 py-2 text-center">{item.cutLength?.toFixed(2)}"</td>
+                                <td className="px-3 py-2 text-center">{item.stockLength ? `${item.stockLength}"` : 'N/A'}</td>
+                                <td className="px-3 py-2 text-center font-medium">{item.totalQty}</td>
+                                <td className="px-3 py-2 text-xs text-gray-600">{item.openings.join(', ')}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Stats Cards */}
                   <div className="grid grid-cols-2 gap-4">
