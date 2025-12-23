@@ -166,13 +166,48 @@ cd /home/kylepalmer/Door-Quoter && DATABASE_URL="postgresql://postgres:SimplePas
 
 **Expected:** `Database schema is up to date!`
 
-### 5.2 Test Connection
+### 5.2 Verify Schema Matches Local
+
+Compare key tables between local dev and production to detect any drift:
+
+```bash
+# Compare table/column counts (quick sanity check)
+DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" node -e "
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+Promise.all([
+  prisma.\$queryRaw\`SELECT COUNT(*) as cnt FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'\`,
+  prisma.\$queryRaw\`SELECT table_name, COUNT(*) as col_count FROM information_schema.columns WHERE table_schema = 'public' GROUP BY table_name ORDER BY table_name\`
+])
+.then(([tables, cols]) => {
+  console.log('Tables:', tables[0].cnt);
+  console.log('\\nKey tables column counts:');
+  const keyTables = ['Users', 'Profiles', 'MasterParts', 'Openings', 'ProductBOMs'];
+  cols.filter(c => keyTables.includes(c.table_name)).forEach(c => console.log(\`  \${c.table_name}: \${c.col_count} columns\`));
+  prisma.\$disconnect();
+})
+.catch(e => { console.error('Error:', e.message); prisma.\$disconnect(); });
+"
+```
+
+**Expected column counts (update as schema changes):**
+- Users: 11 columns
+- Profiles: 7 columns
+- MasterParts: 24 columns
+- Openings: 21 columns
+- ProductBOMs: 22 columns
+
+### 5.3 Test Connection
 
 ```bash
 DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" node -e "
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-prisma.product.count().then(c => { console.log('Production Products:', c); prisma.\$disconnect(); }).catch(e => console.error('Error:', e.message));
+Promise.all([prisma.product.count(), prisma.user.count(), prisma.masterPart.count()])
+.then(([products, users, parts]) => {
+  console.log('Production Counts - Products:', products, '| Users:', users, '| MasterParts:', parts);
+  prisma.\$disconnect();
+}).catch(e => console.error('Error:', e.message));
 "
 ```
 

@@ -303,3 +303,39 @@ export interface PricingMode {
   createdAt: Date
   updatedAt: Date
 }
+
+// User Profiles and Authentication Types
+export interface Profile {
+  id: number
+  name: string
+  description?: string | null
+  tabs: string[]
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+  _count?: {
+    users: number
+  }
+}
+
+export interface TabOverrides {
+  add: string[]
+  remove: string[]
+}
+
+export type UserRole = 'ADMIN' | 'MANAGER' | 'VIEWER'
+
+export interface User {
+  id: number
+  email: string
+  name: string
+  role: UserRole
+  isActive: boolean
+  permissions: string[]
+  profileId?: number | null
+  profile?: Profile | null
+  tabOverrides?: string
+  effectivePermissions?: string[]
+  createdAt: Date
+  updatedAt: Date
+}
