@@ -1,11 +1,15 @@
 import { prisma } from './prisma'
 import { getSessionExpirationDate } from './auth'
-import type { User, Session } from '@prisma/client'
+import { calculateEffectivePermissions, ALL_TABS } from './permissions'
+import type { User, Session, Profile } from '@prisma/client'
 
-export type UserWithoutPassword = Omit<User, 'passwordHash'>
+export type UserWithoutPassword = Omit<User, 'passwordHash'> & {
+  profile?: { id: number; name: string; tabs: string[] } | null
+  effectivePermissions?: string[]
+}
 
-// Available menu options
-export const AVAILABLE_TABS = ['dashboard', 'projects', 'crm', 'products', 'masterParts', 'settings'] as const
+// Available menu options (re-exported from permissions for backward compatibility)
+export const AVAILABLE_TABS = ALL_TABS
 
 /**
  * Create a new session for a user
@@ -26,6 +30,7 @@ export async function createSession(userId: number): Promise<Session> {
 /**
  * Get session by ID with user data (excluding password hash)
  * Returns null if session doesn't exist or is expired
+ * Includes profile data and computed effectivePermissions
  */
 export async function getSessionWithUser(
   sessionId: string
@@ -41,6 +46,15 @@ export async function getSessionWithUser(
           role: true,
           isActive: true,
           permissions: true,
+          profileId: true,
+          tabOverrides: true,
+          profile: {
+            select: {
+              id: true,
+              name: true,
+              tabs: true
+            }
+          },
           createdAt: true,
           updatedAt: true,
           passwordHash: false,
@@ -65,7 +79,21 @@ export async function getSessionWithUser(
     return null
   }
 
-  return session as Session & { user: UserWithoutPassword }
+  // Calculate effective permissions based on profile and overrides
+  const effectivePermissions = calculateEffectivePermissions(
+    session.user.profile,
+    session.user.tabOverrides,
+    session.user.permissions
+  )
+
+  // Return session with user including effectivePermissions
+  return {
+    ...session,
+    user: {
+      ...session.user,
+      effectivePermissions
+    }
+  } as Session & { user: UserWithoutPassword }
 }
 
 /**

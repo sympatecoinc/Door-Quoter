@@ -32,13 +32,23 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { email, name, role, isActive, password, permissions } = body
+    const { email, name, role, isActive, password, permissions, profileId, tabOverrides } = body
 
     // Build update data
     const updateData: any = {}
 
     if (permissions !== undefined) {
       updateData.permissions = permissions
+    }
+
+    // Handle profile assignment (can be set to null to remove profile)
+    if (profileId !== undefined) {
+      updateData.profileId = profileId === null ? null : profileId
+    }
+
+    // Handle tab overrides
+    if (tabOverrides !== undefined) {
+      updateData.tabOverrides = typeof tabOverrides === 'string' ? tabOverrides : JSON.stringify(tabOverrides)
     }
 
     if (email !== undefined) {
@@ -106,6 +116,15 @@ export async function PUT(
         role: true,
         isActive: true,
         permissions: true,
+        profileId: true,
+        tabOverrides: true,
+        profile: {
+          select: {
+            id: true,
+            name: true,
+            tabs: true
+          }
+        },
         createdAt: true,
         updatedAt: true,
       },

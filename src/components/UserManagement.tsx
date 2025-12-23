@@ -1,7 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { UserPlus, Edit2, Trash2, Shield, Eye, Settings, X } from 'lucide-react'
+import { UserPlus, Edit2, Trash2, Shield, Eye, Settings, X, Plus, Minus, Check } from 'lucide-react'
+import { ALL_TABS, parseTabOverrides, serializeTabOverrides, calculateEffectivePermissions, getPermissionSources, type TabOverrides } from '@/lib/permissions'
+
+interface Profile {
+  id: number
+  name: string
+  tabs: string[]
+}
 
 interface User {
   id: number
@@ -10,6 +17,9 @@ interface User {
   role: 'ADMIN' | 'MANAGER' | 'VIEWER'
   isActive: boolean
   permissions: string[]
+  profileId: number | null
+  tabOverrides: string
+  profile: Profile | null
   createdAt: string
 }
 
@@ -19,6 +29,8 @@ const AVAILABLE_TABS = [
   { id: 'crm', label: 'CRM' },
   { id: 'products', label: 'Products' },
   { id: 'masterParts', label: 'Master Parts' },
+  { id: 'inventory', label: 'Inventory' },
+  { id: 'vendors', label: 'Vendors' },
   { id: 'quoteDocuments', label: 'Quote Settings' },
   { id: 'accounting', label: 'Accounting' },
   { id: 'settings', label: 'Settings' },
@@ -26,6 +38,7 @@ const AVAILABLE_TABS = [
 
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([])
+  const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -33,7 +46,20 @@ export default function UserManagement() {
 
   useEffect(() => {
     fetchUsers()
+    fetchProfiles()
   }, [])
+
+  const fetchProfiles = async () => {
+    try {
+      const response = await fetch('/api/profiles')
+      if (response.ok) {
+        const data = await response.json()
+        setProfiles(data.profiles)
+      }
+    } catch (error) {
+      console.error('Error fetching profiles:', error)
+    }
+  }
 
   const fetchUsers = async () => {
     try {
@@ -235,6 +261,7 @@ export default function UserManagement() {
       {showCreateModal && (
         <UserFormModal
           title="Create New User"
+          profiles={profiles}
           onClose={() => setShowCreateModal(false)}
           onSubmit={handleCreateUser}
         />
@@ -244,6 +271,7 @@ export default function UserManagement() {
         <UserFormModal
           title="Edit User"
           user={selectedUser}
+          profiles={profiles}
           onClose={() => {
             setShowEditModal(false)
             setSelectedUser(null)
@@ -258,11 +286,13 @@ export default function UserManagement() {
 function UserFormModal({
   title,
   user,
+  profiles,
   onClose,
   onSubmit,
 }: {
   title: string
   user?: User
+  profiles: Profile[]
   onClose: () => void
   onSubmit: (data: any) => void
 }) {
@@ -271,11 +301,36 @@ function UserFormModal({
   const [role, setRole] = useState(user?.role || 'VIEWER')
   const [password, setPassword] = useState('')
   const [isActive, setIsActive] = useState(user?.isActive ?? true)
+
+  // Profile-based permissions
+  const [profileId, setProfileId] = useState<number | null>(user?.profileId ?? null)
+  const [tabOverrides, setTabOverrides] = useState<TabOverrides>(
+    parseTabOverrides(user?.tabOverrides || '{}')
+  )
+
+  // Legacy permissions (only used when no profile)
   const [permissions, setPermissions] = useState<string[]>(
     user?.permissions || ['dashboard', 'projects', 'crm', 'products', 'masterParts', 'quoteDocuments', 'accounting', 'settings']
   )
 
-  const togglePermission = (tabId: string) => {
+  // Get selected profile
+  const selectedProfile = profiles.find(p => p.id === profileId) || null
+
+  // Calculate effective permissions for display
+  const effectivePermissions = calculateEffectivePermissions(
+    selectedProfile,
+    serializeTabOverrides(tabOverrides),
+    permissions
+  )
+
+  // Get permission sources for visual display
+  const permissionSources = getPermissionSources(
+    selectedProfile,
+    serializeTabOverrides(tabOverrides),
+    permissions
+  )
+
+  const toggleLegacyPermission = (tabId: string) => {
     setPermissions(prev =>
       prev.includes(tabId)
         ? prev.filter(p => p !== tabId)
@@ -283,18 +338,59 @@ function UserFormModal({
     )
   }
 
+  const toggleOverride = (tabId: string, type: 'add' | 'remove') => {
+    setTabOverrides(prev => {
+      const newOverrides = { ...prev }
+
+      if (type === 'add') {
+        // Toggle add override
+        if (prev.add.includes(tabId)) {
+          newOverrides.add = prev.add.filter(t => t !== tabId)
+        } else {
+          newOverrides.add = [...prev.add, tabId]
+          // Remove from 'remove' if it was there
+          newOverrides.remove = prev.remove.filter(t => t !== tabId)
+        }
+      } else {
+        // Toggle remove override
+        if (prev.remove.includes(tabId)) {
+          newOverrides.remove = prev.remove.filter(t => t !== tabId)
+        } else {
+          newOverrides.remove = [...prev.remove, tabId]
+          // Remove from 'add' if it was there
+          newOverrides.add = prev.add.filter(t => t !== tabId)
+        }
+      }
+
+      return newOverrides
+    })
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const data: any = { name, email, role, isActive, permissions }
+    const data: any = { name, email, role, isActive }
+
     if (password) {
       data.password = password
     }
+
+    // If using a profile, send profileId and tabOverrides
+    if (profileId !== null) {
+      data.profileId = profileId
+      data.tabOverrides = serializeTabOverrides(tabOverrides)
+    } else {
+      // No profile - use legacy permissions and clear profile
+      data.profileId = null
+      data.permissions = permissions
+      data.tabOverrides = '{}'
+    }
+
     onSubmit(data)
   }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+      <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
@@ -359,29 +455,154 @@ function UserFormModal({
             </select>
           </div>
 
+          {/* Profile Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Permission Profile
+            </label>
+            <select
+              value={profileId ?? ''}
+              onChange={(e) => {
+                const value = e.target.value
+                setProfileId(value === '' ? null : parseInt(value))
+                // Clear overrides when changing profile
+                if (value !== String(profileId)) {
+                  setTabOverrides({ add: [], remove: [] })
+                }
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+            >
+              <option value="">No Profile (Manual Permissions)</option>
+              {profiles.map(profile => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {profileId ? 'Profile defines base tab access. Use overrides below to customize.' : 'Select individual tabs below when not using a profile.'}
+            </p>
+          </div>
+
+          {/* Tab Permissions */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Accessible Tabs
+              {profileId ? 'Tab Access (Profile + Overrides)' : 'Accessible Tabs'}
             </label>
-            <div className="space-y-2 border border-gray-200 rounded-lg p-3">
-              {AVAILABLE_TABS.map(tab => (
-                <div key={tab.id} className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id={`tab-${tab.id}`}
-                    checked={permissions.includes(tab.id)}
-                    onChange={() => togglePermission(tab.id)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                  <label htmlFor={`tab-${tab.id}`} className="ml-2 text-sm text-gray-700">
-                    {tab.label}
-                  </label>
-                </div>
-              ))}
+            <div className="space-y-1 border border-gray-200 rounded-lg p-3 max-h-60 overflow-y-auto">
+              {AVAILABLE_TABS.map(tab => {
+                const source = permissionSources[tab.id]
+                const hasAccess = effectivePermissions.includes(tab.id)
+                const isFromProfile = source === 'profile'
+                const isAddedOverride = source === 'override-add'
+                const isRemovedOverride = source === 'override-remove'
+
+                if (profileId !== null) {
+                  // Profile mode - show status and override controls
+                  return (
+                    <div key={tab.id} className="flex items-center justify-between py-1">
+                      <div className="flex items-center">
+                        {hasAccess ? (
+                          <Check className={`w-4 h-4 mr-2 ${isFromProfile ? 'text-green-600' : 'text-blue-600'}`} />
+                        ) : (
+                          <X className={`w-4 h-4 mr-2 ${isRemovedOverride ? 'text-red-500' : 'text-gray-300'}`} />
+                        )}
+                        <span className={`text-sm ${!hasAccess && isRemovedOverride ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                          {tab.label}
+                        </span>
+                        {isFromProfile && (
+                          <span className="ml-2 text-xs text-green-600">(profile)</span>
+                        )}
+                        {isAddedOverride && (
+                          <span className="ml-2 text-xs text-blue-600">(+added)</span>
+                        )}
+                        {isRemovedOverride && (
+                          <span className="ml-2 text-xs text-red-500">(-removed)</span>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        {/* Add override button - only show if not already in profile or added */}
+                        {!isFromProfile && !isAddedOverride && (
+                          <button
+                            type="button"
+                            onClick={() => toggleOverride(tab.id, 'add')}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            title="Add access"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        )}
+                        {/* Remove added override */}
+                        {isAddedOverride && (
+                          <button
+                            type="button"
+                            onClick={() => toggleOverride(tab.id, 'add')}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            title="Remove added override"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                        {/* Remove override button - only show if in profile and not already removed */}
+                        {isFromProfile && !isRemovedOverride && (
+                          <button
+                            type="button"
+                            onClick={() => toggleOverride(tab.id, 'remove')}
+                            className="p-1 text-red-600 hover:bg-red-50 rounded"
+                            title="Remove access"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                        )}
+                        {/* Undo remove override */}
+                        {isRemovedOverride && (
+                          <button
+                            type="button"
+                            onClick={() => toggleOverride(tab.id, 'remove')}
+                            className="p-1 text-red-600 hover:bg-red-50 rounded"
+                            title="Undo removal"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                } else {
+                  // No profile - simple checkbox mode
+                  return (
+                    <div key={tab.id} className="flex items-center py-1">
+                      <input
+                        type="checkbox"
+                        id={`tab-${tab.id}`}
+                        checked={permissions.includes(tab.id)}
+                        onChange={() => toggleLegacyPermission(tab.id)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor={`tab-${tab.id}`} className="ml-2 text-sm text-gray-700">
+                        {tab.label}
+                      </label>
+                    </div>
+                  )
+                }
+              })}
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Select which tabs this user can access in the dashboard
-            </p>
+            {profileId !== null && (
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                  From Profile
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                  Added Override
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                  Removed Override
+                </span>
+              </div>
+            )}
           </div>
 
           {user && (

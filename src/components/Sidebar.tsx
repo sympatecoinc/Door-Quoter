@@ -70,8 +70,11 @@ export default function Sidebar() {
   }
 
   // Filter menu items based on user permissions
+  // Use effectivePermissions (computed from profile + overrides) if available, fall back to legacy permissions
   const visibleMenuItems = currentUser
-    ? menuItems.filter(item => currentUser.permissions?.includes(item.id))
+    ? menuItems.filter(item =>
+        (currentUser.effectivePermissions || currentUser.permissions)?.includes(item.id)
+      )
     : menuItems
 
   async function handleLogout() {

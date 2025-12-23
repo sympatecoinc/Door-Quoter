@@ -31,6 +31,15 @@ export async function GET() {
         role: true,
         isActive: true,
         permissions: true,
+        profileId: true,
+        tabOverrides: true,
+        profile: {
+          select: {
+            id: true,
+            name: true,
+            tabs: true
+          }
+        },
         createdAt: true,
         updatedAt: true,
       },
@@ -67,7 +76,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { email, password, name, role, permissions } = body
+    const { email, password, name, role, permissions, profileId, tabOverrides } = body
 
     // Validate input
     if (!email || !password || !name || !role) {
@@ -111,16 +120,28 @@ export async function POST(request: Request) {
     // Hash password
     const passwordHash = await hashPassword(password)
 
-    // Create user with permissions (use provided permissions or default to all tabs)
+    // Create user with profile and/or permissions
+    const userData: any = {
+      email,
+      passwordHash,
+      name,
+      role,
+      isActive: true,
+      permissions: permissions || ['dashboard', 'projects', 'crm', 'products', 'masterParts', 'settings'],
+    }
+
+    // Add profile if provided
+    if (profileId !== undefined && profileId !== null) {
+      userData.profileId = profileId
+    }
+
+    // Add tab overrides if provided
+    if (tabOverrides !== undefined) {
+      userData.tabOverrides = typeof tabOverrides === 'string' ? tabOverrides : JSON.stringify(tabOverrides)
+    }
+
     const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        name,
-        role,
-        isActive: true,
-        permissions: permissions || ['dashboard', 'projects', 'crm', 'products', 'masterParts', 'settings'],
-      },
+      data: userData,
       select: {
         id: true,
         email: true,
@@ -128,6 +149,15 @@ export async function POST(request: Request) {
         role: true,
         isActive: true,
         permissions: true,
+        profileId: true,
+        tabOverrides: true,
+        profile: {
+          select: {
+            id: true,
+            name: true,
+            tabs: true
+          }
+        },
         createdAt: true,
         updatedAt: true,
       },
