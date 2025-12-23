@@ -579,8 +579,8 @@ export default function MasterPartsView() {
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
           addToPackingList: partType === 'Hardware' ? addToPackingList : false,
-          includeOnPickList: partType === 'Hardware' ? includeOnPickList : false,
-          includeInJambKit: partType === 'Hardware' ? includeInJambKit : false
+          includeOnPickList: (partType === 'Hardware' || partType === 'Fastener') ? includeOnPickList : false,
+          includeInJambKit: (partType === 'Hardware' || partType === 'Fastener') ? includeInJambKit : false
         })
       })
 
@@ -629,8 +629,8 @@ export default function MasterPartsView() {
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
           addToPackingList: partType === 'Hardware' ? addToPackingList : false,
-          includeOnPickList: partType === 'Hardware' ? includeOnPickList : false,
-          includeInJambKit: partType === 'Hardware' ? includeInJambKit : false
+          includeOnPickList: (partType === 'Hardware' || partType === 'Fastener') ? includeOnPickList : false,
+          includeInJambKit: (partType === 'Hardware' || partType === 'Fastener') ? includeInJambKit : false
         })
       })
 
@@ -2794,6 +2794,7 @@ export default function MasterPartsView() {
 
                   {/* Fastener specific fields */}
                   {partType === 'Fastener' && (
+                    <>
                     <div className="grid grid-cols-3 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
@@ -2842,6 +2843,42 @@ export default function MasterPartsView() {
                         />
                       </div>
                     </div>
+
+                    {/* Include on pick list checkbox */}
+                    <div className="flex items-center mt-3">
+                      <input
+                        type="checkbox"
+                        id="fastenerIncludeOnPickList"
+                        checked={includeOnPickList}
+                        onChange={(e) => setIncludeOnPickList(e.target.checked)}
+                        className="mr-2 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="fastenerIncludeOnPickList" className="text-sm font-medium text-gray-700">
+                        Include on pick list
+                      </label>
+                      <span className="ml-2 text-xs text-gray-500">
+                        (This item will appear on production pick lists)
+                      </span>
+                    </div>
+
+                    {/* Include in Jamb Kit checkbox */}
+                    <div className="flex items-center mt-2">
+                      <input
+                        type="checkbox"
+                        id="fastenerIncludeInJambKit"
+                        checked={includeInJambKit}
+                        onChange={(e) => setIncludeInJambKit(e.target.checked)}
+                        disabled={!includeOnPickList}
+                        className="mr-2 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded disabled:opacity-50"
+                      />
+                      <label htmlFor="fastenerIncludeInJambKit" className={`text-sm font-medium ${includeOnPickList ? 'text-gray-700' : 'text-gray-400'}`}>
+                        Include in Jamb Kit
+                      </label>
+                      <span className={`ml-2 text-xs ${includeOnPickList ? 'text-gray-500' : 'text-gray-400'}`}>
+                        (Mark as part of Jamb Kit on pick list)
+                      </span>
+                    </div>
+                    </>
                   )}
 
                   {/* Packaging specific fields */}
