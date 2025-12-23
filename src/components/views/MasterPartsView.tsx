@@ -22,6 +22,8 @@ interface MasterPart {
   isMillFinish?: boolean
   addFinishToPartNumber?: boolean
   addToPackingList?: boolean
+  includeOnPickList?: boolean
+  includeInJambKit?: boolean
   createdAt: string
   updatedAt: string
   pricingRules?: {
@@ -279,6 +281,8 @@ export default function MasterPartsView() {
   const [isMillFinish, setIsMillFinish] = useState(false)
   const [addFinishToPartNumber, setAddFinishToPartNumber] = useState(false)
   const [addToPackingList, setAddToPackingList] = useState(false)
+  const [includeOnPickList, setIncludeOnPickList] = useState(false)
+  const [includeInJambKit, setIncludeInJambKit] = useState(false)
 
   // Stock Rules State
   const [stockRules, setStockRules] = useState<StockLengthRule[]>([])
@@ -543,6 +547,8 @@ export default function MasterPartsView() {
     setIsMillFinish(false)
     setAddFinishToPartNumber(false)
     setAddToPackingList(false)
+    setIncludeOnPickList(false)
+    setIncludeInJambKit(false)
   }
 
   async function handleCreateMasterPart(e: React.FormEvent) {
@@ -572,7 +578,9 @@ export default function MasterPartsView() {
           isOption: partType === 'Hardware' ? isOption : false,
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
-          addToPackingList: partType === 'Hardware' ? addToPackingList : false
+          addToPackingList: partType === 'Hardware' ? addToPackingList : false,
+          includeOnPickList: partType === 'Hardware' ? includeOnPickList : false,
+          includeInJambKit: partType === 'Hardware' ? includeInJambKit : false
         })
       })
 
@@ -620,7 +628,9 @@ export default function MasterPartsView() {
           isOption: partType === 'Hardware' ? isOption : false,
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
-          addToPackingList: partType === 'Hardware' ? addToPackingList : false
+          addToPackingList: partType === 'Hardware' ? addToPackingList : false,
+          includeOnPickList: partType === 'Hardware' ? includeOnPickList : false,
+          includeInJambKit: partType === 'Hardware' ? includeInJambKit : false
         })
       })
 
@@ -804,6 +814,8 @@ export default function MasterPartsView() {
     setIsMillFinish(part.isMillFinish || false)
     setAddFinishToPartNumber(part.addFinishToPartNumber || false)
     setAddToPackingList(part.addToPackingList || false)
+    setIncludeOnPickList(part.includeOnPickList || false)
+    setIncludeInJambKit(part.includeInJambKit || false)
   }
 
   function viewMasterPartRules(part: MasterPart) {
@@ -2740,6 +2752,41 @@ export default function MasterPartsView() {
                         </label>
                         <span className="ml-2 text-xs text-gray-500">
                           (This hardware item will appear in the project packing list)
+                        </span>
+                      </div>
+
+                      {/* Include on pick list checkbox */}
+                      <div className="flex items-center mt-2">
+                        <input
+                          type="checkbox"
+                          id="includeOnPickList"
+                          checked={includeOnPickList}
+                          onChange={(e) => setIncludeOnPickList(e.target.checked)}
+                          className="mr-2 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="includeOnPickList" className="text-sm font-medium text-gray-700">
+                          Include on pick list
+                        </label>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (This item will appear on production pick lists)
+                        </span>
+                      </div>
+
+                      {/* Include in Jamb Kit checkbox */}
+                      <div className="flex items-center mt-2">
+                        <input
+                          type="checkbox"
+                          id="includeInJambKit"
+                          checked={includeInJambKit}
+                          onChange={(e) => setIncludeInJambKit(e.target.checked)}
+                          disabled={!includeOnPickList}
+                          className="mr-2 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded disabled:opacity-50"
+                        />
+                        <label htmlFor="includeInJambKit" className={`text-sm font-medium ${includeOnPickList ? 'text-gray-700' : 'text-gray-400'}`}>
+                          Include in Jamb Kit
+                        </label>
+                        <span className={`ml-2 text-xs ${includeOnPickList ? 'text-gray-500' : 'text-gray-400'}`}>
+                          (Mark as part of Jamb Kit on pick list)
                         </span>
                       </div>
                     </>

@@ -488,10 +488,10 @@ export default function CategoryDetailView({
       {showAddOptionForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-lg">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Add Hardware Option to {category.name}</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Add Option to {category.name}</h2>
             <form onSubmit={handleAddOption} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Select Hardware Item</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Part</label>
                 
                 {/* Search Field */}
                 {availableMasterParts.length > 0 && (
@@ -561,7 +561,7 @@ export default function CategoryDetailView({
                     ) : (
                       <div className="text-center py-8 text-gray-500">
                         <Search className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                        <p className="text-sm">No hardware parts match your search</p>
+                        <p className="text-sm">No parts match your search</p>
                         {searchTerm && (
                           <p className="text-xs mt-1">Try a different search term</p>
                         )}
@@ -570,7 +570,7 @@ export default function CategoryDetailView({
                   </div>
                 ) : (
                   <div className="text-center py-8 text-gray-500 border border-gray-300 rounded-lg">
-                    <p className="text-sm">No hardware parts are marked as "Available as Category Option"</p>
+                    <p className="text-sm">No parts are marked as "Available as Category Option"</p>
                     <p className="text-xs mt-1">Create master parts with this option enabled first</p>
                   </div>
                 )}

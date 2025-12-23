@@ -2,9 +2,6 @@
 
 A professional Next.js application for generating quotes and BOMs for interior aluminum doors and windows.
 
-## 🚀 Live Deployment
-- **Production URL**: https://door-quoter-9si1d7ph7-kylegoevert-sympatecoincs-projects.vercel.app
-- **Status**: ✅ Deployed with 10x performance optimizations
 
 ## 🛠️ Getting Started
 
@@ -22,7 +19,7 @@ npm run dev
 ### Key Scripts
 ```bash
 npm run dev          # Development server
-npm run build        # Production build  
+npm run build        # Production build
 npm run deploy:quick # Quick Vercel deployment
 npm run deploy:full  # Deploy with commit message
 ```
@@ -39,33 +36,21 @@ src/
   stores/          # Zustand state management
 ```
 
-## 🌐 Deployment
 
-### Branch Strategy
-- **`main`**: Development branch (local work)
-- **`production`**: Production deployment branch
 
-### Deploy Process
-```bash
-# Deploy to production
-git checkout production
-git merge main
-git push origin production
-npx vercel --prod --yes
-```
 
 ## 🔧 Performance Features
 - **10x faster project loading** with server-side optimizations
 - **React performance optimizations** (memoization, useCallback)
 - **Database query optimizations** for reduced N+1 queries
-- **Server-side price calculations** 
+- **Server-side price calculations**
 - **Optimized quote generation** with all component options
 
 ## 📋 Tech Stack
 - **Framework**: Next.js 15 with React 19
 - **Database**: PostgreSQL via Supabase
 - **ORM**: Prisma
-- **State Management**: Zustand  
+- **State Management**: Zustand
 - **Styling**: Tailwind CSS
 - **Deployment**: Vercel
 
@@ -78,7 +63,6 @@ npx vercel --prod --yes
 - Common deployment problems
 
 ## 🔗 Documentation
-- [Vercel Deployment Guide](./VERCEL_DEPLOYMENT_GUIDE.md) - Deployment troubleshooting
 - [Development Workflow](./DEV_WORKFLOW.md) - Development processes
 - [Deployment Agents](./DEPLOYMENT_AGENTS.md) - Automated deployment system
 

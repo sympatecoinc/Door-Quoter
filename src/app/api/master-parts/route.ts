@@ -57,10 +57,10 @@ export async function GET(request: NextRequest) {
       })
       return NextResponse.json(parts)
     } else if (optionsOnly) {
-      // Get only hardware parts marked as available for category options
+      // Get parts marked as available for category options (Hardware and Extrusion types)
       const parts = await prisma.masterPart.findMany({
         where: {
-          partType: 'Hardware',
+          partType: { in: ['Hardware', 'Extrusion'] },
           isOption: true
         },
         orderBy: { partNumber: 'asc' }
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, partType, isOption, addFinishToPartNumber, addToPackingList } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, partType, isOption, addFinishToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({
@@ -155,7 +155,9 @@ export async function POST(request: NextRequest) {
         partType: partType || 'Hardware',
         isOption: (partType === 'Hardware') ? (isOption || false) : false, // Only hardware can be options
         addFinishToPartNumber: (partType === 'Hardware') ? (addFinishToPartNumber || false) : false,
-        addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false
+        addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false,
+        includeOnPickList: (partType === 'Hardware') ? (includeOnPickList || false) : false,
+        includeInJambKit: (partType === 'Hardware') ? (includeInJambKit || false) : false
       }
     })
 

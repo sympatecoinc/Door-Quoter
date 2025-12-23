@@ -43,7 +43,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
     }
 
-    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, partType, isOption, addFinishToPartNumber, addToPackingList } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, partType, isOption, addFinishToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({
@@ -106,7 +106,9 @@ export async function PUT(
         partType: partType || 'Hardware',
         isOption: (partType === 'Hardware') ? (isOption || false) : false, // Only hardware can be options
         addFinishToPartNumber: (partType === 'Hardware') ? (addFinishToPartNumber || false) : false,
-        addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false
+        addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false,
+        includeOnPickList: (partType === 'Hardware') ? (includeOnPickList || false) : false,
+        includeInJambKit: (partType === 'Hardware') ? (includeInJambKit || false) : false
       }
     })
 
