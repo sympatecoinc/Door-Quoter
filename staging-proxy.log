@@ -1,7 +1,9 @@
-2025/12/19 16:15:37 Authorizing with Application Default Credentials
-2025/12/19 16:15:38 [door-quoter:us-central1:door-app-staging] Listening on 127.0.0.1:5434
-2025/12/19 16:15:38 The proxy has started successfully and is ready for new connections!
-2025/12/19 16:16:01 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:54190
-2025/12/19 16:16:01 [door-quoter:us-central1:door-app-staging] client closed the connection
-2025/12/19 16:16:01 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:54202
-2025/12/19 16:16:01 [door-quoter:us-central1:door-app-staging] client closed the connection
+2025/12/22 22:32:44 Authorizing with Application Default Credentials
+2025/12/22 22:32:45 [door-quoter:us-central1:door-app-staging] Listening on 127.0.0.1:5434
+2025/12/22 22:32:45 The proxy has started successfully and is ready for new connections!
+2025/12/22 22:33:02 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:56164
+2025/12/22 22:33:02 [door-quoter:us-central1:door-app-staging] client closed the connection
+2025/12/22 22:33:02 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:56180
+2025/12/22 22:33:03 [door-quoter:us-central1:door-app-staging] client closed the connection
+2025/12/22 22:36:35 [door-quoter:us-central1:door-app-staging] Accepted connection from 127.0.0.1:58720
+2025/12/22 22:36:35 [door-quoter:us-central1:door-app-staging] client closed the connection

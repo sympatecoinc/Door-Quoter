@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
       height, // Support the form field name
       price = 0,
       multiplier,
-      finishColor,
-      includeStarterChannels
+      finishColor
+      // Note: includeStarterChannels removed - now handled via category options
     } = await request.json()
 
     // Use name if provided, otherwise use openingNumber
@@ -94,9 +94,7 @@ export async function POST(request: NextRequest) {
       openingData.finishColor = finishColor
     }
 
-    if (includeStarterChannels !== undefined) {
-      openingData.includeStarterChannels = Boolean(includeStarterChannels)
-    }
+    // Note: includeStarterChannels removed - now handled via category options
 
     // Add size fields only if they have values
     if (roughWidth && roughWidth !== '') {

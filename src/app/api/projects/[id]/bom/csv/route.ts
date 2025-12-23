@@ -326,6 +326,7 @@ export async function GET(
             quantity: bom.quantity || 1,
             cutLength: cutLength ? cutLength.toFixed(2) : '',
             percentOfStock: percentOfStock,
+            isMilled: bom.isMilled !== false, // Default to true if not set
             unit: bom.unit || '',
             description: bom.description || '',
             color: opening.finishColor || 'N/A'
@@ -375,6 +376,7 @@ export async function GET(
             quantity: 1,
             cutLength: `${glassWidth.toFixed(2)}" x ${glassHeight.toFixed(2)}" (${glassArea} SQ FT)`,
             percentOfStock: '',
+            isMilled: true, // Glass is not milled, but default to true for consistency
             unit: 'SQ FT',
             description: panel.glassType,
             color: 'N/A'
@@ -436,6 +438,7 @@ export async function GET(
                     quantity: 1,
                     cutLength: '',
                     percentOfStock: '',
+                    isMilled: true, // Options are not extrusions
                     unit: 'EA',
                     description: `${productSubOption.category.name}: ${standardOption.name} (Standard - Included)`,
                     color: opening.finishColor || 'N/A'
@@ -487,6 +490,7 @@ export async function GET(
                   quantity: 1,
                   cutLength: '',
                   percentOfStock: '',
+                  isMilled: true, // Options are not extrusions
                   unit: 'EA',
                   description: description,
                   color: opening.finishColor || 'N/A'
@@ -533,6 +537,7 @@ export async function GET(
                 quantity: 1,
                 cutLength: '',
                 percentOfStock: '',
+                isMilled: true, // Options are not extrusions
                 unit: 'EA',
                 description: `${productSubOption.category.name}: ${standardOption.name} (Standard - Included)`,
                 color: opening.finishColor || 'N/A'
@@ -631,6 +636,7 @@ export async function GET(
             'Quantity',
             'Cut Length',
             '% of Stock',
+            'Milled',
             'Unit',
             'Color',
             'Description'
@@ -648,6 +654,7 @@ export async function GET(
               item.quantity,
               `"${item.cutLength}"`,
               `"${item.percentOfStock}"`,
+              `"${item.isMilled ? 'Yes' : 'No'}"`,
               `"${item.unit}"`,
               `"${item.color}"`,
               `"${item.description}"`
@@ -717,6 +724,7 @@ export async function GET(
             'Quantity',
             'Cut Length',
             '% of Stock',
+            'Milled',
             'Unit',
             'Color',
             'Description'
@@ -734,6 +742,7 @@ export async function GET(
               item.quantity,
               `"${item.cutLength}"`,
               `"${item.percentOfStock}"`,
+              `"${item.isMilled ? 'Yes' : 'No'}"`,
               `"${item.unit}"`,
               `"${item.color}"`,
               `"${item.description}"`
@@ -783,6 +792,7 @@ export async function GET(
       'Quantity',
       'Cut Length',
       '% of Stock',
+      'Milled',
       'Unit',
       'Color',
       'Description'
@@ -800,6 +810,7 @@ export async function GET(
         item.quantity,
         `"${item.cutLength}"`,
         `"${item.percentOfStock}"`,
+        `"${item.isMilled ? 'Yes' : 'No'}"`,
         `"${item.unit}"`,
         `"${item.color}"`,
         `"${item.description}"`

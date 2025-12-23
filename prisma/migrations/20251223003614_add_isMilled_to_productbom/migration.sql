@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "ProductBOMs" ADD COLUMN "isMilled" BOOLEAN NOT NULL DEFAULT true;
