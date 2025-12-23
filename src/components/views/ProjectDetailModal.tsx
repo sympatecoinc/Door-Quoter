@@ -162,6 +162,12 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
   const [batchSizes, setBatchSizes] = useState<Record<string, number>>({})
   const [downloadingProduct, setDownloadingProduct] = useState<string | null>(null)
   const [downloadingMisc, setDownloadingMisc] = useState(false)
+  const [downloadingAssembly, setDownloadingAssembly] = useState(false)
+
+  // Pick List state
+  const [pickListData, setPickListData] = useState<any | null>(null)
+  const [loadingPickList, setLoadingPickList] = useState(false)
+  const [downloadingPickList, setDownloadingPickList] = useState(false)
 
   // Handle Escape key to close modal
   useEscapeKey([
@@ -181,6 +187,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
     }
     if (activeTab === 'production' && projectId) {
       fetchCutList()
+      fetchPickList()
     }
   }, [activeTab, projectId])
 
@@ -274,6 +281,47 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
     }
   }
 
+  const fetchPickList = async () => {
+    try {
+      setLoadingPickList(true)
+      const response = await fetch(`/api/projects/${projectId}/bom?picklist=true`)
+      if (response.ok) {
+        const data = await response.json()
+        setPickListData(data)
+      }
+    } catch (err) {
+      console.error('Error fetching pick list:', err)
+    } finally {
+      setLoadingPickList(false)
+    }
+  }
+
+  const handleDownloadPickListPDF = async () => {
+    try {
+      setDownloadingPickList(true)
+      const response = await fetch(`/api/projects/${projectId}/bom?picklist=true&format=pdf`)
+
+      if (!response.ok) {
+        throw new Error('Failed to generate pick list')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${project?.name || 'project'}-pick-list.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error('Error generating pick list:', error)
+      alert('Failed to generate pick list PDF')
+    } finally {
+      setDownloadingPickList(false)
+    }
+  }
+
   const handleDownloadMiscCutListCSV = () => {
     if (!cutListData?.miscellaneousCutList || cutListData.miscellaneousCutList.length === 0) return
 
@@ -336,6 +384,31 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
     }
   }
 
+  const handleDownloadAssemblyList = async () => {
+    try {
+      setDownloadingAssembly(true)
+      const response = await fetch(`/api/projects/${projectId}/bom?assembly=true&format=pdf`)
+
+      if (!response.ok) {
+        throw new Error('Failed to generate assembly list')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${project?.name || 'project'}-assembly-list.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error('Error generating assembly list:', error)
+      alert('Failed to generate assembly list PDF')
+    } finally {
+      setDownloadingAssembly(false)
+    }
+  }
 
   const fetchProject = async () => {
     try {
@@ -1319,12 +1392,135 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                       </div>
                     </div>
                   )}
+
                 </>
               ) : (
                 <div className="text-center py-8 text-gray-500">
                   No cut list data available. Add extrusion parts to product BOMs to generate cut lists.
                 </div>
               )}
+
+              {/* Assembly List Section - Always visible */}
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium text-indigo-900">Assembly List</h4>
+                    <p className="text-sm text-indigo-700">
+                      Download a PDF showing all product types, sizes, and quantities for shop floor assembly.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleDownloadAssemblyList}
+                    disabled={downloadingAssembly || loadingCutList}
+                    className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm disabled:opacity-50"
+                  >
+                    {downloadingAssembly ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Download PDF
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Pick List Section */}
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h4 className="font-medium text-purple-900">Pick List</h4>
+                    <p className="text-sm text-purple-700">
+                      Hardware items marked for pick list, grouped by product. Items in the Jamb Kit are indicated.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleDownloadPickListPDF}
+                    disabled={downloadingPickList || loadingPickList || !pickListData?.pickListItems?.length}
+                    className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm disabled:opacity-50"
+                  >
+                    {downloadingPickList ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Download PDF
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {loadingPickList ? (
+                  <div className="flex justify-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+                  </div>
+                ) : pickListData?.pickListItems?.length > 0 ? (
+                  <div className="space-y-4">
+                    {/* Group by product */}
+                    {pickListData.productGroups?.map((productName: string) => {
+                      const productItems = pickListData.pickListItems.filter(
+                        (item: any) => item.productName === productName
+                      )
+                      if (productItems.length === 0) return null
+
+                      return (
+                        <div key={productName} className="bg-white rounded-lg border border-purple-200 overflow-hidden">
+                          <div className="bg-purple-100 px-3 py-2">
+                            <h5 className="font-medium text-purple-900">{productName}</h5>
+                          </div>
+                          <table className="w-full text-sm">
+                            <thead className="bg-purple-50">
+                              <tr>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">Part Number</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">Part Name</th>
+                                <th className="px-3 py-2 text-center text-xs font-medium text-purple-700 uppercase">Qty</th>
+                                <th className="px-3 py-2 text-center text-xs font-medium text-purple-700 uppercase">Unit</th>
+                                <th className="px-3 py-2 text-center text-xs font-medium text-purple-700 uppercase">Jamb Kit</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-purple-100">
+                              {productItems.map((item: any, index: number) => (
+                                <tr key={index} className="hover:bg-purple-50">
+                                  <td className="px-3 py-2 font-mono text-xs">{item.partNumber}</td>
+                                  <td className="px-3 py-2">{item.partName}</td>
+                                  <td className="px-3 py-2 text-center font-medium">{item.totalQuantity}</td>
+                                  <td className="px-3 py-2 text-center">{item.unit || 'EA'}</td>
+                                  <td className="px-3 py-2 text-center">
+                                    {item.includeInJambKit ? (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                        Yes
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-400 text-xs">No</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    })}
+
+                    {/* Summary */}
+                    <div className="flex justify-between text-sm text-purple-700 pt-2 border-t border-purple-200">
+                      <span>Total Items: <strong>{pickListData.totalItems}</strong></span>
+                      <span>Products: <strong>{pickListData.productGroups?.length || 0}</strong></span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-purple-600 text-sm">
+                    No pick list items. Mark hardware parts with &quot;Include on Pick List&quot; in Master Parts.
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

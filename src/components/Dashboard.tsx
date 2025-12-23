@@ -6,6 +6,7 @@ import ProjectsView from './views/ProjectsView'
 import ProjectDetailView from './views/ProjectDetailView'
 import ProductsView from './views/ProductsView'
 import MasterPartsView from './views/MasterPartsView'
+import InventoryView from './views/InventoryView'
 import VendorsView from './views/VendorsView'
 import AccountingView from './views/AccountingView'
 import SettingsView from './views/SettingsView'
@@ -25,6 +26,8 @@ export default function Dashboard() {
         return <ProductsView />
       case 'masterParts':
         return <MasterPartsView />
+      case 'inventory':
+        return <InventoryView />
       case 'vendors':
         return <VendorsView />
       case 'quoteDocuments':

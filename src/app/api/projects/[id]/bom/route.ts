@@ -12,6 +12,7 @@ import {
   calculateRequiredPartLength,
   findBestStockLengthRule
 } from '@/lib/bom-utils'
+import { aggregateFromProjectData, createAssemblyListPDF } from '@/lib/assembly-list-pdf-generator'
 
 // Helper function to get finish code from database
 async function getFinishCode(finishType: string): Promise<string> {
@@ -68,6 +69,8 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const summary = searchParams.get('summary') === 'true'
     const cutlist = searchParams.get('cutlist') === 'true'
+    const assembly = searchParams.get('assembly') === 'true'
+    const picklist = searchParams.get('picklist') === 'true'
     const format = searchParams.get('format')
     const productFilter = searchParams.get('product')
     const sizeFilter = searchParams.get('size')  // e.g., "42x108"
@@ -216,6 +219,20 @@ export async function GET(
             percentOfStock = (cutLength / stockLength) * 100
           }
 
+          // Lookup MasterPart for Hardware to get pick list flags
+          let includeOnPickList = false
+          let includeInJambKit = false
+          if (bom.partType === 'Hardware' && bom.partNumber) {
+            const masterPart = await prisma.masterPart.findUnique({
+              where: { partNumber: bom.partNumber },
+              select: { includeOnPickList: true, includeInJambKit: true }
+            })
+            if (masterPart) {
+              includeOnPickList = masterPart.includeOnPickList
+              includeInJambKit = masterPart.includeInJambKit
+            }
+          }
+
           bomItems.push({
             openingName: opening.name,
             panelId: panel.id,
@@ -232,7 +249,9 @@ export async function GET(
             percentOfStock: percentOfStock,
             unit: bom.unit || '',
             description: bom.description || '',
-            color: opening.finishColor || 'N/A'
+            color: opening.finishColor || 'N/A',
+            includeOnPickList: includeOnPickList,
+            includeInJambKit: includeInJambKit
           })
         }
 
@@ -886,6 +905,137 @@ export async function GET(
         stockOptimization,
         totalParts,
         totalUniqueProducts
+      })
+    }
+
+    // If assembly mode is requested, return assembly list (PDF only for now)
+    if (assembly) {
+      // Aggregate from project openings for accurate panel counts
+      const assemblyItems = aggregateFromProjectData(project.openings)
+
+      if (format === 'pdf') {
+        const pdfData = {
+          projectName: project.name,
+          items: assemblyItems,
+          generatedDate: new Date().toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        }
+
+        const pdfBuffer = await createAssemblyListPDF(pdfData)
+        const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '-')}-assembly-list.pdf`
+
+        return new NextResponse(pdfBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${filename}"`
+          }
+        })
+      }
+
+      // Return JSON for non-PDF requests
+      return NextResponse.json({
+        projectId,
+        projectName: project.name,
+        assemblyItems,
+        totalItems: assemblyItems.reduce((sum, item) => sum + item.quantity, 0)
+      })
+    }
+
+    // If picklist mode is requested, return pick list data (hardware items with includeOnPickList=true)
+    if (picklist) {
+      // Filter to only hardware items with includeOnPickList flag
+      const pickListItems = bomItems.filter(item =>
+        item.partType === 'Hardware' && item.includeOnPickList === true
+      )
+
+      // Group by product name
+      const groupedByProduct: Record<string, any[]> = {}
+      for (const item of pickListItems) {
+        const productKey = item.productName
+        if (!groupedByProduct[productKey]) {
+          groupedByProduct[productKey] = []
+        }
+        groupedByProduct[productKey].push(item)
+      }
+
+      // Aggregate items within each product group by part number
+      const aggregatedPickList: any[] = []
+      for (const [productName, items] of Object.entries(groupedByProduct)) {
+        const aggregatedByPart: Record<string, any> = {}
+        for (const item of items) {
+          const key = item.partNumber
+          if (!aggregatedByPart[key]) {
+            aggregatedByPart[key] = {
+              productName: productName,
+              partNumber: item.partNumber,
+              partName: item.partName,
+              unit: item.unit,
+              includeInJambKit: item.includeInJambKit,
+              totalQuantity: 0,
+              openings: new Set<string>()
+            }
+          }
+          aggregatedByPart[key].totalQuantity += (item.quantity || 1)
+          aggregatedByPart[key].openings.add(item.openingName)
+        }
+
+        // Convert Sets to arrays and add to result
+        for (const part of Object.values(aggregatedByPart)) {
+          aggregatedPickList.push({
+            ...part,
+            openings: Array.from(part.openings)
+          })
+        }
+      }
+
+      // Sort by product name, then by part number
+      aggregatedPickList.sort((a, b) => {
+        if (a.productName !== b.productName) {
+          return a.productName.localeCompare(b.productName)
+        }
+        return a.partNumber.localeCompare(b.partNumber)
+      })
+
+      // Get unique products for grouping info
+      const productGroups = Object.keys(groupedByProduct)
+
+      if (format === 'pdf') {
+        // PDF generation will be handled by a separate utility
+        const { createPickListPDF } = await import('@/lib/pick-list-pdf-generator')
+        const pdfBuffer = await createPickListPDF({
+          projectName: project.name,
+          items: aggregatedPickList,
+          generatedDate: new Date().toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        })
+        const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '-')}-pick-list.pdf`
+
+        return new NextResponse(pdfBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${filename}"`
+          }
+        })
+      }
+
+      return NextResponse.json({
+        projectId,
+        projectName: project.name,
+        pickListItems: aggregatedPickList,
+        productGroups,
+        totalItems: aggregatedPickList.reduce((sum, item) => sum + item.totalQuantity, 0)
       })
     }
 

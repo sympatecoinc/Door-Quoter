@@ -18,7 +18,8 @@ import {
   User,
   DollarSign,
   FileText,
-  Truck
+  Truck,
+  Warehouse
 } from 'lucide-react'
 
 const menuItems = [
@@ -26,6 +27,7 @@ const menuItems = [
   { id: 'projects' as MenuOption, label: 'Projects', icon: Folder },
   { id: 'products' as MenuOption, label: 'Products', icon: Package },
   { id: 'masterParts' as MenuOption, label: 'Master Parts', icon: Database },
+  { id: 'inventory' as MenuOption, label: 'Inventory', icon: Warehouse },
   { id: 'vendors' as MenuOption, label: 'Vendors', icon: Truck },
   { id: 'quoteDocuments' as MenuOption, label: 'Quote Settings', icon: FileText },
   { id: 'accounting' as MenuOption, label: 'Pricing', icon: DollarSign },

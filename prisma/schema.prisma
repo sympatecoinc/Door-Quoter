@@ -275,11 +275,21 @@ model MasterPart {
   optionImageOriginalName String?            // Original filename of uploaded image
   addFinishToPartNumber   Boolean            @default(false) // When true, append finish color code to hardware part number in BOM
   addToPackingList        Boolean            @default(false) // When true, this hardware item appears in the packing list
+  includeOnPickList       Boolean            @default(false) // When true, shows in production pick list
+  includeInJambKit        Boolean            @default(false) // When true, marked as Jamb Kit item on pick list
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
   stockLengthRules        StockLengthRule[]
   pricingRules            PricingRule[]
   glassTypeParts          GlassTypePart[]
+
+  // Inventory Management Fields
+  qtyOnHand               Float?     @default(0)     // Current quantity in stock
+  binLocation             String?                     // Physical bin/location code
+  reorderPoint            Float?                      // Qty threshold to trigger reorder
+  reorderQty              Float?                      // Qty to order when reordering
+  vendorId                Int?                        // Preferred vendor for this part
+  vendor                  Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
 
   @@map("MasterParts")
 }
@@ -696,6 +706,7 @@ model Vendor {
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
   contacts            VendorContact[]
+  masterParts         MasterPart[]    // Parts supplied by this vendor
 
   @@map("Vendors")
 }
