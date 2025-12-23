@@ -52,9 +52,14 @@ export default function UserManagement() {
   const fetchProfiles = async () => {
     try {
       const response = await fetch('/api/profiles')
+      console.log('Profiles API response status:', response.status)
       if (response.ok) {
         const data = await response.json()
-        setProfiles(data.profiles)
+        console.log('Profiles received:', data.profiles)
+        setProfiles(data.profiles || [])
+      } else {
+        const errorData = await response.json()
+        console.error('Profiles API error:', errorData)
       }
     } catch (error) {
       console.error('Error fetching profiles:', error)
@@ -264,6 +269,7 @@ export default function UserManagement() {
           profiles={profiles}
           onClose={() => setShowCreateModal(false)}
           onSubmit={handleCreateUser}
+          onRefreshProfiles={fetchProfiles}
         />
       )}
 
@@ -277,6 +283,7 @@ export default function UserManagement() {
             setSelectedUser(null)
           }}
           onSubmit={(data) => handleUpdateUser(selectedUser.id, data)}
+          onRefreshProfiles={fetchProfiles}
         />
       )}
     </div>
@@ -289,13 +296,22 @@ function UserFormModal({
   profiles,
   onClose,
   onSubmit,
+  onRefreshProfiles,
 }: {
   title: string
   user?: User
   profiles: Profile[]
   onClose: () => void
   onSubmit: (data: any) => void
+  onRefreshProfiles: () => void
 }) {
+  // Refresh profiles when modal opens to ensure we have latest data
+  useEffect(() => {
+    if (profiles.length === 0) {
+      console.log('Profiles empty on modal open, refreshing...')
+      onRefreshProfiles()
+    }
+  }, [])
   const [name, setName] = useState(user?.name || '')
   const [email, setEmail] = useState(user?.email || '')
   const [role, setRole] = useState(user?.role || 'VIEWER')
@@ -458,7 +474,7 @@ function UserFormModal({
           {/* Profile Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Permission Profile
+              Permission Profile {profiles.length > 0 && <span className="text-xs text-green-600">({profiles.length} available)</span>}
             </label>
             <select
               value={profileId ?? ''}

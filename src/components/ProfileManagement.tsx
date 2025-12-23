@@ -43,9 +43,14 @@ export default function ProfileManagement() {
   const fetchProfiles = async () => {
     try {
       const response = await fetch('/api/profiles')
+      console.log('ProfileManagement - API response status:', response.status)
       if (response.ok) {
         const data = await response.json()
-        setProfiles(data.profiles)
+        console.log('ProfileManagement - Profiles received:', data.profiles)
+        setProfiles(data.profiles || [])
+      } else {
+        const errorData = await response.json()
+        console.error('ProfileManagement - API error:', errorData)
       }
     } catch (error) {
       console.error('Error fetching profiles:', error)
