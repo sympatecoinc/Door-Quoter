@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     const search = searchParams.get('search') || ''
     const stockStatus = searchParams.get('stockStatus') || 'all'
 
-    // Get all extrusion MasterParts with their variants
+    // Get all extrusion MasterParts with their variants and stock length rules
     const extrusions = await prisma.masterPart.findMany({
       where: {
         partType: 'Extrusion',
@@ -43,6 +43,9 @@ export async function GET(request: Request) {
             { stockLength: 'asc' },
             { finishPricingId: 'asc' }
           ]
+        },
+        stockLengthRules: {
+          where: { isActive: true }
         }
       },
       orderBy: { partNumber: 'asc' }
@@ -56,20 +59,38 @@ export async function GET(request: Request) {
 
     // Transform into grouped format
     const groups = extrusions.map(ext => {
-      // Get unique lengths and finishes for this extrusion
-      const lengths = [...new Set(ext.extrusionVariants.map(v => v.stockLength))].sort((a, b) => a - b)
+      // Get unique lengths from both existing variants AND stock length rules
+      const variantLengths = ext.extrusionVariants.map(v => v.stockLength)
+      const ruleLengths = ext.stockLengthRules
+        .map(r => r.stockLength)
+        .filter((l): l is number => l !== null)
+      const lengths = [...new Set([...variantLengths, ...ruleLengths])].sort((a, b) => a - b)
       const variantFinishIds = [...new Set(ext.extrusionVariants.map(v => v.finishPricingId))]
+      const hasVariants = ext.extrusionVariants.length > 0
 
       // Build finish options including Mill (null)
+      // If no variants exist yet but we have stock lengths from rules, show all available finishes
       const finishOptions: Array<{ id: number | null; name: string; code: string | null }> = []
-      if (variantFinishIds.includes(null)) {
-        finishOptions.push({ id: null, name: 'Mill', code: null })
-      }
-      finishes.forEach(f => {
-        if (variantFinishIds.includes(f.id)) {
-          finishOptions.push({ id: f.id, name: f.finishType, code: f.finishCode })
+
+      if (hasVariants) {
+        // Only show finishes that have variants
+        if (variantFinishIds.includes(null)) {
+          finishOptions.push({ id: null, name: 'Mill', code: null })
         }
-      })
+        finishes.forEach(f => {
+          if (variantFinishIds.includes(f.id)) {
+            finishOptions.push({ id: f.id, name: f.finishType, code: f.finishCode })
+          }
+        })
+      } else if (lengths.length > 0) {
+        // No variants yet, but we have stock lengths from rules - show all available finishes
+        finishOptions.push({ id: null, name: 'Mill', code: null })
+        if (!ext.isMillFinish) {
+          finishes.forEach(f => {
+            finishOptions.push({ id: f.id, name: f.finishType, code: f.finishCode })
+          })
+        }
+      }
 
       // Transform variants with computed fields
       const variants = ext.extrusionVariants.map(v => {

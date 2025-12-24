@@ -8,8 +8,9 @@ This command will:
 1. Verify gcloud authentication
 2. Start Cloud SQL proxy for staging
 3. Check migration status
-4. Apply pending migrations
-5. Verify sync success
+4. **NEW: Detect schema drift (missing tables/columns)**
+5. Apply pending migrations
+6. Verify sync success
 
 **Target: Zero user input after initial start**
 
@@ -94,8 +95,103 @@ STAGING: postgresql://postgres:StagingDB123@127.0.0.1:5434/postgres?sslmode=disa
 cd /home/kylepalmer/Door-Quoter && DATABASE_URL="postgresql://postgres:StagingDB123@127.0.0.1:5434/postgres?sslmode=disable" npx prisma migrate status
 ```
 
-**If up to date:** Skip to Step 5 (verification)
+**If up to date:** Continue to Step 3.3 (drift detection)
 **If pending migrations:** Continue to Step 4
+
+---
+
+### 3.3 Schema Drift Detection (CRITICAL)
+
+**Even if migrations show "up to date", schema drift can occur when schema.prisma is modified without creating migrations.**
+
+Run this comprehensive drift detection:
+
+```bash
+DATABASE_URL="postgresql://postgres:StagingDB123@127.0.0.1:5434/postgres?sslmode=disable" node -e "
+const { PrismaClient } = require('@prisma/client');
+const fs = require('fs');
+const prisma = new PrismaClient();
+
+// Expected tables from schema.prisma (update when schema changes)
+const expectedTables = [
+  'Projects', 'ProjectStatusHistory', 'Openings', 'Panels', 'Products',
+  'SubOptionCategories', 'IndividualOptions', 'ProductSubOptions', 'BOMs',
+  'ProductBOMs', 'ComponentInstances', 'MasterParts', 'StockLengthRules',
+  'PricingRules', 'Customers', 'Contacts', 'Leads', 'Activities',
+  'CustomerFiles', 'QuoteAttachments', 'ProjectContacts', 'ProjectNotes',
+  'ComponentLibrary', 'ProductPlanViews', 'GlassTypes', 'GlassTypeParts',
+  'PricingModes', 'Profiles', 'Users', 'Sessions', 'QuoteDocuments',
+  'ProductQuoteDocuments', 'ExtrusionFinishPricing', 'ExtrusionVariants',
+  'Vendors', 'VendorContacts', 'QuickBooksTokens', 'GlobalSettings'
+];
+
+// Expected column counts per table (update when schema changes)
+const expectedColumnCounts = {
+  'MasterParts': 25,  // includes customPricePerLb
+  'Openings': 21,
+  'ProductBOMs': 22,
+  'Users': 11,
+  'Profiles': 7,
+  'ExtrusionVariants': 13,
+  'GlobalSettings': 8
+};
+
+async function checkDrift() {
+  const dbTables = await prisma.\$queryRaw\`
+    SELECT table_name FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name != '_prisma_migrations'
+  \`;
+  const dbTableNames = dbTables.map(t => t.table_name);
+
+  const missingTables = expectedTables.filter(t => !dbTableNames.includes(t));
+
+  const colCounts = await prisma.\$queryRaw\`
+    SELECT table_name, COUNT(*) as col_count
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+    GROUP BY table_name
+  \`;
+  const colCountMap = Object.fromEntries(colCounts.map(c => [c.table_name, Number(c.col_count)]));
+
+  const columnDrift = [];
+  for (const [table, expected] of Object.entries(expectedColumnCounts)) {
+    const actual = colCountMap[table] || 0;
+    if (actual !== expected) {
+      columnDrift.push({ table, expected, actual, diff: expected - actual });
+    }
+  }
+
+  console.log('=== Schema Drift Detection ===');
+  console.log('Tables in DB:', dbTableNames.length);
+  console.log('Expected tables:', expectedTables.length);
+
+  if (missingTables.length > 0) {
+    console.log('\\n*** MISSING TABLES ***');
+    missingTables.forEach(t => console.log('  -', t));
+  }
+
+  if (columnDrift.length > 0) {
+    console.log('\\n*** COLUMN COUNT MISMATCHES ***');
+    columnDrift.forEach(d => console.log(\`  - \${d.table}: expected \${d.expected}, got \${d.actual} (missing \${d.diff})\`));
+  }
+
+  if (missingTables.length === 0 && columnDrift.length === 0) {
+    console.log('\\n*** NO DRIFT DETECTED - Schema is in sync! ***');
+  } else {
+    console.log('\\n*** DRIFT DETECTED - Run prisma migrate deploy or create new migration ***');
+  }
+
+  await prisma.\$disconnect();
+}
+
+checkDrift().catch(e => { console.error('Error:', e.message); prisma.\$disconnect(); });
+"
+```
+
+**If drift detected:**
+- Missing tables/columns mean schema.prisma was modified without a migration
+- Create a new migration: `npx prisma migrate dev --name fix_schema_drift`
+- Or manually create SQL migration file (see Step 4.3)
 
 ---
 
@@ -122,37 +218,40 @@ cd /home/kylepalmer/Door-Quoter && DATABASE_URL="postgresql://postgres:StagingDB
 cd /home/kylepalmer/Door-Quoter && DATABASE_URL="postgresql://postgres:StagingDB123@127.0.0.1:5434/postgres?sslmode=disable" npx prisma migrate deploy
 ```
 
-### 4.3 Handle Schema Drift (Missing Columns)
+### 4.3 Create Migration for Schema Drift
 
-Sometimes migrations show "up to date" but schema.prisma has columns not in the database.
-This happens when columns are added to schema.prisma without creating proper migrations.
-
-**Detection:** If app errors show `column X does not exist` but migrations are up to date.
-
-**Fix: Apply missing columns directly via SQL:**
+If drift was detected and no pending migrations exist, create a new migration:
 
 ```bash
-# Example: Add missing Boolean column with default
-npx prisma db execute --url "postgresql://postgres:StagingDB123@127.0.0.1:5434/postgres?sslmode=disable" --stdin <<EOF
-ALTER TABLE "TableName" ADD COLUMN IF NOT EXISTS "columnName" BOOLEAN NOT NULL DEFAULT false;
-EOF
+# Option 1: Auto-generate migration (if local dev DB is in sync with schema.prisma)
+npx prisma migrate dev --name fix_schema_drift
+
+# Option 2: Manually create migration folder and SQL file
+mkdir -p prisma/migrations/$(date +%Y%m%d)_fix_schema_drift
+
+# Then create migration.sql with appropriate ALTER TABLE statements
 ```
 
-**Common drift fixes (add as needed):**
+**Example migration SQL for common drift issues:**
 
-```bash
-# includeStarterChannels on Openings table
-npx prisma db execute --url "postgresql://postgres:StagingDB123@127.0.0.1:5434/postgres?sslmode=disable" --stdin <<EOF
-ALTER TABLE "Openings" ADD COLUMN IF NOT EXISTS "includeStarterChannels" BOOLEAN NOT NULL DEFAULT false;
-EOF
-```
+```sql
+-- Add missing column
+ALTER TABLE "MasterParts" ADD COLUMN IF NOT EXISTS "customPricePerLb" DOUBLE PRECISION;
 
-**To find schema drift:** Compare schema.prisma fields against database columns:
+-- Create missing table
+CREATE TABLE IF NOT EXISTS "GlobalSettings" (
+    "id" SERIAL NOT NULL,
+    "key" TEXT NOT NULL,
+    "value" TEXT NOT NULL,
+    "dataType" TEXT NOT NULL DEFAULT 'number',
+    "category" TEXT,
+    "description" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "GlobalSettings_pkey" PRIMARY KEY ("id")
+);
 
-```bash
-# List columns in a table (requires psql client)
-# Or check Cloud Run logs for "column X does not exist" errors
-~/google-cloud-sdk/bin/gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="door-quoter-staging" AND "does not exist"' --project=door-quoter --limit=5 --format=json | jq -r '.[].jsonPayload.message // .[].textPayload' 2>/dev/null
+CREATE UNIQUE INDEX IF NOT EXISTS "GlobalSettings_key_key" ON "GlobalSettings"("key");
 ```
 
 ---
@@ -167,36 +266,11 @@ cd /home/kylepalmer/Door-Quoter && DATABASE_URL="postgresql://postgres:StagingDB
 
 **Expected:** `Database schema is up to date!`
 
-### 5.2 Verify Schema Matches Local
+### 5.2 Re-run Drift Detection
 
-Compare key tables between local dev and staging to detect any drift:
+Run the drift detection from Step 3.3 again to confirm no drift remains.
 
-```bash
-# Compare table/column counts (quick sanity check)
-DATABASE_URL="postgresql://postgres:StagingDB123@127.0.0.1:5434/postgres?sslmode=disable" node -e "
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-Promise.all([
-  prisma.\$queryRaw\`SELECT COUNT(*) as cnt FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'\`,
-  prisma.\$queryRaw\`SELECT table_name, COUNT(*) as col_count FROM information_schema.columns WHERE table_schema = 'public' GROUP BY table_name ORDER BY table_name\`
-])
-.then(([tables, cols]) => {
-  console.log('Tables:', tables[0].cnt);
-  console.log('\\nKey tables column counts:');
-  const keyTables = ['Users', 'Profiles', 'MasterParts', 'Openings', 'ProductBOMs'];
-  cols.filter(c => keyTables.includes(c.table_name)).forEach(c => console.log(\`  \${c.table_name}: \${c.col_count} columns\`));
-  prisma.\$disconnect();
-})
-.catch(e => { console.error('Error:', e.message); prisma.\$disconnect(); });
-"
-```
-
-**Expected column counts (update as schema changes):**
-- Users: 11 columns
-- Profiles: 7 columns
-- MasterParts: 24 columns
-- Openings: 21 columns
-- ProductBOMs: 22 columns
+**Expected output:** `*** NO DRIFT DETECTED - Schema is in sync! ***`
 
 ### 5.3 Test Connection
 
@@ -233,8 +307,9 @@ pkill -f "cloud_sql_proxy.*door-app-staging"
 | Check | Status |
 |-------|--------|
 | Migrations | [X] applied |
-| Schema | Up to date |
+| Schema Drift | None detected |
 | Connection | Verified |
+| Tables | [count] |
 | Products | [count] |
 | Proxy | Stopped |
 ```
@@ -267,6 +342,22 @@ pkill -f "cloud_sql_proxy.*staging"
 | Database | postgres |
 | Password | StagingDB123 |
 | Instance | door-quoter:us-central1:door-app-staging |
+
+---
+
+## Expected Schema Metrics (Update when schema changes)
+
+| Metric | Value |
+|--------|-------|
+| Total Tables | 38 |
+| MasterParts columns | 25 |
+| Openings columns | 21 |
+| ProductBOMs columns | 22 |
+| Users columns | 11 |
+| ExtrusionVariants columns | 13 |
+| GlobalSettings columns | 8 |
+
+*Last updated: 2024-12-24*
 
 ---
 
