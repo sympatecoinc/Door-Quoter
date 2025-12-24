@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, ChevronDown, Sparkles, Brush, Tag } from 'lucide-react'
+import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, ChevronDown, Sparkles, Tag } from 'lucide-react'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
@@ -163,9 +163,6 @@ function MasterPartsSkeletonRow() {
         <div className="h-4 w-16 bg-gray-200 rounded" />
       </td>
       <td className="px-6 py-4">
-        <div className="h-4 w-16 bg-gray-200 rounded" />
-      </td>
-      <td className="px-6 py-4">
         <div className="flex space-x-2 justify-end">
           <div className="w-6 h-6 bg-gray-200 rounded" />
           <div className="w-6 h-6 bg-gray-200 rounded" />
@@ -204,28 +201,6 @@ function GlassTypesSkeletonRow() {
   )
 }
 
-function FinishesSkeletonRow() {
-  return (
-    <tr className="animate-pulse">
-      <td className="px-6 py-4">
-        <div className="h-4 w-36 bg-gray-200 rounded" />
-      </td>
-      <td className="px-6 py-4">
-        <div className="h-4 w-12 bg-gray-200 rounded" />
-      </td>
-      <td className="px-6 py-4">
-        <div className="h-4 w-16 bg-gray-200 rounded" />
-      </td>
-      <td className="px-6 py-4">
-        <div className="flex space-x-2">
-          <div className="w-6 h-6 bg-gray-200 rounded" />
-          <div className="w-6 h-6 bg-gray-200 rounded" />
-        </div>
-      </td>
-    </tr>
-  )
-}
-
 function CategoriesSkeletonRow() {
   return (
     <tr className="animate-pulse">
@@ -253,7 +228,7 @@ function CategoriesSkeletonRow() {
 
 export default function MasterPartsView() {
   const { toasts, removeToast, showSuccess, showError } = useToast()
-  const [activeTab, setActiveTab] = useState<'masterParts' | 'partRules' | 'glass' | 'finishes' | 'categories'>('masterParts')
+  const [activeTab, setActiveTab] = useState<'masterParts' | 'partRules' | 'glass' | 'categories'>('masterParts')
   
   // Current master part for viewing rules
   const [selectedMasterPartId, setSelectedMasterPartId] = useState<number | null>(null)
@@ -262,7 +237,7 @@ export default function MasterPartsView() {
   // Master Parts State
   const [masterParts, setMasterParts] = useState<MasterPart[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'partNumber' | 'baseName' | 'partType' | 'cost'>('newest')
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'partNumber' | 'baseName' | 'partType'>('newest')
   const [loading, setLoading] = useState(true)
   const [showAddPartForm, setShowAddPartForm] = useState(false)
   const [editingPart, setEditingPart] = useState<number | null>(null)
@@ -274,7 +249,6 @@ export default function MasterPartsView() {
   const [baseName, setBaseName] = useState('')
   const [description, setDescription] = useState('')
   const [unit, setUnit] = useState('')
-  const [cost, setCost] = useState('')
   const [weightPerUnit, setWeightPerUnit] = useState('')
   const [partType, setPartType] = useState('')
   const [isOption, setIsOption] = useState(false)
@@ -306,10 +280,9 @@ export default function MasterPartsView() {
   const [creatingPricingRule, setCreatingPricingRule] = useState(false)
   const [updatingPricingRule, setUpdatingPricingRule] = useState(false)
 
-  // Pricing Rule Form State - Hardware parts use direct cost from master part
+  // Pricing Rule Form State
   const [pricingName, setPricingName] = useState('')
   const [pricingDescription, setPricingDescription] = useState('')
-  const [basePrice, setBasePrice] = useState('')
   const [formula, setFormula] = useState('')
   const [minQuantity, setMinQuantity] = useState('')
   const [maxQuantity, setMaxQuantity] = useState('')
@@ -342,18 +315,6 @@ export default function MasterPartsView() {
   const [glassPartFormula, setGlassPartFormula] = useState('')
   const [glassPartQuantity, setGlassPartQuantity] = useState('1')
 
-  // Extrusion Finish Pricing State
-  const [finishPricing, setFinishPricing] = useState<any[]>([])
-  const [loadingFinishPricing, setLoadingFinishPricing] = useState(false)
-  const [editingFinishId, setEditingFinishId] = useState<number | null>(null)
-  const [editingFinishType, setEditingFinishType] = useState('')
-  const [editingFinishCode, setEditingFinishCode] = useState('')
-  const [editingCostPerFoot, setEditingCostPerFoot] = useState('')
-  const [showAddFinish, setShowAddFinish] = useState(false)
-  const [newFinishType, setNewFinishType] = useState('')
-  const [newFinishCode, setNewFinishCode] = useState('')
-  const [newCostPerFoot, setNewCostPerFoot] = useState('')
-
   // Product Categories State
   const [categories, setCategories] = useState<Category[]>([])
   const [loadingCategories, setLoadingCategories] = useState(false)
@@ -369,7 +330,7 @@ export default function MasterPartsView() {
 
   // Delete Confirmation Modal State
   const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [deleteModalType, setDeleteModalType] = useState<'masterPart' | 'stockRule' | 'pricingRule' | 'glassType' | 'finish' | 'category'>('masterPart')
+  const [deleteModalType, setDeleteModalType] = useState<'masterPart' | 'stockRule' | 'pricingRule' | 'glassType' | 'category'>('masterPart')
   const [deleteItemId, setDeleteItemId] = useState<number | null>(null)
   const [deleteItemName, setDeleteItemName] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
@@ -391,8 +352,6 @@ export default function MasterPartsView() {
     { isOpen: editingPricingRule !== null, isBlocked: updatingPricingRule, onClose: () => setEditingPricingRule(null) },
     { isOpen: showAddGlassForm, isBlocked: creatingGlass, onClose: () => setShowAddGlassForm(false) },
     { isOpen: editingGlassType !== null, isBlocked: updatingGlass, onClose: () => setEditingGlassType(null) },
-    { isOpen: showAddFinish, onClose: () => setShowAddFinish(false) },
-    { isOpen: editingFinishId !== null, onClose: () => setEditingFinishId(null) },
     { isOpen: showAddCategoryForm, isBlocked: creatingCategory, onClose: () => setShowAddCategoryForm(false) },
     { isOpen: editingCategory !== null, isBlocked: updatingCategory, onClose: () => setEditingCategory(null) },
   ])
@@ -400,8 +359,7 @@ export default function MasterPartsView() {
   // Cmd+N to add new item based on active tab
   const anyModalOpen = showAddPartForm || editingPart !== null || showAddRuleForm || editingRule !== null ||
     showAddPricingForm || editingPricingRule !== null || showAddGlassForm || editingGlassType !== null ||
-    showAddFinish || editingFinishId !== null || showAddCategoryForm || editingCategory !== null ||
-    showDeleteModal || showBulkDeleteModal
+    showAddCategoryForm || editingCategory !== null || showDeleteModal || showBulkDeleteModal
   useNewShortcut(
     () => {
       switch (activeTab) {
@@ -413,9 +371,6 @@ export default function MasterPartsView() {
           break
         case 'glass':
           setShowAddGlassForm(true)
-          break
-        case 'finishes':
-          setShowAddFinish(true)
           break
         case 'categories':
           setShowAddCategoryForm(true)
@@ -449,10 +404,6 @@ export default function MasterPartsView() {
           return a.baseName.localeCompare(b.baseName)
         case 'partType':
           return a.partType.localeCompare(b.partType)
-        case 'cost':
-          const costA = a.cost || 0
-          const costB = b.cost || 0
-          return costB - costA // Highest cost first
         default:
           return 0
       }
@@ -460,42 +411,9 @@ export default function MasterPartsView() {
 
   useEffect(() => {
     fetchMasterParts()
-    fetchFinishPricing()
     fetchGlassTypes()
     fetchCategories()
   }, [])
-
-  // Function to calculate price range from pricing rules
-  function getPriceDisplay(part: MasterPart): string {
-    // Helper function to format price with 2 decimal places
-    const formatPrice = (price: number): string => {
-      return price.toFixed(2)
-    }
-
-    // For hardware, fastener, and packaging parts, show direct cost
-    if (part.partType === 'Hardware' || part.partType === 'Fastener' || part.partType === 'Packaging') {
-      return part.cost ? `$${formatPrice(part.cost)}` : '-'
-    }
-
-    // For extrusions with stock length rules, show price range from stock length rules
-    if (part.partType === 'Extrusion' && part.stockLengthRules && part.stockLengthRules.length > 0) {
-      const prices = part.stockLengthRules
-        .filter(rule => rule.basePrice !== null)
-        .map(rule => rule.basePrice!)
-        .sort((a, b) => a - b)
-      
-      if (prices.length === 0) {
-        return part.cost ? `$${formatPrice(part.cost)}` : '-'
-      } else if (prices.length === 1) {
-        return `$${formatPrice(prices[0])}`
-      } else {
-        return `$${formatPrice(prices[0])} - $${formatPrice(prices[prices.length - 1])}`
-      }
-    }
-
-    // Fallback to direct cost for all other cases
-    return part.cost ? `$${formatPrice(part.cost)}` : '-'
-  }
 
   async function fetchMasterParts() {
     try {
@@ -540,7 +458,6 @@ export default function MasterPartsView() {
     setBaseName('')
     setDescription('')
     setUnit('')
-    setCost('')
     setWeightPerUnit('')
     setPartType('')
     setIsOption(false)
@@ -554,12 +471,6 @@ export default function MasterPartsView() {
   async function handleCreateMasterPart(e: React.FormEvent) {
     e.preventDefault()
     if (!partNumber.trim() || !baseName.trim()) return
-    
-    // Validate cost for Hardware, Fastener, and Packaging parts
-    if ((partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') && (!cost.trim() || isNaN(parseFloat(cost)))) {
-      showError(`${partType} parts require a valid cost`)
-      return
-    }
 
     setCreating(true)
     try {
@@ -571,11 +482,10 @@ export default function MasterPartsView() {
           baseName,
           description,
           unit,
-          cost: cost ? parseFloat(cost) : null,
           weightPerUnit: weightPerUnit ? parseFloat(weightPerUnit) : null,
           weightPerFoot: weightPerUnit ? parseFloat(weightPerUnit) : null,
           partType,
-          isOption: partType === 'Hardware' ? isOption : false,
+          isOption: (partType === 'Hardware' || partType === 'Extrusion') ? isOption : false,
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
           addToPackingList: partType === 'Hardware' ? addToPackingList : false,
@@ -604,12 +514,6 @@ export default function MasterPartsView() {
   async function handleUpdateMasterPart(e: React.FormEvent) {
     e.preventDefault()
     if (!partNumber.trim() || !baseName.trim() || !editingPart) return
-    
-    // Validate cost for Hardware, Fastener, and Packaging parts
-    if ((partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') && (!cost.trim() || isNaN(parseFloat(cost)))) {
-      showError(`${partType} parts require a valid cost`)
-      return
-    }
 
     setUpdating(true)
     try {
@@ -621,11 +525,10 @@ export default function MasterPartsView() {
           baseName,
           description,
           unit,
-          cost: cost ? parseFloat(cost) : null,
           weightPerUnit: weightPerUnit ? parseFloat(weightPerUnit) : null,
           weightPerFoot: weightPerUnit ? parseFloat(weightPerUnit) : null,
           partType,
-          isOption: partType === 'Hardware' ? isOption : false,
+          isOption: (partType === 'Hardware' || partType === 'Extrusion') ? isOption : false,
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
           addToPackingList: partType === 'Hardware' ? addToPackingList : false,
@@ -688,11 +591,6 @@ export default function MasterPartsView() {
           successMessage = 'Glass type deleted successfully!'
           errorMessage = 'Error deleting glass type'
           break
-        case 'finish':
-          url = `/api/settings/extrusion-finish-pricing/${deleteItemId}`
-          successMessage = 'Finish type deleted successfully!'
-          errorMessage = 'Failed to delete finish type'
-          break
         case 'category':
           url = `/api/categories/${deleteItemId}`
           successMessage = 'Category deleted successfully!'
@@ -716,9 +614,6 @@ export default function MasterPartsView() {
             break
           case 'glassType':
             fetchGlassTypes()
-            break
-          case 'finish':
-            fetchFinishPricing()
             break
           case 'category':
             fetchCategories()
@@ -806,8 +701,7 @@ export default function MasterPartsView() {
     setBaseName(part.baseName)
     setDescription(part.description || '')
     setUnit(part.unit || '')
-    setCost(part.cost?.toString() || '')
-    // For hardware/fastener/packaging use weightPerUnit, for extrusions use weightPerFoot (both stored in same input field)
+    // For hardware/fastener/packaging use weightPerUnit, for extrusions use weightPerFoot
     setWeightPerUnit(((part.partType === 'Hardware' || part.partType === 'Fastener' || part.partType === 'Packaging') ? part.weightPerUnit : part.weightPerFoot)?.toString() || '')
     setPartType(part.partType)
     setIsOption(part.isOption || false)
@@ -848,7 +742,6 @@ export default function MasterPartsView() {
           stockLength: stockLength ? parseFloat(stockLength) : null,
           partType: rulePartType,
           isActive,
-          basePrice: basePrice ? parseFloat(basePrice) : null,
           masterPartId: selectedMasterPartId
         })
       })
@@ -892,7 +785,6 @@ export default function MasterPartsView() {
           stockLength: stockLength ? parseFloat(stockLength) : null,
           partType: rulePartType,
           isActive,
-          basePrice: basePrice ? parseFloat(basePrice) : null,
           masterPartId: selectedMasterPartId
         })
       })
@@ -926,7 +818,6 @@ export default function MasterPartsView() {
     setStockLength(rule.stockLength?.toString() || '')
     setRulePartType(rule.partType)
     setIsActive(rule.isActive)
-    setBasePrice(rule.basePrice?.toString() || '')
     setFormula(rule.formula || '')
     setMinQuantity(rule.minQuantity?.toString() || '')
     setMaxQuantity(rule.maxQuantity?.toString() || '')
@@ -939,7 +830,6 @@ export default function MasterPartsView() {
     setStockLength('')
     setRulePartType('Extrusion')
     setIsActive(true)
-    setBasePrice('')
     setFormula('')
     setMinQuantity('')
     setMaxQuantity('')
@@ -957,7 +847,6 @@ export default function MasterPartsView() {
         body: JSON.stringify({
           name: pricingName,
           description: pricingDescription,
-          basePrice: basePrice ? parseFloat(basePrice) : null,
           formula,
           minQuantity: minQuantity ? parseFloat(minQuantity) : null,
           maxQuantity: maxQuantity ? parseFloat(maxQuantity) : null,
@@ -995,7 +884,6 @@ export default function MasterPartsView() {
         body: JSON.stringify({
           name: pricingName,
           description: pricingDescription,
-          basePrice: basePrice ? parseFloat(basePrice) : null,
           formula,
           minQuantity: minQuantity ? parseFloat(minQuantity) : null,
           maxQuantity: maxQuantity ? parseFloat(maxQuantity) : null,
@@ -1029,7 +917,6 @@ export default function MasterPartsView() {
     setEditingPricingRule(rule.id)
     setPricingName(rule.name)
     setPricingDescription(rule.description || '')
-    setBasePrice(rule.basePrice?.toString() || '')
     setFormula(rule.formula || '')
     setMinQuantity(rule.minQuantity?.toString() || '')
     setMaxQuantity(rule.maxQuantity?.toString() || '')
@@ -1040,7 +927,6 @@ export default function MasterPartsView() {
   function resetPricingForm() {
     setPricingName('')
     setPricingDescription('')
-    setBasePrice('')
     setFormula('')
     setMinQuantity('')
     setMaxQuantity('')
@@ -1249,103 +1135,6 @@ export default function MasterPartsView() {
     setGlassPricePerSqFt('')
   }
 
-  // Extrusion Finish Pricing functions
-  async function fetchFinishPricing() {
-    setLoadingFinishPricing(true)
-    try {
-      const response = await fetch('/api/settings/extrusion-finish-pricing')
-      if (response.ok) {
-        const data = await response.json()
-        setFinishPricing(data)
-      }
-    } catch (error) {
-      console.error('Error fetching finish pricing:', error)
-      showError('Error fetching finish pricing')
-    } finally {
-      setLoadingFinishPricing(false)
-    }
-  }
-
-  async function handleAddFinish() {
-    if (!newFinishType.trim()) {
-      showError('Please enter a finish type')
-      return
-    }
-
-    if (!newFinishCode.trim()) {
-      showError('Please enter a finish code')
-      return
-    }
-
-    if (!newCostPerFoot.trim() || isNaN(parseFloat(newCostPerFoot))) {
-      showError('Please enter a valid cost per foot')
-      return
-    }
-
-    try {
-      const response = await fetch('/api/settings/extrusion-finish-pricing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          finishType: newFinishType,
-          finishCode: newFinishCode.trim(),
-          costPerFoot: parseFloat(newCostPerFoot)
-        })
-      })
-
-      if (response.ok) {
-        await fetchFinishPricing()
-        setShowAddFinish(false)
-        setNewFinishType('')
-        setNewFinishCode('')
-        setNewCostPerFoot('')
-        showSuccess('Finish type added successfully!')
-      } else {
-        const error = await response.json()
-        showError(error.error || 'Failed to add finish type')
-      }
-    } catch (error) {
-      console.error('Error adding finish type:', error)
-      showError('Error adding finish type')
-    }
-  }
-
-  async function handleUpdateFinish(id: number) {
-    try {
-      const response = await fetch(`/api/settings/extrusion-finish-pricing/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          finishType: editingFinishType,
-          finishCode: editingFinishCode.trim() || null,
-          costPerFoot: parseFloat(editingCostPerFoot) || 0
-        })
-      })
-
-      if (response.ok) {
-        await fetchFinishPricing()
-        setEditingFinishId(null)
-        showSuccess('Finish pricing updated successfully!')
-      } else {
-        showError('Failed to update finish pricing')
-      }
-    } catch (error) {
-      console.error('Error updating finish pricing:', error)
-      showError('Error updating finish pricing')
-    }
-  }
-
-  function handleDeleteFinish(id: number, name: string) {
-    showDeleteConfirmation('finish', id, name)
-  }
-
-  function startEditFinish(finish: any) {
-    setEditingFinishId(finish.id)
-    setEditingFinishType(finish.finishType)
-    setEditingFinishCode(finish.finishCode || '')
-    setEditingCostPerFoot(finish.costPerFoot.toString())
-  }
-
   // Category Management Functions
   async function fetchCategories() {
     setLoadingCategories(true)
@@ -1509,17 +1298,6 @@ export default function MasterPartsView() {
             Glass ({glassTypes.length})
           </button>
           <button
-            onClick={() => setActiveTab('finishes')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'finishes'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <Brush className="w-5 h-5 inline-block mr-2" />
-            Finishes ({finishPricing.length})
-          </button>
-          <button
             onClick={() => setActiveTab('categories')}
             className={`py-2 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'categories'
@@ -1605,7 +1383,6 @@ export default function MasterPartsView() {
                     <option value="partNumber">Part Number</option>
                     <option value="baseName">Name</option>
                     <option value="partType">Part Type</option>
-                    <option value="cost">Cost (High to Low)</option>
                   </select>
                   <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
                 </div>
@@ -1631,7 +1408,6 @@ export default function MasterPartsView() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Weight</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
@@ -1672,9 +1448,6 @@ export default function MasterPartsView() {
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Weight
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Cost
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
@@ -1721,11 +1494,8 @@ export default function MasterPartsView() {
                           {(part.partType === 'Hardware' || part.partType === 'Fastener' || part.partType === 'Packaging') && part.weightPerUnit
                             ? `${part.weightPerUnit} oz`
                             : part.partType === 'Extrusion' && part.weightPerFoot
-                            ? `${part.weightPerFoot} oz/ft`
+                            ? `${part.weightPerFoot} lb/ft`
                             : '-'}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          {getPriceDisplay(part)}
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex space-x-2 justify-end">
@@ -1831,9 +1601,6 @@ export default function MasterPartsView() {
                             {selectedMasterPart?.unit === 'IN' ? 'Stock Length' : 'Pieces Per Unit'}
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Pricing
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Status
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1874,57 +1641,10 @@ export default function MasterPartsView() {
                                 </div>
                               )}
                             </td>
-                            <td className="px-6 py-4 text-sm text-gray-900">
-                              <div className="space-y-1">
-                                {rule.isMillFinish ? (
-                                  // Mill Finish: Show single price with badge
-                                  <>
-                                    <div className="flex items-center gap-2">
-                                      <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded bg-green-100 text-green-800">Mill Finish</span>
-                                      <span className="font-medium">${rule.basePrice || 0}</span>
-                                    </div>
-                                    <p className="text-xs text-gray-500">Applies to all colors</p>
-                                  </>
-                                ) : (
-                                  // Non-Mill Finish: Show color-specific prices
-                                  <>
-                                    {rule.basePriceBlack && (
-                                      <div className="flex items-center gap-2">
-                                        <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded bg-gray-800 text-white">Black</span>
-                                        <span className="font-medium">${rule.basePriceBlack}</span>
-                                      </div>
-                                    )}
-                                    {rule.basePriceClear && (
-                                      <div className="flex items-center gap-2">
-                                        <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded bg-blue-100 text-blue-800">Clear</span>
-                                        <span className="font-medium">${rule.basePriceClear}</span>
-                                      </div>
-                                    )}
-                                    {!rule.basePriceBlack && !rule.basePriceClear && rule.basePrice && (
-                                      <div className="flex items-center gap-2">
-                                        <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded bg-gray-200 text-gray-700">Fallback</span>
-                                        <span className="font-medium">${rule.basePrice}</span>
-                                      </div>
-                                    )}
-                                    {!rule.basePrice && !rule.basePriceBlack && !rule.basePriceClear && '-'}
-                                  </>
-                                )}
-                                {rule.formula && (
-                                  <div className="text-xs text-gray-600 font-mono mt-1">
-                                    {rule.formula}
-                                  </div>
-                                )}
-                                {(rule.minQuantity || rule.maxQuantity) && (
-                                  <div className="text-xs text-gray-600">
-                                    Qty: {rule.minQuantity || '∞'} - {rule.maxQuantity || '∞'}
-                                  </div>
-                                )}
-                              </div>
-                            </td>
                             <td className="px-6 py-4">
                               <span className={`px-2 py-1 text-xs rounded-full ${
-                                rule.isActive 
-                                  ? 'bg-green-100 text-green-700' 
+                                rule.isActive
+                                  ? 'bg-green-100 text-green-700'
                                   : 'bg-red-100 text-red-700'
                               }`}>
                                 {rule.isActive ? 'Active' : 'Inactive'}
@@ -1986,9 +1706,6 @@ export default function MasterPartsView() {
                             <p className="text-sm text-gray-600 mt-1">{rule.description}</p>
                           )}
                           <div className="mt-2 text-sm text-gray-600">
-                            {rule.basePrice && (
-                              <div>Base Price: <span className="font-medium">${rule.basePrice}</span></div>
-                            )}
                             {rule.formula && (
                               <div>Formula: <span className="font-medium">{rule.formula}</span></div>
                             )}
@@ -2175,7 +1892,7 @@ export default function MasterPartsView() {
                                             .filter(p => p.partType === 'Hardware' || p.partType === 'Other')
                                             .map(part => (
                                               <option key={part.id} value={part.id}>
-                                                {part.partNumber} - {part.baseName} (${part.cost?.toFixed(2) || '0.00'}/{part.unit || 'EA'})
+                                                {part.partNumber} - {part.baseName}
                                               </option>
                                             ))
                                           }
@@ -2238,7 +1955,6 @@ export default function MasterPartsView() {
                                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Part Number</th>
                                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Formula/Qty</th>
-                                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Cost</th>
                                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                                         </tr>
                                       </thead>
@@ -2268,7 +1984,6 @@ export default function MasterPartsView() {
                                                     />
                                                   )}
                                                 </td>
-                                                <td className="px-4 py-2 text-gray-600">${part.masterPart.cost?.toFixed(2) || '0.00'}</td>
                                                 <td className="px-4 py-2 text-right">
                                                   <button
                                                     onClick={() => handleUpdateGlassTypePart(glassType.id, part.id)}
@@ -2301,7 +2016,6 @@ export default function MasterPartsView() {
                                                     <span>{part.quantity || 1}</span>
                                                   )}
                                                 </td>
-                                                <td className="px-4 py-2 text-gray-600">${part.masterPart.cost?.toFixed(2) || '0.00'}/{part.masterPart.unit || 'EA'}</td>
                                                 <td className="px-4 py-2 text-right">
                                                   <button
                                                     onClick={() => startEditGlassTypePart(glassType.id, part)}
@@ -2357,210 +2071,6 @@ export default function MasterPartsView() {
         </div>
       )}
 
-      {/* Finishes Tab */}
-      {activeTab === 'finishes' && (
-        <div>
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">Extrusion Finish Pricing</h2>
-              <p className="text-sm text-gray-600 mt-1">
-                Configure per-foot costs for different extrusion finishes
-              </p>
-            </div>
-          </div>
-
-          {loadingFinishPricing ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Finish Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Finish Code</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost Per Foot</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {[...Array(4)].map((_, i) => (
-                    <FinishesSkeletonRow key={i} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Finish Type
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Finish Code
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Cost Per Foot
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {finishPricing.map((finish) => (
-                      <tr key={finish.id}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {editingFinishId === finish.id ? (
-                            <input
-                              type="text"
-                              value={editingFinishType}
-                              onChange={(e) => setEditingFinishType(e.target.value)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-gray-900"
-                            />
-                          ) : (
-                            <span className="text-sm text-gray-900">{finish.finishType}</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {editingFinishId === finish.id ? (
-                            <input
-                              type="text"
-                              value={editingFinishCode}
-                              onChange={(e) => setEditingFinishCode(e.target.value)}
-                              placeholder="e.g., BL"
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-gray-900"
-                            />
-                          ) : (
-                            <span className="text-sm text-gray-900 font-mono">{finish.finishCode || '-'}</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {editingFinishId === finish.id ? (
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={editingCostPerFoot}
-                              onChange={(e) => setEditingCostPerFoot(e.target.value)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-gray-900"
-                            />
-                          ) : (
-                            <span className="text-sm text-gray-900">${finish.costPerFoot.toFixed(2)}</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {editingFinishId === finish.id ? (
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={() => handleUpdateFinish(finish.id)}
-                                className="text-green-600 hover:text-green-900"
-                              >
-                                <Save className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => setEditingFinishId(null)}
-                                className="text-gray-600 hover:text-gray-900"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={() => startEditFinish(finish)}
-                                className="text-blue-600 hover:text-blue-900"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteFinish(finish.id, finish.finishType)}
-                                className="text-red-600 hover:text-red-900"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {showAddFinish ? (
-                <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <h3 className="text-sm font-medium text-gray-900 mb-3">Add New Finish Type</h3>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs text-gray-700 mb-1">Finish Type *</label>
-                      <input
-                        type="text"
-                        value={newFinishType}
-                        onChange={(e) => setNewFinishType(e.target.value)}
-                        placeholder="e.g., Powder Coated Black"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-700 mb-1">Finish Code *</label>
-                      <input
-                        type="text"
-                        value={newFinishCode}
-                        onChange={(e) => setNewFinishCode(e.target.value)}
-                        placeholder="e.g., BL"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                        required
-                      />
-                      <p className="text-xs text-gray-500 mt-1">Part number suffix</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-700 mb-1">Cost Per Foot ($) *</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={newCostPerFoot}
-                        onChange={(e) => setNewCostPerFoot(e.target.value)}
-                        placeholder="0.00"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-end space-x-2 mt-3">
-                    <button
-                      onClick={() => {
-                        setShowAddFinish(false)
-                        setNewFinishType('')
-                        setNewFinishCode('')
-                        setNewCostPerFoot('')
-                      }}
-                      className="px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleAddFinish}
-                      className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      Add Finish
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowAddFinish(true)}
-                  className="mt-4 flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Finish Type
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
       {/* Add/Edit Master Part Modal */}
       {(showAddPartForm || editingPart) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -2605,11 +2115,11 @@ export default function MasterPartsView() {
                     // Auto-set unit to "IN" for extrusions and reset other fields
                     if (selectedType === 'Extrusion') {
                       setUnit('IN')
-                      setIsOption(false) // Reset isOption for extrusions
+                      // Keep isOption - extrusions can be category options too
                     } else {
                       setUnit('') // Reset unit for other types
-                      if (selectedType !== 'Hardware') {
-                        setIsOption(false) // Reset isOption for non-hardware types
+                      if (selectedType !== 'Hardware' && selectedType !== 'Extrusion') {
+                        setIsOption(false) // Reset isOption for non-hardware/extrusion types
                       }
                     }
                   }}
@@ -2672,21 +2182,6 @@ export default function MasterPartsView() {
                             <option value="BOX">BOX</option>
                             <option value="ROLL">ROLL</option>
                           </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Cost ($) *
-                            <span className="text-xs text-gray-500 ml-1">(Required for Hardware)</span>
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={cost}
-                            onChange={(e) => setCost(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="0.00"
-                            required
-                          />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2816,20 +2311,6 @@ export default function MasterPartsView() {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Cost ($) *
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={cost}
-                          onChange={(e) => setCost(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="0.00"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
                           Weight (oz)
                           <span className="text-xs text-gray-500 ml-1">(Optional)</span>
                         </label>
@@ -2904,21 +2385,6 @@ export default function MasterPartsView() {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Cost ($) *
-                          <span className="text-xs text-gray-500 ml-1">(Required)</span>
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={cost}
-                          onChange={(e) => setCost(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="0.00"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
                           Weight (oz)
                           <span className="text-xs text-gray-500 ml-1">(Optional)</span>
                         </label>
@@ -2939,7 +2405,7 @@ export default function MasterPartsView() {
                     <>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Weight (oz/ft)
+                          Weight (lb/ft)
                           <span className="text-xs text-gray-500 ml-1">(Optional)</span>
                       </label>
                       <input
@@ -2950,7 +2416,7 @@ export default function MasterPartsView() {
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="e.g., 2.5"
                       />
-                      <p className="mt-1 text-xs text-gray-500">Weight in ounces per linear foot</p>
+                      <p className="mt-1 text-xs text-gray-500">Weight in pounds per linear foot</p>
                       </div>
 
                       {/* Is Mill Finish checkbox for extrusions */}
@@ -2967,6 +2433,23 @@ export default function MasterPartsView() {
                         </label>
                         <span className="ml-2 text-xs text-gray-500">
                           (No finish codes like -BL, -C2, -AL will be added to part numbers)
+                        </span>
+                      </div>
+
+                      {/* Is Option checkbox for extrusions */}
+                      <div className="flex items-center mt-2">
+                        <input
+                          type="checkbox"
+                          id="isOptionExtrusion"
+                          checked={isOption}
+                          onChange={(e) => setIsOption(e.target.checked)}
+                          className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="isOptionExtrusion" className="text-sm font-medium text-gray-700">
+                          Available as Category Option
+                        </label>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (Can be selected when adding options to product categories)
                         </span>
                       </div>
                     </>
@@ -3032,20 +2515,6 @@ export default function MasterPartsView() {
                     onChange={(e) => setRuleName(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                     placeholder="e.g., Standard Height Rule"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Price ($) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={basePrice}
-                    onChange={(e) => setBasePrice(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    placeholder="e.g., 25.00"
                     required
                   />
                 </div>
@@ -3174,30 +2643,17 @@ export default function MasterPartsView() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Base Price ($)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={basePrice}
-                    onChange={(e) => setBasePrice(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Part Type</label>
-                  <select
-                    value={pricingPartType}
-                    onChange={(e) => setPricingPartType(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  >
-                    <option value="Hardware">Hardware</option>
-                    <option value="Extrusion">Extrusion</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Part Type</label>
+                <select
+                  value={pricingPartType}
+                  onChange={(e) => setPricingPartType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                >
+                  <option value="Hardware">Hardware</option>
+                  <option value="Extrusion">Extrusion</option>
+                  <option value="Other">Other</option>
+                </select>
               </div>
 
               <div>

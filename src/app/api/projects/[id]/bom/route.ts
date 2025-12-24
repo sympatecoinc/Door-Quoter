@@ -87,6 +87,11 @@ export async function GET(
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
+        customer: {
+          select: {
+            companyName: true
+          }
+        },
         openings: {
           orderBy: { id: 'asc' },
           include: {
@@ -151,6 +156,9 @@ export async function GET(
 
         // Process each BOM item for this component
         for (const bom of product.productBOMs) {
+          // Skip option-linked BOMs - these are handled in the options section below
+          if (bom.optionId) continue
+
           const variables = {
             width: effectiveWidth,
             height: effectiveHeight,
@@ -1010,6 +1018,7 @@ export async function GET(
         const { createPickListPDF } = await import('@/lib/pick-list-pdf-generator')
         const pdfBuffer = await createPickListPDF({
           projectName: project.name,
+          customerName: project.customer?.companyName,
           items: aggregatedPickList,
           generatedDate: new Date().toLocaleDateString('en-US', {
             year: 'numeric',
