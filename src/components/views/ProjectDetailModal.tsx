@@ -332,7 +332,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
         item.partNumber,
         item.partName,
         item.color,
-        item.cutLength ? `${item.cutLength.toFixed(2)}"` : '',
+        item.cutLength ? `${item.cutLength.toFixed(3)}"` : '',
         item.stockLength ? `${item.stockLength}"` : 'N/A',
         item.totalQty,
         item.openings.join('; ')
@@ -870,7 +870,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                                       <td className="px-2 py-1">{hw.partName}</td>
                                       <td className="px-2 py-1 font-mono text-xs">{hw.partNumber || '-'}</td>
                                       <td className="px-2 py-1">{hw.quantity || '-'}</td>
-                                      <td className="px-2 py-1">{hw.calculatedLength ? hw.calculatedLength.toFixed(2) : '-'}</td>
+                                      <td className="px-2 py-1">{hw.calculatedLength ? hw.calculatedLength.toFixed(3) : '-'}</td>
                                       <td className="px-2 py-1">{hw.unit || '-'}</td>
                                     </tr>
                                   ))}
@@ -1050,7 +1050,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                                     <td className="px-2 py-1">{hw.partName}</td>
                                     <td className="px-2 py-1 font-mono text-xs">{hw.partNumber || '-'}</td>
                                     <td className="px-2 py-1">{hw.quantity || '-'}</td>
-                                    <td className="px-2 py-1">{hw.calculatedLength ? hw.calculatedLength.toFixed(2) : '-'}</td>
+                                    <td className="px-2 py-1">{hw.calculatedLength ? hw.calculatedLength.toFixed(3) : '-'}</td>
                                     <td className="px-2 py-1">{hw.unit || '-'}</td>
                                   </tr>
                                 ))}
@@ -1328,7 +1328,7 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
                                 <td className="px-3 py-2 font-mono text-xs">{item.partNumber}</td>
                                 <td className="px-3 py-2">{item.partName}</td>
                                 <td className="px-3 py-2 text-center">{item.color}</td>
-                                <td className="px-3 py-2 text-center">{item.cutLength?.toFixed(2)}"</td>
+                                <td className="px-3 py-2 text-center">{item.cutLength?.toFixed(3)}"</td>
                                 <td className="px-3 py-2 text-center">{item.stockLength ? `${item.stockLength}"` : 'N/A'}</td>
                                 <td className="px-3 py-2 text-center font-medium">{item.totalQty}</td>
                                 <td className="px-3 py-2 text-xs text-gray-600">{item.openings.join(', ')}</td>

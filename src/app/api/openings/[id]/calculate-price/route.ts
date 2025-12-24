@@ -303,7 +303,9 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
                 breakdown.totalCost = cost
               }
 
-              // Calculate finish cost for hybrid pricing (based on cut length used)
+              // Calculate finish cost for hybrid pricing
+              // ≥50% used: charge for full stock finish (same as material)
+              // <50% used: charge for cut length finish (percentage-based)
               if (finishColor && finishColor !== 'Mill Finish' && !masterPart.isMillFinish) {
                 try {
                   const finishPricing = await prisma.extrusionFinishPricing.findUnique({
@@ -311,12 +313,15 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
                   })
 
                   if (finishPricing && finishPricing.costPerFoot > 0) {
-                    const cutLengthFeet = requiredLength / 12
-                    const finishCostPerPiece = cutLengthFeet * finishPricing.costPerFoot
+                    // Use full stock length when ≥50% used, cut length when <50%
+                    const finishLengthInches = usagePercentage >= 0.5 ? bestRule.stockLength : requiredLength
+                    const finishLengthFeet = finishLengthInches / 12
+                    const finishCostPerPiece = finishLengthFeet * finishPricing.costPerFoot
                     const totalFinishCost = finishCostPerPiece * (bom.quantity || 1)
 
+                    const finishType = usagePercentage >= 0.5 ? 'full stock' : 'cut length'
                     breakdown.finishCost = totalFinishCost
-                    breakdown.finishDetails = `${finishColor} finish: ${cutLengthFeet.toFixed(2)}' × $${finishPricing.costPerFoot}/ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
+                    breakdown.finishDetails = `${finishColor} finish (${finishType}): ${finishLengthFeet.toFixed(2)}' × $${finishPricing.costPerFoot}/ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
                     cost += totalFinishCost
                     breakdown.totalCost = cost
                   }
@@ -351,6 +356,7 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
 
             // Calculate finish cost for extrusions if finish color is specified and NOT mill finish
             // Check isMillFinish from the MasterPart - if true, this extrusion never gets finish codes/costs
+            // FULL_STOCK method: finish cost is based on full stock length (same threshold rule as material)
             if (finishColor && finishColor !== 'Mill Finish' && !masterPart.isMillFinish) {
               try {
                 const finishPricing = await prisma.extrusionFinishPricing.findUnique({
@@ -358,13 +364,14 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
                 })
 
                 if (finishPricing && finishPricing.costPerFoot > 0) {
-                  const cutLengthInches = requiredLength
-                  const cutLengthFeet = cutLengthInches / 12
-                  const finishCostPerPiece = cutLengthFeet * finishPricing.costPerFoot
+                  // Use full stock length for finish cost (follows same threshold as material)
+                  const finishLengthInches = bestRule.stockLength || requiredLength
+                  const finishLengthFeet = finishLengthInches / 12
+                  const finishCostPerPiece = finishLengthFeet * finishPricing.costPerFoot
                   const totalFinishCost = finishCostPerPiece * (bom.quantity || 1)
 
                   breakdown.finishCost = totalFinishCost
-                  breakdown.finishDetails = `${finishColor} finish: ${cutLengthFeet.toFixed(2)}' × $${finishPricing.costPerFoot}/ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
+                  breakdown.finishDetails = `${finishColor} finish (full stock): ${finishLengthFeet.toFixed(2)}' × $${finishPricing.costPerFoot}/ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
                   cost += totalFinishCost
                   breakdown.totalCost = cost
                 }
@@ -558,9 +565,61 @@ export async function POST(
       // Calculate BOM costs using proper pricing rules
       // Get extrusion costing method from pricing mode (fallback to project's setting for backward compatibility, then to FULL_STOCK)
       const extrusionCostingMethod = opening.project.pricingMode?.extrusionCostingMethod || opening.project.extrusionCostingMethod || 'FULL_STOCK'
+
+      // Parse selections to determine which option-linked BOMs should be included
+      // and what quantities to use for RANGE mode options
+      let selections: Record<string, any> = {}
+      if (component.subOptionSelections) {
+        try {
+          selections = JSON.parse(component.subOptionSelections)
+        } catch (e) {
+          console.error('Error parsing subOptionSelections for BOM processing:', e)
+        }
+      }
+
+      // Build a map of optionId -> selected quantity for RANGE mode BOMs
+      const optionQuantityMap = new Map<number, number>()
+      for (const productSubOption of product.productSubOptions) {
+        const categoryId = productSubOption.category.id.toString()
+        const selectedOptionId = selections[categoryId]
+        if (selectedOptionId) {
+          // Check for RANGE mode quantity
+          const quantityKey = `${categoryId}_qty`
+          const rangeQuantity = selections[quantityKey] !== undefined
+            ? parseInt(selections[quantityKey] as string)
+            : null
+          if (rangeQuantity !== null) {
+            optionQuantityMap.set(parseInt(selectedOptionId), rangeQuantity)
+          }
+        }
+      }
+
       for (const bom of product.productBOMs) {
+        // Skip option-linked BOM items if the option is not selected
+        if (bom.optionId) {
+          // Find which category this option belongs to
+          const linkedOption = product.productSubOptions.find((pso: any) =>
+            pso.category.individualOptions?.some((io: any) => io.id === bom.optionId)
+          )
+          if (linkedOption) {
+            const categoryId = linkedOption.category.id.toString()
+            const selectedOptionId = selections[categoryId]
+            // Skip this BOM if its option is not selected
+            if (!selectedOptionId || parseInt(selectedOptionId) !== bom.optionId) {
+              continue
+            }
+          }
+        }
+
+        // For RANGE mode BOMs, override the quantity with user-selected value
+        let bomWithQuantity = bom
+        if (bom.optionId && bom.quantityMode === 'RANGE' && optionQuantityMap.has(bom.optionId)) {
+          const userQuantity = optionQuantityMap.get(bom.optionId)!
+          bomWithQuantity = { ...bom, quantity: userQuantity }
+        }
+
         const { cost, breakdown } = await calculateBOMItemPrice(
-          bom,
+          bomWithQuantity,
           effectiveWidth,
           effectiveHeight,
           extrusionCostingMethod,
@@ -655,7 +714,17 @@ export async function POST(
               const optionBom = selectedOption.isCutListItem
                 ? product.productBOMs?.find((bom: any) => bom.optionId === selectedOption.id)
                 : null
-              const quantity = optionBom?.quantity || 1
+
+              // Check for user-selected quantity (RANGE mode stores it as categoryId_qty)
+              const quantityKey = `${categoryId}_qty`
+              const userSelectedQuantity = selections[quantityKey] !== undefined
+                ? parseInt(selections[quantityKey] as string)
+                : null
+
+              // Use user-selected quantity for RANGE mode, otherwise use BOM quantity
+              const quantity = userSelectedQuantity !== null
+                ? userSelectedQuantity
+                : (optionBom?.quantity || 1)
 
               if (isStandardSelected) {
                 // Standard option selected - cost only, no markup

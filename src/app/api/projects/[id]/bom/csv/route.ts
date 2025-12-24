@@ -324,7 +324,7 @@ export async function GET(
             partName: bom.partName,
             partType: bom.partType,
             quantity: bom.quantity || 1,
-            cutLength: cutLength ? cutLength.toFixed(2) : '',
+            cutLength: cutLength ? cutLength.toFixed(3) : '',
             percentOfStock: percentOfStock,
             isMilled: bom.isMilled !== false, // Default to true if not set
             unit: bom.unit || '',
