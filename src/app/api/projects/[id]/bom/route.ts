@@ -436,7 +436,8 @@ export async function GET(
                       isMillFinish = stockInfo.isMillFinish
 
                       // Build full part number with finish code and stock length
-                      if (opening.finishColor && !isMillFinish && standardOption.addFinishToPartNumber) {
+                      // For extrusions (cut list items), apply finish code based on isMillFinish only
+                      if (opening.finishColor && !isMillFinish) {
                         const finishCode = await getFinishCode(opening.finishColor)
                         if (finishCode) {
                           partNumber = `${partNumber}${finishCode}`
@@ -542,7 +543,8 @@ export async function GET(
                     isMillFinish = stockInfo.isMillFinish
 
                     // Build full part number with finish code and stock length
-                    if (opening.finishColor && !isMillFinish && individualOption.addFinishToPartNumber) {
+                    // For extrusions (cut list items), apply finish code based on isMillFinish only
+                    if (opening.finishColor && !isMillFinish) {
                       const finishCode = await getFinishCode(opening.finishColor)
                       if (finishCode) {
                         partNumber = `${partNumber}${finishCode}`
@@ -664,7 +666,8 @@ export async function GET(
                   isMillFinish = stockInfo.isMillFinish
 
                   // Build full part number with finish code and stock length
-                  if (opening.finishColor && !isMillFinish && standardOption.addFinishToPartNumber) {
+                  // For extrusions (cut list items), apply finish code based on isMillFinish only
+                  if (opening.finishColor && !isMillFinish) {
                     const finishCode = await getFinishCode(opening.finishColor)
                     if (finishCode) {
                       partNumber = `${partNumber}${finishCode}`
