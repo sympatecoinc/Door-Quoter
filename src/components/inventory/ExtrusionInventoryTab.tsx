@@ -77,6 +77,52 @@ export default function ExtrusionInventoryTab() {
     setEditingVariant(variant)
   }
 
+  const handleAddVariant = async (masterPartId: number, stockLength: number, finishPricingId: number | null) => {
+    try {
+      const response = await fetch('/api/extrusion-variants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          masterPartId,
+          stockLength,
+          finishPricingId,
+          qtyOnHand: 0
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create variant')
+      }
+
+      const newVariant = await response.json()
+      setNotification({ type: 'success', message: 'Variant created' })
+
+      // Refresh data and open edit modal for the new variant
+      await fetchData()
+
+      // Find the newly created variant in the updated groups and open edit modal
+      const updatedResponse = await fetch(`/api/extrusion-variants?search=`)
+      if (updatedResponse.ok) {
+        const data = await updatedResponse.json()
+        const group = data.groups.find((g: ExtrusionVariantGroup) => g.masterPart.id === masterPartId)
+        if (group) {
+          const variant = group.variants.find((v: ExtrusionVariantDisplay) =>
+            v.stockLength === stockLength && v.finishPricingId === finishPricingId
+          )
+          if (variant) {
+            setEditingVariant(variant)
+          }
+        }
+      }
+    } catch (err) {
+      setNotification({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to create variant'
+      })
+    }
+  }
+
   const handleSaveVariant = async (id: number, data: Partial<ExtrusionVariantDisplay>) => {
     const response = await fetch(`/api/extrusion-variants/${id}`, {
       method: 'PATCH',
@@ -236,6 +282,7 @@ export default function ExtrusionInventoryTab() {
               finishPricing={finishes}
               materialPricePerLb={materialPricePerLb}
               onEditVariant={handleEditVariant}
+              onAddVariant={handleAddVariant}
             />
           ))}
         </div>

@@ -82,14 +82,15 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
     groupedByProduct[item.productName].push(item)
   }
 
-  // Column widths (no openings column)
+  // Column widths - must fit within CONTENT_WIDTH (~186mm)
   const colWidths = {
-    partNumber: 55,
-    partName: 75,
-    qty: 25,
-    unit: 25,
+    partNumber: 50,
+    partName: 70,
+    qty: 20,
+    unit: 20,
     jambKit: 25
   }
+  // Total: 50 + 70 + 20 + 20 + 25 = 185mm
 
   const rowHeight = 7
   const headerHeight = 8
