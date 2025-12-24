@@ -9,6 +9,7 @@ interface ExtrusionVariantCardProps {
   finishPricing: ExtrusionFinishPricing[]
   materialPricePerLb: number
   onEditVariant: (variant: ExtrusionVariantDisplay) => void
+  onAddVariant: (masterPartId: number, stockLength: number, finishPricingId: number | null) => void
 }
 
 // Helper to display inches
@@ -54,7 +55,8 @@ export default function ExtrusionVariantCard({
   group,
   finishPricing,
   materialPricePerLb,
-  onEditVariant
+  onEditVariant,
+  onAddVariant
 }: ExtrusionVariantCardProps) {
   const [isExpanded, setIsExpanded] = useState(true)
 
@@ -205,9 +207,13 @@ export default function ExtrusionVariantCard({
                             {variant.qtyOnHand}
                           </button>
                         ) : (
-                          <div className="w-full px-2 py-1.5 text-center text-gray-300 text-sm">
-                            —
-                          </div>
+                          <button
+                            onClick={() => onAddVariant(masterPart.id, length, finish.id)}
+                            className="w-full px-2 py-1.5 text-center text-gray-300 text-sm rounded hover:bg-blue-50 hover:text-blue-600 transition-colors cursor-pointer"
+                            title={`Add ${inchesDisplay(length)} ${finish.name} variant`}
+                          >
+                            +
+                          </button>
                         )}
                       </td>
                     )
