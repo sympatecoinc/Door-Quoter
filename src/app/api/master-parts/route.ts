@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, partType, isOption, addFinishToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, customPricePerLb, partType, isOption, addFinishToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({
@@ -152,8 +152,9 @@ export async function POST(request: NextRequest) {
         cost: (partType === 'Extrusion') ? null : (cost ? parseFloat(cost) : null),
         weightPerUnit: ((partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') && weightPerUnit) ? parseFloat(weightPerUnit) : null,
         weightPerFoot: (partType === 'Extrusion' && weightPerFoot) ? parseFloat(weightPerFoot) : null,
+        customPricePerLb: (partType === 'Extrusion' && customPricePerLb) ? parseFloat(customPricePerLb) : null,
         partType: partType || 'Hardware',
-        isOption: (partType === 'Hardware') ? (isOption || false) : false, // Only hardware can be options
+        isOption: (partType === 'Hardware' || partType === 'Extrusion') ? (isOption || false) : false,
         addFinishToPartNumber: (partType === 'Hardware') ? (addFinishToPartNumber || false) : false,
         addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false,
         includeOnPickList: (partType === 'Hardware') ? (includeOnPickList || false) : false,

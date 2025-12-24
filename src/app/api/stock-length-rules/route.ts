@@ -65,13 +65,6 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Validate pricing
-    if (!basePrice) {
-      return NextResponse.json({
-        error: 'Base price is required'
-      }, { status: 400 })
-    }
-
     const newRule = await prisma.stockLengthRule.create({
       data: {
         name,
@@ -96,6 +89,67 @@ export async function POST(request: NextRequest) {
         }
       }
     })
+
+    // Auto-create ExtrusionVariants for inventory tracking
+    const stockLengthValue = Number(stockLength)
+    const masterPartIdValue = Number(masterPartId)
+
+    // Check if master part is mill finish only
+    const masterPart = await prisma.masterPart.findUnique({
+      where: { id: masterPartIdValue },
+      select: { isMillFinish: true }
+    })
+
+    // Create Mill finish variant (finishPricingId: null) if it doesn't exist
+    const existingMillVariant = await prisma.extrusionVariant.findFirst({
+      where: {
+        masterPartId: masterPartIdValue,
+        stockLength: stockLengthValue,
+        finishPricingId: null
+      }
+    })
+
+    if (!existingMillVariant) {
+      await prisma.extrusionVariant.create({
+        data: {
+          masterPartId: masterPartIdValue,
+          stockLength: stockLengthValue,
+          finishPricingId: null,
+          qtyOnHand: 0,
+          isActive: true
+        }
+      })
+    }
+
+    // Only create color variants if the part is NOT mill finish only
+    if (!masterPart?.isMillFinish) {
+      const activeFinishes = await prisma.extrusionFinishPricing.findMany({
+        where: { isActive: true },
+        select: { id: true }
+      })
+
+      for (const finish of activeFinishes) {
+        const existingVariant = await prisma.extrusionVariant.findFirst({
+          where: {
+            masterPartId: masterPartIdValue,
+            stockLength: stockLengthValue,
+            finishPricingId: finish.id
+          }
+        })
+
+        if (!existingVariant) {
+          await prisma.extrusionVariant.create({
+            data: {
+              masterPartId: masterPartIdValue,
+              stockLength: stockLengthValue,
+              finishPricingId: finish.id,
+              qtyOnHand: 0,
+              isActive: true
+            }
+          })
+        }
+      }
+    }
 
     return NextResponse.json(newRule)
   } catch (error) {

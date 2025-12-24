@@ -15,6 +15,7 @@ export interface PickListItem {
 
 export interface PickListData {
   projectName: string
+  customerName?: string
   items: PickListItem[]
   generatedDate: string
 }
@@ -42,6 +43,14 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
   pdf.setFont('helvetica', 'bold')
   pdf.text('Pick List', PAGE_WIDTH / 2, yPos, { align: 'center' })
   yPos += 8
+
+  // Customer name (if available)
+  if (data.customerName) {
+    pdf.setFontSize(12)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text(data.customerName, PAGE_WIDTH / 2, yPos, { align: 'center' })
+    yPos += 6
+  }
 
   // Project name
   pdf.setFontSize(14)
@@ -73,14 +82,13 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
     groupedByProduct[item.productName].push(item)
   }
 
-  // Column widths
+  // Column widths (no openings column)
   const colWidths = {
-    partNumber: 45,
-    partName: 55,
-    qty: 20,
-    unit: 20,
-    jambKit: 25,
-    openings: CONTENT_WIDTH - 45 - 55 - 20 - 20 - 25
+    partNumber: 55,
+    partName: 75,
+    qty: 25,
+    unit: 25,
+    jambKit: 25
   }
 
   const rowHeight = 7
@@ -122,8 +130,6 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
     pdf.text('Unit', xPos, yPos + 5.5)
     xPos += colWidths.unit
     pdf.text('Jamb Kit', xPos, yPos + 5.5)
-    xPos += colWidths.jambKit
-    pdf.text('Openings', xPos, yPos + 5.5)
 
     yPos += headerHeight
 
@@ -166,8 +172,6 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
         pdf.text('Unit', xPos, yPos + 5.5)
         xPos += colWidths.unit
         pdf.text('Jamb Kit', xPos, yPos + 5.5)
-        xPos += colWidths.jambKit
-        pdf.text('Openings', xPos, yPos + 5.5)
 
         yPos += headerHeight
         pdf.setFont('helvetica', 'normal')
@@ -221,15 +225,6 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
         pdf.setTextColor(0, 0, 0)
         pdf.setFontSize(8)
       }
-      xPos += colWidths.jambKit
-
-      // Openings (truncate if too long)
-      const openingsText = item.openings.join(', ')
-      const truncatedOpenings = truncateText(pdf, openingsText, colWidths.openings - 4)
-      pdf.setFontSize(7)
-      pdf.setTextColor(100, 100, 100)
-      pdf.text(truncatedOpenings, xPos, yPos + 5)
-      pdf.setTextColor(0, 0, 0)
 
       yPos += rowHeight
     }

@@ -339,3 +339,80 @@ export interface User {
   createdAt: Date
   updatedAt: Date
 }
+
+// Extrusion Finish Pricing
+export interface ExtrusionFinishPricing {
+  id: number
+  finishType: string
+  finishCode: string | null
+  costPerFoot: number
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+// Extrusion Variant - Track inventory by length and color
+export interface ExtrusionVariant {
+  id: number
+  masterPartId: number
+  stockLength: number
+  finishPricingId: number | null
+  qtyOnHand: number
+  binLocation: string | null
+  reorderPoint: number | null
+  reorderQty: number | null
+  pricePerPiece: number | null
+  isActive: boolean
+  notes: string | null
+  createdAt: Date
+  updatedAt: Date
+  finishPricing?: ExtrusionFinishPricing | null
+  masterPart?: MasterPart
+}
+
+// MasterPart type (simplified for extrusion variant use)
+export interface MasterPart {
+  id: number
+  partNumber: string
+  baseName: string
+  description: string | null
+  partType: string
+  unit: string | null
+  cost: number | null
+  weightPerFoot?: number | null
+  customPricePerLb?: number | null
+  isMillFinish?: boolean
+}
+
+// Extrusion Variant Group - Groups variants by extrusion profile
+export interface ExtrusionVariantGroup {
+  masterPart: Pick<MasterPart, 'id' | 'partNumber' | 'baseName' | 'description' | 'weightPerFoot' | 'customPricePerLb' | 'isMillFinish'>
+  variants: ExtrusionVariantDisplay[]
+  lengths: number[]
+  finishes: FinishOption[]
+}
+
+// Extended variant with computed display fields
+export interface ExtrusionVariantDisplay extends ExtrusionVariant {
+  stockStatus: 'in_stock' | 'low_stock' | 'out_of_stock'
+  displayName: string
+}
+
+// Finish option for dropdown/selection
+export interface FinishOption {
+  id: number | null
+  name: string
+  code: string | null
+}
+
+// Global Application Settings
+export interface GlobalSetting {
+  id: number
+  key: string
+  value: string
+  dataType: 'string' | 'number' | 'boolean' | 'json'
+  category?: string | null
+  description?: string | null
+  createdAt: Date
+  updatedAt: Date
+}

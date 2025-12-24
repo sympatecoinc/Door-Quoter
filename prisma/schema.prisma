@@ -268,6 +268,7 @@ model MasterPart {
   cost                    Float?
   weightPerUnit           Float?             // Weight in ounces for Hardware parts
   weightPerFoot           Float?             // Weight in ounces per linear foot for Extrusion parts
+  customPricePerLb        Float?             // Per-extrusion override for material price per pound (null = use global)
   partType                String             @default("Hardware")
   isMillFinish            Boolean            @default(false) // If true (for Extrusions), no finish codes (-BL, -C2, -AL) will be appended to part numbers
   isOption                Boolean            @default(false) // True if this hardware part can be used as a category option
@@ -282,6 +283,7 @@ model MasterPart {
   stockLengthRules        StockLengthRule[]
   pricingRules            PricingRule[]
   glassTypeParts          GlassTypePart[]
+  extrusionVariants       ExtrusionVariant[]
 
   // Inventory Management Fields
   qtyOnHand               Float?     @default(0)     // Current quantity in stock
@@ -659,15 +661,39 @@ model ProductQuoteDocument {
 
 // Extrusion Finish Pricing - Global settings for finish costs per foot
 model ExtrusionFinishPricing {
-  id              Int      @id @default(autoincrement())
-  finishType      String   @unique // e.g., "Mill Finish", "Powder Coated", "Anodized"
-  finishCode      String?  // Part number suffix code (e.g., "BL", "C2", "AL")
-  costPerFoot     Float    @default(0) // Additional cost per foot of extrusion
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                Int                @id @default(autoincrement())
+  finishType        String             @unique // e.g., "Mill Finish", "Powder Coated", "Anodized"
+  finishCode        String?            // Part number suffix code (e.g., "BL", "C2", "AL")
+  costPerFoot       Float              @default(0) // Additional cost per foot of extrusion
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  extrusionVariants ExtrusionVariant[]
 
   @@map("ExtrusionFinishPricing")
+}
+
+// Extrusion Variants - Track inventory by length and color combinations
+model ExtrusionVariant {
+  id              Int                     @id @default(autoincrement())
+  masterPartId    Int
+  stockLength     Float                   // Stock length in inches (e.g., 144 = 12ft)
+  finishPricingId Int?                    // null = Mill Finish
+  qtyOnHand       Float                   @default(0)     // Current quantity in stock (pieces)
+  binLocation     String?                 // Physical bin/location code
+  reorderPoint    Float?                  // Qty threshold to trigger reorder
+  reorderQty      Float?                  // Qty to order when reordering
+  pricePerPiece   Float?                  // Price per stock piece (e.g., $45 for 12ft stick)
+  isActive        Boolean                 @default(true)  // Whether this variant is currently stocked
+  notes           String?                 // Any notes about this variant
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  masterPart      MasterPart              @relation(fields: [masterPartId], references: [id], onDelete: Cascade)
+  finishPricing   ExtrusionFinishPricing? @relation(fields: [finishPricingId], references: [id], onDelete: SetNull)
+
+  @@unique([masterPartId, stockLength, finishPricingId])
+  @@map("ExtrusionVariants")
 }
 
 // Vendor Management - QuickBooks integrated vendor database
@@ -756,4 +782,18 @@ model QuickBooksToken {
   updatedAt     DateTime @updatedAt
 
   @@map("QuickBooksTokens")
+}
+
+// Global Application Settings - Key-value store for system-wide settings
+model GlobalSetting {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique
+  value       String
+  dataType    String   @default("number") // "string", "number", "boolean", "json"
+  category    String?  // Optional grouping (e.g., "pricing", "inventory")
+  description String?  // Human-readable description
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("GlobalSettings")
 }

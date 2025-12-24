@@ -65,6 +65,22 @@ function calculateRequiredPartLength(bom: any, variables: any): number {
   return bom.quantity || 0
 }
 
+// Calculate extrusion price per piece using weight-based formula
+// Formula: (weightPerFoot × pricePerLb) × (stockLength / 12)
+function calculateExtrusionPricePerPiece(
+  weightPerFoot: number | null | undefined,
+  customPricePerLb: number | null | undefined,
+  globalPricePerLb: number,
+  stockLengthInches: number
+): number | null {
+  if (!weightPerFoot || weightPerFoot <= 0) return null
+  if (stockLengthInches <= 0) return null
+
+  const pricePerLb = customPricePerLb ?? globalPricePerLb
+  const basePricePerFoot = weightPerFoot * pricePerLb
+  return basePricePerFoot * (stockLengthInches / 12)
+}
+
 // Function to calculate FRAME dimensions from sibling panels in the same opening
 function getFrameDimensions(panels: any[], currentPanelId: number): { width: number; height: number } {
   // Get all panels except the current frame panel and other frame panels
@@ -85,7 +101,7 @@ function getFrameDimensions(panels: any[], currentPanelId: number): { width: num
 }
 
 // Function to calculate the price of a single BOM item using component dimensions
-async function calculateBOMItemPrice(bom: any, componentWidth: number, componentHeight: number, extrusionCostingMethod?: string, excludedPartNumbers?: string[], finishColor?: string | null): Promise<{cost: number, breakdown: any}> {
+async function calculateBOMItemPrice(bom: any, componentWidth: number, componentHeight: number, extrusionCostingMethod?: string, excludedPartNumbers?: string[], finishColor?: string | null, globalMaterialPricePerLb?: number): Promise<{cost: number, breakdown: any}> {
   const variables = {
     width: componentWidth || 0,
     height: componentHeight || 0,
@@ -200,17 +216,28 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
             const usePercentageBased = extrusionCostingMethod === 'PERCENTAGE_BASED' || isExcludedPart
             const useHybrid = extrusionCostingMethod === 'HYBRID'
 
-            if (usePercentageBased && bestRule.stockLength && bestRule.basePrice) {
+            // Calculate weight-based price per piece for extrusions
+            // Formula: (weightPerFoot × pricePerLb) × (stockLength / 12)
+            const calculatedPricePerPiece = calculateExtrusionPricePerPiece(
+              masterPart.weightPerFoot,
+              masterPart.customPricePerLb,
+              globalMaterialPricePerLb ?? 0,
+              bestRule.stockLength || 0
+            )
+            // Use calculated price, fallback to basePrice if weight data is missing
+            const pricePerPiece = calculatedPricePerPiece ?? bestRule.basePrice ?? 0
+
+            if (usePercentageBased && bestRule.stockLength && pricePerPiece > 0) {
               // Calculate usage percentage
               const usagePercentage = requiredLength / bestRule.stockLength
               const remainingPercentage = 1 - usagePercentage
 
               // If more than 50% of stock remains unused, use percentage-based cost
               if (remainingPercentage > 0.5) {
-                cost = bestRule.basePrice * usagePercentage * (bom.quantity || 1)
+                cost = pricePerPiece * usagePercentage * (bom.quantity || 1)
                 breakdown.method = 'extrusion_percentage_based'
                 const excludedNote = isExcludedPart ? ' (Excluded Part)' : ''
-                breakdown.details = `Percentage-based cost${excludedNote}: ${(usagePercentage * 100).toFixed(2)}% of stock (${requiredLength}"/${bestRule.stockLength}") × $${bestRule.basePrice} × ${bom.quantity || 1} = $${cost.toFixed(2)}`
+                breakdown.details = `Percentage-based cost${excludedNote}: ${(usagePercentage * 100).toFixed(2)}% of stock (${requiredLength}"/${bestRule.stockLength}") × $${pricePerPiece.toFixed(2)} × ${bom.quantity || 1} = $${cost.toFixed(2)}`
                 breakdown.unitCost = cost / (bom.quantity || 1)
                 breakdown.totalCost = cost
 
@@ -244,7 +271,7 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
             // HYBRID costing method
             // If usage >= 50%: used portion (markup applied at quote level) + remaining at cost (no markup)
             // If usage < 50%: percentage-based (used portion only, markup at quote level)
-            if (useHybrid && bestRule.stockLength && bestRule.basePrice) {
+            if (useHybrid && bestRule.stockLength && pricePerPiece > 0) {
               const usagePercentage = requiredLength / bestRule.stockLength
               const remainingPercentage = 1 - usagePercentage
 
@@ -252,8 +279,8 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
                 // >= 50% used: charge markup on used portion + cost on remaining
                 // At this level, we return the BASE costs - markup is applied at quote generation
                 // usedPortionCost will have markup applied, remainingPortionCost will not
-                const usedPortionCost = bestRule.basePrice * usagePercentage * (bom.quantity || 1)
-                const remainingPortionCost = bestRule.basePrice * remainingPercentage * (bom.quantity || 1)
+                const usedPortionCost = pricePerPiece * usagePercentage * (bom.quantity || 1)
+                const remainingPortionCost = pricePerPiece * remainingPercentage * (bom.quantity || 1)
 
                 cost = usedPortionCost + remainingPortionCost // Total base cost (full stock)
                 breakdown.method = 'extrusion_hybrid_split'
@@ -269,9 +296,9 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
                 }
               } else {
                 // < 50% used: percentage-based (only charge for used portion)
-                cost = bestRule.basePrice * usagePercentage * (bom.quantity || 1)
+                cost = pricePerPiece * usagePercentage * (bom.quantity || 1)
                 breakdown.method = 'extrusion_hybrid_percentage'
-                breakdown.details = `Hybrid (<50% used): ${(usagePercentage * 100).toFixed(1)}% of stock (${requiredLength}"/${bestRule.stockLength}") × $${bestRule.basePrice} × ${bom.quantity || 1} = $${cost.toFixed(2)}`
+                breakdown.details = `Hybrid (<50% used): ${(usagePercentage * 100).toFixed(1)}% of stock (${requiredLength}"/${bestRule.stockLength}") × $${pricePerPiece.toFixed(2)} × ${bom.quantity || 1} = $${cost.toFixed(2)}`
                 breakdown.unitCost = cost / (bom.quantity || 1)
                 breakdown.totalCost = cost
               }
@@ -305,18 +332,19 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
             if (bestRule.formula) {
               const extrusionVariables = {
                 ...variables,
-                basePrice: bestRule.basePrice || 0,
+                basePrice: pricePerPiece,
+                pricePerPiece: pricePerPiece,
                 stockLength: bestRule.stockLength || 0,
                 piecesPerUnit: bestRule.piecesPerUnit || 1,
                 requiredLength: requiredLength
               }
               cost = evaluateFormula(bestRule.formula, extrusionVariables)
               breakdown.method = usePercentageBased ? 'extrusion_full_stock_fallback' : 'extrusion_rule_formula'
-              breakdown.details = `${usePercentageBased ? 'Full stock cost (>50% used): ' : ''}Extrusion rule for ${requiredLength}" length: ${bestRule.formula} (basePrice: ${bestRule.basePrice}, stockLength: ${bestRule.stockLength}) = $${cost}`
-            } else if (bestRule.basePrice) {
-              cost = bestRule.basePrice * (bom.quantity || 1)
+              breakdown.details = `${usePercentageBased ? 'Full stock cost (>50% used): ' : ''}Extrusion rule for ${requiredLength}" length: ${bestRule.formula} (pricePerPiece: ${pricePerPiece.toFixed(2)}, stockLength: ${bestRule.stockLength}) = $${cost}`
+            } else if (pricePerPiece > 0) {
+              cost = pricePerPiece * (bom.quantity || 1)
               breakdown.method = usePercentageBased ? 'extrusion_full_stock_fallback' : 'extrusion_rule_base'
-              breakdown.details = `${usePercentageBased ? 'Full stock cost (>50% used): ' : ''}Extrusion base price for ${requiredLength}" length: $${bestRule.basePrice} × ${bom.quantity || 1}`
+              breakdown.details = `${usePercentageBased ? 'Full stock cost (>50% used): ' : ''}Extrusion price for ${requiredLength}" length: $${pricePerPiece.toFixed(2)} × ${bom.quantity || 1}`
             }
             breakdown.unitCost = cost / (bom.quantity || 1)
             breakdown.totalCost = cost
@@ -451,6 +479,14 @@ export async function POST(
       )
     }
 
+    // Fetch global material price per lb for weight-based extrusion pricing
+    const materialPricePerLbSetting = await prisma.globalSetting.findUnique({
+      where: { key: 'materialPricePerLb' }
+    })
+    const globalMaterialPricePerLb = materialPricePerLbSetting
+      ? parseFloat(materialPricePerLbSetting.value)
+      : 0 // Default to $0 if not set
+
     // Auto-update frame panel dimensions based on sibling panels
     // This ensures frames resize when components are added/removed/modified
     for (const panel of opening.panels) {
@@ -529,7 +565,8 @@ export async function POST(
           effectiveHeight,
           extrusionCostingMethod,
           opening.project.excludedPartNumbers || [],
-          opening.finishColor
+          opening.finishColor,
+          globalMaterialPricePerLb
         )
         componentBreakdown.bomCosts.push(breakdown)
         componentBreakdown.totalBOMCost += cost

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Search, Filter, Package, AlertTriangle, AlertCircle, CheckCircle, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import InventoryEditModal from '@/components/inventory/InventoryEditModal'
+import ExtrusionInventoryTab from '@/components/inventory/ExtrusionInventoryTab'
+import FinishPricingTab from '@/components/inventory/FinishPricingTab'
 
 interface Vendor {
   id: number
@@ -41,7 +43,10 @@ interface Pagination {
   pages: number
 }
 
+type InventoryTab = 'all' | 'extrusions' | 'finishPricing'
+
 export default function InventoryView() {
+  const [activeTab, setActiveTab] = useState<InventoryTab>('all')
   const [parts, setParts] = useState<InventoryPart[]>([])
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -169,6 +174,56 @@ export default function InventoryView() {
         <p className="text-gray-600 mt-1">Manage part quantities, locations, and reorder levels</p>
       </div>
 
+      {/* Tabs */}
+      <div className="mb-6 border-b border-gray-200">
+        <nav className="flex gap-4">
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'all'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            All Parts
+          </button>
+          <button
+            onClick={() => setActiveTab('extrusions')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'extrusions'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Extrusions
+          </button>
+          <button
+            onClick={() => setActiveTab('finishPricing')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'finishPricing'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Finish Pricing
+          </button>
+        </nav>
+      </div>
+
+      {/* Extrusions Tab Content */}
+      {activeTab === 'extrusions' && <ExtrusionInventoryTab />}
+
+      {/* Finish Pricing Tab Content */}
+      {activeTab === 'finishPricing' && (
+        <FinishPricingTab
+          showSuccess={(message) => setNotification({ type: 'success', message })}
+          showError={(message) => setNotification({ type: 'error', message })}
+        />
+      )}
+
+      {/* All Parts Tab Content */}
+      {activeTab === 'all' && (
+        <>
       {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -382,6 +437,8 @@ export default function InventoryView() {
           onClose={() => setEditingPart(null)}
           onSave={handleEditSave}
         />
+      )}
+        </>
       )}
     </div>
   )
