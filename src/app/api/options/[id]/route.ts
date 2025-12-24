@@ -34,7 +34,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const {
       name,
       description,
-      price,
       partNumber,
       addToPackingList,
       addFinishToPartNumber,
@@ -53,7 +52,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       data: {
         name,
         description,
-        price: parseFloat(price) || 0,
         partNumber: partNumber || null,
         addToPackingList: addToPackingList !== undefined ? Boolean(addToPackingList) : undefined,
         addFinishToPartNumber: addFinishToPartNumber !== undefined ? Boolean(addFinishToPartNumber) : undefined,

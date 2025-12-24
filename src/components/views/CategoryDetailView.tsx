@@ -23,7 +23,6 @@ interface IndividualOption {
   name: string
   description?: string
   partNumber?: string
-  price: number
   addToPackingList: boolean
   addFinishToPartNumber: boolean
   elevationImagePath?: string
@@ -31,6 +30,7 @@ interface IndividualOption {
   planImagePath?: string
   planImageOriginalName?: string
   isCutListItem?: boolean
+  masterPartType?: string | null
   category?: {
     name: string
   }
@@ -149,7 +149,6 @@ export default function CategoryDetailView({
             categoryId: category.id,
             name: masterPart.baseName,
             description: masterPart.description || `${masterPart.partNumber} - ${masterPart.baseName}`,
-            price: masterPart.cost || 0,
             partNumber: masterPart.partNumber,
             addToPackingList: masterPart.addToPackingList ?? true,
             addFinishToPartNumber: masterPart.addFinishToPartNumber ?? false
@@ -229,7 +228,6 @@ export default function CategoryDetailView({
         body: JSON.stringify({
           name: editingOption.name,
           description: editingOption.description,
-          price: editingOption.price,
           partNumber: editingOption.partNumber,
           addToPackingList: editingOption.addToPackingList,
           addFinishToPartNumber: editingOption.addFinishToPartNumber,
@@ -445,10 +443,7 @@ export default function CategoryDetailView({
                 {option.description && (
                   <p className="text-sm text-gray-600 mb-2">{option.description}</p>
                 )}
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-green-600">
-                    {option.price > 0 ? `+$${option.price.toFixed(2)}` : 'Free'}
-                  </span>
+                <div className="flex justify-end items-center">
                   <div className="flex gap-1 flex-wrap">
                     {option.isCutListItem && (
                       <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded flex items-center gap-1">
@@ -793,37 +788,28 @@ export default function CategoryDetailView({
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editingOption.price}
-                  onChange={(e) => setEditingOption({ ...editingOption, price: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                />
-              </div>
-
-              {/* Show in Product BOM */}
-              <div className="border-t pt-4 mt-4">
-                <label className="flex items-center justify-between">
-                  <div>
-                    <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                      <Scissors className="w-4 h-4" />
-                      Show in Product BOM
-                    </span>
-                    <p className="text-xs text-gray-500 mt-1">
-                      When enabled, this option appears in the Product BOM section where formulas can be assigned per-product
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={editingOption.isCutListItem || false}
-                    onChange={(e) => setEditingOption({ ...editingOption, isCutListItem: e.target.checked })}
-                    className="h-5 w-5 text-orange-600 rounded"
-                  />
-                </label>
-              </div>
+              {/* Show in Product BOM - Only for extrusions */}
+              {editingOption.masterPartType === 'Extrusion' && (
+                <div className="border-t pt-4 mt-4">
+                  <label className="flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                        <Scissors className="w-4 h-4" />
+                        Show in Product BOM
+                      </span>
+                      <p className="text-xs text-gray-500 mt-1">
+                        When enabled, this option appears in the Product BOM section where formulas can be assigned per-product
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={editingOption.isCutListItem || false}
+                      onChange={(e) => setEditingOption({ ...editingOption, isCutListItem: e.target.checked })}
+                      className="h-5 w-5 text-orange-600 rounded"
+                    />
+                  </label>
+                </div>
+              )}
 
               <div className="flex justify-end space-x-3 pt-4">
                 <button

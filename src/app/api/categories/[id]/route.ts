@@ -23,7 +23,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Category not found' }, { status: 404 })
     }
 
-    return NextResponse.json(category)
+    // Enrich options with master part type info
+    const partNumbers = category.individualOptions
+      .map(opt => opt.partNumber)
+      .filter((pn): pn is string => !!pn)
+
+    const masterParts = partNumbers.length > 0
+      ? await prisma.masterPart.findMany({
+          where: { partNumber: { in: partNumbers } },
+          select: { partNumber: true, partType: true }
+        })
+      : []
+
+    const partTypeMap = new Map(masterParts.map(mp => [mp.partNumber, mp.partType]))
+
+    const enrichedOptions = category.individualOptions.map(opt => ({
+      ...opt,
+      masterPartType: opt.partNumber ? partTypeMap.get(opt.partNumber) || null : null
+    }))
+
+    return NextResponse.json({
+      ...category,
+      individualOptions: enrichedOptions
+    })
   } catch (error) {
     console.error('Error fetching category:', error)
     return NextResponse.json(

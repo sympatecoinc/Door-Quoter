@@ -213,7 +213,7 @@ export async function GET(
         partName: bom.partName,
         partType: bom.partType,
         quantity: bom.quantity || 1,
-        cutLength: cutLength ? cutLength.toFixed(2) : '',
+        cutLength: cutLength ? cutLength.toFixed(3) : '',
         unit: bom.unit || '',
         description: bom.description || '',
         color: opening.finishColor || 'N/A'

@@ -818,7 +818,7 @@ export async function GET(
       const miscCutListMap: Record<string, any> = {}
       for (const item of miscBomItems) {
         if (item.partType !== 'Extrusion') continue
-        const cutLengthKey = item.cutLength ? item.cutLength.toFixed(2) : 'none'
+        const cutLengthKey = item.cutLength ? item.cutLength.toFixed(3) : 'none'
         const key = `${item.partNumber}|${cutLengthKey}`
 
         if (!miscCutListMap[key]) {
