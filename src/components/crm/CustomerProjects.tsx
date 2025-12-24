@@ -1329,11 +1329,11 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                                             <td className="border border-gray-200 px-3 py-2 text-sm text-gray-900">
                                               {item.partType === 'Glass' ? (
                                                 <div>
-                                                  <div className="font-medium">{item.glassWidth?.toFixed(2)}" × {item.glassHeight?.toFixed(2)}"</div>
+                                                  <div className="font-medium">{item.glassWidth?.toFixed(3)}" × {item.glassHeight?.toFixed(3)}"</div>
                                                   <div className="text-xs text-gray-500">({item.glassArea} SQ FT)</div>
                                                 </div>
                                               ) : (
-                                                item.cutLength ? `${item.cutLength.toFixed(2)}"` : '-'
+                                                item.cutLength ? `${item.cutLength.toFixed(3)}"` : '-'
                                               )}
                                             </td>
                                             <td className="border border-gray-200 px-3 py-2 text-sm text-center text-gray-900">

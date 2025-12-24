@@ -128,7 +128,7 @@ export function aggregateBomItems(bomItems: BomItem[]): AggregatedBomItem[] {
     // For glass, group by part number AND dimensions to get separate rows per size
     let key = item.partNumber
     if (item.partType === 'Glass' && item.glassWidth && item.glassHeight) {
-      key = `${item.partNumber}|${item.glassWidth.toFixed(2)}x${item.glassHeight.toFixed(2)}`
+      key = `${item.partNumber}|${item.glassWidth.toFixed(3)}x${item.glassHeight.toFixed(3)}`
     }
 
     if (!aggregated[key]) {
@@ -351,7 +351,7 @@ export function aggregateCutListItems(bomItems: BOMItemForCutList[]): Aggregated
 
   for (const item of extrusions) {
     const sizeKey = `${item.panelWidth}x${item.panelHeight}`
-    const cutLengthKey = item.cutLength ? item.cutLength.toFixed(2) : 'none'
+    const cutLengthKey = item.cutLength ? item.cutLength.toFixed(3) : 'none'
     const key = `${item.productName}|${sizeKey}|${item.partNumber}|${cutLengthKey}`
     const itemQty = item.quantity || 1
 
@@ -371,7 +371,7 @@ export function aggregateCutListItems(bomItems: BOMItemForCutList[]): Aggregated
 
   for (const item of extrusions) {
     const sizeKey = `${item.panelWidth}x${item.panelHeight}`
-    const cutLengthKey = item.cutLength ? item.cutLength.toFixed(2) : 'none'
+    const cutLengthKey = item.cutLength ? item.cutLength.toFixed(3) : 'none'
     const key = `${item.productName}|${sizeKey}|${item.partNumber}|${cutLengthKey}`
     const productSizeKey = `${item.productName}|${sizeKey}`
 
@@ -491,7 +491,7 @@ export function cutlistToCSV(
       item.partNumber,
       item.partName || '',
       item.stockLength || '',
-      item.cutLength ? item.cutLength.toFixed(2) : '',
+      item.cutLength ? item.cutLength.toFixed(3) : '',
       item.qtyPerUnit,
       item.unitCount,
       item.totalQty,
@@ -521,7 +521,7 @@ export function cutlistToCSV(
             item.partNumber,
             item.partName || '',
             item.stockLength || '',
-            item.cutLength ? item.cutLength.toFixed(2) : '',
+            item.cutLength ? item.cutLength.toFixed(3) : '',
             item.qtyPerUnit,
             item.unitCount,
             item.totalQty,
@@ -546,16 +546,16 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
     // For glass, show the specific size; for extrusions, show cut lengths; for hardware with LF/IN, show calculated lengths
     let sizeStr = ''
     if (item.partType === 'Glass' && item.glassWidth && item.glassHeight) {
-      sizeStr = `${item.glassWidth.toFixed(2)}" x ${item.glassHeight.toFixed(2)}"`
+      sizeStr = `${item.glassWidth.toFixed(3)}" x ${item.glassHeight.toFixed(3)}"`
     } else if (item.cutLengths && item.cutLengths.length > 0) {
       // For extrusions, show unique cut lengths
-      const uniqueCuts = [...new Set(item.cutLengths.map((l: number) => l.toFixed(2)))]
+      const uniqueCuts = [...new Set(item.cutLengths.map((l: number) => l.toFixed(3)))]
       sizeStr = uniqueCuts.join('; ')
     } else if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
                (item.unit === 'LF' || item.unit === 'IN') &&
                item.totalCalculatedLength) {
       // For hardware/fastener with LF/IN units, show total calculated length
-      sizeStr = `${item.totalCalculatedLength.toFixed(2)} ${item.unit}`
+      sizeStr = `${item.totalCalculatedLength.toFixed(3)} ${item.unit}`
     }
 
     // Calculate area for glass

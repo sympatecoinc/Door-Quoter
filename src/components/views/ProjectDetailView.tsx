@@ -3115,11 +3115,11 @@ export default function ProjectDetailView() {
                                             <td className="border border-gray-200 px-3 py-2 text-sm text-gray-900">
                                               {item.partType === 'Glass' ? (
                                                 <div>
-                                                  <div className="font-medium">{item.glassWidth?.toFixed(2)}" × {item.glassHeight?.toFixed(2)}"</div>
+                                                  <div className="font-medium">{item.glassWidth?.toFixed(3)}" × {item.glassHeight?.toFixed(3)}"</div>
                                                   <div className="text-xs text-gray-500">({item.glassArea} SQ FT)</div>
                                                 </div>
                                               ) : item.cutLength ? (
-                                                `${item.cutLength.toFixed(2)}${item.unit === 'LF' ? "'" : '"'}`
+                                                `${item.cutLength.toFixed(3)}${item.unit === 'LF' ? "'" : '"'}`
                                               ) : (
                                                 '-'
                                               )}
@@ -3238,7 +3238,7 @@ export default function ProjectDetailView() {
                                         <div className="flex flex-wrap gap-1">
                                           {item.cutLengths.slice(0, 6).map((len: number, i: number) => (
                                             <span key={i} className="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
-                                              {len.toFixed(2)}"
+                                              {len.toFixed(3)}"
                                             </span>
                                           ))}
                                           {item.cutLengths.length > 6 && (
@@ -3253,7 +3253,7 @@ export default function ProjectDetailView() {
                                         <div className="flex flex-wrap gap-1">
                                           {item.glassDimensions.slice(0, 4).map((dim: any, i: number) => (
                                             <span key={i} className="inline-block px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-xs">
-                                              {dim.width?.toFixed(1)}" × {dim.height?.toFixed(1)}"
+                                              {dim.width?.toFixed(3)}" × {dim.height?.toFixed(3)}"
                                             </span>
                                           ))}
                                           {item.glassDimensions.length > 4 && (
@@ -3266,12 +3266,12 @@ export default function ProjectDetailView() {
                                     ) : (item.partType === 'Hardware' || item.partType === 'Fastener') && item.calculatedLengths?.length > 0 ? (
                                       <div className="max-w-xs">
                                         <div className="text-xs text-gray-500 mb-1">
-                                          {item.calculatedLengths.length} length{item.calculatedLengths.length !== 1 ? 's' : ''} ({item.totalCalculatedLength?.toFixed(2)} {item.unit} total)
+                                          {item.calculatedLengths.length} length{item.calculatedLengths.length !== 1 ? 's' : ''} ({item.totalCalculatedLength?.toFixed(3)} {item.unit} total)
                                         </div>
                                         <div className="flex flex-wrap gap-1">
                                           {item.calculatedLengths.slice(0, 6).map((len: number, i: number) => (
                                             <span key={i} className="inline-block px-1.5 py-0.5 bg-green-50 text-green-700 rounded text-xs">
-                                              {len.toFixed(2)} {item.unit}
+                                              {len.toFixed(3)} {item.unit}
                                             </span>
                                           ))}
                                           {item.calculatedLengths.length > 6 && (

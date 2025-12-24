@@ -261,7 +261,7 @@ export async function GET(
         partName: `${panel.glassType} Glass`,
         partType: 'Glass',
         quantity: 1,
-        cutLength: `${glassWidth.toFixed(2)}" x ${glassHeight.toFixed(2)}" (${glassArea} SQ FT)`,
+        cutLength: `${glassWidth.toFixed(3)}" x ${glassHeight.toFixed(3)}" (${glassArea} SQ FT)`,
         unit: 'SQ FT',
         description: panel.glassType,
         color: 'N/A'
