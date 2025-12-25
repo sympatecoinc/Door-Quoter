@@ -65,26 +65,15 @@ export async function GET(request: Request) {
         .map(r => r.stockLength)
         .filter((l): l is number => l !== null)
       const lengths = [...new Set([...variantLengths, ...ruleLengths])].sort((a, b) => a - b)
-      const variantFinishIds = [...new Set(ext.extrusionVariants.map(v => v.finishPricingId))]
-      const hasVariants = ext.extrusionVariants.length > 0
 
       // Build finish options including Mill (null)
-      // If no variants exist yet but we have stock lengths from rules, show all available finishes
+      // Always show all available finishes so user can add variants for any finish type
       const finishOptions: Array<{ id: number | null; name: string; code: string | null }> = []
 
-      if (hasVariants) {
-        // Only show finishes that have variants
-        if (variantFinishIds.includes(null)) {
-          finishOptions.push({ id: null, name: 'Mill', code: null })
-        }
-        finishes.forEach(f => {
-          if (variantFinishIds.includes(f.id)) {
-            finishOptions.push({ id: f.id, name: f.finishType, code: f.finishCode })
-          }
-        })
-      } else if (lengths.length > 0) {
-        // No variants yet, but we have stock lengths from rules - show all available finishes
+      if (lengths.length > 0) {
+        // Always include Mill finish first
         finishOptions.push({ id: null, name: 'Mill', code: null })
+        // Add all other finishes (unless this is a mill-finish-only extrusion)
         if (!ext.isMillFinish) {
           finishes.forEach(f => {
             finishOptions.push({ id: f.id, name: f.finishType, code: f.finishCode })
