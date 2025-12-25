@@ -27,8 +27,6 @@ export default function ExtrusionVariantEditModal({
     qtyOnHand: 0,
     binLocation: '',
     reorderPoint: '',
-    reorderQty: '',
-    pricePerPiece: '',
     notes: ''
   })
   const [saving, setSaving] = useState(false)
@@ -41,8 +39,6 @@ export default function ExtrusionVariantEditModal({
         qtyOnHand: variant.qtyOnHand ?? 0,
         binLocation: variant.binLocation ?? '',
         reorderPoint: variant.reorderPoint?.toString() ?? '',
-        reorderQty: variant.reorderQty?.toString() ?? '',
-        pricePerPiece: variant.pricePerPiece?.toString() ?? '',
         notes: variant.notes ?? ''
       })
     }
@@ -63,8 +59,6 @@ export default function ExtrusionVariantEditModal({
         qtyOnHand: Number(formData.qtyOnHand),
         binLocation: formData.binLocation || null,
         reorderPoint: formData.reorderPoint ? Number(formData.reorderPoint) : null,
-        reorderQty: formData.reorderQty ? Number(formData.reorderQty) : null,
-        pricePerPiece: formData.pricePerPiece ? Number(formData.pricePerPiece) : null,
         notes: formData.notes || null
       })
       onClose()
@@ -164,51 +158,19 @@ export default function ExtrusionVariantEditModal({
               />
             </div>
 
-            {/* Reorder Point & Qty */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Reorder Point
-                </label>
-                <input
-                  type="number"
-                  value={formData.reorderPoint}
-                  onChange={(e) => setFormData({ ...formData, reorderPoint: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  min="0"
-                  step="1"
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Reorder Qty
-                </label>
-                <input
-                  type="number"
-                  value={formData.reorderQty}
-                  onChange={(e) => setFormData({ ...formData, reorderQty: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  min="0"
-                  step="1"
-                  placeholder="0"
-                />
-              </div>
-            </div>
-
-            {/* Price Per Piece */}
+            {/* Safety Stock */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Price Per Piece ($)
+                Safety Stock
               </label>
               <input
                 type="number"
-                value={formData.pricePerPiece}
-                onChange={(e) => setFormData({ ...formData, pricePerPiece: e.target.value })}
+                value={formData.reorderPoint}
+                onChange={(e) => setFormData({ ...formData, reorderPoint: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 min="0"
-                step="0.01"
-                placeholder="0.00"
+                step="1"
+                placeholder="0"
               />
             </div>
 
