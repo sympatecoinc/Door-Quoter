@@ -71,10 +71,11 @@ export async function GET(request: Request) {
       const finishOptions: Array<{ id: number | null; name: string; code: string | null }> = []
 
       if (lengths.length > 0) {
-        // Always include Mill finish first
-        finishOptions.push({ id: null, name: 'Mill', code: null })
-        // Add all other finishes (unless this is a mill-finish-only extrusion)
-        if (!ext.isMillFinish) {
+        if (ext.isMillFinish) {
+          // Mill-finish-only extrusions: show only Mill option
+          finishOptions.push({ id: null, name: 'Mill', code: null })
+        } else {
+          // Non-mill extrusions: show only the other finishes (no Mill option)
           finishes.forEach(f => {
             finishOptions.push({ id: f.id, name: f.finishType, code: f.finishCode })
           })
