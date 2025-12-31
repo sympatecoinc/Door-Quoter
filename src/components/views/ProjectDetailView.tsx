@@ -3,9 +3,7 @@
 import { useState, useEffect } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 
-// Direction constants matching SHOPGEN
-const SLIDING_DIRECTIONS = ["Left", "Right"]
-const CORNER_DIRECTIONS = ["Up", "Down"]
+// Direction options are now loaded dynamically from product plan views
 import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive, X, ChevronDown, Package } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
@@ -1251,10 +1249,12 @@ export default function ProjectDetailView() {
           // Set glass type and direction for editing
           setEditingGlassType(componentData.panel.glassType || '')
           // Set direction based on product type
-          if (componentData.panel.swingDirection) {
+          if (componentData.panel.swingDirection && componentData.panel.swingDirection !== 'None') {
             setEditingDirection(componentData.panel.swingDirection)
           } else if (componentData.panel.slidingDirection) {
             setEditingDirection(componentData.panel.slidingDirection)
+          } else if (componentData.panel.cornerDirection) {
+            setEditingDirection(componentData.panel.cornerDirection)
           } else {
             setEditingDirection('')
           }
@@ -2077,9 +2077,16 @@ export default function ProjectDetailView() {
                       setAddComponentSelectedOptions({})
                     }
 
-                    // Set swing direction to first plan view name if available
-                    if (product?.productType === 'SWING_DOOR' && product.planViews?.length > 0) {
-                      setSwingDirection(product.planViews[0].name)
+                    // Set direction to first plan view name if available
+                    if (product?.planViews?.length > 0) {
+                      const firstPlanViewName = product.planViews[0].name
+                      if (product.productType === 'SWING_DOOR') {
+                        setSwingDirection(firstPlanViewName)
+                      } else if (product.productType === 'SLIDING_DOOR') {
+                        setSlidingDirection(firstPlanViewName)
+                      } else if (product.productType === 'CORNER_90') {
+                        setCornerDirection(firstPlanViewName)
+                      }
                     }
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
@@ -2270,6 +2277,18 @@ export default function ProjectDetailView() {
                     </div>
                   )
                 } else if (selectedProduct?.productType === 'SLIDING_DOOR') {
+                  const planViewOptions = selectedProduct.planViews || []
+
+                  if (planViewOptions.length === 0) {
+                    return (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                        <p className="text-sm text-yellow-800">
+                          No plan views have been added to this product. Please add plan views in the product settings to enable direction selection.
+                        </p>
+                      </div>
+                    )
+                  }
+
                   return (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
@@ -2278,15 +2297,27 @@ export default function ProjectDetailView() {
                         onChange={(e) => setSlidingDirection(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                       >
-                        {SLIDING_DIRECTIONS.map((direction) => (
-                          <option key={direction} value={direction}>
-                            {direction}
+                        {planViewOptions.map((planView: any) => (
+                          <option key={planView.id} value={planView.name}>
+                            {planView.name}
                           </option>
                         ))}
                       </select>
                     </div>
                   )
                 } else if (selectedProduct?.productType === 'CORNER_90') {
+                  const planViewOptions = selectedProduct.planViews || []
+
+                  if (planViewOptions.length === 0) {
+                    return (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                        <p className="text-sm text-yellow-800">
+                          No plan views have been added to this product. Please add plan views in the product settings to enable direction selection.
+                        </p>
+                      </div>
+                    )
+                  }
+
                   return (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
@@ -2295,9 +2326,9 @@ export default function ProjectDetailView() {
                         onChange={(e) => setCornerDirection(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                       >
-                        {CORNER_DIRECTIONS.map((direction) => (
-                          <option key={direction} value={direction}>
-                            {direction}
+                        {planViewOptions.map((planView: any) => (
+                          <option key={planView.id} value={planView.name}>
+                            {planView.name}
                           </option>
                         ))}
                       </select>
@@ -2530,15 +2561,17 @@ export default function ProjectDetailView() {
             </div>
 
             {/* Direction Section - Show based on product type */}
-            {editingProductType && editingProductType !== 'FIXED_PANEL' && (
+            {editingProductType && editingProductType !== 'FIXED_PANEL' && editingProductType !== 'FRAME' && (
               <div className="mb-6 p-4 bg-gray-50 rounded-lg">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">
-                  {editingProductType === 'SWING_DOOR' ? 'Swing Direction' : 'Sliding Direction'}
+                  {editingProductType === 'SWING_DOOR' ? 'Swing Direction' :
+                   editingProductType === 'SLIDING_DOOR' ? 'Sliding Direction' :
+                   editingProductType === 'CORNER_90' ? 'Corner Direction' : 'Direction'}
                 </h3>
-                {editingProductType === 'SWING_DOOR' && editingPlanViews.length === 0 ? (
+                {editingPlanViews.length === 0 ? (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                     <p className="text-sm text-yellow-800">
-                      No elevation views have been added to this product. Please add elevation views in the product settings.
+                      No plan views have been added to this product. Please add plan views in the product settings to enable direction selection.
                     </p>
                   </div>
                 ) : (
@@ -2547,15 +2580,9 @@ export default function ProjectDetailView() {
                     onChange={(e) => setEditingDirection(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                   >
-                    {editingProductType === 'SWING_DOOR' ? (
-                      editingPlanViews.map((planView) => (
-                        <option key={planView.id} value={planView.name}>{planView.name}</option>
-                      ))
-                    ) : (
-                      SLIDING_DIRECTIONS.map((dir) => (
-                        <option key={dir} value={dir}>{dir}</option>
-                      ))
-                    )}
+                    {editingPlanViews.map((planView) => (
+                      <option key={planView.id} value={planView.name}>{planView.name}</option>
+                    ))}
                   </select>
                 )}
               </div>
@@ -2651,6 +2678,8 @@ export default function ProjectDetailView() {
                       panelUpdateData.swingDirection = editingDirection
                     } else if (editingProductType === 'SLIDING_DOOR' && editingDirection) {
                       panelUpdateData.slidingDirection = editingDirection
+                    } else if (editingProductType === 'CORNER_90' && editingDirection) {
+                      panelUpdateData.cornerDirection = editingDirection
                     }
 
                     const panelResponse = await fetch(`/api/panels/${currentPanelId}`, {
