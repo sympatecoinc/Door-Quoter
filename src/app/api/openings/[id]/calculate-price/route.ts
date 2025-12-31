@@ -684,7 +684,7 @@ export async function POST(
                   ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
                   : null
                 const quantity = optionBom?.quantity || 1
-                const totalPrice = standardOption.price * quantity
+                const totalPrice = (standardOption.price ?? 0) * quantity
 
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
@@ -728,7 +728,7 @@ export async function POST(
 
               if (isStandardSelected) {
                 // Standard option selected - cost only, no markup
-                const optionPrice = isIncluded ? 0 : selectedOption.price * quantity
+                const optionPrice = isIncluded ? 0 : (selectedOption.price ?? 0) * quantity
 
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
@@ -744,14 +744,14 @@ export async function POST(
                 priceBreakdown.totalOtherCost += optionPrice // Standard options tracked as "other" (no markup)
               } else {
                 // Non-standard option selected - full price (markup applied at project level)
-                const optionPrice = isIncluded ? 0 : selectedOption.price * quantity
+                const optionPrice = isIncluded ? 0 : (selectedOption.price ?? 0) * quantity
 
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
                   optionName: selectedOption.name,
                   price: optionPrice,
                   isStandard: false,
-                  standardDeducted: standardOption ? standardOption.price : 0,
+                  standardDeducted: standardOption?.price ?? 0,
                   isIncluded: isIncluded
                 })
 
@@ -779,7 +779,7 @@ export async function POST(
               ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
               : null
             const quantity = optionBom?.quantity || 1
-            const totalPrice = standardOption.price * quantity
+            const totalPrice = (standardOption.price ?? 0) * quantity
 
             componentBreakdown.optionCosts.push({
               categoryName: productSubOption.category.name,
