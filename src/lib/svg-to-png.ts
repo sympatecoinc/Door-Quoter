@@ -71,27 +71,31 @@ export async function svgToPng(
       }
     }
 
-    // Create a canvas with the desired dimensions
-    const canvas = createCanvas(width, height)
+    // Load the SVG first to get its natural dimensions
+    const image = await loadImage(processedSvgDataUrl)
+
+    // Calculate canvas dimensions that match the source aspect ratio
+    // This prevents white padding/gaps between adjacent images
+    const sourceAspectRatio = image.height / image.width
+    let canvasWidth = width
+    let canvasHeight = Math.floor(width * sourceAspectRatio)
+
+    // If the calculated height exceeds the requested height, scale down
+    if (canvasHeight > height) {
+      canvasHeight = height
+      canvasWidth = Math.floor(height / sourceAspectRatio)
+    }
+
+    // Create a canvas matching the source aspect ratio
+    const canvas = createCanvas(canvasWidth, canvasHeight)
     const ctx = canvas.getContext('2d')
 
     // Fill with white background
     ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, width, height)
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight)
 
-    // Load and draw the SVG
-    const image = await loadImage(processedSvgDataUrl)
-
-    // Calculate scaling to fit within canvas while maintaining aspect ratio
-    const scale = Math.min(width / image.width, height / image.height)
-    const scaledWidth = image.width * scale
-    const scaledHeight = image.height * scale
-
-    // Center the image
-    const x = (width - scaledWidth) / 2
-    const y = (height - scaledHeight) / 2
-
-    ctx.drawImage(image, x, y, scaledWidth, scaledHeight)
+    // Draw the image to fill the entire canvas (no centering, no gaps)
+    ctx.drawImage(image, 0, 0, canvasWidth, canvasHeight)
 
     // Convert to PNG data URL
     return canvas.toDataURL('image/png')

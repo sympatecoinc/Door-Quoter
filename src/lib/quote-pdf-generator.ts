@@ -501,9 +501,9 @@ async function addQuoteItemsTable(
       )
       const panelHeight = Math.min(availableHeight, panelWidth * assumedAspectRatio)
 
-      // Position panels side-by-side starting from left (no gap between panels)
+      // Position panels side-by-side, centered within the available width
       const totalPanelsWidth = panelWidth * numPanels
-      const startX = currentX + cellPadding
+      const startX = currentX + cellPadding + (availableWidth - totalPanelsWidth) / 2
 
       for (let i = 0; i < numPanels; i++) {
         try {
