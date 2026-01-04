@@ -52,6 +52,88 @@ interface QBVendor {
   sparse?: boolean  // For partial updates
 }
 
+// QuickBooks Item interface
+export interface QBItem {
+  Id?: string
+  SyncToken?: string
+  Name: string
+  Sku?: string
+  Description?: string
+  Active?: boolean
+  SubItem?: boolean
+  ParentRef?: { value: string; name?: string }
+  Level?: number
+  FullyQualifiedName?: string
+  Taxable?: boolean
+  UnitPrice?: number
+  Type?: string  // Service, Inventory, NonInventory, etc.
+  IncomeAccountRef?: { value: string; name?: string }
+  PurchaseDesc?: string
+  PurchaseCost?: number
+  ExpenseAccountRef?: { value: string; name?: string }
+  AssetAccountRef?: { value: string; name?: string }
+  COGSAccountRef?: { value: string; name?: string }
+  TrackQtyOnHand?: boolean
+  QtyOnHand?: number
+  ReorderPoint?: number
+  InvStartDate?: string
+  PrefVendorRef?: { value: string; name?: string }
+  sparse?: boolean
+}
+
+// QuickBooks Purchase Order Line interface
+export interface QBPOLine {
+  Id?: string
+  LineNum?: number
+  Description?: string
+  Amount: number
+  DetailType: 'ItemBasedExpenseLineDetail'
+  ItemBasedExpenseLineDetail: {
+    ItemRef?: { value: string; name?: string }
+    UnitPrice?: number
+    Qty?: number
+    TaxCodeRef?: { value: string }
+    BillableStatus?: string
+    CustomerRef?: { value: string; name?: string }
+  }
+}
+
+// QuickBooks Purchase Order interface
+export interface QBPurchaseOrder {
+  Id?: string
+  SyncToken?: string
+  DocNumber?: string
+  TxnDate?: string  // YYYY-MM-DD
+  VendorRef: { value: string; name?: string }
+  APAccountRef?: { value: string; name?: string }
+  TotalAmt?: number
+  DueDate?: string
+  ExpectedDate?: string
+  Memo?: string
+  PrivateNote?: string
+  Line?: QBPOLine[]
+  VendorAddr?: {
+    Line1?: string
+    Line2?: string
+    City?: string
+    CountrySubDivisionCode?: string
+    PostalCode?: string
+    Country?: string
+  }
+  ShipAddr?: {
+    Line1?: string
+    Line2?: string
+    City?: string
+    CountrySubDivisionCode?: string
+    PostalCode?: string
+    Country?: string
+  }
+  POStatus?: string  // Open, Closed
+  ManuallyClosed?: boolean
+  POEmail?: { Address: string }
+  sparse?: boolean
+}
+
 // Get QuickBooks configuration from environment
 export function getQBConfig(): QBConfig {
   const clientId = process.env.QUICKBOOKS_CLIENT_ID
@@ -554,4 +636,410 @@ export async function pushVendorToQB(vendorId: number): Promise<any> {
   })
 
   return updatedVendor
+}
+
+// ============ ITEM OPERATIONS ============
+
+// Query all items from QuickBooks
+export async function fetchAllQBItems(realmId: string): Promise<QBItem[]> {
+  const allItems: QBItem[] = []
+  let startPosition = 1
+  const maxResults = 1000
+
+  while (true) {
+    const query = `SELECT * FROM Item STARTPOSITION ${startPosition} MAXRESULTS ${maxResults}`
+    const response = await qbApiRequest(realmId, `query?query=${encodeURIComponent(query)}`)
+
+    const items = response.QueryResponse?.Item || []
+    allItems.push(...items)
+
+    if (items.length < maxResults) {
+      break
+    }
+    startPosition += maxResults
+  }
+
+  console.log(`[QB Sync] Fetched ${allItems.length} items from QuickBooks`)
+  return allItems
+}
+
+// Get single item from QuickBooks
+export async function fetchQBItem(realmId: string, itemId: string): Promise<QBItem> {
+  const response = await qbApiRequest(realmId, `item/${itemId}`)
+  return response.Item
+}
+
+// Create item in QuickBooks
+export async function createQBItem(realmId: string, item: QBItem): Promise<QBItem> {
+  const response = await qbApiRequest(realmId, 'item', 'POST', item)
+  return response.Item
+}
+
+// Update item in QuickBooks
+export async function updateQBItem(realmId: string, item: QBItem): Promise<QBItem> {
+  if (!item.Id || !item.SyncToken) {
+    throw new Error('Item Id and SyncToken are required for updates')
+  }
+  const response = await qbApiRequest(realmId, 'item', 'POST', item)
+  return response.Item
+}
+
+// Convert QuickBooks item to local format
+export function qbItemToLocal(qbItem: QBItem): any {
+  return {
+    quickbooksId: qbItem.Id,
+    syncToken: qbItem.SyncToken,
+    name: qbItem.Name,
+    sku: qbItem.Sku || null,
+    description: qbItem.Description || null,
+    type: qbItem.Type || 'Service',
+    active: qbItem.Active ?? true,
+    unitPrice: qbItem.UnitPrice ?? null,
+    purchaseCost: qbItem.PurchaseCost ?? null,
+    purchaseDesc: qbItem.PurchaseDesc || null,
+    trackQtyOnHand: qbItem.TrackQtyOnHand ?? false,
+    qtyOnHand: qbItem.QtyOnHand ?? null,
+    reorderPoint: qbItem.ReorderPoint ?? null,
+    incomeAccountRefId: qbItem.IncomeAccountRef?.value || null,
+    expenseAccountRefId: qbItem.ExpenseAccountRef?.value || null,
+    assetAccountRefId: qbItem.AssetAccountRef?.value || null,
+    prefVendorRefId: qbItem.PrefVendorRef?.value || null,
+    prefVendorRefName: qbItem.PrefVendorRef?.name || null,
+    lastSyncedAt: new Date()
+  }
+}
+
+// Convert local item to QuickBooks format (for creating from MasterPart)
+export function localItemToQB(item: any): QBItem {
+  const qbItem: QBItem = {
+    Name: item.name,
+    Type: item.type || 'NonInventory'  // NonInventory is safest default for PO items
+  }
+
+  if (item.quickbooksId) qbItem.Id = item.quickbooksId
+  if (item.syncToken) qbItem.SyncToken = item.syncToken
+  if (item.sku) qbItem.Sku = item.sku
+  if (item.description) qbItem.Description = item.description
+  if (item.purchaseDesc) qbItem.PurchaseDesc = item.purchaseDesc
+  if (item.purchaseCost !== undefined) qbItem.PurchaseCost = item.purchaseCost
+  if (item.unitPrice !== undefined) qbItem.UnitPrice = item.unitPrice
+  if (item.active !== undefined) qbItem.Active = item.active
+
+  // Account references (required for certain item types)
+  if (item.incomeAccountRefId) {
+    qbItem.IncomeAccountRef = { value: item.incomeAccountRefId }
+  }
+  if (item.expenseAccountRefId) {
+    qbItem.ExpenseAccountRef = { value: item.expenseAccountRefId }
+  }
+
+  return qbItem
+}
+
+// Sync all items from QuickBooks to local database
+export async function syncItemsFromQB(realmId: string): Promise<{
+  created: number
+  updated: number
+  errors: string[]
+}> {
+  const results = { created: 0, updated: 0, errors: [] as string[] }
+
+  try {
+    const qbItems = await fetchAllQBItems(realmId)
+
+    for (const qbItem of qbItems) {
+      try {
+        const localData = qbItemToLocal(qbItem)
+
+        // Check if item exists locally
+        const existingItem = await prisma.quickBooksItem.findUnique({
+          where: { quickbooksId: qbItem.Id }
+        })
+
+        if (existingItem) {
+          // Update existing item (preserve masterPartId link)
+          await prisma.quickBooksItem.update({
+            where: { id: existingItem.id },
+            data: {
+              ...localData,
+              masterPartId: existingItem.masterPartId  // Preserve link
+            }
+          })
+          results.updated++
+        } else {
+          // Create new item
+          await prisma.quickBooksItem.create({
+            data: localData
+          })
+          results.created++
+        }
+      } catch (error) {
+        const errorMsg = `Failed to sync item ${qbItem.Name}: ${error instanceof Error ? error.message : 'Unknown error'}`
+        console.error(errorMsg)
+        results.errors.push(errorMsg)
+      }
+    }
+  } catch (error) {
+    throw new Error(`Failed to sync items from QuickBooks: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+
+  return results
+}
+
+// Cached default expense account for on-the-fly items
+let cachedExpenseAccountId: string | null = null
+
+// Fetch expense accounts from QuickBooks
+export async function fetchExpenseAccounts(realmId: string): Promise<Array<{ Id: string; Name: string; AccountType: string }>> {
+  const query = `SELECT Id, Name, AccountType FROM Account WHERE AccountType IN ('Expense', 'Cost of Goods Sold') MAXRESULTS 100`
+  const response = await qbApiRequest(realmId, `query?query=${encodeURIComponent(query)}`)
+  return response.QueryResponse?.Account || []
+}
+
+// Get or fetch default expense account for on-the-fly items
+async function getDefaultExpenseAccount(realmId: string): Promise<string | null> {
+  if (cachedExpenseAccountId) {
+    return cachedExpenseAccountId
+  }
+
+  try {
+    const accounts = await fetchExpenseAccounts(realmId)
+
+    // Prefer "Cost of Goods Sold" type, then any expense account
+    const cogsAccount = accounts.find(a => a.AccountType === 'Cost of Goods Sold')
+    const expenseAccount = accounts.find(a => a.AccountType === 'Expense')
+
+    const defaultAccount = cogsAccount || expenseAccount
+    if (defaultAccount) {
+      cachedExpenseAccountId = defaultAccount.Id
+      console.log(`[QB Item] Using default expense account: ${defaultAccount.Name} (${defaultAccount.Id})`)
+      return defaultAccount.Id
+    }
+
+    console.warn('[QB Item] No expense account found in QuickBooks')
+    return null
+  } catch (error) {
+    console.error('[QB Item] Failed to fetch expense accounts:', error)
+    return null
+  }
+}
+
+// Create a QB item on-the-fly for a PO line with free-text description
+export async function createQBItemForPOLine(
+  realmId: string,
+  description: string,
+  unitPrice?: number
+): Promise<{ qbItemId: string; localItemId: number }> {
+  // Sanitize and truncate the name (QB max is 100 chars)
+  let itemName = description.trim().substring(0, 100)
+
+  // Check if an item with this name already exists in QB
+  const existingItems = await prisma.quickBooksItem.findMany({
+    where: { name: { equals: itemName, mode: 'insensitive' } }
+  })
+
+  // If duplicate, add timestamp suffix
+  if (existingItems.length > 0) {
+    const suffix = `-${Date.now()}`
+    itemName = itemName.substring(0, 100 - suffix.length) + suffix
+  }
+
+  // Get default expense account for the item
+  const expenseAccountId = await getDefaultExpenseAccount(realmId)
+  if (!expenseAccountId) {
+    throw new Error('No expense account available in QuickBooks. Please set up an expense account.')
+  }
+
+  // Create NonInventory item in QB with expense account
+  const qbItem: QBItem = {
+    Name: itemName,
+    Type: 'NonInventory',
+    Description: description,
+    PurchaseDesc: description,
+    Active: true,
+    ExpenseAccountRef: { value: expenseAccountId }
+  }
+
+  if (unitPrice !== undefined && unitPrice > 0) {
+    qbItem.PurchaseCost = unitPrice
+  }
+
+  console.log(`[QB Item] Creating on-the-fly item: "${itemName}" with expense account ${expenseAccountId}`)
+  const createdItem = await createQBItem(realmId, qbItem)
+
+  // Store in local database
+  const localItem = await prisma.quickBooksItem.create({
+    data: {
+      quickbooksId: createdItem.Id!,
+      syncToken: createdItem.SyncToken,
+      name: createdItem.Name,
+      description: createdItem.Description || null,
+      type: createdItem.Type || 'NonInventory',
+      active: createdItem.Active ?? true,
+      purchaseCost: createdItem.PurchaseCost ?? null,
+      purchaseDesc: createdItem.PurchaseDesc || null,
+      expenseAccountRefId: expenseAccountId,
+      lastSyncedAt: new Date()
+    }
+  })
+
+  console.log(`[QB Item] Created item "${itemName}" with QB ID: ${createdItem.Id}, local ID: ${localItem.id}`)
+
+  return {
+    qbItemId: createdItem.Id!,
+    localItemId: localItem.id
+  }
+}
+
+// ============ PURCHASE ORDER OPERATIONS ============
+
+// Query all purchase orders from QuickBooks
+export async function fetchAllQBPurchaseOrders(realmId: string): Promise<QBPurchaseOrder[]> {
+  const allPOs: QBPurchaseOrder[] = []
+  let startPosition = 1
+  const maxResults = 1000
+
+  while (true) {
+    const query = `SELECT * FROM PurchaseOrder STARTPOSITION ${startPosition} MAXRESULTS ${maxResults}`
+    const response = await qbApiRequest(realmId, `query?query=${encodeURIComponent(query)}`)
+
+    const pos = response.QueryResponse?.PurchaseOrder || []
+    allPOs.push(...pos)
+
+    if (pos.length < maxResults) {
+      break
+    }
+    startPosition += maxResults
+  }
+
+  console.log(`[QB Sync] Fetched ${allPOs.length} purchase orders from QuickBooks`)
+  return allPOs
+}
+
+// Get single purchase order from QuickBooks
+export async function fetchQBPurchaseOrder(realmId: string, poId: string): Promise<QBPurchaseOrder> {
+  const response = await qbApiRequest(realmId, `purchaseorder/${poId}`)
+  return response.PurchaseOrder
+}
+
+// Create purchase order in QuickBooks
+export async function createQBPurchaseOrder(realmId: string, po: QBPurchaseOrder): Promise<QBPurchaseOrder> {
+  const response = await qbApiRequest(realmId, 'purchaseorder', 'POST', po)
+  return response.PurchaseOrder
+}
+
+// Update purchase order in QuickBooks
+export async function updateQBPurchaseOrder(realmId: string, po: QBPurchaseOrder): Promise<QBPurchaseOrder> {
+  if (!po.Id || !po.SyncToken) {
+    throw new Error('PurchaseOrder Id and SyncToken are required for updates')
+  }
+  const response = await qbApiRequest(realmId, 'purchaseorder', 'POST', po)
+  return response.PurchaseOrder
+}
+
+// Delete (void) purchase order in QuickBooks
+export async function deleteQBPurchaseOrder(realmId: string, poId: string, syncToken: string): Promise<void> {
+  await qbApiRequest(realmId, `purchaseorder?operation=delete`, 'POST', {
+    Id: poId,
+    SyncToken: syncToken
+  })
+}
+
+// Convert QuickBooks PO to local format
+export function qbPOToLocal(qbPO: QBPurchaseOrder, vendorId: number): any {
+  return {
+    quickbooksId: qbPO.Id,
+    syncToken: qbPO.SyncToken,
+    docNumber: qbPO.DocNumber || null,
+    txnDate: qbPO.TxnDate ? new Date(qbPO.TxnDate) : new Date(),
+    expectedDate: qbPO.ExpectedDate ? new Date(qbPO.ExpectedDate) : null,
+    dueDate: qbPO.DueDate ? new Date(qbPO.DueDate) : null,
+    vendorId,
+    memo: qbPO.Memo || null,
+    privateNote: qbPO.PrivateNote || null,
+    totalAmount: qbPO.TotalAmt ?? 0,
+    manuallyClosed: qbPO.ManuallyClosed ?? false,
+    shipAddrLine1: qbPO.ShipAddr?.Line1 || null,
+    shipAddrLine2: qbPO.ShipAddr?.Line2 || null,
+    shipAddrCity: qbPO.ShipAddr?.City || null,
+    shipAddrState: qbPO.ShipAddr?.CountrySubDivisionCode || null,
+    shipAddrPostalCode: qbPO.ShipAddr?.PostalCode || null,
+    shipAddrCountry: qbPO.ShipAddr?.Country || null,
+    lastSyncedAt: new Date()
+  }
+}
+
+// Convert local PO to QuickBooks format
+export function localPOToQB(po: any, vendorQBId: string, lines: QBPOLine[]): QBPurchaseOrder {
+  const qbPO: QBPurchaseOrder = {
+    VendorRef: { value: vendorQBId },
+    Line: lines
+  }
+
+  if (po.quickbooksId) qbPO.Id = po.quickbooksId
+  if (po.syncToken) qbPO.SyncToken = po.syncToken
+  if (po.docNumber) qbPO.DocNumber = po.docNumber
+  if (po.txnDate) qbPO.TxnDate = formatDateForQB(po.txnDate)
+  if (po.expectedDate) qbPO.ExpectedDate = formatDateForQB(po.expectedDate)
+  if (po.dueDate) qbPO.DueDate = formatDateForQB(po.dueDate)
+  if (po.memo) qbPO.Memo = po.memo
+  if (po.privateNote) qbPO.PrivateNote = po.privateNote
+
+  // Shipping address
+  if (po.shipAddrLine1 || po.shipAddrCity) {
+    qbPO.ShipAddr = {}
+    if (po.shipAddrLine1) qbPO.ShipAddr.Line1 = po.shipAddrLine1
+    if (po.shipAddrLine2) qbPO.ShipAddr.Line2 = po.shipAddrLine2
+    if (po.shipAddrCity) qbPO.ShipAddr.City = po.shipAddrCity
+    if (po.shipAddrState) qbPO.ShipAddr.CountrySubDivisionCode = po.shipAddrState
+    if (po.shipAddrPostalCode) qbPO.ShipAddr.PostalCode = po.shipAddrPostalCode
+    if (po.shipAddrCountry) qbPO.ShipAddr.Country = po.shipAddrCountry
+  }
+
+  return qbPO
+}
+
+// Convert local PO line to QuickBooks format
+export function localPOLineToQB(line: any): QBPOLine {
+  return {
+    Amount: line.amount || (line.quantity * line.unitPrice),
+    DetailType: 'ItemBasedExpenseLineDetail',
+    ItemBasedExpenseLineDetail: {
+      ItemRef: line.itemRefId ? { value: line.itemRefId, name: line.itemRefName } : undefined,
+      UnitPrice: line.unitPrice,
+      Qty: line.quantity
+    },
+    Description: line.description || undefined
+  }
+}
+
+// Helper function to format date for QuickBooks (YYYY-MM-DD)
+function formatDateForQB(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date
+  return d.toISOString().split('T')[0]
+}
+
+// Generate next PO number (format: PO-YYYY-NNNN)
+export async function generatePONumber(): Promise<string> {
+  const year = new Date().getFullYear()
+  const prefix = `PO-${year}-`
+
+  // Find the highest PO number for this year
+  const lastPO = await prisma.purchaseOrder.findFirst({
+    where: {
+      poNumber: { startsWith: prefix }
+    },
+    orderBy: { poNumber: 'desc' }
+  })
+
+  let nextNum = 1
+  if (lastPO) {
+    const lastNumStr = lastPO.poNumber.replace(prefix, '')
+    const lastNum = parseInt(lastNumStr, 10)
+    if (!isNaN(lastNum)) {
+      nextNum = lastNum + 1
+    }
+  }
+
+  return `${prefix}${nextNum.toString().padStart(4, '0')}`
 }
