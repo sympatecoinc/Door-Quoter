@@ -222,7 +222,7 @@ export interface ComponentInstance {
   updatedAt: Date
 }
 
-export type MenuOption = 'dashboard' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments'
+export type MenuOption = 'dashboard' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments'
 
 // Vendor Management Types
 export interface Vendor {

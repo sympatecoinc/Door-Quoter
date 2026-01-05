@@ -42,6 +42,7 @@ model Project {
   pricingMode            PricingMode?       @relation(fields: [pricingModeId], references: [id], onDelete: SetNull)
   primaryContact         Contact?           @relation("ProjectPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
   primaryProjectContact  ProjectContact?    @relation("ProjectPrimaryProjectContact", fields: [primaryProjectContactId], references: [id], onDelete: SetNull)
+  salesOrders            SalesOrder[]
 
   @@map("Projects")
 }
@@ -292,6 +293,9 @@ model MasterPart {
   vendorId                Int?                        // Preferred vendor for this part
   vendor                  Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
 
+  // QuickBooks Item link (for PO integration)
+  quickbooksItem          QuickBooksItem?
+
   @@map("MasterParts")
 }
 
@@ -360,11 +364,18 @@ model Customer {
   notes       String?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+
+  // QuickBooks sync fields
+  quickbooksId  String?   @unique  // QB Customer Id
+  syncToken     String?   // QB sync token for updates
+  lastSyncedAt  DateTime? // When last synced with QB
+
   contacts    Contact[]
   leads       Lead[]
   projects    Project[]  @relation("CustomerProjects")
   activities  Activity[]
   files       CustomerFile[]
+  salesOrders SalesOrder[]
 
   @@map("Customers")
 }
@@ -611,6 +622,14 @@ model User {
   updatedAt    DateTime  @updatedAt
   sessions     Session[]
 
+  // PO Relations
+  createdPOs        PurchaseOrder[]   @relation("POCreatedBy")
+  receivedPOs       POReceiving[]     @relation("POReceivedBy")
+  poStatusChanges   POStatusHistory[] @relation("POStatusChangedBy")
+
+  // SO Relations
+  createdSOs        SalesOrder[]      @relation("SOCreatedBy")
+
   @@map("Users")
 }
 
@@ -748,6 +767,7 @@ model Vendor {
   updatedAt           DateTime        @updatedAt
   contacts            VendorContact[]
   masterParts         MasterPart[]    // Parts supplied by this vendor
+  purchaseOrders      PurchaseOrder[] // Purchase orders to this vendor
 
   @@map("Vendors")
 }
@@ -795,4 +815,317 @@ model GlobalSetting {
   updatedAt   DateTime @updatedAt
 
   @@map("GlobalSettings")
+}
+
+// QuickBooks Item - Synced items from QuickBooks for PO line items
+model QuickBooksItem {
+  id                  Int       @id @default(autoincrement())
+  // QuickBooks sync fields
+  quickbooksId        String    @unique  // QB Item Id
+  syncToken           String?   // QB sync token for updates
+  lastSyncedAt        DateTime? // When last synced with QB
+
+  // Core item info (maps to QB fields)
+  name                String    // QB: Name (required, max 100 chars)
+  sku                 String?   // QB: Sku
+  description         String?   // QB: Description
+  type                String    // QB: Type (Service, Inventory, NonInventory, etc.)
+  active              Boolean   @default(true) // QB: Active
+
+  // Pricing
+  unitPrice           Float?    // QB: UnitPrice (sales price)
+  purchaseCost        Float?    // QB: PurchaseCost (cost when purchasing)
+  purchaseDesc        String?   // QB: PurchaseDesc
+
+  // Inventory tracking
+  trackQtyOnHand      Boolean   @default(false) // QB: TrackQtyOnHand
+  qtyOnHand           Float?    // QB: QtyOnHand
+  reorderPoint        Float?    // QB: ReorderPoint
+
+  // Account references (stored as QB IDs)
+  incomeAccountRefId  String?   // QB: IncomeAccountRef.value
+  expenseAccountRefId String?   // QB: ExpenseAccountRef.value
+  assetAccountRefId   String?   // QB: AssetAccountRef.value
+
+  // Vendor reference
+  prefVendorRefId     String?   // QB: PrefVendorRef.value
+  prefVendorRefName   String?   // QB: PrefVendorRef.name
+
+  // Link to local MasterPart (optional)
+  masterPartId        Int?      @unique
+  masterPart          MasterPart? @relation(fields: [masterPartId], references: [id], onDelete: SetNull)
+
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  purchaseOrderLines  PurchaseOrderLine[]
+
+  @@map("QuickBooksItems")
+}
+
+// Purchase Order Status enum
+enum POStatus {
+  DRAFT        @map("Draft")
+  SENT         @map("Sent")
+  ACKNOWLEDGED @map("Acknowledged")
+  PARTIAL      @map("Partial")
+  COMPLETE     @map("Complete")
+  CANCELLED    @map("Cancelled")
+  ON_HOLD      @map("On Hold")
+}
+
+// Purchase Order - Local cache of QuickBooks Purchase Orders
+model PurchaseOrder {
+  id                    Int       @id @default(autoincrement())
+  // QuickBooks sync fields
+  quickbooksId          String?   @unique  // QB PurchaseOrder Id
+  syncToken             String?   // QB sync token for updates
+  lastSyncedAt          DateTime? // When last synced with QB
+
+  // PO identification
+  poNumber              String    @unique  // Auto-generated: PO-2024-0001
+  docNumber             String?   // QB: DocNumber (may differ from poNumber)
+
+  // Vendor reference
+  vendorId              Int
+  vendor                Vendor    @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+
+  // Status & workflow
+  status                POStatus  @default(DRAFT)
+  manuallyClosed        Boolean   @default(false) // QB: ManuallyClosed
+
+  // Dates
+  txnDate               DateTime  @default(now()) // QB: TxnDate (order date)
+  expectedDate          DateTime? // QB: ExpectedDate (expected delivery)
+  dueDate               DateTime? // QB: DueDate
+
+  // Shipping address
+  shipAddrLine1         String?
+  shipAddrLine2         String?
+  shipAddrCity          String?
+  shipAddrState         String?
+  shipAddrPostalCode    String?
+  shipAddrCountry       String?
+
+  // Totals (calculated from line items or from QB)
+  subtotal              Float     @default(0)
+  taxAmount             Float     @default(0)
+  shippingAmount        Float     @default(0)
+  totalAmount           Float     @default(0) // QB: TotalAmt
+
+  // Notes
+  memo                  String?   @db.Text // QB: Memo (visible to vendor)
+  privateNote           String?   @db.Text // QB: PrivateNote (internal)
+
+  // Audit trail
+  createdById           Int?
+  createdBy             User?     @relation("POCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Relations
+  lines                 PurchaseOrderLine[]
+  receivings            POReceiving[]
+  statusHistory         POStatusHistory[]
+
+  @@map("PurchaseOrders")
+}
+
+// Purchase Order Line Item
+model PurchaseOrderLine {
+  id                    Int       @id @default(autoincrement())
+  purchaseOrderId       Int
+  purchaseOrder         PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  // Line number for ordering
+  lineNum               Int       @default(0)
+
+  // Item reference (QB Item or description-based)
+  quickbooksItemId      Int?      // Link to synced QB Item
+  quickbooksItem        QuickBooksItem? @relation(fields: [quickbooksItemId], references: [id], onDelete: SetNull)
+  itemRefId             String?   // QB: ItemBasedExpenseLineDetail.ItemRef.value
+  itemRefName           String?   // QB: ItemBasedExpenseLineDetail.ItemRef.name
+
+  // Line details
+  description           String?   // QB: Description
+  quantity              Float     @default(1) // QB: Qty
+  unitPrice             Float     @default(0) // QB: UnitPrice (cost per unit)
+  amount                Float     @default(0) // QB: Amount (qty * unitPrice)
+
+  // Receiving tracking
+  quantityReceived      Float     @default(0)
+  quantityRemaining     Float     @default(0) // Calculated: quantity - quantityReceived
+
+  // Notes
+  notes                 String?
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  receivingLines        POReceivingLine[]
+
+  @@map("PurchaseOrderLines")
+}
+
+// PO Receiving - Record of items received against a PO
+model POReceiving {
+  id                    Int       @id @default(autoincrement())
+  purchaseOrderId       Int
+  purchaseOrder         PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  // Receiving details
+  receivedDate          DateTime  @default(now())
+  receivedById          Int?
+  receivedBy            User?     @relation("POReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+
+  // Notes
+  notes                 String?   @db.Text
+  qualityNotes          String?   @db.Text // Quality inspection notes
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Receiving line items
+  lines                 POReceivingLine[]
+
+  @@map("POReceivings")
+}
+
+// PO Receiving Line - Individual line items received
+model POReceivingLine {
+  id                    Int       @id @default(autoincrement())
+  receivingId           Int
+  receiving             POReceiving @relation(fields: [receivingId], references: [id], onDelete: Cascade)
+
+  // Link to PO line
+  purchaseOrderLineId   Int
+  purchaseOrderLine     PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id], onDelete: Cascade)
+
+  // Quantities
+  quantityReceived      Float     @default(0)
+  quantityDamaged       Float     @default(0) // Damaged items received
+  quantityRejected      Float     @default(0) // Rejected items
+
+  // Notes for this specific line
+  notes                 String?
+
+  createdAt             DateTime  @default(now())
+
+  @@map("POReceivingLines")
+}
+
+// PO Status History - Audit trail for status changes
+model POStatusHistory {
+  id                    Int       @id @default(autoincrement())
+  purchaseOrderId       Int
+  purchaseOrder         PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  fromStatus            POStatus?
+  toStatus              POStatus
+  changedById           Int?
+  changedBy             User?     @relation("POStatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+  notes                 String?
+  changedAt             DateTime  @default(now())
+
+  @@map("POStatusHistory")
+}
+
+// Sales Order Status enum (maps to QuickBooks Invoice status)
+enum SOStatus {
+  DRAFT        @map("Draft")
+  SENT         @map("Sent")
+  VIEWED       @map("Viewed")
+  PARTIAL      @map("Partial")
+  PAID         @map("Paid")
+  OVERDUE      @map("Overdue")
+  VOIDED       @map("Voided")
+}
+
+// Sales Order - Synced with QuickBooks Invoices
+model SalesOrder {
+  id                    Int       @id @default(autoincrement())
+  // QuickBooks sync fields
+  quickbooksId          String?   @unique  // QB Invoice Id
+  syncToken             String?   // QB sync token for updates
+  lastSyncedAt          DateTime? // When last synced with QB
+
+  // Identification
+  orderNumber           String    @unique  // SO-2024-0001
+  docNumber             String?   // QB DocNumber
+
+  // Customer reference
+  customerId            Int
+  customer              Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  // Project reference (for orders from quotes)
+  projectId             Int?
+  project               Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  // Status & dates
+  status                SOStatus  @default(DRAFT)
+  txnDate               DateTime  @default(now())
+  dueDate               DateTime?
+  shipDate              DateTime?
+
+  // Billing Address
+  billAddrLine1         String?
+  billAddrLine2         String?
+  billAddrCity          String?
+  billAddrState         String?
+  billAddrPostalCode    String?
+  billAddrCountry       String?
+
+  // Shipping Address
+  shipAddrLine1         String?
+  shipAddrLine2         String?
+  shipAddrCity          String?
+  shipAddrState         String?
+  shipAddrPostalCode    String?
+  shipAddrCountry       String?
+
+  // Totals
+  subtotal              Float     @default(0)
+  taxAmount             Float     @default(0)
+  totalAmount           Float     @default(0)
+  balance               Float     @default(0)
+
+  // Notes
+  customerMemo          String?   @db.Text // Visible to customer
+  privateNote           String?   @db.Text // Internal only
+
+  // Audit
+  createdById           Int?
+  createdBy             User?     @relation("SOCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Relations
+  lines                 SalesOrderLine[]
+
+  @@map("SalesOrders")
+}
+
+// Sales Order Line Item
+model SalesOrderLine {
+  id                    Int       @id @default(autoincrement())
+  salesOrderId          Int
+  salesOrder            SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+
+  // Line number for ordering
+  lineNum               Int       @default(0)
+
+  // Item reference (QB Item or description-based)
+  itemRefId             String?   // QB: SalesItemLineDetail.ItemRef.value
+  itemRefName           String?   // QB: SalesItemLineDetail.ItemRef.name
+
+  // Line details
+  description           String?   // QB: Description
+  quantity              Float     @default(1) // QB: Qty
+  unitPrice             Float     @default(0) // QB: UnitPrice
+  amount                Float     @default(0) // QB: Amount (qty * unitPrice)
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("SalesOrderLines")
 }

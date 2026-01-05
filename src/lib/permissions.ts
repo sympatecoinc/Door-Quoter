@@ -7,6 +7,7 @@ export const ALL_TABS = [
   'masterParts',
   'inventory',
   'vendors',
+  'purchaseOrders',
   'quoteDocuments',
   'accounting',
   'settings'
