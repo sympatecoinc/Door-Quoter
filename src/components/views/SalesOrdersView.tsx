@@ -1,14 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import SOList from '@/components/sales-orders/SOList'
 import SODetailView from '@/components/sales-orders/SODetailView'
 import SOForm from '@/components/sales-orders/SOForm'
 import SOStatsWidget from '@/components/sales-orders/SOStatsWidget'
 import { SalesOrder } from '@/types/sales-order'
-import { Plus, CheckCircle, AlertCircle, X, RefreshCw, Cloud, Users } from 'lucide-react'
+import { Plus, CheckCircle, AlertCircle, X, RefreshCw, CloudOff } from 'lucide-react'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
+
+type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error'
 
 export default function SalesOrdersView() {
   const searchParams = useSearchParams()
@@ -17,55 +19,41 @@ export default function SalesOrdersView() {
   const [editingSO, setEditingSO] = useState<SalesOrder | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
-  const [syncing, setSyncing] = useState(false)
-  const [syncingCustomers, setSyncingCustomers] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
+  const hasSyncedRef = useRef(false)
 
-  async function handleSyncFromQuickBooks() {
-    setSyncing(true)
-    try {
-      // Sync customers first
-      await fetch('/api/customers/sync')
+  // Auto-sync on mount
+  useEffect(() => {
+    if (hasSyncedRef.current) return
+    hasSyncedRef.current = true
 
-      // Then sync sales orders (invoices)
-      const response = await fetch('/api/sales-orders/sync')
-      const data = await response.json()
+    async function autoSync() {
+      setSyncStatus('syncing')
+      try {
+        // Sync customers first (silent)
+        await fetch('/api/customers/sync')
 
-      if (response.ok) {
-        setNotification({
-          type: 'success',
-          message: `Synced from QuickBooks: ${data.created} created, ${data.updated} updated${data.errors?.length ? `, ${data.errors.length} errors` : ''}`
-        })
-        setRefreshKey(prev => prev + 1)
-      } else {
-        setNotification({ type: 'error', message: data.error || 'Failed to sync from QuickBooks' })
+        // Then sync sales orders (invoices)
+        const response = await fetch('/api/sales-orders/sync')
+
+        if (response.ok) {
+          setSyncStatus('synced')
+          setLastSyncTime(new Date())
+          setRefreshKey(prev => prev + 1)
+          // Reset to idle after 3 seconds
+          setTimeout(() => setSyncStatus('idle'), 3000)
+        } else {
+          setSyncStatus('error')
+        }
+      } catch (error) {
+        console.error('Auto-sync failed:', error)
+        setSyncStatus('error')
       }
-    } catch (error) {
-      setNotification({ type: 'error', message: 'Failed to sync from QuickBooks' })
-    } finally {
-      setSyncing(false)
     }
-  }
 
-  async function handleSyncCustomers() {
-    setSyncingCustomers(true)
-    try {
-      const response = await fetch('/api/customers/sync')
-      const data = await response.json()
-
-      if (response.ok) {
-        setNotification({
-          type: 'success',
-          message: `Customer sync: ${data.created} created, ${data.updated} updated${data.errors?.length ? `, ${data.errors.length} errors` : ''}`
-        })
-      } else {
-        setNotification({ type: 'error', message: data.error || 'Failed to sync customers' })
-      }
-    } catch (error) {
-      setNotification({ type: 'error', message: 'Failed to sync customers' })
-    } finally {
-      setSyncingCustomers(false)
-    }
-  }
+    autoSync()
+  }, [])
 
   // Check for URL parameters on load (from QB callback)
   useEffect(() => {
@@ -216,36 +204,27 @@ export default function SalesOrdersView() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">Sales Orders</h1>
-            <button
-              onClick={handleSyncCustomers}
-              disabled={syncingCustomers}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50"
-              title="Sync Customers from QuickBooks"
-            >
-              {syncingCustomers ? (
-                <RefreshCw className="w-4 h-4 text-blue-600 animate-spin" />
-              ) : (
-                <Users className="w-4 h-4 text-blue-600" />
+            {/* Sync Status Indicator */}
+            <div className="flex items-center gap-1.5" title={lastSyncTime ? `Last synced: ${lastSyncTime.toLocaleTimeString()}` : 'Syncing with QuickBooks'}>
+              {syncStatus === 'syncing' && (
+                <>
+                  <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
+                  <span className="text-xs text-blue-500">Syncing...</span>
+                </>
               )}
-              <span className="text-sm text-blue-600">
-                {syncingCustomers ? 'Syncing...' : 'Sync Customers'}
-              </span>
-            </button>
-            <button
-              onClick={handleSyncFromQuickBooks}
-              disabled={syncing}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50"
-              title="Sync Sales Orders from QuickBooks"
-            >
-              {syncing ? (
-                <RefreshCw className="w-4 h-4 text-green-600 animate-spin" />
-              ) : (
-                <Cloud className="w-4 h-4 text-green-600" />
+              {syncStatus === 'synced' && (
+                <>
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                  <span className="text-xs text-green-500">Synced</span>
+                </>
               )}
-              <span className="text-sm text-green-600">
-                {syncing ? 'Syncing...' : 'Sync QB'}
-              </span>
-            </button>
+              {syncStatus === 'error' && (
+                <>
+                  <CloudOff className="w-4 h-4 text-red-500" />
+                  <span className="text-xs text-red-500">Sync failed</span>
+                </>
+              )}
+            </div>
           </div>
           <p className="text-gray-600 mt-1">
             Create and manage sales orders with QuickBooks integration

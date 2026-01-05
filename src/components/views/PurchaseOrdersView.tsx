@@ -1,14 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import POList from '@/components/purchase-orders/POList'
 import PODetailView from '@/components/purchase-orders/PODetailView'
 import POForm from '@/components/purchase-orders/POForm'
 import POStatsWidget from '@/components/purchase-orders/POStatsWidget'
 import { PurchaseOrder } from '@/types/purchase-order'
-import { Plus, CheckCircle, AlertCircle, X, RefreshCw, Cloud } from 'lucide-react'
+import { Plus, CheckCircle, AlertCircle, X, RefreshCw, CloudOff } from 'lucide-react'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
+
+type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error'
 
 export default function PurchaseOrdersView() {
   const searchParams = useSearchParams()
@@ -17,33 +19,41 @@ export default function PurchaseOrdersView() {
   const [editingPO, setEditingPO] = useState<PurchaseOrder | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
-  const [syncing, setSyncing] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
+  const hasSyncedRef = useRef(false)
 
-  async function handleSyncFromQuickBooks() {
-    setSyncing(true)
-    try {
-      // Sync items first
-      await fetch('/api/quickbooks/items?action=sync')
+  // Auto-sync on mount
+  useEffect(() => {
+    if (hasSyncedRef.current) return
+    hasSyncedRef.current = true
 
-      // Then sync POs
-      const response = await fetch('/api/purchase-orders/sync')
-      const data = await response.json()
+    async function autoSync() {
+      setSyncStatus('syncing')
+      try {
+        // Sync items first (silent)
+        await fetch('/api/quickbooks/items?action=sync')
 
-      if (response.ok) {
-        setNotification({
-          type: 'success',
-          message: `Synced from QuickBooks: ${data.created} created, ${data.updated} updated${data.errors?.length ? `, ${data.errors.length} errors` : ''}`
-        })
-        setRefreshKey(prev => prev + 1)
-      } else {
-        setNotification({ type: 'error', message: data.error || 'Failed to sync from QuickBooks' })
+        // Then sync POs
+        const response = await fetch('/api/purchase-orders/sync')
+
+        if (response.ok) {
+          setSyncStatus('synced')
+          setLastSyncTime(new Date())
+          setRefreshKey(prev => prev + 1)
+          // Reset to idle after 3 seconds
+          setTimeout(() => setSyncStatus('idle'), 3000)
+        } else {
+          setSyncStatus('error')
+        }
+      } catch (error) {
+        console.error('Auto-sync failed:', error)
+        setSyncStatus('error')
       }
-    } catch (error) {
-      setNotification({ type: 'error', message: 'Failed to sync from QuickBooks' })
-    } finally {
-      setSyncing(false)
     }
-  }
+
+    autoSync()
+  }, [])
 
   // Check for URL parameters on load (from QB callback)
   useEffect(() => {
@@ -194,21 +204,27 @@ export default function PurchaseOrdersView() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">Purchase Orders</h1>
-            <button
-              onClick={handleSyncFromQuickBooks}
-              disabled={syncing}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50"
-              title="Sync from QuickBooks"
-            >
-              {syncing ? (
-                <RefreshCw className="w-4 h-4 text-green-600 animate-spin" />
-              ) : (
-                <Cloud className="w-4 h-4 text-green-600" />
+            {/* Sync Status Indicator */}
+            <div className="flex items-center gap-1.5" title={lastSyncTime ? `Last synced: ${lastSyncTime.toLocaleTimeString()}` : 'Syncing with QuickBooks'}>
+              {syncStatus === 'syncing' && (
+                <>
+                  <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
+                  <span className="text-xs text-blue-500">Syncing...</span>
+                </>
               )}
-              <span className="text-sm text-green-600">
-                {syncing ? 'Syncing...' : 'Sync QB'}
-              </span>
-            </button>
+              {syncStatus === 'synced' && (
+                <>
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                  <span className="text-xs text-green-500">Synced</span>
+                </>
+              )}
+              {syncStatus === 'error' && (
+                <>
+                  <CloudOff className="w-4 h-4 text-red-500" />
+                  <span className="text-xs text-red-500">Sync failed</span>
+                </>
+              )}
+            </div>
           </div>
           <p className="text-gray-600 mt-1">
             Create and manage purchase orders with QuickBooks integration
