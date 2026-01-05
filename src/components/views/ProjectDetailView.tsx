@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 
 // Direction options are now loaded dynamically from product plan views
-import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive, X, ChevronDown, Package } from 'lucide-react'
+import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive, X, ChevronDown, Package, Receipt } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
@@ -214,6 +214,8 @@ export default function ProjectDetailView() {
   const [showSyncConfirmation, setShowSyncConfirmation] = useState(false)
   const [syncingPrices, setSyncingPrices] = useState(false)
   const [syncDetails, setSyncDetails] = useState<string[]>([])
+  const [creatingSalesOrder, setCreatingSalesOrder] = useState(false)
+  const [existingSalesOrderNumber, setExistingSalesOrderNumber] = useState<string | null>(null)
 
   // Bulk delete state
   const [selectedOpeningIds, setSelectedOpeningIds] = useState<Set<number>>(new Set())
@@ -666,6 +668,40 @@ export default function ProjectDetailView() {
       showError('Error archiving project')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleCreateSalesOrder() {
+    if (!selectedProjectId || !project) return
+
+    setCreatingSalesOrder(true)
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}/create-sales-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pushToQuickBooks: true })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        if (data.warning) {
+          showSuccess(`Sales Order ${data.salesOrder.orderNumber} created! ${data.warning}`)
+        } else {
+          showSuccess(`Sales Order ${data.salesOrder.orderNumber} created and synced to QuickBooks!`)
+        }
+        setExistingSalesOrderNumber(data.salesOrder.orderNumber)
+      } else if (response.status === 400 && data.existingOrderNumber) {
+        setExistingSalesOrderNumber(data.existingOrderNumber)
+        showError(`A sales order already exists: ${data.existingOrderNumber}`)
+      } else {
+        showError(data.error || 'Failed to create sales order')
+      }
+    } catch (error) {
+      console.error('Error creating sales order:', error)
+      showError('Error creating sales order')
+    } finally {
+      setCreatingSalesOrder(false)
     }
   }
 
@@ -1742,6 +1778,34 @@ export default function ProjectDetailView() {
             <FileText className="w-5 h-5 mr-2" />
             View BOM
           </button>
+          {/* Create Sales Order button - only for QUOTE_ACCEPTED or ACTIVE projects */}
+          {(project.status === 'QUOTE_ACCEPTED' || project.status === 'ACTIVE') && !existingSalesOrderNumber && (
+            <button
+              onClick={handleCreateSalesOrder}
+              disabled={creatingSalesOrder || project.openings.length === 0}
+              className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={project.openings.length === 0 ? 'Add openings first' : 'Create a sales order from this quote'}
+            >
+              {creatingSalesOrder ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Receipt className="w-5 h-5 mr-2" />
+                  Create Sales Order
+                </>
+              )}
+            </button>
+          )}
+          {/* Show existing sales order link if one exists */}
+          {existingSalesOrderNumber && (
+            <span className="flex items-center px-3 py-2 bg-purple-100 text-purple-800 rounded-lg text-sm">
+              <Receipt className="w-4 h-4 mr-2" />
+              SO: {existingSalesOrderNumber}
+            </span>
+          )}
           <button
             onClick={handleShowAddOpeningModal}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"

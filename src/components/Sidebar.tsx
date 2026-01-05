@@ -20,7 +20,8 @@ import {
   FileText,
   Truck,
   Warehouse,
-  ShoppingCart
+  ShoppingCart,
+  Receipt
 } from 'lucide-react'
 
 const menuItems = [
@@ -31,6 +32,7 @@ const menuItems = [
   { id: 'inventory' as MenuOption, label: 'Inventory', icon: Warehouse },
   { id: 'vendors' as MenuOption, label: 'Vendors', icon: Truck },
   { id: 'purchaseOrders' as MenuOption, label: 'Purchase Orders', icon: ShoppingCart },
+  { id: 'salesOrders' as MenuOption, label: 'Sales Orders', icon: Receipt },
   { id: 'quoteDocuments' as MenuOption, label: 'Quote Settings', icon: FileText },
   { id: 'accounting' as MenuOption, label: 'Pricing', icon: DollarSign },
   { id: 'settings' as MenuOption, label: 'Settings', icon: Settings },

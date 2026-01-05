@@ -32,6 +32,7 @@ const AVAILABLE_TABS = [
   { id: 'inventory', label: 'Inventory' },
   { id: 'vendors', label: 'Vendors' },
   { id: 'purchaseOrders', label: 'Purchase Orders' },
+  { id: 'salesOrders', label: 'Sales Orders' },
   { id: 'quoteDocuments', label: 'Quote Settings' },
   { id: 'accounting', label: 'Accounting' },
   { id: 'settings', label: 'Settings' },

@@ -9,6 +9,7 @@ import MasterPartsView from './views/MasterPartsView'
 import InventoryView from './views/InventoryView'
 import VendorsView from './views/VendorsView'
 import PurchaseOrdersView from './views/PurchaseOrdersView'
+import SalesOrdersView from './views/SalesOrdersView'
 import AccountingView from './views/AccountingView'
 import SettingsView from './views/SettingsView'
 import QuoteView from './views/QuoteView'
@@ -33,6 +34,8 @@ export default function Dashboard() {
         return <VendorsView />
       case 'purchaseOrders':
         return <PurchaseOrdersView />
+      case 'salesOrders':
+        return <SalesOrdersView />
       case 'quoteDocuments':
         return <QuoteDocumentsView />
       case 'accounting':

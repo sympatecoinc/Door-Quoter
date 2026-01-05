@@ -52,6 +52,99 @@ interface QBVendor {
   sparse?: boolean  // For partial updates
 }
 
+// QuickBooks Customer interface
+export interface QBCustomer {
+  Id?: string
+  SyncToken?: string
+  DisplayName: string
+  CompanyName?: string
+  GivenName?: string
+  FamilyName?: string
+  FullyQualifiedName?: string
+  Active?: boolean
+  PrimaryEmailAddr?: { Address: string }
+  PrimaryPhone?: { FreeFormNumber: string }
+  AlternatePhone?: { FreeFormNumber: string }
+  Mobile?: { FreeFormNumber: string }
+  Fax?: { FreeFormNumber: string }
+  WebAddr?: { URI: string }
+  BillAddr?: {
+    Id?: string
+    Line1?: string
+    Line2?: string
+    City?: string
+    CountrySubDivisionCode?: string
+    PostalCode?: string
+    Country?: string
+  }
+  ShipAddr?: {
+    Id?: string
+    Line1?: string
+    Line2?: string
+    City?: string
+    CountrySubDivisionCode?: string
+    PostalCode?: string
+    Country?: string
+  }
+  Notes?: string
+  Balance?: number
+  BalanceWithJobs?: number
+  Job?: boolean
+  Taxable?: boolean
+  sparse?: boolean
+}
+
+// QuickBooks Invoice Line interface
+export interface QBInvoiceLine {
+  Id?: string
+  LineNum?: number
+  Description?: string
+  Amount: number
+  DetailType: 'SalesItemLineDetail' | 'SubTotalLineDetail'
+  SalesItemLineDetail?: {
+    ItemRef?: { value: string; name?: string }
+    UnitPrice?: number
+    Qty?: number
+    TaxCodeRef?: { value: string }
+  }
+}
+
+// QuickBooks Invoice interface
+export interface QBInvoice {
+  Id?: string
+  SyncToken?: string
+  DocNumber?: string
+  TxnDate?: string  // YYYY-MM-DD
+  DueDate?: string
+  ShipDate?: string
+  CustomerRef: { value: string; name?: string }
+  Line?: QBInvoiceLine[]
+  BillAddr?: {
+    Id?: string
+    Line1?: string
+    Line2?: string
+    City?: string
+    CountrySubDivisionCode?: string
+    PostalCode?: string
+    Country?: string
+  }
+  ShipAddr?: {
+    Id?: string
+    Line1?: string
+    Line2?: string
+    City?: string
+    CountrySubDivisionCode?: string
+    PostalCode?: string
+    Country?: string
+  }
+  CustomerMemo?: { value: string }
+  PrivateNote?: string
+  TotalAmt?: number
+  Balance?: number
+  EmailStatus?: string
+  sparse?: boolean
+}
+
 // QuickBooks Item interface
 export interface QBItem {
   Id?: string
@@ -1035,6 +1128,400 @@ export async function generatePONumber(): Promise<string> {
   let nextNum = 1
   if (lastPO) {
     const lastNumStr = lastPO.poNumber.replace(prefix, '')
+    const lastNum = parseInt(lastNumStr, 10)
+    if (!isNaN(lastNum)) {
+      nextNum = lastNum + 1
+    }
+  }
+
+  return `${prefix}${nextNum.toString().padStart(4, '0')}`
+}
+
+// ============ CUSTOMER OPERATIONS ============
+
+// Query all customers from QuickBooks
+export async function fetchAllQBCustomers(realmId: string): Promise<QBCustomer[]> {
+  const allCustomers: QBCustomer[] = []
+  let startPosition = 1
+  const maxResults = 1000
+
+  while (true) {
+    const query = `SELECT * FROM Customer STARTPOSITION ${startPosition} MAXRESULTS ${maxResults}`
+    const response = await qbApiRequest(realmId, `query?query=${encodeURIComponent(query)}`)
+
+    const customers = response.QueryResponse?.Customer || []
+    allCustomers.push(...customers)
+
+    if (customers.length < maxResults) {
+      break
+    }
+    startPosition += maxResults
+  }
+
+  console.log(`[QB Sync] Fetched ${allCustomers.length} customers from QuickBooks`)
+  return allCustomers
+}
+
+// Get single customer from QuickBooks
+export async function fetchQBCustomer(realmId: string, customerId: string): Promise<QBCustomer> {
+  const response = await qbApiRequest(realmId, `customer/${customerId}`)
+  return response.Customer
+}
+
+// Create customer in QuickBooks
+export async function createQBCustomer(realmId: string, customer: QBCustomer): Promise<QBCustomer> {
+  const response = await qbApiRequest(realmId, 'customer', 'POST', customer)
+  return response.Customer
+}
+
+// Update customer in QuickBooks
+export async function updateQBCustomer(realmId: string, customer: QBCustomer): Promise<QBCustomer> {
+  if (!customer.Id || !customer.SyncToken) {
+    throw new Error('Customer Id and SyncToken are required for updates')
+  }
+  const response = await qbApiRequest(realmId, 'customer', 'POST', customer)
+  return response.Customer
+}
+
+// Convert QuickBooks customer to local format
+export function qbCustomerToLocal(qbCustomer: QBCustomer): any {
+  return {
+    quickbooksId: qbCustomer.Id,
+    syncToken: qbCustomer.SyncToken,
+    companyName: qbCustomer.CompanyName || qbCustomer.DisplayName,
+    contactName: qbCustomer.GivenName && qbCustomer.FamilyName
+      ? `${qbCustomer.GivenName} ${qbCustomer.FamilyName}`
+      : null,
+    email: qbCustomer.PrimaryEmailAddr?.Address || null,
+    phone: qbCustomer.PrimaryPhone?.FreeFormNumber || null,
+    address: qbCustomer.BillAddr?.Line1 || null,
+    city: qbCustomer.BillAddr?.City || null,
+    state: qbCustomer.BillAddr?.CountrySubDivisionCode || null,
+    zipCode: qbCustomer.BillAddr?.PostalCode || null,
+    country: qbCustomer.BillAddr?.Country || 'USA',
+    notes: qbCustomer.Notes || null,
+    status: qbCustomer.Active === false ? 'Inactive' : 'Active',
+    lastSyncedAt: new Date()
+  }
+}
+
+// Convert local customer to QuickBooks format
+export function localCustomerToQB(customer: any): QBCustomer {
+  const qbCustomer: QBCustomer = {
+    DisplayName: customer.companyName
+  }
+
+  if (customer.quickbooksId) qbCustomer.Id = customer.quickbooksId
+  if (customer.syncToken) qbCustomer.SyncToken = customer.syncToken
+
+  if (customer.companyName) qbCustomer.CompanyName = customer.companyName
+
+  // Parse contact name into first/last
+  if (customer.contactName) {
+    const parts = customer.contactName.trim().split(' ')
+    if (parts.length >= 2) {
+      qbCustomer.GivenName = parts[0]
+      qbCustomer.FamilyName = parts.slice(1).join(' ')
+    } else {
+      qbCustomer.GivenName = customer.contactName
+    }
+  }
+
+  if (customer.email) {
+    qbCustomer.PrimaryEmailAddr = { Address: customer.email }
+  }
+  if (customer.phone) {
+    qbCustomer.PrimaryPhone = { FreeFormNumber: customer.phone }
+  }
+
+  // Billing Address
+  if (customer.address || customer.city || customer.state) {
+    qbCustomer.BillAddr = {}
+    if (customer.address) qbCustomer.BillAddr.Line1 = customer.address
+    if (customer.city) qbCustomer.BillAddr.City = customer.city
+    if (customer.state) qbCustomer.BillAddr.CountrySubDivisionCode = customer.state
+    if (customer.zipCode) qbCustomer.BillAddr.PostalCode = customer.zipCode
+    if (customer.country) qbCustomer.BillAddr.Country = customer.country
+  }
+
+  if (customer.notes) qbCustomer.Notes = customer.notes
+  qbCustomer.Active = customer.status !== 'Inactive'
+
+  return qbCustomer
+}
+
+// Sync all customers from QuickBooks to local database
+export async function syncCustomersFromQB(realmId: string): Promise<{
+  created: number
+  updated: number
+  errors: string[]
+}> {
+  const results = { created: 0, updated: 0, errors: [] as string[] }
+
+  try {
+    const qbCustomers = await fetchAllQBCustomers(realmId)
+    console.log(`[QB Sync] Syncing ${qbCustomers.length} customers from QuickBooks`)
+
+    for (const qbCustomer of qbCustomers) {
+      try {
+        const localData = qbCustomerToLocal(qbCustomer)
+
+        // Check if customer exists locally by quickbooksId
+        const existingByQBId = await prisma.customer.findUnique({
+          where: { quickbooksId: qbCustomer.Id }
+        })
+
+        if (existingByQBId) {
+          // Update existing customer
+          await prisma.customer.update({
+            where: { id: existingByQBId.id },
+            data: {
+              ...localData,
+              // Preserve local-only fields
+              source: existingByQBId.source
+            }
+          })
+          results.updated++
+        } else {
+          // Check if customer exists by email (for matching)
+          const existingByEmail = localData.email
+            ? await prisma.customer.findUnique({ where: { email: localData.email } })
+            : null
+
+          if (existingByEmail) {
+            // Link existing customer to QB
+            await prisma.customer.update({
+              where: { id: existingByEmail.id },
+              data: {
+                quickbooksId: qbCustomer.Id,
+                syncToken: qbCustomer.SyncToken,
+                lastSyncedAt: new Date()
+              }
+            })
+            results.updated++
+          } else {
+            // Create new customer
+            await prisma.customer.create({
+              data: localData
+            })
+            results.created++
+          }
+        }
+      } catch (error) {
+        const errorMsg = `Failed to sync customer ${qbCustomer.DisplayName}: ${error instanceof Error ? error.message : 'Unknown error'}`
+        console.error(errorMsg)
+        results.errors.push(errorMsg)
+      }
+    }
+  } catch (error) {
+    throw new Error(`Failed to sync customers from QuickBooks: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+
+  return results
+}
+
+// Push local customer to QuickBooks
+export async function pushCustomerToQB(customerId: number): Promise<any> {
+  const realmId = await getStoredRealmId()
+  if (!realmId) {
+    throw new Error('QuickBooks not connected')
+  }
+
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId }
+  })
+
+  if (!customer) {
+    throw new Error('Customer not found')
+  }
+
+  console.log(`[QB Sync] Pushing customer ${customerId} to QuickBooks`)
+
+  let result: QBCustomer
+  if (customer.quickbooksId) {
+    // Update existing QB customer
+    const currentQBCustomer = await fetchQBCustomer(realmId, customer.quickbooksId)
+
+    const sparseUpdate = localCustomerToQB(customer)
+    sparseUpdate.Id = currentQBCustomer.Id
+    sparseUpdate.SyncToken = currentQBCustomer.SyncToken
+    sparseUpdate.sparse = true
+
+    result = await updateQBCustomer(realmId, sparseUpdate)
+  } else {
+    // Create new QB customer
+    const qbCustomer = localCustomerToQB(customer)
+    result = await createQBCustomer(realmId, qbCustomer)
+  }
+
+  // Update local customer with QB response
+  const updatedCustomer = await prisma.customer.update({
+    where: { id: customerId },
+    data: {
+      quickbooksId: result.Id,
+      syncToken: result.SyncToken,
+      lastSyncedAt: new Date()
+    }
+  })
+
+  return updatedCustomer
+}
+
+// ============ INVOICE (SALES ORDER) OPERATIONS ============
+
+// Query all invoices from QuickBooks
+export async function fetchAllQBInvoices(realmId: string): Promise<QBInvoice[]> {
+  const allInvoices: QBInvoice[] = []
+  let startPosition = 1
+  const maxResults = 1000
+
+  while (true) {
+    const query = `SELECT * FROM Invoice STARTPOSITION ${startPosition} MAXRESULTS ${maxResults}`
+    const response = await qbApiRequest(realmId, `query?query=${encodeURIComponent(query)}`)
+
+    const invoices = response.QueryResponse?.Invoice || []
+    allInvoices.push(...invoices)
+
+    if (invoices.length < maxResults) {
+      break
+    }
+    startPosition += maxResults
+  }
+
+  console.log(`[QB Sync] Fetched ${allInvoices.length} invoices from QuickBooks`)
+  return allInvoices
+}
+
+// Get single invoice from QuickBooks
+export async function fetchQBInvoice(realmId: string, invoiceId: string): Promise<QBInvoice> {
+  const response = await qbApiRequest(realmId, `invoice/${invoiceId}`)
+  return response.Invoice
+}
+
+// Create invoice in QuickBooks
+export async function createQBInvoice(realmId: string, invoice: QBInvoice): Promise<QBInvoice> {
+  const response = await qbApiRequest(realmId, 'invoice', 'POST', invoice)
+  return response.Invoice
+}
+
+// Update invoice in QuickBooks
+export async function updateQBInvoice(realmId: string, invoice: QBInvoice): Promise<QBInvoice> {
+  if (!invoice.Id || !invoice.SyncToken) {
+    throw new Error('Invoice Id and SyncToken are required for updates')
+  }
+  const response = await qbApiRequest(realmId, 'invoice', 'POST', invoice)
+  return response.Invoice
+}
+
+// Void invoice in QuickBooks
+export async function voidQBInvoice(realmId: string, invoiceId: string, syncToken: string): Promise<void> {
+  await qbApiRequest(realmId, `invoice?operation=void`, 'POST', {
+    Id: invoiceId,
+    SyncToken: syncToken
+  })
+}
+
+// Convert QuickBooks invoice to local SalesOrder format
+export function qbInvoiceToLocal(qbInvoice: QBInvoice, customerId: number): any {
+  return {
+    quickbooksId: qbInvoice.Id,
+    syncToken: qbInvoice.SyncToken,
+    docNumber: qbInvoice.DocNumber || null,
+    txnDate: qbInvoice.TxnDate ? new Date(qbInvoice.TxnDate) : new Date(),
+    dueDate: qbInvoice.DueDate ? new Date(qbInvoice.DueDate) : null,
+    shipDate: qbInvoice.ShipDate ? new Date(qbInvoice.ShipDate) : null,
+    customerId,
+    customerMemo: qbInvoice.CustomerMemo?.value || null,
+    privateNote: qbInvoice.PrivateNote || null,
+    totalAmount: qbInvoice.TotalAmt ?? 0,
+    balance: qbInvoice.Balance ?? 0,
+    billAddrLine1: qbInvoice.BillAddr?.Line1 || null,
+    billAddrLine2: qbInvoice.BillAddr?.Line2 || null,
+    billAddrCity: qbInvoice.BillAddr?.City || null,
+    billAddrState: qbInvoice.BillAddr?.CountrySubDivisionCode || null,
+    billAddrPostalCode: qbInvoice.BillAddr?.PostalCode || null,
+    billAddrCountry: qbInvoice.BillAddr?.Country || null,
+    shipAddrLine1: qbInvoice.ShipAddr?.Line1 || null,
+    shipAddrLine2: qbInvoice.ShipAddr?.Line2 || null,
+    shipAddrCity: qbInvoice.ShipAddr?.City || null,
+    shipAddrState: qbInvoice.ShipAddr?.CountrySubDivisionCode || null,
+    shipAddrPostalCode: qbInvoice.ShipAddr?.PostalCode || null,
+    shipAddrCountry: qbInvoice.ShipAddr?.Country || null,
+    lastSyncedAt: new Date()
+  }
+}
+
+// Convert local SalesOrder to QuickBooks Invoice format
+export function localSOToQBInvoice(so: any, customerQBId: string, lines: QBInvoiceLine[]): QBInvoice {
+  const qbInvoice: QBInvoice = {
+    CustomerRef: { value: customerQBId },
+    Line: lines
+  }
+
+  if (so.quickbooksId) qbInvoice.Id = so.quickbooksId
+  if (so.syncToken) qbInvoice.SyncToken = so.syncToken
+  if (so.docNumber) qbInvoice.DocNumber = so.docNumber
+  if (so.txnDate) qbInvoice.TxnDate = formatDateForQB(so.txnDate)
+  if (so.dueDate) qbInvoice.DueDate = formatDateForQB(so.dueDate)
+  if (so.shipDate) qbInvoice.ShipDate = formatDateForQB(so.shipDate)
+  if (so.customerMemo) qbInvoice.CustomerMemo = { value: so.customerMemo }
+  if (so.privateNote) qbInvoice.PrivateNote = so.privateNote
+
+  // Billing address
+  if (so.billAddrLine1 || so.billAddrCity) {
+    qbInvoice.BillAddr = {}
+    if (so.billAddrLine1) qbInvoice.BillAddr.Line1 = so.billAddrLine1
+    if (so.billAddrLine2) qbInvoice.BillAddr.Line2 = so.billAddrLine2
+    if (so.billAddrCity) qbInvoice.BillAddr.City = so.billAddrCity
+    if (so.billAddrState) qbInvoice.BillAddr.CountrySubDivisionCode = so.billAddrState
+    if (so.billAddrPostalCode) qbInvoice.BillAddr.PostalCode = so.billAddrPostalCode
+    if (so.billAddrCountry) qbInvoice.BillAddr.Country = so.billAddrCountry
+  }
+
+  // Shipping address
+  if (so.shipAddrLine1 || so.shipAddrCity) {
+    qbInvoice.ShipAddr = {}
+    if (so.shipAddrLine1) qbInvoice.ShipAddr.Line1 = so.shipAddrLine1
+    if (so.shipAddrLine2) qbInvoice.ShipAddr.Line2 = so.shipAddrLine2
+    if (so.shipAddrCity) qbInvoice.ShipAddr.City = so.shipAddrCity
+    if (so.shipAddrState) qbInvoice.ShipAddr.CountrySubDivisionCode = so.shipAddrState
+    if (so.shipAddrPostalCode) qbInvoice.ShipAddr.PostalCode = so.shipAddrPostalCode
+    if (so.shipAddrCountry) qbInvoice.ShipAddr.Country = so.shipAddrCountry
+  }
+
+  return qbInvoice
+}
+
+// Convert local SO line to QuickBooks Invoice line format
+export function localSOLineToQB(line: any): QBInvoiceLine {
+  return {
+    Amount: line.amount || (line.quantity * line.unitPrice),
+    DetailType: 'SalesItemLineDetail',
+    SalesItemLineDetail: {
+      ItemRef: line.itemRefId ? { value: line.itemRefId, name: line.itemRefName } : undefined,
+      UnitPrice: line.unitPrice,
+      Qty: line.quantity
+    },
+    Description: line.description || undefined
+  }
+}
+
+// Generate next SO number (format: SO-YYYY-NNNN)
+export async function generateSONumber(): Promise<string> {
+  const year = new Date().getFullYear()
+  const prefix = `SO-${year}-`
+
+  // Find the highest SO number for this year
+  const lastSO = await prisma.salesOrder.findFirst({
+    where: {
+      orderNumber: { startsWith: prefix }
+    },
+    orderBy: { orderNumber: 'desc' }
+  })
+
+  let nextNum = 1
+  if (lastSO) {
+    const lastNumStr = lastSO.orderNumber.replace(prefix, '')
     const lastNum = parseInt(lastNumStr, 10)
     if (!isNaN(lastNum)) {
       nextNum = lastNum + 1
