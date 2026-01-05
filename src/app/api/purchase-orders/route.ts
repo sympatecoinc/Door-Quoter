@@ -8,6 +8,7 @@ import {
   localPOLineToQB,
   generatePONumber,
   createQBItemForPOLine,
+  getDefaultExpenseAccount,
   QBPOLine
 } from '@/lib/quickbooks'
 
@@ -222,6 +223,9 @@ export async function POST(request: NextRequest) {
       const realmId = await getStoredRealmId()
       if (realmId) {
         try {
+          // Get default expense account for lines without items
+          const defaultExpenseAccountId = await getDefaultExpenseAccount(realmId)
+
           // Create QB items on-the-fly for lines without item references
           for (const line of purchaseOrder.lines) {
             const hasQBItem = line.quickbooksItem?.quickbooksId || line.itemRefId
@@ -264,7 +268,7 @@ export async function POST(request: NextRequest) {
             }
           }) as typeof purchaseOrder
 
-          // Convert lines to QB format
+          // Convert lines to QB format (pass expense account for lines without items)
           const qbLines: QBPOLine[] = purchaseOrder.lines.map(line => {
             // Use the QB item ID if available, otherwise just description
             const qbLine = localPOLineToQB({
@@ -274,7 +278,7 @@ export async function POST(request: NextRequest) {
               quantity: line.quantity,
               unitPrice: line.unitPrice,
               amount: line.amount
-            })
+            }, defaultExpenseAccountId || undefined)
             return qbLine
           })
 

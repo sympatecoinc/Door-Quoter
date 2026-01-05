@@ -174,20 +174,26 @@ export interface QBItem {
   sparse?: boolean
 }
 
-// QuickBooks Purchase Order Line interface
+// QuickBooks Purchase Order Line interface - supports both item-based and account-based
 export interface QBPOLine {
   Id?: string
   LineNum?: number
   Description?: string
   Amount: number
-  DetailType: 'ItemBasedExpenseLineDetail'
-  ItemBasedExpenseLineDetail: {
+  DetailType: 'ItemBasedExpenseLineDetail' | 'AccountBasedExpenseLineDetail'
+  ItemBasedExpenseLineDetail?: {
     ItemRef?: { value: string; name?: string }
     UnitPrice?: number
     Qty?: number
     TaxCodeRef?: { value: string }
     BillableStatus?: string
     CustomerRef?: { value: string; name?: string }
+  }
+  AccountBasedExpenseLineDetail?: {
+    AccountRef: { value: string; name?: string }
+    BillableStatus?: string
+    CustomerRef?: { value: string; name?: string }
+    TaxCodeRef?: { value: string }
   }
 }
 
@@ -890,7 +896,7 @@ export async function fetchExpenseAccounts(realmId: string): Promise<Array<{ Id:
 }
 
 // Get or fetch default expense account for on-the-fly items
-async function getDefaultExpenseAccount(realmId: string): Promise<string | null> {
+export async function getDefaultExpenseAccount(realmId: string): Promise<string | null> {
   if (cachedExpenseAccountId) {
     return cachedExpenseAccountId
   }
@@ -1093,12 +1099,41 @@ export function localPOToQB(po: any, vendorQBId: string, lines: QBPOLine[]): QBP
 }
 
 // Convert local PO line to QuickBooks format
-export function localPOLineToQB(line: any): QBPOLine {
+// Uses ItemBasedExpenseLineDetail if item has ID, otherwise falls back to AccountBasedExpenseLineDetail
+export function localPOLineToQB(line: any, fallbackExpenseAccountId?: string): QBPOLine {
+  const amount = line.amount || (line.quantity * line.unitPrice)
+
+  // If we have an item reference, use item-based expense line
+  if (line.itemRefId) {
+    return {
+      Amount: amount,
+      DetailType: 'ItemBasedExpenseLineDetail',
+      ItemBasedExpenseLineDetail: {
+        ItemRef: { value: line.itemRefId, name: line.itemRefName },
+        UnitPrice: line.unitPrice,
+        Qty: line.quantity
+      },
+      Description: line.description || undefined
+    }
+  }
+
+  // No item reference - use account-based expense line if we have a fallback account
+  if (fallbackExpenseAccountId) {
+    return {
+      Amount: amount,
+      DetailType: 'AccountBasedExpenseLineDetail',
+      AccountBasedExpenseLineDetail: {
+        AccountRef: { value: fallbackExpenseAccountId }
+      },
+      Description: line.description || undefined
+    }
+  }
+
+  // Fallback: item-based without item ref (may cause QB error if no default configured)
   return {
-    Amount: line.amount || (line.quantity * line.unitPrice),
+    Amount: amount,
     DetailType: 'ItemBasedExpenseLineDetail',
     ItemBasedExpenseLineDetail: {
-      ItemRef: line.itemRefId ? { value: line.itemRefId, name: line.itemRefName } : undefined,
       UnitPrice: line.unitPrice,
       Qty: line.quantity
     },

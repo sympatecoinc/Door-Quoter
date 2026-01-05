@@ -4,10 +4,13 @@ import { POStatus } from '@prisma/client'
 import {
   getStoredRealmId,
   fetchQBPurchaseOrder,
+  createQBPurchaseOrder,
   updateQBPurchaseOrder,
   deleteQBPurchaseOrder,
   localPOToQB,
   localPOLineToQB,
+  createQBItemForPOLine,
+  getDefaultExpenseAccount,
   QBPOLine
 } from '@/lib/quickbooks'
 
@@ -253,61 +256,170 @@ export async function PUT(
       }
     })
 
-    // Sync to QuickBooks if requested
-    if (pushToQuickBooks && currentPO.quickbooksId && currentPO.vendor.quickbooksId) {
+    // Sync to QuickBooks if requested and vendor has QB ID
+    if (pushToQuickBooks && currentPO.vendor.quickbooksId) {
       const realmId = await getStoredRealmId()
       if (realmId) {
         try {
-          // Get current QB PO for SyncToken
-          const currentQBPO = await fetchQBPurchaseOrder(realmId, currentPO.quickbooksId)
+          // Get default expense account for lines without items
+          const defaultExpenseAccountId = await getDefaultExpenseAccount(realmId)
 
-          // Convert lines to QB format
-          const qbLines: QBPOLine[] = purchaseOrder.lines.map(line => {
-            return localPOLineToQB({
-              itemRefId: line.quickbooksItem?.quickbooksId || line.itemRefId,
-              itemRefName: line.quickbooksItem?.name || line.itemRefName,
-              description: line.description,
-              quantity: line.quantity,
-              unitPrice: line.unitPrice,
-              amount: line.amount
+          // Check if this PO already exists in QuickBooks
+          if (currentPO.quickbooksId) {
+            // UPDATE existing QB PO
+            const currentQBPO = await fetchQBPurchaseOrder(realmId, currentPO.quickbooksId)
+
+            // Convert lines to QB format (pass expense account for lines without items)
+            const qbLines: QBPOLine[] = purchaseOrder.lines.map(line => {
+              return localPOLineToQB({
+                itemRefId: line.quickbooksItem?.quickbooksId || line.itemRefId,
+                itemRefName: line.quickbooksItem?.name || line.itemRefName,
+                description: line.description,
+                quantity: line.quantity,
+                unitPrice: line.unitPrice,
+                amount: line.amount
+              }, defaultExpenseAccountId || undefined)
             })
-          })
 
-          // Build QB PO update
-          const qbPO = localPOToQB(purchaseOrder, currentPO.vendor.quickbooksId, qbLines)
-          qbPO.Id = currentPO.quickbooksId
-          qbPO.SyncToken = currentQBPO.SyncToken
-          qbPO.sparse = true
+            // Build QB PO update
+            const qbPO = localPOToQB(purchaseOrder, currentPO.vendor.quickbooksId, qbLines)
+            qbPO.Id = currentPO.quickbooksId
+            qbPO.SyncToken = currentQBPO.SyncToken
+            qbPO.sparse = true
 
-          const updatedQBPO = await updateQBPurchaseOrder(realmId, qbPO)
+            const updatedQBPO = await updateQBPurchaseOrder(realmId, qbPO)
 
-          // Update local with new sync token
-          purchaseOrder = await prisma.purchaseOrder.update({
-            where: { id: poId },
-            data: {
-              syncToken: updatedQBPO.SyncToken,
-              lastSyncedAt: new Date()
-            },
-            include: {
-              vendor: true,
-              lines: {
-                include: {
-                  quickbooksItem: true
-                },
-                orderBy: { lineNum: 'asc' }
+            // Update local with new sync token
+            purchaseOrder = await prisma.purchaseOrder.update({
+              where: { id: poId },
+              data: {
+                syncToken: updatedQBPO.SyncToken,
+                lastSyncedAt: new Date()
               },
-              createdBy: true,
-              statusHistory: {
-                orderBy: { changedAt: 'desc' },
-                take: 5
+              include: {
+                vendor: true,
+                lines: {
+                  include: {
+                    quickbooksItem: true
+                  },
+                  orderBy: { lineNum: 'asc' }
+                },
+                createdBy: true,
+                statusHistory: {
+                  orderBy: { changedAt: 'desc' },
+                  take: 5
+                }
+              }
+            })
+          } else {
+            // CREATE new PO in QuickBooks (initial sync for POs that weren't synced at creation)
+            console.log(`[PO Update] Creating PO ${purchaseOrder.poNumber} in QuickBooks (initial sync)`)
+
+            // Create QB items on-the-fly for lines without item references
+            for (const line of purchaseOrder.lines) {
+              const hasQBItem = line.quickbooksItem?.quickbooksId || line.itemRefId
+              if (!hasQBItem && line.description) {
+                try {
+                  console.log(`[PO Update] Creating QB item for line: "${line.description}"`)
+                  const { qbItemId, localItemId } = await createQBItemForPOLine(
+                    realmId,
+                    line.description,
+                    line.unitPrice
+                  )
+
+                  // Update the local line with the new item reference
+                  await prisma.purchaseOrderLine.update({
+                    where: { id: line.id },
+                    data: {
+                      quickbooksItemId: localItemId,
+                      itemRefId: qbItemId,
+                      itemRefName: line.description
+                    }
+                  })
+
+                  // Update in-memory for QB conversion
+                  line.itemRefId = qbItemId
+                  line.itemRefName = line.description
+                } catch (itemError) {
+                  console.error(`[PO Update] Failed to create QB item for "${line.description}":`, itemError)
+                }
               }
             }
-          })
+
+            // Refresh the PO to get updated line data
+            purchaseOrder = await prisma.purchaseOrder.findUnique({
+              where: { id: poId },
+              include: {
+                vendor: true,
+                lines: { include: { quickbooksItem: true }, orderBy: { lineNum: 'asc' } },
+                createdBy: true,
+                statusHistory: { orderBy: { changedAt: 'desc' }, take: 5 }
+              }
+            }) as typeof purchaseOrder
+
+            // Convert lines to QB format (pass expense account for lines without items)
+            const qbLines: QBPOLine[] = purchaseOrder.lines.map(line => {
+              return localPOLineToQB({
+                itemRefId: line.quickbooksItem?.quickbooksId || line.itemRefId,
+                itemRefName: line.quickbooksItem?.name || line.itemRefName,
+                description: line.description,
+                quantity: line.quantity,
+                unitPrice: line.unitPrice,
+                amount: line.amount
+              }, defaultExpenseAccountId || undefined)
+            })
+
+            // Create QB PO
+            const qbPO = localPOToQB(purchaseOrder, currentPO.vendor.quickbooksId, qbLines)
+            qbPO.DocNumber = purchaseOrder.poNumber
+
+            const createdQBPO = await createQBPurchaseOrder(realmId, qbPO)
+
+            // Update local PO with QB data
+            purchaseOrder = await prisma.purchaseOrder.update({
+              where: { id: poId },
+              data: {
+                quickbooksId: createdQBPO.Id,
+                syncToken: createdQBPO.SyncToken,
+                docNumber: createdQBPO.DocNumber,
+                totalAmount: createdQBPO.TotalAmt ?? purchaseOrder.totalAmount,
+                lastSyncedAt: new Date()
+              },
+              include: {
+                vendor: true,
+                lines: {
+                  include: {
+                    quickbooksItem: true
+                  },
+                  orderBy: { lineNum: 'asc' }
+                },
+                createdBy: true,
+                statusHistory: {
+                  orderBy: { changedAt: 'desc' },
+                  take: 5
+                }
+              }
+            })
+
+            console.log(`[PO Update] Successfully created PO ${purchaseOrder.poNumber} in QuickBooks with ID: ${createdQBPO.Id}`)
+          }
         } catch (qbError) {
-          console.error('Failed to update PO in QuickBooks:', qbError)
+          console.error('Failed to sync PO to QuickBooks:', qbError)
+          // Parse QB error for user-friendly message
+          let warningMessage = 'Purchase order updated locally but failed to sync to QuickBooks.'
+          const errorMsg = qbError instanceof Error ? qbError.message : 'Unknown error'
+
+          if (errorMsg.includes('Select an account')) {
+            warningMessage += ' One or more items do not have an expense account configured in QuickBooks.'
+          } else if (errorMsg.includes('ItemRef')) {
+            warningMessage += ' Line items must reference valid QuickBooks items.'
+          } else {
+            warningMessage += ` Error: ${errorMsg}`
+          }
+
           return NextResponse.json({
             purchaseOrder,
-            warning: `Purchase order updated locally but failed to sync to QuickBooks: ${qbError instanceof Error ? qbError.message : 'Unknown error'}`
+            warning: warningMessage
           })
         }
       }
