@@ -58,19 +58,11 @@ export async function PUT(
       }, { status: 400 })
     }
 
-    // Validate cost requirements: Hardware, Fastener, and Packaging parts require cost, Extrusions don't
-    if (partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') {
-      if (!cost || isNaN(parseFloat(cost.toString()))) {
-        return NextResponse.json({
-          error: `${partType} parts require a valid cost`
-        }, { status: 400 })
-      }
-      // Validate weight if provided
-      if (weightPerUnit && isNaN(parseFloat(weightPerUnit.toString()))) {
-        return NextResponse.json({
-          error: 'Weight must be a valid number'
-        }, { status: 400 })
-      }
+    // Validate weight if provided (cost is optional - managed in inventory)
+    if (weightPerUnit && isNaN(parseFloat(weightPerUnit.toString()))) {
+      return NextResponse.json({
+        error: 'Weight must be a valid number'
+      }, { status: 400 })
     }
 
     // Check if part number already exists on another part

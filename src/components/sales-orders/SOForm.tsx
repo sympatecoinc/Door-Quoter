@@ -22,6 +22,7 @@ interface SOFormProps {
   salesOrder?: SalesOrder | null
   onClose: () => void
   onSave: (so?: SalesOrder, warning?: string) => void
+  prefilledProjectId?: number | null
 }
 
 interface LineItem {
@@ -32,12 +33,26 @@ interface LineItem {
   unitPrice: number
 }
 
-export default function SOForm({ salesOrder, onClose, onSave }: SOFormProps) {
+interface Project {
+  id: number
+  name: string
+  customerId: number | null
+  customer: Customer | null
+  openings: Array<{
+    id: number
+    name: string
+    price: number
+  }>
+}
+
+export default function SOForm({ salesOrder, onClose, onSave, prefilledProjectId }: SOFormProps) {
   const isEditing = !!salesOrder
 
   const [customers, setCustomers] = useState<Customer[]>([])
   const [customerId, setCustomerId] = useState<number | null>(salesOrder?.customerId || null)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [projectId, setProjectId] = useState<number | null>(salesOrder?.projectId || prefilledProjectId || null)
+  const [loadingProject, setLoadingProject] = useState(false)
   const [txnDate, setTxnDate] = useState(
     salesOrder?.txnDate
       ? new Date(salesOrder.txnDate).toISOString().split('T')[0]
@@ -72,7 +87,6 @@ export default function SOForm({ salesOrder, onClose, onSave }: SOFormProps) {
       unitPrice: l.unitPrice
     })) || [{ description: '', quantity: 1, unitPrice: 0 }]
   )
-  const [pushToQuickBooks, setPushToQuickBooks] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [customerSearch, setCustomerSearch] = useState('')
@@ -80,6 +94,42 @@ export default function SOForm({ salesOrder, onClose, onSave }: SOFormProps) {
   useEffect(() => {
     fetchCustomers()
   }, [])
+
+  // Fetch project data when prefilledProjectId is set
+  useEffect(() => {
+    if (prefilledProjectId && !isEditing) {
+      fetchProjectData(prefilledProjectId)
+    }
+  }, [prefilledProjectId])
+
+  async function fetchProjectData(projId: number) {
+    try {
+      setLoadingProject(true)
+      const response = await fetch(`/api/projects/${projId}`)
+      if (response.ok) {
+        const project: Project = await response.json()
+
+        // Set customer from project
+        if (project.customerId) {
+          setCustomerId(project.customerId)
+        }
+
+        // Create line items from project openings
+        if (project.openings && project.openings.length > 0) {
+          const projectLines: LineItem[] = project.openings.map(opening => ({
+            description: `${project.name} - ${opening.name}`,
+            quantity: 1,
+            unitPrice: opening.price || 0
+          }))
+          setLines(projectLines)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching project data:', error)
+    } finally {
+      setLoadingProject(false)
+    }
+  }
 
   useEffect(() => {
     if (customerId && customers.length > 0) {
@@ -146,6 +196,7 @@ export default function SOForm({ salesOrder, onClose, onSave }: SOFormProps) {
     try {
       const formData: SalesOrderFormData = {
         customerId,
+        projectId: projectId || undefined,
         txnDate,
         dueDate: dueDate || undefined,
         shipDate: shipDate || undefined,
@@ -159,8 +210,7 @@ export default function SOForm({ salesOrder, onClose, onSave }: SOFormProps) {
         shipAddrCity: shipAddrCity || undefined,
         shipAddrState: shipAddrState || undefined,
         shipAddrPostalCode: shipAddrPostalCode || undefined,
-        lines: lines.filter(l => l.description || l.unitPrice > 0),
-        pushToQuickBooks
+        lines: lines.filter(l => l.description || l.unitPrice > 0)
       }
 
       const url = isEditing ? `/api/sales-orders/${salesOrder.id}` : '/api/sales-orders'
@@ -469,25 +519,6 @@ export default function SOForm({ salesOrder, onClose, onSave }: SOFormProps) {
             </div>
           </div>
 
-          {/* QuickBooks Option */}
-          <div className="mb-6">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={pushToQuickBooks}
-                onChange={(e) => setPushToQuickBooks(e.target.checked)}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <span className="text-sm text-gray-700">
-                {isEditing ? 'Sync changes to QuickBooks' : 'Create invoice in QuickBooks'}
-              </span>
-            </label>
-            {selectedCustomer && !selectedCustomer.quickbooksId && (
-              <p className="text-xs text-yellow-600 mt-1">
-                Note: Customer will be synced to QuickBooks first
-              </p>
-            )}
-          </div>
         </form>
 
         {/* Footer */}

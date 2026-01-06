@@ -6,7 +6,9 @@ const PUBLIC_ROUTES = [
   '/login',
   '/api/auth/login',
   '/api/auth/init',
-  '/api/quickbooks/webhooks' // QuickBooks webhook endpoint (authenticated via HMAC signature)
+  '/api/quickbooks/webhooks', // QuickBooks webhook endpoint (authenticated via HMAC signature)
+  '/scan',     // Public bin location scan pages
+  '/api/scan'  // Public bin location scan API
 ]
 
 // Check if a route is public or if it's a Next.js internal route

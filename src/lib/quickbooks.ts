@@ -990,6 +990,68 @@ export async function createQBItemForPOLine(
   }
 }
 
+// Ensure a QuickBooks item has an expense account (required for PO lines)
+// If the item doesn't have one, update it in QuickBooks to add the default expense account
+export async function ensureItemHasExpenseAccount(
+  realmId: string,
+  localItemId: number
+): Promise<boolean> {
+  const localItem = await prisma.quickBooksItem.findUnique({
+    where: { id: localItemId }
+  })
+
+  if (!localItem || !localItem.quickbooksId) {
+    console.log(`[QB Item] Item ${localItemId} not found or has no QB ID`)
+    return false
+  }
+
+  // Already has expense account
+  if (localItem.expenseAccountRefId) {
+    return true
+  }
+
+  console.log(`[QB Item] Item "${localItem.name}" (${localItem.quickbooksId}) missing expense account, updating...`)
+
+  // Get the default expense account
+  const expenseAccountId = await getDefaultExpenseAccount(realmId)
+  if (!expenseAccountId) {
+    console.error('[QB Item] No default expense account available')
+    return false
+  }
+
+  try {
+    // Fetch current item from QB to get the SyncToken
+    const qbItem = await fetchQBItem(realmId, localItem.quickbooksId)
+
+    // Update the item with expense account using sparse update
+    const updatePayload: QBItem = {
+      Id: qbItem.Id,
+      SyncToken: qbItem.SyncToken,
+      Name: qbItem.Name,
+      ExpenseAccountRef: { value: expenseAccountId },
+      sparse: true
+    }
+
+    const updatedItem = await updateQBItem(realmId, updatePayload)
+
+    // Update local record
+    await prisma.quickBooksItem.update({
+      where: { id: localItemId },
+      data: {
+        expenseAccountRefId: expenseAccountId,
+        syncToken: updatedItem.SyncToken,
+        lastSyncedAt: new Date()
+      }
+    })
+
+    console.log(`[QB Item] Updated item "${localItem.name}" with expense account ${expenseAccountId}`)
+    return true
+  } catch (error) {
+    console.error(`[QB Item] Failed to update item "${localItem.name}":`, error)
+    return false
+  }
+}
+
 // ============ PURCHASE ORDER OPERATIONS ============
 
 // Query all purchase orders from QuickBooks
@@ -1564,4 +1626,350 @@ export async function generateSONumber(): Promise<string> {
   }
 
   return `${prefix}${nextNum.toString().padStart(4, '0')}`
+}
+
+// Push local Purchase Order to QuickBooks
+export async function pushPOToQB(poId: number): Promise<any> {
+  const realmId = await getStoredRealmId()
+  if (!realmId) {
+    throw new Error('QuickBooks not connected')
+  }
+
+  const po = await prisma.purchaseOrder.findUnique({
+    where: { id: poId },
+    include: {
+      vendor: true,
+      lines: {
+        include: { quickbooksItem: true }
+      }
+    }
+  })
+
+  if (!po) {
+    throw new Error('Purchase Order not found')
+  }
+
+  if (!po.vendor?.quickbooksId) {
+    throw new Error(`Vendor "${po.vendor?.displayName}" is not synced to QuickBooks. Sync vendors first.`)
+  }
+
+  console.log(`[QB Sync] Pushing PO ${po.poNumber} to QuickBooks`)
+
+  // Get default expense account for lines without items
+  const defaultExpenseAccountId = await getDefaultExpenseAccount(realmId)
+
+  // Build QB PO lines
+  const qbLines: QBPOLine[] = []
+  for (const line of po.lines) {
+    const qbLine = localPOLineToQB({
+      itemRefId: line.itemRefId,
+      itemRefName: line.itemRefName,
+      description: line.description,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      amount: line.amount
+    }, defaultExpenseAccountId || undefined)
+    qbLines.push(qbLine)
+  }
+
+  let result: QBPurchaseOrder
+  if (po.quickbooksId) {
+    // Update existing QB PO
+    const currentQBPO = await fetchQBPurchaseOrder(realmId, po.quickbooksId)
+
+    const updatePayload = localPOToQB(po, po.vendor.quickbooksId, qbLines)
+    updatePayload.Id = currentQBPO.Id
+    updatePayload.SyncToken = currentQBPO.SyncToken
+    updatePayload.sparse = true
+
+    result = await updateQBPurchaseOrder(realmId, updatePayload)
+  } else {
+    // Create new QB PO
+    const createPayload = localPOToQB(po, po.vendor.quickbooksId, qbLines)
+    result = await createQBPurchaseOrder(realmId, createPayload)
+  }
+
+  // Update local PO with QB response
+  const updatedPO = await prisma.purchaseOrder.update({
+    where: { id: poId },
+    data: {
+      quickbooksId: result.Id,
+      syncToken: result.SyncToken,
+      docNumber: result.DocNumber || po.docNumber,
+      lastSyncedAt: new Date()
+    },
+    include: {
+      vendor: true,
+      lines: true
+    }
+  })
+
+  console.log(`[QB Sync] PO ${po.poNumber} synced to QB with ID: ${result.Id}`)
+  return updatedPO
+}
+
+// Push local Sales Order to QuickBooks (as Invoice)
+export async function pushSOToQB(soId: number): Promise<any> {
+  const realmId = await getStoredRealmId()
+  if (!realmId) {
+    throw new Error('QuickBooks not connected')
+  }
+
+  const so = await prisma.salesOrder.findUnique({
+    where: { id: soId },
+    include: {
+      customer: true,
+      lines: true
+    }
+  })
+
+  if (!so) {
+    throw new Error('Sales Order not found')
+  }
+
+  if (!so.customer?.quickbooksId) {
+    throw new Error(`Customer "${so.customer?.companyName}" is not synced to QuickBooks. Sync customers first.`)
+  }
+
+  console.log(`[QB Sync] Pushing SO ${so.orderNumber} to QuickBooks`)
+
+  // Build QB Invoice lines
+  const qbLines: QBInvoiceLine[] = so.lines.map(line => localSOLineToQB({
+    itemRefId: line.itemRefId,
+    itemRefName: line.itemRefName,
+    description: line.description,
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+    amount: line.amount
+  }))
+
+  let result: QBInvoice
+  if (so.quickbooksId) {
+    // Update existing QB Invoice
+    const currentQBInvoice = await fetchQBInvoice(realmId, so.quickbooksId)
+
+    const updatePayload = localSOToQBInvoice(so, so.customer.quickbooksId, qbLines)
+    updatePayload.Id = currentQBInvoice.Id
+    updatePayload.SyncToken = currentQBInvoice.SyncToken
+    updatePayload.sparse = true
+
+    result = await updateQBInvoice(realmId, updatePayload)
+  } else {
+    // Create new QB Invoice
+    const createPayload = localSOToQBInvoice(so, so.customer.quickbooksId, qbLines)
+    result = await createQBInvoice(realmId, createPayload)
+  }
+
+  // Update local SO with QB response
+  const updatedSO = await prisma.salesOrder.update({
+    where: { id: soId },
+    data: {
+      quickbooksId: result.Id,
+      syncToken: result.SyncToken,
+      docNumber: result.DocNumber || so.docNumber,
+      lastSyncedAt: new Date()
+    },
+    include: {
+      customer: true,
+      lines: true
+    }
+  })
+
+  console.log(`[QB Sync] SO ${so.orderNumber} synced to QB with ID: ${result.Id}`)
+  return updatedSO
+}
+
+// =====================================
+// INVOICE-SPECIFIC FUNCTIONS
+// =====================================
+
+// Generate next Invoice number (format: INV-YYYY-NNNN)
+export async function generateInvoiceNumber(): Promise<string> {
+  const year = new Date().getFullYear()
+  const prefix = `INV-${year}-`
+
+  // Find the highest invoice number for this year
+  const lastInvoice = await prisma.invoice.findFirst({
+    where: {
+      invoiceNumber: { startsWith: prefix }
+    },
+    orderBy: { invoiceNumber: 'desc' }
+  })
+
+  let nextNum = 1
+  if (lastInvoice) {
+    const lastNumStr = lastInvoice.invoiceNumber.replace(prefix, '')
+    const lastNum = parseInt(lastNumStr, 10)
+    if (!isNaN(lastNum)) {
+      nextNum = lastNum + 1
+    }
+  }
+
+  return `${prefix}${nextNum.toString().padStart(4, '0')}`
+}
+
+// Convert local Invoice to QuickBooks Invoice format
+export function localInvoiceToQB(invoice: any, customerQBId: string, lines: QBInvoiceLine[]): QBInvoice {
+  const qbInvoice: QBInvoice = {
+    CustomerRef: { value: customerQBId },
+    Line: lines,
+    TxnDate: invoice.txnDate ? new Date(invoice.txnDate).toISOString().split('T')[0] : undefined,
+    DueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().split('T')[0] : undefined,
+    ShipDate: invoice.shipDate ? new Date(invoice.shipDate).toISOString().split('T')[0] : undefined,
+    DocNumber: invoice.invoiceNumber // Use invoice number as QB DocNumber
+  }
+
+  // Billing address
+  if (invoice.billAddrLine1 || invoice.billAddrCity) {
+    qbInvoice.BillAddr = {
+      Line1: invoice.billAddrLine1 || undefined,
+      Line2: invoice.billAddrLine2 || undefined,
+      City: invoice.billAddrCity || undefined,
+      CountrySubDivisionCode: invoice.billAddrState || undefined,
+      PostalCode: invoice.billAddrPostalCode || undefined,
+      Country: invoice.billAddrCountry || undefined
+    }
+  }
+
+  // Shipping address
+  if (invoice.shipAddrLine1 || invoice.shipAddrCity) {
+    qbInvoice.ShipAddr = {
+      Line1: invoice.shipAddrLine1 || undefined,
+      Line2: invoice.shipAddrLine2 || undefined,
+      City: invoice.shipAddrCity || undefined,
+      CountrySubDivisionCode: invoice.shipAddrState || undefined,
+      PostalCode: invoice.shipAddrPostalCode || undefined,
+      Country: invoice.shipAddrCountry || undefined
+    }
+  }
+
+  // Customer memo
+  if (invoice.customerMemo) {
+    qbInvoice.CustomerMemo = { value: invoice.customerMemo }
+  }
+
+  // Private note
+  if (invoice.privateNote) {
+    qbInvoice.PrivateNote = invoice.privateNote
+  }
+
+  return qbInvoice
+}
+
+// Convert local InvoiceLine to QuickBooks invoice line format
+export function localInvoiceLineToQB(line: any): QBInvoiceLine {
+  return {
+    Amount: line.amount,
+    DetailType: 'SalesItemLineDetail',
+    SalesItemLineDetail: {
+      ItemRef: line.itemRefId ? { value: line.itemRefId, name: line.itemRefName || undefined } : undefined,
+      UnitPrice: line.unitPrice,
+      Qty: line.quantity
+    },
+    Description: line.description || undefined
+  }
+}
+
+// Convert QuickBooks Invoice to local Invoice format
+export function qbInvoiceToLocalInvoice(qbInvoice: QBInvoice, customerId: number): any {
+  return {
+    quickbooksId: qbInvoice.Id,
+    syncToken: qbInvoice.SyncToken,
+    docNumber: qbInvoice.DocNumber,
+    customerId,
+    txnDate: qbInvoice.TxnDate ? new Date(qbInvoice.TxnDate) : new Date(),
+    dueDate: qbInvoice.DueDate ? new Date(qbInvoice.DueDate) : null,
+    shipDate: qbInvoice.ShipDate ? new Date(qbInvoice.ShipDate) : null,
+    billAddrLine1: qbInvoice.BillAddr?.Line1 || null,
+    billAddrLine2: qbInvoice.BillAddr?.Line2 || null,
+    billAddrCity: qbInvoice.BillAddr?.City || null,
+    billAddrState: qbInvoice.BillAddr?.CountrySubDivisionCode || null,
+    billAddrPostalCode: qbInvoice.BillAddr?.PostalCode || null,
+    billAddrCountry: qbInvoice.BillAddr?.Country || null,
+    shipAddrLine1: qbInvoice.ShipAddr?.Line1 || null,
+    shipAddrLine2: qbInvoice.ShipAddr?.Line2 || null,
+    shipAddrCity: qbInvoice.ShipAddr?.City || null,
+    shipAddrState: qbInvoice.ShipAddr?.CountrySubDivisionCode || null,
+    shipAddrPostalCode: qbInvoice.ShipAddr?.PostalCode || null,
+    shipAddrCountry: qbInvoice.ShipAddr?.Country || null,
+    subtotal: qbInvoice.TotalAmt || 0,
+    taxAmount: 0, // QB doesn't break out tax in a simple way
+    totalAmount: qbInvoice.TotalAmt || 0,
+    balance: qbInvoice.Balance ?? qbInvoice.TotalAmt ?? 0,
+    customerMemo: qbInvoice.CustomerMemo?.value || null,
+    privateNote: qbInvoice.PrivateNote || null,
+    lastSyncedAt: new Date()
+  }
+}
+
+// Push local Invoice to QuickBooks
+export async function pushInvoiceToQB(invoiceId: number): Promise<any> {
+  const realmId = await getStoredRealmId()
+  if (!realmId) {
+    throw new Error('QuickBooks not connected')
+  }
+
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    include: {
+      customer: true,
+      lines: true
+    }
+  })
+
+  if (!invoice) {
+    throw new Error('Invoice not found')
+  }
+
+  if (!invoice.customer?.quickbooksId) {
+    throw new Error(`Customer "${invoice.customer?.companyName}" is not synced to QuickBooks. Sync customers first.`)
+  }
+
+  console.log(`[QB Sync] Pushing Invoice ${invoice.invoiceNumber} to QuickBooks`)
+
+  // Build QB Invoice lines
+  const qbLines: QBInvoiceLine[] = invoice.lines.map(line => localInvoiceLineToQB({
+    itemRefId: line.itemRefId,
+    itemRefName: line.itemRefName,
+    description: line.description,
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+    amount: line.amount
+  }))
+
+  let result: QBInvoice
+  if (invoice.quickbooksId) {
+    // Update existing QB Invoice
+    const currentQBInvoice = await fetchQBInvoice(realmId, invoice.quickbooksId)
+
+    const updatePayload = localInvoiceToQB(invoice, invoice.customer.quickbooksId, qbLines)
+    updatePayload.Id = currentQBInvoice.Id
+    updatePayload.SyncToken = currentQBInvoice.SyncToken
+    updatePayload.sparse = true
+
+    result = await updateQBInvoice(realmId, updatePayload)
+  } else {
+    // Create new QB Invoice
+    const createPayload = localInvoiceToQB(invoice, invoice.customer.quickbooksId, qbLines)
+    result = await createQBInvoice(realmId, createPayload)
+  }
+
+  // Update local Invoice with QB response
+  const updatedInvoice = await prisma.invoice.update({
+    where: { id: invoiceId },
+    data: {
+      quickbooksId: result.Id,
+      syncToken: result.SyncToken,
+      docNumber: result.DocNumber || invoice.docNumber,
+      status: 'SENT', // Update status since it's now in QB
+      lastSyncedAt: new Date()
+    },
+    include: {
+      customer: true,
+      lines: true
+    }
+  })
+
+  console.log(`[QB Sync] Invoice ${invoice.invoiceNumber} synced to QB with ID: ${result.Id}`)
+  return updatedInvoice
 }

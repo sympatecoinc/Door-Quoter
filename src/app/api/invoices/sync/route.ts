@@ -3,12 +3,12 @@ import { prisma } from '@/lib/prisma'
 import {
   getStoredRealmId,
   fetchAllQBInvoices,
-  qbInvoiceToLocal,
-  generateSONumber,
-  QBInvoice
+  qbInvoiceToLocalInvoice,
+  generateInvoiceNumber,
+  pushInvoiceToQB
 } from '@/lib/quickbooks'
 
-// GET - Sync sales orders from QuickBooks
+// GET - 2-way sync: Push local invoices to QB, then pull QB invoices to local
 export async function GET(request: NextRequest) {
   try {
     const realmId = await getStoredRealmId()
@@ -22,13 +22,39 @@ export async function GET(request: NextRequest) {
     const results = {
       created: 0,
       updated: 0,
+      pushed: 0,
       skipped: 0,
       errors: [] as string[]
     }
 
-    // Fetch all invoices from QB
+    // Step 1: Push local invoices without quickbooksId to QuickBooks
+    const localOnlyInvoices = await prisma.invoice.findMany({
+      where: { quickbooksId: null },
+      include: { customer: true }
+    })
+
+    console.log(`[Invoice QB Sync] Found ${localOnlyInvoices.length} local invoices to push to QuickBooks`)
+
+    for (const invoice of localOnlyInvoices) {
+      try {
+        // Skip if customer is not synced to QB
+        if (!invoice.customer?.quickbooksId) {
+          results.errors.push(`Skipped Invoice ${invoice.invoiceNumber}: Customer not synced to QuickBooks`)
+          continue
+        }
+        await pushInvoiceToQB(invoice.id)
+        results.pushed++
+        console.log(`[Invoice QB Sync] Pushed Invoice "${invoice.invoiceNumber}" to QuickBooks`)
+      } catch (error) {
+        const errorMsg = `Failed to push Invoice ${invoice.invoiceNumber}: ${error instanceof Error ? error.message : 'Unknown error'}`
+        console.error(errorMsg)
+        results.errors.push(errorMsg)
+      }
+    }
+
+    // Step 2: Pull invoices from QuickBooks to local
     const qbInvoices = await fetchAllQBInvoices(realmId)
-    console.log(`[SO Sync] Processing ${qbInvoices.length} invoices from QuickBooks`)
+    console.log(`[Invoice Sync] Processing ${qbInvoices.length} invoices from QuickBooks`)
 
     for (const qbInvoice of qbInvoices) {
       try {
@@ -49,12 +75,12 @@ export async function GET(request: NextRequest) {
           continue
         }
 
-        // Check if SO already exists
-        const existingSO = await prisma.salesOrder.findUnique({
+        // Check if invoice already exists
+        const existingInvoice = await prisma.invoice.findUnique({
           where: { quickbooksId: qbInvoice.Id }
         })
 
-        const localData = qbInvoiceToLocal(qbInvoice, customer.id)
+        const localData = qbInvoiceToLocalInvoice(qbInvoice, customer.id)
 
         // Process line items
         const lineItems = (qbInvoice.Line || [])
@@ -80,22 +106,22 @@ export async function GET(request: NextRequest) {
           status = 'PARTIAL'
         }
 
-        if (existingSO) {
-          // Update existing SO
+        if (existingInvoice) {
+          // Update existing invoice
           await prisma.$transaction(async (tx) => {
             // Delete old lines
-            await tx.salesOrderLine.deleteMany({
-              where: { salesOrderId: existingSO.id }
+            await tx.invoiceLine.deleteMany({
+              where: { invoiceId: existingInvoice.id }
             })
 
-            // Update SO with new data
-            await tx.salesOrder.update({
-              where: { id: existingSO.id },
+            // Update invoice with new data
+            await tx.invoice.update({
+              where: { id: existingInvoice.id },
               data: {
                 ...localData,
                 status,
-                orderNumber: existingSO.orderNumber, // Preserve local order number
-                projectId: existingSO.projectId, // Preserve project link
+                invoiceNumber: existingInvoice.invoiceNumber, // Preserve local invoice number
+                salesOrderId: existingInvoice.salesOrderId, // Preserve SO link
                 lines: {
                   create: lineItems
                 }
@@ -104,13 +130,13 @@ export async function GET(request: NextRequest) {
           })
           results.updated++
         } else {
-          // Create new SO
-          const orderNumber = await generateSONumber()
+          // Create new invoice
+          const invoiceNumber = await generateInvoiceNumber()
 
-          await prisma.salesOrder.create({
+          await prisma.invoice.create({
             data: {
               ...localData,
-              orderNumber,
+              invoiceNumber,
               status,
               lines: {
                 create: lineItems
@@ -126,11 +152,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log(`[SO Sync] Complete: ${results.created} created, ${results.updated} updated, ${results.skipped} skipped, ${results.errors.length} errors`)
+    console.log(`[Invoice QB Sync] Complete: Pushed ${results.pushed}, Created ${results.created}, Updated ${results.updated}, Skipped ${results.skipped}`)
 
-    return NextResponse.json(results)
+    return NextResponse.json({
+      message: `2-way sync complete. Pushed: ${results.pushed}, Created: ${results.created}, Updated: ${results.updated}`,
+      ...results
+    })
   } catch (error) {
-    console.error('Error syncing sales orders:', error)
+    console.error('Error syncing invoices:', error)
     return NextResponse.json(
       { error: 'Failed to sync from QuickBooks' },
       { status: 500 }

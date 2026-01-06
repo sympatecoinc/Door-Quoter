@@ -75,7 +75,7 @@ export default function SOList({ onSOSelect, onEdit, onRefresh, refreshKey }: SO
     }).format(amount)
   }
 
-  const statuses: SOStatus[] = ['DRAFT', 'SENT', 'VIEWED', 'PARTIAL', 'PAID', 'OVERDUE', 'VOIDED']
+  const statuses: SOStatus[] = ['DRAFT', 'CONFIRMED', 'PARTIALLY_INVOICED', 'FULLY_INVOICED', 'CANCELLED']
 
   return (
     <div className="bg-white rounded-lg shadow">

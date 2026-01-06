@@ -1,73 +1,27 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import SOList from '@/components/sales-orders/SOList'
 import SODetailView from '@/components/sales-orders/SODetailView'
 import SOForm from '@/components/sales-orders/SOForm'
 import SOStatsWidget from '@/components/sales-orders/SOStatsWidget'
+import PendingQuotesList from '@/components/sales-orders/PendingQuotesList'
 import { SalesOrder } from '@/types/sales-order'
-import { Plus, CheckCircle, AlertCircle, X, RefreshCw, CloudOff } from 'lucide-react'
+import { Plus, CheckCircle, AlertCircle, X, FileText, ClipboardList } from 'lucide-react'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 
-type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error'
+type TabType = 'pending' | 'orders'
 
 export default function SalesOrdersView() {
-  const searchParams = useSearchParams()
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState<TabType>('orders')
   const [selectedSOId, setSelectedSOId] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingSO, setEditingSO] = useState<SalesOrder | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
-  const hasSyncedRef = useRef(false)
-
-  // Auto-sync on mount
-  useEffect(() => {
-    if (hasSyncedRef.current) return
-    hasSyncedRef.current = true
-
-    async function autoSync() {
-      setSyncStatus('syncing')
-      try {
-        // Sync customers first (silent)
-        await fetch('/api/customers/sync')
-
-        // Then sync sales orders (invoices)
-        const response = await fetch('/api/sales-orders/sync')
-
-        if (response.ok) {
-          setSyncStatus('synced')
-          setLastSyncTime(new Date())
-          setRefreshKey(prev => prev + 1)
-          // Reset to idle after 3 seconds
-          setTimeout(() => setSyncStatus('idle'), 3000)
-        } else {
-          setSyncStatus('error')
-        }
-      } catch (error) {
-        console.error('Auto-sync failed:', error)
-        setSyncStatus('error')
-      }
-    }
-
-    autoSync()
-  }, [])
-
-  // Check for URL parameters on load (from QB callback)
-  useEffect(() => {
-    const qbConnectedParam = searchParams.get('qb_connected')
-    const qbError = searchParams.get('qb_error')
-
-    if (qbConnectedParam === 'true') {
-      setNotification({ type: 'success', message: 'Successfully connected to QuickBooks!' })
-      window.history.replaceState({}, '', window.location.pathname)
-    } else if (qbError) {
-      setNotification({ type: 'error', message: `QuickBooks connection failed: ${qbError}` })
-      window.history.replaceState({}, '', window.location.pathname)
-    }
-  }, [searchParams])
+  const [prefilledProjectId, setPrefilledProjectId] = useState<number | null>(null)
 
   // Auto-hide notifications
   useEffect(() => {
@@ -114,15 +68,52 @@ export default function SalesOrdersView() {
   function handleFormSave(savedSO?: SalesOrder, warning?: string) {
     setShowForm(false)
     setEditingSO(null)
+    setPrefilledProjectId(null)
     setRefreshKey(prev => prev + 1)
     if (savedSO) {
       setSelectedSOId(savedSO.id)
+      // Switch to orders tab after creating
+      setActiveTab('orders')
     }
-    // Show warning if QB sync failed
     if (warning) {
       setNotification({ type: 'error', message: warning })
     } else if (savedSO) {
       setNotification({ type: 'success', message: `Sales order ${savedSO.orderNumber || ''} saved successfully` })
+    }
+  }
+
+  // Handler for creating SO from pending quote
+  async function handleCreateSOFromQuote(projectId: number) {
+    setPrefilledProjectId(projectId)
+    setEditingSO(null)
+    setShowForm(true)
+  }
+
+  // Handler for generating invoice from SO
+  async function handleGenerateInvoice(so: SalesOrder) {
+    try {
+      const response = await fetch(`/api/sales-orders/${so.id}/create-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pushToQuickBooks: true })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create invoice')
+      }
+
+      setNotification({
+        type: 'success',
+        message: `Invoice ${data.invoice.invoiceNumber} created${data.invoice.quickbooksId ? ' and synced to QuickBooks' : ''}`
+      })
+      setRefreshKey(prev => prev + 1)
+    } catch (error) {
+      setNotification({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to create invoice'
+      })
     }
   }
 
@@ -158,6 +149,7 @@ export default function SalesOrdersView() {
           onBack={handleBack}
           onEdit={handleEdit}
           onRefresh={() => setRefreshKey(prev => prev + 1)}
+          onGenerateInvoice={handleGenerateInvoice}
         />
         {/* SO Form Modal - must be outside detail view conditional */}
         {showForm && (
@@ -165,6 +157,7 @@ export default function SalesOrdersView() {
             salesOrder={editingSO}
             onClose={handleFormClose}
             onSave={handleFormSave}
+            prefilledProjectId={prefilledProjectId}
           />
         )}
       </>
@@ -202,32 +195,9 @@ export default function SalesOrdersView() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-gray-900">Sales Orders</h1>
-            {/* Sync Status Indicator */}
-            <div className="flex items-center gap-1.5" title={lastSyncTime ? `Last synced: ${lastSyncTime.toLocaleTimeString()}` : 'Syncing with QuickBooks'}>
-              {syncStatus === 'syncing' && (
-                <>
-                  <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
-                  <span className="text-xs text-blue-500">Syncing...</span>
-                </>
-              )}
-              {syncStatus === 'synced' && (
-                <>
-                  <CheckCircle className="w-4 h-4 text-green-500" />
-                  <span className="text-xs text-green-500">Synced</span>
-                </>
-              )}
-              {syncStatus === 'error' && (
-                <>
-                  <CloudOff className="w-4 h-4 text-red-500" />
-                  <span className="text-xs text-red-500">Sync failed</span>
-                </>
-              )}
-            </div>
-          </div>
+          <h1 className="text-2xl font-bold text-gray-900">Sales Orders</h1>
           <p className="text-gray-600 mt-1">
-            Create and manage sales orders with QuickBooks integration
+            Create and manage sales orders from accepted quotes
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -241,14 +211,49 @@ export default function SalesOrdersView() {
         </div>
       </div>
 
-      {/* SO List */}
-      <SOList
-        key={refreshKey}
-        onSOSelect={handleSOSelect}
-        onEdit={handleEdit}
-        onRefresh={() => setRefreshKey(prev => prev + 1)}
-        refreshKey={refreshKey}
-      />
+      {/* Tabs */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="flex gap-4" aria-label="Tabs">
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`flex items-center gap-2 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'pending'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            Pending from Quotes
+          </button>
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`flex items-center gap-2 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'orders'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <ClipboardList className="w-4 h-4" />
+            Sales Orders
+          </button>
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'pending' ? (
+        <PendingQuotesList
+          onCreateSO={handleCreateSOFromQuote}
+          refreshKey={refreshKey}
+        />
+      ) : (
+        <SOList
+          key={refreshKey}
+          onSOSelect={handleSOSelect}
+          onEdit={handleEdit}
+          onRefresh={() => setRefreshKey(prev => prev + 1)}
+          refreshKey={refreshKey}
+        />
+      )}
 
       {/* SO Form Modal */}
       {showForm && (
@@ -256,6 +261,7 @@ export default function SalesOrdersView() {
           salesOrder={editingSO}
           onClose={handleFormClose}
           onSave={handleFormSave}
+          prefilledProjectId={prefilledProjectId}
         />
       )}
     </div>

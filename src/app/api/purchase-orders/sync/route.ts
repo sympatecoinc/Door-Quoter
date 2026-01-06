@@ -5,11 +5,12 @@ import {
   getStoredRealmId,
   fetchAllQBPurchaseOrders,
   qbPOToLocal,
+  pushPOToQB,
   QBPurchaseOrder,
   QBPOLine
 } from '@/lib/quickbooks'
 
-// GET - Sync purchase orders from QuickBooks
+// GET - 2-way sync: Push local POs to QB, then pull QB POs to local
 export async function GET(request: NextRequest) {
   try {
     const realmId = await getStoredRealmId()
@@ -20,14 +21,41 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const qbPOs = await fetchAllQBPurchaseOrders(realmId)
-
     const results = {
       created: 0,
       updated: 0,
+      pushed: 0,
       skipped: 0,
       errors: [] as string[]
     }
+
+    // Step 1: Push local POs without quickbooksId to QuickBooks
+    const localOnlyPOs = await prisma.purchaseOrder.findMany({
+      where: { quickbooksId: null },
+      include: { vendor: true }
+    })
+
+    console.log(`[QB 2-Way Sync] Found ${localOnlyPOs.length} local POs to push to QuickBooks`)
+
+    for (const po of localOnlyPOs) {
+      try {
+        // Skip if vendor is not synced to QB
+        if (!po.vendor?.quickbooksId) {
+          results.errors.push(`Skipped PO ${po.poNumber}: Vendor not synced to QuickBooks`)
+          continue
+        }
+        await pushPOToQB(po.id)
+        results.pushed++
+        console.log(`[QB 2-Way Sync] Pushed PO "${po.poNumber}" to QuickBooks`)
+      } catch (error) {
+        const errorMsg = `Failed to push PO ${po.poNumber}: ${error instanceof Error ? error.message : 'Unknown error'}`
+        console.error(errorMsg)
+        results.errors.push(errorMsg)
+      }
+    }
+
+    // Step 2: Pull POs from QuickBooks to local
+    const qbPOs = await fetchAllQBPurchaseOrders(realmId)
 
     for (const qbPO of qbPOs) {
       try {
@@ -112,8 +140,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    console.log(`[QB 2-Way Sync] Complete: Pushed ${results.pushed}, Created ${results.created}, Updated ${results.updated}`)
+
     return NextResponse.json({
-      message: 'Purchase orders synced from QuickBooks',
+      message: `2-way sync complete. Pushed: ${results.pushed}, Created: ${results.created}, Updated: ${results.updated}`,
       ...results
     })
   } catch (error) {

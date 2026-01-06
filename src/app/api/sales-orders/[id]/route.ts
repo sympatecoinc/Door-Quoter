@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import {
-  getStoredRealmId,
-  updateQBInvoice,
-  voidQBInvoice,
-  fetchQBInvoice,
-  localSOToQBInvoice,
-  localSOLineToQB,
-  QBInvoiceLine
-} from '@/lib/quickbooks'
 
 // GET - Get single sales order
 export async function GET(
@@ -117,8 +108,7 @@ export async function PUT(
       shipAddrState,
       shipAddrPostalCode,
       shipAddrCountry,
-      lines,
-      pushToQuickBooks
+      lines
     } = body
 
     // Calculate totals
@@ -202,81 +192,7 @@ export async function PUT(
       })
     })
 
-    // Push to QuickBooks if requested
-    let qbWarning: string | null = null
-    if (pushToQuickBooks && updatedSO.quickbooksId) {
-      try {
-        const realmId = await getStoredRealmId()
-        if (!realmId) {
-          qbWarning = 'QuickBooks not connected. Changes saved locally only.'
-        } else if (!updatedSO.customer.quickbooksId) {
-          qbWarning = 'Customer not synced to QuickBooks. Changes saved locally only.'
-        } else {
-          // Get current QB invoice for sync token
-          const currentQBInvoice = await fetchQBInvoice(realmId, updatedSO.quickbooksId)
-
-          // Convert lines to QB format
-          const qbLines: QBInvoiceLine[] = updatedSO.lines.map(line => localSOLineToQB(line))
-
-          // Build update object
-          const qbInvoice = localSOToQBInvoice(updatedSO, updatedSO.customer.quickbooksId, qbLines)
-          qbInvoice.Id = currentQBInvoice.Id
-          qbInvoice.SyncToken = currentQBInvoice.SyncToken
-          qbInvoice.sparse = true
-
-          const updated = await updateQBInvoice(realmId, qbInvoice)
-
-          // Update local sync info
-          await prisma.salesOrder.update({
-            where: { id: salesOrderId },
-            data: {
-              syncToken: updated.SyncToken,
-              lastSyncedAt: new Date()
-            }
-          })
-        }
-      } catch (qbError) {
-        console.error('QuickBooks sync error:', qbError)
-        qbWarning = `Changes saved locally but QuickBooks sync failed: ${qbError instanceof Error ? qbError.message : 'Unknown error'}`
-      }
-    }
-
-    // Fetch final state
-    const finalSO = await prisma.salesOrder.findUnique({
-      where: { id: salesOrderId },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            companyName: true,
-            contactName: true,
-            email: true,
-            phone: true,
-            quickbooksId: true
-          }
-        },
-        project: {
-          select: {
-            id: true,
-            name: true,
-            status: true
-          }
-        },
-        lines: true,
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        }
-      }
-    })
-
-    return NextResponse.json({
-      salesOrder: finalSO,
-      warning: qbWarning
-    })
+    return NextResponse.json({ salesOrder: updatedSO })
   } catch (error) {
     console.error('Error updating sales order:', error)
     return NextResponse.json(
@@ -286,7 +202,7 @@ export async function PUT(
   }
 }
 
-// DELETE - Void/delete sales order
+// DELETE - Cancel sales order
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -300,41 +216,39 @@ export async function DELETE(
     }
 
     const salesOrder = await prisma.salesOrder.findUnique({
-      where: { id: salesOrderId }
+      where: { id: salesOrderId },
+      include: {
+        invoices: {
+          where: {
+            status: { notIn: ['VOIDED'] }
+          }
+        }
+      }
     })
 
     if (!salesOrder) {
       return NextResponse.json({ error: 'Sales order not found' }, { status: 404 })
     }
 
-    // Void in QuickBooks if synced
-    let qbWarning: string | null = null
-    if (salesOrder.quickbooksId && salesOrder.syncToken) {
-      try {
-        const realmId = await getStoredRealmId()
-        if (realmId) {
-          await voidQBInvoice(realmId, salesOrder.quickbooksId, salesOrder.syncToken)
-        }
-      } catch (qbError) {
-        console.error('QuickBooks void error:', qbError)
-        qbWarning = `Sales order voided locally but QuickBooks void failed: ${qbError instanceof Error ? qbError.message : 'Unknown error'}`
-      }
+    // Check if there are active invoices
+    if (salesOrder.invoices.length > 0) {
+      return NextResponse.json(
+        { error: 'Cannot cancel sales order with active invoices. Void the invoices first.' },
+        { status: 400 }
+      )
     }
 
-    // Update status to voided (soft delete)
+    // Update status to cancelled (soft delete)
     await prisma.salesOrder.update({
       where: { id: salesOrderId },
-      data: { status: 'VOIDED' }
+      data: { status: 'CANCELLED' }
     })
 
-    return NextResponse.json({
-      success: true,
-      warning: qbWarning
-    })
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error voiding sales order:', error)
+    console.error('Error cancelling sales order:', error)
     return NextResponse.json(
-      { error: 'Failed to void sales order' },
+      { error: 'Failed to cancel sales order' },
       { status: 500 }
     )
   }

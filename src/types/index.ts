@@ -222,7 +222,7 @@ export interface ComponentInstance {
   updatedAt: Date
 }
 
-export type MenuOption = 'dashboard' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'salesOrders' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments'
+export type MenuOption = 'dashboard' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'salesOrders' | 'invoices' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments'
 
 // Vendor Management Types
 export interface Vendor {
@@ -358,7 +358,9 @@ export interface ExtrusionVariant {
   stockLength: number
   finishPricingId: number | null
   qtyOnHand: number
-  binLocation: string | null
+  binLocationLegacy: string | null  // Legacy string field (deprecated)
+  binLocationId: number | null
+  binLocationRef?: BinLocation | null
   reorderPoint: number | null
   reorderQty: number | null
   pricePerPiece: number | null
@@ -416,3 +418,6 @@ export interface GlobalSetting {
   createdAt: Date
   updatedAt: Date
 }
+
+// Bin Location exports
+export * from './bin-location'

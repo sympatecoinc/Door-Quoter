@@ -6,7 +6,7 @@ import {
   pushCustomerToQB
 } from '@/lib/quickbooks'
 
-// GET - Sync all customers from QuickBooks
+// GET - 2-way sync: Push local customers to QB, then pull QB customers to local
 export async function GET(request: NextRequest) {
   try {
     const realmId = await getStoredRealmId()
@@ -17,7 +17,39 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const results = await syncCustomersFromQB(realmId)
+    const results = {
+      created: 0,
+      updated: 0,
+      pushed: 0,
+      errors: [] as string[]
+    }
+
+    // Step 1: Push local customers without quickbooksId to QuickBooks
+    const localOnlyCustomers = await prisma.customer.findMany({
+      where: { quickbooksId: null }
+    })
+
+    console.log(`[QB 2-Way Sync] Found ${localOnlyCustomers.length} local customers to push to QuickBooks`)
+
+    for (const customer of localOnlyCustomers) {
+      try {
+        await pushCustomerToQB(customer.id)
+        results.pushed++
+        console.log(`[QB 2-Way Sync] Pushed customer "${customer.companyName}" to QuickBooks`)
+      } catch (error) {
+        const errorMsg = `Failed to push customer ${customer.companyName}: ${error instanceof Error ? error.message : 'Unknown error'}`
+        console.error(errorMsg)
+        results.errors.push(errorMsg)
+      }
+    }
+
+    // Step 2: Pull customers from QuickBooks to local
+    const pullResults = await syncCustomersFromQB(realmId)
+    results.created = pullResults.created
+    results.updated = pullResults.updated
+    results.errors.push(...pullResults.errors)
+
+    console.log(`[QB 2-Way Sync] Complete: Pushed ${results.pushed}, Created ${results.created}, Updated ${results.updated}`)
 
     return NextResponse.json(results)
   } catch (error) {

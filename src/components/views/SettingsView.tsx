@@ -24,6 +24,9 @@ export default function SettingsView() {
   const [qbCredentialsConfigured, setQbCredentialsConfigured] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [qbNotification, setQbNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+  const [syncingCustomers, setSyncingCustomers] = useState(false)
+  const [syncingPurchaseOrders, setSyncingPurchaseOrders] = useState(false)
+  const [syncingSalesOrders, setSyncingSalesOrders] = useState(false)
 
   // Load saved settings and current user on component mount
   useEffect(() => {
@@ -97,18 +100,103 @@ export default function SettingsView() {
       const data = await response.json()
 
       if (response.ok) {
-        setQbNotification({
-          type: 'success',
-          message: `Sync complete! Created: ${data.created}, Updated: ${data.updated}`
-        })
+        const parts = []
+        if (data.pushed > 0) parts.push(`Pushed: ${data.pushed}`)
+        if (data.created > 0) parts.push(`Created: ${data.created}`)
+        if (data.updated > 0) parts.push(`Updated: ${data.updated}`)
+        const message = parts.length > 0
+          ? `2-way sync complete! ${parts.join(', ')}`
+          : '2-way sync complete! No changes needed.'
+        setQbNotification({ type: 'success', message })
       } else {
         setQbNotification({ type: 'error', message: data.error || 'Sync failed' })
       }
     } catch (error) {
-      console.error('Error syncing from QuickBooks:', error)
-      setQbNotification({ type: 'error', message: 'Failed to sync from QuickBooks' })
+      console.error('Error syncing vendors:', error)
+      setQbNotification({ type: 'error', message: 'Failed to sync vendors' })
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const handleSyncCustomers = async () => {
+    setSyncingCustomers(true)
+    setQbNotification(null)
+    try {
+      const response = await fetch('/api/customers/sync')
+      const data = await response.json()
+
+      if (response.ok) {
+        const parts = []
+        if (data.pushed > 0) parts.push(`Pushed: ${data.pushed}`)
+        if (data.created > 0) parts.push(`Created: ${data.created}`)
+        if (data.updated > 0) parts.push(`Updated: ${data.updated}`)
+        const message = parts.length > 0
+          ? `2-way sync complete! ${parts.join(', ')}`
+          : '2-way sync complete! No changes needed.'
+        setQbNotification({ type: 'success', message })
+      } else {
+        setQbNotification({ type: 'error', message: data.error || 'Customer sync failed' })
+      }
+    } catch (error) {
+      console.error('Error syncing customers:', error)
+      setQbNotification({ type: 'error', message: 'Failed to sync customers' })
+    } finally {
+      setSyncingCustomers(false)
+    }
+  }
+
+  const handleSyncPurchaseOrders = async () => {
+    setSyncingPurchaseOrders(true)
+    setQbNotification(null)
+    try {
+      const response = await fetch('/api/purchase-orders/sync')
+      const data = await response.json()
+
+      if (response.ok) {
+        const parts = []
+        if (data.pushed > 0) parts.push(`Pushed: ${data.pushed}`)
+        if (data.created > 0) parts.push(`Created: ${data.created}`)
+        if (data.updated > 0) parts.push(`Updated: ${data.updated}`)
+        const message = parts.length > 0
+          ? `2-way sync complete! ${parts.join(', ')}`
+          : '2-way sync complete! No changes needed.'
+        setQbNotification({ type: 'success', message })
+      } else {
+        setQbNotification({ type: 'error', message: data.error || 'Purchase Orders sync failed' })
+      }
+    } catch (error) {
+      console.error('Error syncing purchase orders:', error)
+      setQbNotification({ type: 'error', message: 'Failed to sync purchase orders' })
+    } finally {
+      setSyncingPurchaseOrders(false)
+    }
+  }
+
+  const handleSyncSalesOrders = async () => {
+    setSyncingSalesOrders(true)
+    setQbNotification(null)
+    try {
+      const response = await fetch('/api/sales-orders/sync')
+      const data = await response.json()
+
+      if (response.ok) {
+        const parts = []
+        if (data.pushed > 0) parts.push(`Pushed: ${data.pushed}`)
+        if (data.created > 0) parts.push(`Created: ${data.created}`)
+        if (data.updated > 0) parts.push(`Updated: ${data.updated}`)
+        const message = parts.length > 0
+          ? `2-way sync complete! ${parts.join(', ')}`
+          : '2-way sync complete! No changes needed.'
+        setQbNotification({ type: 'success', message })
+      } else {
+        setQbNotification({ type: 'error', message: data.error || 'Invoices sync failed' })
+      }
+    } catch (error) {
+      console.error('Error syncing sales orders:', error)
+      setQbNotification({ type: 'error', message: 'Failed to sync invoices' })
+    } finally {
+      setSyncingSalesOrders(false)
     }
   }
 
@@ -506,18 +594,43 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,,3.2,TRUE,
               {qbConnected && (
                 <div className="space-y-3">
                   <h3 className="text-sm font-medium text-gray-700">Sync Options</h3>
-                  <div className="flex gap-3">
+                  <div className="flex flex-wrap gap-3">
                     <button
                       onClick={handleSyncFromQB}
                       disabled={syncing}
                       className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                     >
                       <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                      {syncing ? 'Syncing...' : 'Sync Vendors from QuickBooks'}
+                      {syncing ? 'Syncing...' : 'Sync Vendors'}
+                    </button>
+                    <button
+                      onClick={handleSyncCustomers}
+                      disabled={syncingCustomers}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${syncingCustomers ? 'animate-spin' : ''}`} />
+                      {syncingCustomers ? 'Syncing...' : 'Sync Customers'}
+                    </button>
+                    <button
+                      onClick={handleSyncPurchaseOrders}
+                      disabled={syncingPurchaseOrders}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${syncingPurchaseOrders ? 'animate-spin' : ''}`} />
+                      {syncingPurchaseOrders ? 'Syncing...' : 'Sync Purchase Orders'}
+                    </button>
+                    <button
+                      onClick={handleSyncSalesOrders}
+                      disabled={syncingSalesOrders}
+                      className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${syncingSalesOrders ? 'animate-spin' : ''}`} />
+                      {syncingSalesOrders ? 'Syncing...' : 'Sync Invoices'}
                     </button>
                   </div>
                   <p className="text-xs text-gray-500">
-                    Pulls all vendors from QuickBooks and creates/updates them in the local database.
+                    All syncs are 2-way: pushes local records to QuickBooks, then pulls QB records to local.
+                    Records are matched by QuickBooks ID to prevent duplicates.
                   </p>
                 </div>
               )}

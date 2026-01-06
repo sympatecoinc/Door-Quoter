@@ -1,15 +1,13 @@
-// Sales Order Types
+// Sales Order Types (LOCAL only - not synced to QuickBooks)
 
-export type SOStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'VOIDED'
+export type SOStatus = 'DRAFT' | 'CONFIRMED' | 'PARTIALLY_INVOICED' | 'FULLY_INVOICED' | 'CANCELLED'
 
 export const SO_STATUS_CONFIG: Record<SOStatus, { label: string; color: string; bgColor: string }> = {
   DRAFT: { label: 'Draft', color: 'text-gray-700', bgColor: 'bg-gray-100' },
-  SENT: { label: 'Sent', color: 'text-blue-700', bgColor: 'bg-blue-100' },
-  VIEWED: { label: 'Viewed', color: 'text-indigo-700', bgColor: 'bg-indigo-100' },
-  PARTIAL: { label: 'Partial Payment', color: 'text-yellow-700', bgColor: 'bg-yellow-100' },
-  PAID: { label: 'Paid', color: 'text-green-700', bgColor: 'bg-green-100' },
-  OVERDUE: { label: 'Overdue', color: 'text-red-700', bgColor: 'bg-red-100' },
-  VOIDED: { label: 'Voided', color: 'text-gray-500', bgColor: 'bg-gray-200' }
+  CONFIRMED: { label: 'Confirmed', color: 'text-blue-700', bgColor: 'bg-blue-100' },
+  PARTIALLY_INVOICED: { label: 'Partially Invoiced', color: 'text-yellow-700', bgColor: 'bg-yellow-100' },
+  FULLY_INVOICED: { label: 'Fully Invoiced', color: 'text-green-700', bgColor: 'bg-green-100' },
+  CANCELLED: { label: 'Cancelled', color: 'text-red-700', bgColor: 'bg-red-100' }
 }
 
 export interface SalesOrderLine {
@@ -26,11 +24,7 @@ export interface SalesOrderLine {
 
 export interface SalesOrder {
   id: number
-  quickbooksId?: string | null
-  syncToken?: string | null
-  lastSyncedAt?: string | null
   orderNumber: string
-  docNumber?: string | null
   customerId: number
   customer: {
     id: number
@@ -65,7 +59,6 @@ export interface SalesOrder {
   subtotal: number
   taxAmount: number
   totalAmount: number
-  balance: number
   customerMemo?: string | null
   privateNote?: string | null
   createdById?: number | null
@@ -73,14 +66,17 @@ export interface SalesOrder {
   createdAt: string
   updatedAt: string
   lines: SalesOrderLine[]
+  invoices?: { id: number; invoiceNumber: string; status: string; totalAmount: number }[]
   _count?: {
     lines: number
+    invoices?: number
   }
 }
 
 export interface SalesOrderFormData {
   customerId: number
   projectId?: number | null
+  status?: SOStatus
   txnDate?: string
   dueDate?: string
   shipDate?: string
@@ -105,5 +101,4 @@ export interface SalesOrderFormData {
     quantity: number
     unitPrice: number
   }[]
-  pushToQuickBooks?: boolean
 }

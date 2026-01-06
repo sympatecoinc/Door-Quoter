@@ -10,6 +10,7 @@ import {
   localPOToQB,
   localPOLineToQB,
   createQBItemForPOLine,
+  ensureItemHasExpenseAccount,
   getDefaultExpenseAccount,
   QBPOLine
 } from '@/lib/quickbooks'
@@ -315,10 +316,11 @@ export async function PUT(
             // CREATE new PO in QuickBooks (initial sync for POs that weren't synced at creation)
             console.log(`[PO Update] Creating PO ${purchaseOrder.poNumber} in QuickBooks (initial sync)`)
 
-            // Create QB items on-the-fly for lines without item references
+            // Process each line - create items on-the-fly or ensure existing items have expense accounts
             for (const line of purchaseOrder.lines) {
               const hasQBItem = line.quickbooksItem?.quickbooksId || line.itemRefId
               if (!hasQBItem && line.description) {
+                // No QB item - create one on-the-fly
                 try {
                   console.log(`[PO Update] Creating QB item for line: "${line.description}"`)
                   const { qbItemId, localItemId } = await createQBItemForPOLine(
@@ -342,6 +344,13 @@ export async function PUT(
                   line.itemRefName = line.description
                 } catch (itemError) {
                   console.error(`[PO Update] Failed to create QB item for "${line.description}":`, itemError)
+                }
+              } else if (line.quickbooksItemId) {
+                // Has QB item - ensure it has an expense account (required for POs)
+                try {
+                  await ensureItemHasExpenseAccount(realmId, line.quickbooksItemId)
+                } catch (itemError) {
+                  console.error(`[PO Update] Failed to ensure expense account for item ${line.quickbooksItemId}:`, itemError)
                 }
               }
             }

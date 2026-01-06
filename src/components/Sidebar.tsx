@@ -21,6 +21,7 @@ import {
   Truck,
   Warehouse,
   ShoppingCart,
+  ClipboardList,
   Receipt
 } from 'lucide-react'
 
@@ -32,7 +33,8 @@ const menuItems = [
   { id: 'inventory' as MenuOption, label: 'Inventory', icon: Warehouse },
   { id: 'vendors' as MenuOption, label: 'Vendors', icon: Truck },
   { id: 'purchaseOrders' as MenuOption, label: 'Purchase Orders', icon: ShoppingCart },
-  { id: 'salesOrders' as MenuOption, label: 'Sales Orders', icon: Receipt },
+  { id: 'salesOrders' as MenuOption, label: 'Sales Orders', icon: ClipboardList },
+  { id: 'invoices' as MenuOption, label: 'Invoices', icon: Receipt },
   { id: 'quoteDocuments' as MenuOption, label: 'Quote Settings', icon: FileText },
   { id: 'accounting' as MenuOption, label: 'Pricing', icon: DollarSign },
   { id: 'settings' as MenuOption, label: 'Settings', icon: Settings },
@@ -50,6 +52,7 @@ export default function Sidebar() {
   const [showProjects, setShowProjects] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [inventoryNotificationCount, setInventoryNotificationCount] = useState(0)
 
   useEffect(() => {
     if (showProjects) {
@@ -59,7 +62,27 @@ export default function Sidebar() {
 
   useEffect(() => {
     fetchCurrentUser()
+    fetchInventoryNotificationCount()
   }, [])
+
+  // Refresh notification count when navigating away from inventory
+  useEffect(() => {
+    if (currentMenu !== 'inventory') {
+      fetchInventoryNotificationCount()
+    }
+  }, [currentMenu])
+
+  async function fetchInventoryNotificationCount() {
+    try {
+      const response = await fetch('/api/inventory/notifications/count')
+      if (response.ok) {
+        const data = await response.json()
+        setInventoryNotificationCount(data.count)
+      }
+    } catch (error) {
+      console.error('Error fetching notification count:', error)
+    }
+  }
 
   async function fetchCurrentUser() {
     try {
@@ -117,6 +140,7 @@ export default function Sidebar() {
         {visibleMenuItems.map((item) => {
           const Icon = item.icon
           const isActive = currentMenu === item.id
+          const showBadge = item.id === 'inventory' && inventoryNotificationCount > 0
 
           return (
             <button
@@ -129,7 +153,12 @@ export default function Sidebar() {
               }`}
             >
               <Icon className="w-5 h-5 mr-3" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {showBadge && (
+                <span className="bg-red-100 text-red-700 rounded-full px-2 py-0.5 text-xs font-medium">
+                  {inventoryNotificationCount}
+                </span>
+              )}
             </button>
           )
         })}

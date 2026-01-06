@@ -6,15 +6,15 @@ import SOStatusBadge from './SOStatusBadge'
 import {
   ArrowLeft,
   Edit2,
-  Cloud,
-  RefreshCw,
   Building2,
   Calendar,
   MapPin,
   FileText,
   DollarSign,
   User,
-  Link
+  Link,
+  Receipt,
+  Plus
 } from 'lucide-react'
 
 interface SODetailViewProps {
@@ -22,12 +22,13 @@ interface SODetailViewProps {
   onBack: () => void
   onEdit: (so: SalesOrder) => void
   onRefresh: () => void
+  onGenerateInvoice?: (so: SalesOrder) => void
 }
 
-export default function SODetailView({ soId, onBack, onEdit, onRefresh }: SODetailViewProps) {
+export default function SODetailView({ soId, onBack, onEdit, onRefresh, onGenerateInvoice }: SODetailViewProps) {
   const [salesOrder, setSalesOrder] = useState<SalesOrder | null>(null)
   const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
+  const [creatingInvoice, setCreatingInvoice] = useState(false)
 
   useEffect(() => {
     fetchSalesOrder()
@@ -45,31 +46,6 @@ export default function SODetailView({ soId, onBack, onEdit, onRefresh }: SODeta
       console.error('Error fetching sales order:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function handleSyncToQB() {
-    if (!salesOrder) return
-
-    setSyncing(true)
-    try {
-      const response = await fetch(`/api/sales-orders/${soId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...salesOrder,
-          pushToQuickBooks: true
-        })
-      })
-
-      if (response.ok) {
-        await fetchSalesOrder()
-        onRefresh()
-      }
-    } catch (error) {
-      console.error('Error syncing to QB:', error)
-    } finally {
-      setSyncing(false)
     }
   }
 
@@ -135,36 +111,25 @@ export default function SODetailView({ soId, onBack, onEdit, onRefresh }: SODeta
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-gray-900">{salesOrder.orderNumber}</h1>
               <SOStatusBadge status={salesOrder.status} size="lg" />
-              {salesOrder.quickbooksId && (
-                <span className="flex items-center gap-1 text-sm text-green-600">
-                  <Cloud className="w-4 h-4" />
-                  Synced
-                </span>
-              )}
             </div>
-            {salesOrder.docNumber && salesOrder.docNumber !== salesOrder.orderNumber && (
-              <p className="text-sm text-gray-500 mt-1">QB Doc: {salesOrder.docNumber}</p>
-            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {salesOrder.quickbooksId ? (
+          {salesOrder.status !== 'FULLY_INVOICED' && salesOrder.status !== 'CANCELLED' && onGenerateInvoice && (
             <button
-              onClick={handleSyncToQB}
-              disabled={syncing}
-              className="flex items-center gap-2 px-4 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-              Sync to QB
-            </button>
-          ) : (
-            <button
-              onClick={handleSyncToQB}
-              disabled={syncing}
+              onClick={async () => {
+                setCreatingInvoice(true)
+                try {
+                  await onGenerateInvoice(salesOrder)
+                } finally {
+                  setCreatingInvoice(false)
+                }
+              }}
+              disabled={creatingInvoice}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
             >
-              <Cloud className="w-4 h-4" />
-              Push to QB
+              <Receipt className="w-4 h-4" />
+              {creatingInvoice ? 'Creating...' : 'Generate Invoice'}
             </button>
           )}
           <button
@@ -241,12 +206,6 @@ export default function SODetailView({ soId, onBack, onEdit, onRefresh }: SODeta
             <div className="flex justify-between text-sm font-semibold border-t pt-2">
               <span className="text-gray-700">Total:</span>
               <span className="text-gray-900">{formatCurrency(salesOrder.totalAmount)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Balance:</span>
-              <span className={salesOrder.balance > 0 ? 'text-yellow-600 font-medium' : 'text-green-600'}>
-                {salesOrder.balance > 0 ? formatCurrency(salesOrder.balance) : 'Paid'}
-              </span>
             </div>
           </div>
         </div>
