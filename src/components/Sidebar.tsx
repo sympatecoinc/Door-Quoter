@@ -48,7 +48,7 @@ interface Project {
 
 export default function Sidebar() {
   const router = useRouter()
-  const { currentMenu, setCurrentMenu, selectedProjectId, setSelectedProjectId } = useAppStore()
+  const { currentMenu, setCurrentMenu, selectedProjectId, setSelectedProjectId, notificationRefreshTrigger } = useAppStore()
   const [showProjects, setShowProjects] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
   const [currentUser, setCurrentUser] = useState<any>(null)
@@ -71,6 +71,13 @@ export default function Sidebar() {
       fetchInventoryNotificationCount()
     }
   }, [currentMenu])
+
+  // Refresh notification count when triggered (e.g., after creating a master part)
+  useEffect(() => {
+    if (notificationRefreshTrigger > 0) {
+      fetchInventoryNotificationCount()
+    }
+  }, [notificationRefreshTrigger])
 
   async function fetchInventoryNotificationCount() {
     try {
