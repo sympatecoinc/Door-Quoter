@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Filter, Package, AlertTriangle, AlertCircle, CheckCircle, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, Filter, Package, AlertTriangle, AlertCircle, CheckCircle, X, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 import InventoryEditModal from '@/components/inventory/InventoryEditModal'
 import ExtrusionInventoryTab from '@/components/inventory/ExtrusionInventoryTab'
 import FinishPricingTab from '@/components/inventory/FinishPricingTab'
+import BinLocationsTab from '@/components/inventory/BinLocationsTab'
+import InventoryNotificationBanner from '@/components/inventory/InventoryNotificationBanner'
 
 interface Vendor {
   id: number
@@ -43,7 +45,25 @@ interface Pagination {
   pages: number
 }
 
-type InventoryTab = 'all' | 'extrusions' | 'finishPricing'
+interface MasterPartRef {
+  id: number
+  partNumber: string
+  baseName: string
+  partType: string
+}
+
+interface InventoryNotification {
+  id: number
+  type: string
+  message: string
+  masterPartId: number | null
+  masterPart: MasterPartRef | null
+  actionType: string | null
+  isDismissed: boolean
+  createdAt: string
+}
+
+type InventoryTab = 'all' | 'extrusions' | 'finishPricing' | 'binLocations'
 
 export default function InventoryView() {
   const [activeTab, setActiveTab] = useState<InventoryTab>('all')
@@ -66,6 +86,9 @@ export default function InventoryView() {
 
   // Notification
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+
+  // Inventory notifications (new parts added, etc.)
+  const [inventoryNotifications, setInventoryNotifications] = useState<InventoryNotification[]>([])
 
   const fetchInventory = useCallback(async () => {
     setLoading(true)
@@ -101,6 +124,10 @@ export default function InventoryView() {
   }, [fetchInventory])
 
   useEffect(() => {
+    fetchInventoryNotifications()
+  }, [])
+
+  useEffect(() => {
     if (notification) {
       const timer = setTimeout(() => setNotification(null), 4000)
       return () => clearTimeout(timer)
@@ -111,6 +138,43 @@ export default function InventoryView() {
   useEffect(() => {
     setPage(1)
   }, [search, partType, vendorFilter, stockStatus])
+
+  async function fetchInventoryNotifications() {
+    try {
+      const response = await fetch('/api/inventory/notifications?dismissed=false')
+      if (response.ok) {
+        const data = await response.json()
+        setInventoryNotifications(data.notifications)
+      }
+    } catch (error) {
+      console.error('Error fetching inventory notifications:', error)
+    }
+  }
+
+  async function handleDismissNotification(notificationId: number) {
+    try {
+      await fetch(`/api/inventory/notifications/${notificationId}`, {
+        method: 'DELETE'
+      })
+      setInventoryNotifications(prev => prev.filter(n => n.id !== notificationId))
+    } catch (error) {
+      console.error('Error dismissing notification:', error)
+    }
+  }
+
+  async function handleSetupPart(partId: number) {
+    try {
+      const response = await fetch(`/api/inventory/${partId}`)
+      if (response.ok) {
+        const part = await response.json()
+        setEditingPart(part)
+      } else {
+        setNotification({ type: 'error', message: 'Failed to load part details' })
+      }
+    } catch (error) {
+      setNotification({ type: 'error', message: 'Failed to load part details' })
+    }
+  }
 
   async function handleInlineUpdate(partId: number, field: string, value: string | number | null) {
     try {
@@ -207,6 +271,17 @@ export default function InventoryView() {
           >
             Finish Pricing
           </button>
+          <button
+            onClick={() => setActiveTab('binLocations')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${
+              activeTab === 'binLocations'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <MapPin className="w-4 h-4" />
+            Bin Locations
+          </button>
         </nav>
       </div>
 
@@ -221,9 +296,23 @@ export default function InventoryView() {
         />
       )}
 
+      {/* Bin Locations Tab Content */}
+      {activeTab === 'binLocations' && (
+        <BinLocationsTab
+          onNotification={(type, message) => setNotification({ type, message })}
+        />
+      )}
+
       {/* All Parts Tab Content */}
       {activeTab === 'all' && (
         <>
+      {/* Inventory Notifications Banner */}
+      <InventoryNotificationBanner
+        notifications={inventoryNotifications}
+        onDismiss={handleDismissNotification}
+        onSetupPart={handleSetupPart}
+      />
+
       {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

@@ -143,20 +143,20 @@ export default function CRMView() {
     setShowCustomerForm(true)
   }
 
-  const handleDeleteCustomer = async (customerId: number) => {
+  const handleArchiveCustomer = async (customerId: number) => {
     try {
       const response = await fetch(`/api/customers/${customerId}`, {
         method: 'DELETE',
       })
 
       if (!response.ok) {
-        throw new Error('Failed to delete customer')
+        throw new Error('Failed to archive customer')
       }
 
       setRefreshKey(prev => prev + 1)
     } catch (error) {
-      console.error('Error deleting customer:', error)
-      alert('Failed to delete customer. Please try again.')
+      console.error('Error archiving customer:', error)
+      alert('Failed to archive customer. Please try again.')
     }
   }
 
@@ -226,7 +226,7 @@ export default function CRMView() {
             key={refreshKey}
             onAddCustomer={handleAddCustomer}
             onEditCustomer={handleEditCustomer}
-            onDeleteCustomer={handleDeleteCustomer}
+            onArchiveCustomer={handleArchiveCustomer}
             onViewCustomer={handleViewCustomer}
           />
         )

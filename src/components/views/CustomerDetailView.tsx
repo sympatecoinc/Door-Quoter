@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Edit, Mail, Phone, MapPin, Building, Calendar, Tag, FileText, Users, Trash2 } from 'lucide-react'
+import { X, Edit, Mail, Phone, MapPin, Building, Calendar, Tag, FileText, Users, Archive } from 'lucide-react'
 import CustomerNotes from '../crm/CustomerNotes'
 import CustomerFiles from '../crm/CustomerFiles'
 import CustomerContacts from '../crm/CustomerContacts'
@@ -102,7 +102,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     setRefreshKey(prev => prev + 1)
   }
 
-  const handleDeleteCustomer = async () => {
+  const handleArchiveCustomer = async () => {
     setDeleting(true)
     try {
       const response = await fetch(`/api/customers/${customerId}`, {
@@ -111,13 +111,13 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || 'Failed to delete customer')
+        throw new Error(data.error || 'Failed to archive customer')
       }
 
       onBack()
     } catch (error) {
-      console.error('Error deleting customer:', error)
-      alert(error instanceof Error ? error.message : 'Failed to delete customer')
+      console.error('Error archiving customer:', error)
+      alert(error instanceof Error ? error.message : 'Failed to archive customer')
     } finally {
       setDeleting(false)
       setShowDeleteConfirm(false)
@@ -417,26 +417,26 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           />
         )}
 
-        {/* Modal Footer with Delete Button */}
+        {/* Modal Footer with Archive Button */}
         {customer && (
           <div className="px-8 py-4 border-t border-gray-200 flex justify-end flex-shrink-0">
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="flex items-center px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors"
+              className="flex items-center px-4 py-2 text-orange-600 hover:bg-orange-50 rounded-lg border border-orange-200 transition-colors"
             >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete Customer
+              <Archive className="w-4 h-4 mr-2" />
+              Archive Customer
             </button>
           </div>
         )}
 
-        {/* Delete Confirmation Modal */}
+        {/* Archive Confirmation Modal */}
         {showDeleteConfirm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
             <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Customer</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Archive Customer</h3>
               <p className="text-gray-600 mb-4">
-                Are you sure you want to delete <strong>{customer?.companyName}</strong>? This will also delete all associated projects, contacts, leads, notes, and files. This action cannot be undone.
+                Are you sure you want to archive <strong>{customer?.companyName}</strong>? This will also archive all associated projects, sales orders, and invoices. The customer can be restored later by changing their status.
               </p>
               <div className="flex justify-end gap-3">
                 <button
@@ -447,19 +447,19 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                   Cancel
                 </button>
                 <button
-                  onClick={handleDeleteCustomer}
+                  onClick={handleArchiveCustomer}
                   disabled={deleting}
-                  className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 flex items-center"
+                  className="px-4 py-2 bg-orange-600 text-white hover:bg-orange-700 rounded-lg transition-colors disabled:opacity-50 flex items-center"
                 >
                   {deleting ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Deleting...
+                      Archiving...
                     </>
                   ) : (
                     <>
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete
+                      <Archive className="w-4 h-4 mr-2" />
+                      Archive
                     </>
                   )}
                 </button>

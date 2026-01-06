@@ -24,6 +24,7 @@ const TAB_LABELS: Record<string, string> = {
   masterParts: 'Master Parts',
   inventory: 'Inventory',
   vendors: 'Vendors',
+  purchaseOrders: 'Purchase Orders',
   quoteDocuments: 'Quote Settings',
   accounting: 'Accounting',
   settings: 'Settings'

@@ -117,19 +117,11 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Validate cost requirements: Hardware, Fastener, and Packaging parts require cost, Extrusions don't
-    if (partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') {
-      if (!cost || isNaN(parseFloat(cost.toString()))) {
-        return NextResponse.json({
-          error: `${partType} parts require a valid cost`
-        }, { status: 400 })
-      }
-      // Validate weight if provided
-      if (weightPerUnit && isNaN(parseFloat(weightPerUnit.toString()))) {
-        return NextResponse.json({
-          error: 'Weight must be a valid number'
-        }, { status: 400 })
-      }
+    // Validate weight if provided (cost is optional - managed in inventory)
+    if (weightPerUnit && isNaN(parseFloat(weightPerUnit.toString()))) {
+      return NextResponse.json({
+        error: 'Weight must be a valid number'
+      }, { status: 400 })
     }
 
     // Check if part number already exists
@@ -159,6 +151,16 @@ export async function POST(request: NextRequest) {
         addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false,
         includeOnPickList: (partType === 'Hardware') ? (includeOnPickList || false) : false,
         includeInJambKit: (partType === 'Hardware') ? (includeInJambKit || false) : false
+      }
+    })
+
+    // Create inventory notification for the new part
+    await prisma.inventoryNotification.create({
+      data: {
+        type: 'new_part_added',
+        message: `New part ${newPart.partNumber} has been added`,
+        masterPartId: newPart.id,
+        actionType: 'setup_part'
       }
     })
 

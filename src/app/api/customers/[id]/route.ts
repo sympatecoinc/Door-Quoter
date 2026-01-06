@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { SOStatus, InvoiceStatus, ProjectStatus } from '@prisma/client'
 
 export async function GET(
   request: NextRequest,
@@ -155,69 +156,35 @@ export async function DELETE(
       )
     }
 
-    // Delete related records in order (respecting foreign key constraints)
-    // First, get all projects for this customer to delete their nested records
-    const projects = await prisma.project.findMany({
+    // Archive related records instead of deleting (preserves historical data)
+
+    // Archive sales orders (set to CANCELLED)
+    await prisma.salesOrder.updateMany({
       where: { customerId },
-      select: { id: true }
-    })
-    const projectIds = projects.map(p => p.id)
-
-    // Delete project-related records
-    if (projectIds.length > 0) {
-      const openings = await prisma.opening.findMany({
-        where: { projectId: { in: projectIds } },
-        select: { id: true }
-      })
-      const openingIds = openings.map(o => o.id)
-
-      if (openingIds.length > 0) {
-        await prisma.panel.deleteMany({
-          where: { openingId: { in: openingIds } }
-        })
-      }
-
-      // Delete openings
-      await prisma.opening.deleteMany({
-        where: { projectId: { in: projectIds } }
-      })
-
-      // Delete project notes
-      await prisma.projectNote.deleteMany({
-        where: { projectId: { in: projectIds } }
-      })
-
-      // Delete quote attachments
-      await prisma.quoteAttachment.deleteMany({
-        where: { projectId: { in: projectIds } }
-      })
-
-      // Delete project status history
-      await prisma.projectStatusHistory.deleteMany({
-        where: { projectId: { in: projectIds } }
-      })
-
-      // Delete project contacts
-      await prisma.projectContact.deleteMany({
-        where: { projectId: { in: projectIds } }
-      })
-
-      // Delete projects
-      await prisma.project.deleteMany({
-        where: { customerId }
-      })
-    }
-
-    // Finally delete the customer
-    // (Contact, Activity, CustomerFile have onDelete: Cascade so they'll be auto-deleted)
-    // (Lead has onDelete: SetNull so it won't block deletion)
-    await prisma.customer.delete({
-      where: { id: customerId }
+      data: { status: SOStatus.CANCELLED }
     })
 
-    return NextResponse.json({ message: 'Customer deleted successfully' })
+    // Archive invoices (set to VOIDED)
+    await prisma.invoice.updateMany({
+      where: { customerId },
+      data: { status: InvoiceStatus.VOIDED }
+    })
+
+    // Archive projects (set to ARCHIVE)
+    await prisma.project.updateMany({
+      where: { customerId },
+      data: { status: ProjectStatus.ARCHIVE }
+    })
+
+    // Archive the customer (set status to Archived)
+    await prisma.customer.update({
+      where: { id: customerId },
+      data: { status: 'Archived' }
+    })
+
+    return NextResponse.json({ message: 'Customer archived successfully' })
   } catch (error) {
-    console.error('Error deleting customer:', error)
+    console.error('Error archiving customer:', error)
 
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
       return NextResponse.json(
@@ -227,7 +194,7 @@ export async function DELETE(
     }
 
     return NextResponse.json(
-      { error: 'Failed to delete customer' },
+      { error: 'Failed to archive customer' },
       { status: 500 }
     )
   }
