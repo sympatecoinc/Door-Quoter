@@ -23,6 +23,7 @@ interface IndividualOption {
   name: string
   description?: string
   partNumber?: string
+  price?: number | null
   addToPackingList: boolean
   addFinishToPartNumber: boolean
   elevationImagePath?: string
@@ -150,6 +151,7 @@ export default function CategoryDetailView({
             name: masterPart.baseName,
             description: masterPart.description || `${masterPart.partNumber} - ${masterPart.baseName}`,
             partNumber: masterPart.partNumber,
+            price: masterPart.cost ?? null, // Use master part cost as initial option price
             addToPackingList: masterPart.addToPackingList ?? true,
             addFinishToPartNumber: masterPart.addFinishToPartNumber ?? false
           })
@@ -229,6 +231,7 @@ export default function CategoryDetailView({
           name: editingOption.name,
           description: editingOption.description,
           partNumber: editingOption.partNumber,
+          price: editingOption.price,
           addToPackingList: editingOption.addToPackingList,
           addFinishToPartNumber: editingOption.addFinishToPartNumber,
           isCutListItem: editingOption.isCutListItem || false
@@ -437,8 +440,12 @@ export default function CategoryDetailView({
                     </button>
                   </div>
                 </div>
-                {option.partNumber && (
-                  <p className="text-xs text-gray-500 mb-1">Part #: {option.partNumber}</p>
+                {(option.partNumber || option.price != null) && (
+                  <p className="text-xs text-gray-500 mb-1">
+                    {option.partNumber && <span>Part #: {option.partNumber}</span>}
+                    {option.partNumber && option.price != null && <span className="mx-2">|</span>}
+                    {option.price != null && <span className="text-green-600">${option.price.toFixed(2)}</span>}
+                  </p>
                 )}
                 {option.description && (
                   <p className="text-sm text-gray-600 mb-2">{option.description}</p>
@@ -786,6 +793,22 @@ export default function CategoryDetailView({
                   onChange={(e) => setEditingOption({ ...editingOption, partNumber: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editingOption.price ?? ''}
+                    onChange={(e) => setEditingOption({ ...editingOption, price: e.target.value ? parseFloat(e.target.value) : null })}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Cost price used in quote calculations</p>
               </div>
 
               {/* Show in Product BOM - Only for extrusions */}
