@@ -1905,7 +1905,7 @@ export default function ProductDetailView({
                                 <div className="flex items-center space-x-2">
                                   <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
                                   <span className="text-sm text-gray-900">{productSubOption.standardOption.name}</span>
-                                  <span className="text-xs text-gray-500">(${productSubOption.standardOption.price.toFixed(2)})</span>
+                                  <span className="text-xs text-gray-500">(${(productSubOption.standardOption.price ?? 0).toFixed(2)})</span>
                                 </div>
                               ) : (
                                 <span className="text-sm text-gray-400 italic">None set</span>
