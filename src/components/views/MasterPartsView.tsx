@@ -6,6 +6,7 @@ import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
+import { useAppStore } from '../../stores/appStore'
 import CategoryDetailView from './CategoryDetailView'
 
 interface MasterPart {
@@ -228,6 +229,7 @@ function CategoriesSkeletonRow() {
 
 export default function MasterPartsView() {
   const { toasts, removeToast, showSuccess, showError } = useToast()
+  const { triggerNotificationRefresh } = useAppStore()
   const [activeTab, setActiveTab] = useState<'masterParts' | 'partRules' | 'glass' | 'categories'>('masterParts')
   
   // Current master part for viewing rules
@@ -498,6 +500,7 @@ export default function MasterPartsView() {
         resetPartForm()
         setShowAddPartForm(false)
         fetchMasterParts()
+        triggerNotificationRefresh() // Update sidebar notification badge
         showSuccess('Master part created successfully!')
       } else {
         const errorData = await response.json()
