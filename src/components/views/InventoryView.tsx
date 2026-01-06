@@ -378,7 +378,6 @@ export default function InventoryView() {
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="all">All Types</option>
-              <option value="Extrusion">Extrusion</option>
               <option value="Hardware">Hardware</option>
               <option value="Glass">Glass</option>
               <option value="Packaging">Packaging</option>
