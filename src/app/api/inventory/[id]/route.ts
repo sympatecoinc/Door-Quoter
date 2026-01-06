@@ -53,6 +53,8 @@ export async function GET(
 
     return NextResponse.json({
       ...part,
+      // Map binLocationLegacy to binLocation for UI compatibility
+      binLocation: part.binLocationLegacy,
       stockStatus
     })
   } catch (error) {
@@ -80,10 +82,12 @@ export async function PATCH(
     }
 
     const body = await request.json()
+    // binLocation is sent from the UI, maps to binLocationLegacy in schema
     const { cost, qtyOnHand, binLocation, reorderPoint, reorderQty, vendorId } = body
 
     const updateData: any = {}
 
+    // Optional fields - only update if provided
     if (cost !== undefined) {
       updateData.cost = cost !== null ? parseFloat(cost) : null
     }
@@ -91,7 +95,8 @@ export async function PATCH(
       updateData.qtyOnHand = parseFloat(qtyOnHand) || 0
     }
     if (binLocation !== undefined) {
-      updateData.binLocation = binLocation?.trim() || null
+      // Use binLocationLegacy (schema field mapped to 'binLocation' column)
+      updateData.binLocationLegacy = binLocation?.trim() || null
     }
     if (reorderPoint !== undefined) {
       updateData.reorderPoint = reorderPoint !== null ? parseFloat(reorderPoint) : null
@@ -132,6 +137,8 @@ export async function PATCH(
 
     return NextResponse.json({
       ...part,
+      // Map binLocationLegacy to binLocation for UI compatibility
+      binLocation: part.binLocationLegacy,
       stockStatus
     })
   } catch (error) {

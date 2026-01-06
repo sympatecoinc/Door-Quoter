@@ -119,7 +119,7 @@ export default function InventoryEditModal({ part, vendors, onClose, onSave }: P
           {/* Cost */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Cost (per unit)
+              Cost (per unit) <span className="text-gray-400 font-normal">(optional)</span>
             </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
@@ -151,7 +151,7 @@ export default function InventoryEditModal({ part, vendors, onClose, onSave }: P
           {/* Bin Location */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Bin Location
+              Bin Location <span className="text-gray-400 font-normal">(optional)</span>
             </label>
             <input
               type="text"
@@ -167,7 +167,7 @@ export default function InventoryEditModal({ part, vendors, onClose, onSave }: P
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reorder Point
+                Reorder Point <span className="text-gray-400 font-normal">(optional)</span>
               </label>
               <input
                 type="number"
@@ -181,7 +181,7 @@ export default function InventoryEditModal({ part, vendors, onClose, onSave }: P
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reorder Quantity
+                Reorder Qty <span className="text-gray-400 font-normal">(optional)</span>
               </label>
               <input
                 type="number"
@@ -198,7 +198,7 @@ export default function InventoryEditModal({ part, vendors, onClose, onSave }: P
           {/* Vendor */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Preferred Vendor
+              Preferred Vendor <span className="text-gray-400 font-normal">(optional)</span>
             </label>
             <select
               value={vendorId}

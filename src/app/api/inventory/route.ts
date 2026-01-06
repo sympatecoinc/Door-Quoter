@@ -25,8 +25,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Part type filter
+    // When 'all' or no filter, exclude Extrusions (they have their own tab)
     if (partType && partType !== 'all') {
       where.partType = partType
+    } else {
+      where.partType = { not: 'Extrusion' }
     }
 
     // Vendor filter
@@ -75,6 +78,8 @@ export async function GET(request: NextRequest) {
 
       return {
         ...part,
+        // Map binLocationLegacy to binLocation for UI compatibility
+        binLocation: part.binLocationLegacy,
         stockStatus
       }
     })
@@ -136,7 +141,8 @@ export async function PATCH(request: NextRequest) {
       updateData.qtyOnHand = parseFloat(qtyOnHand) || 0
     }
     if (binLocation !== undefined) {
-      updateData.binLocation = binLocation?.trim() || null
+      // Use binLocationLegacy (schema field mapped to 'binLocation' column)
+      updateData.binLocationLegacy = binLocation?.trim() || null
     }
     if (reorderPoint !== undefined) {
       updateData.reorderPoint = reorderPoint !== null ? parseFloat(reorderPoint) : null
@@ -177,6 +183,8 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({
       ...part,
+      // Map binLocationLegacy to binLocation for UI compatibility
+      binLocation: part.binLocationLegacy,
       stockStatus
     })
   } catch (error) {
