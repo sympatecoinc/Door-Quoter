@@ -270,8 +270,37 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                           if (option.id === optionId) {
                             const isIncluded = includedOptions.includes(Number(optionId))
                             const isStandardOption = pso.standardOptionId === option.id
-                            // Display price for non-standard options
-                            const optionPrice = isIncluded ? 0 : (isStandardOption ? 0 : (option.price || 0))
+
+                            // Calculate upgrade/downgrade price from standard for sale price display
+                            let optionPrice = 0
+                            if (!isIncluded && !isStandardOption) {
+                              // Look up selected option cost from MasterPart
+                              let selectedCost = 0
+                              if (option.partNumber) {
+                                const selectedMasterPart = await prisma.masterPart.findUnique({
+                                  where: { partNumber: option.partNumber },
+                                  select: { cost: true }
+                                })
+                                selectedCost = selectedMasterPart?.cost ?? 0
+                              }
+
+                              // Look up standard option cost from MasterPart
+                              let standardCost = 0
+                              const standardOption = pso.category.individualOptions.find(
+                                (io: any) => io.id === pso.standardOptionId
+                              )
+                              if (standardOption?.partNumber) {
+                                const standardMasterPart = await prisma.masterPart.findUnique({
+                                  where: { partNumber: standardOption.partNumber },
+                                  select: { cost: true }
+                                })
+                                standardCost = standardMasterPart?.cost ?? 0
+                              }
+
+                              // Sale price = difference from standard (upgrade/downgrade)
+                              optionPrice = selectedCost - standardCost
+                            }
+
                             hardwareItems.push({
                               name: `${pso.category.name}: ${option.name}`,
                               price: optionPrice,
@@ -300,16 +329,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         // IMPORTANT: For HYBRID pricing, subtract hybridRemainingCost from extrusion before markup
         // The hybridRemainingCost is part of extrusionCost but should NOT receive markup
         const extrusionCostForMarkup = extrusionCost - hybridRemainingCost
+        // IMPORTANT: Standard hardware costs should NOT be marked up - subtract before markup
+        // standardOptionCost is included in hardwareCost but should be added at cost only
+        const hardwareCostForMarkup = hardwareCost - standardOptionCost
         const markedUpExtrusionCost = calculateMarkupPrice(extrusionCostForMarkup, 'Extrusion', pricingMode, globalPricingMultiplier)
-        const markedUpHardwareCost = calculateMarkupPrice(hardwareCost, 'Hardware', pricingMode, globalPricingMultiplier)
+        const markedUpHardwareCost = calculateMarkupPrice(hardwareCostForMarkup, 'Hardware', pricingMode, globalPricingMultiplier)
         const markedUpGlassCost = calculateMarkupPrice(glassCost, 'Glass', pricingMode, globalPricingMultiplier)
         const markedUpPackagingCost = calculateMarkupPrice(packagingCost, 'Packaging', pricingMode, globalPricingMultiplier)
         const markedUpOtherCost = calculateMarkupPrice(otherCost, 'Other', pricingMode, globalPricingMultiplier)
 
         // Total marked-up price with category-specific markups
-        // Note: standardOptionCost is already included in otherCost (stored that way by calculate-price API)
         // HYBRID remaining costs are added back WITHOUT markup (at cost)
-        const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpPackagingCost + markedUpOtherCost + hybridRemainingCost
+        // Standard hardware costs are added back WITHOUT markup (at cost)
+        const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpPackagingCost + markedUpOtherCost + hybridRemainingCost + standardOptionCost
 
         // Generate description
         const panelTypes = opening.panels
@@ -377,7 +409,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           // Include cost breakdown for debugging/transparency (optional)
           costBreakdown: {
             extrusion: { base: extrusionCostForMarkup, markedUp: markedUpExtrusionCost }, // Base excludes hybrid remaining
-            hardware: { base: hardwareCost, markedUp: markedUpHardwareCost },
+            hardware: { base: hardwareCostForMarkup, markedUp: markedUpHardwareCost }, // Base excludes standard options
             glass: { base: glassCost, markedUp: markedUpGlassCost },
             packaging: { base: packagingCost, markedUp: markedUpPackagingCost },
             other: { base: otherCost, markedUp: markedUpOtherCost },

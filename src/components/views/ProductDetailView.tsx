@@ -1967,9 +1967,6 @@ export default function ProductDetailView({
                                                     </span>
                                                   )}
                                                 </div>
-                                                <div className="text-sm text-gray-600 mt-1">
-                                                  ${(option.price ?? 0).toFixed(2)}
-                                                </div>
                                                 {option.description && (
                                                   <div className="text-xs text-gray-500 mt-1">
                                                     {option.description}

@@ -171,7 +171,6 @@ model IndividualOption {
   name                        String
   description                 String?
   partNumber                  String?
-  price                       Float?             // Cost price for this option (used in quote calculations)
   addToPackingList            Boolean            @default(false)
   addFinishToPartNumber       Boolean            @default(false)
   elevationImagePath          String?            // Path to elevation view image
