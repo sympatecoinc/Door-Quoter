@@ -35,7 +35,6 @@ export async function POST(request: NextRequest) {
       name,
       description,
       partNumber,
-      price,
       addToPackingList = false,
       addFinishToPartNumber = false,
       isCutListItem = false
@@ -71,7 +70,6 @@ export async function POST(request: NextRequest) {
         name,
         description,
         partNumber: partNumber || null,
-        price: price !== undefined && price !== null ? parseFloat(price) : null,
         addToPackingList: Boolean(addToPackingList),
         addFinishToPartNumber: Boolean(addFinishToPartNumber),
         isCutListItem: Boolean(isCutListItem)

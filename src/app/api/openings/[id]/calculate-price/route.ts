@@ -676,15 +676,39 @@ export async function POST(
               ? category.individualOptions.find((io: any) => io.id === standardOptionId)
               : null
 
+            // Check if user explicitly selected "None" (null) - skip adding any option
+            if (optionId === null) {
+              // User explicitly selected "None" - no option price applied
+              componentBreakdown.optionCosts.push({
+                categoryName: category.name,
+                optionName: 'None',
+                price: 0,
+                isStandard: false,
+                isIncluded: false,
+                isNone: true
+              })
+              continue
+            }
+
             if (!optionId) {
-              // No option selected - if there's a standard, include its cost at cost (no markup)
+              // No option selected (undefined/empty) - if there's a standard, include its cost at cost (no markup)
               if (standardOption) {
                 // Look up quantity from ProductBOM if this is a cut-list option
                 const optionBom = standardOption.isCutListItem
                   ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
                   : null
                 const quantity = optionBom?.quantity || 1
-                const totalPrice = (standardOption.price ?? 0) * quantity
+
+                // Get price from MasterPart.cost via partNumber
+                let unitPrice = 0
+                if (standardOption.partNumber) {
+                  const masterPart = await prisma.masterPart.findUnique({
+                    where: { partNumber: standardOption.partNumber },
+                    select: { cost: true }
+                  })
+                  unitPrice = masterPart?.cost ?? 0
+                }
+                const totalPrice = unitPrice * quantity
 
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
@@ -696,7 +720,7 @@ export async function POST(
                 componentBreakdown.totalOptionCost += totalPrice
                 componentCost += totalPrice
                 priceBreakdown.totalStandardOptionCost += totalPrice // Track for no-markup
-                priceBreakdown.totalOtherCost += totalPrice // Standard options tracked as "other" (no markup)
+                priceBreakdown.totalHardwareCost += totalPrice // All hardware options in hardwareCost
               }
               continue
             }
@@ -726,9 +750,19 @@ export async function POST(
                 ? userSelectedQuantity
                 : (optionBom?.quantity || 1)
 
+              // Get price from MasterPart.cost via partNumber
+              let unitPrice = 0
+              if (selectedOption.partNumber) {
+                const masterPart = await prisma.masterPart.findUnique({
+                  where: { partNumber: selectedOption.partNumber },
+                  select: { cost: true }
+                })
+                unitPrice = masterPart?.cost ?? 0
+              }
+
               if (isStandardSelected) {
                 // Standard option selected - cost only, no markup
-                const optionPrice = isIncluded ? 0 : (selectedOption.price ?? 0) * quantity
+                const optionPrice = isIncluded ? 0 : unitPrice * quantity
 
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
@@ -741,23 +775,40 @@ export async function POST(
                 componentBreakdown.totalOptionCost += optionPrice
                 componentCost += optionPrice
                 priceBreakdown.totalStandardOptionCost += optionPrice // Track for no-markup
-                priceBreakdown.totalOtherCost += optionPrice // Standard options tracked as "other" (no markup)
+                priceBreakdown.totalHardwareCost += optionPrice // All hardware options in hardwareCost
               } else {
-                // Non-standard option selected - full price (markup applied at project level)
-                const optionPrice = isIncluded ? 0 : (selectedOption.price ?? 0) * quantity
+                // Non-standard option selected
+                // Standard portion: at cost (no markup) - always include base standard cost
+                // Upgrade portion: full price minus standard (markup applied at project level)
+                const optionPrice = isIncluded ? 0 : unitPrice * quantity
+
+                // Get standard option price from MasterPart
+                let standardUnitPrice = 0
+                if (standardOption?.partNumber) {
+                  const standardMasterPart = await prisma.masterPart.findUnique({
+                    where: { partNumber: standardOption.partNumber },
+                    select: { cost: true }
+                  })
+                  standardUnitPrice = standardMasterPart?.cost ?? 0
+                }
+                const standardPrice = standardUnitPrice * quantity
 
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
                   optionName: selectedOption.name,
                   price: optionPrice,
                   isStandard: false,
-                  standardDeducted: standardOption?.price ?? 0,
+                  standardDeducted: standardUnitPrice,
                   isIncluded: isIncluded
                 })
 
                 componentBreakdown.totalOptionCost += optionPrice
                 componentCost += optionPrice
-                priceBreakdown.totalHardwareCost += optionPrice // Non-standard options tracked as hardware (with markup)
+
+                // Track the standard portion in standardOptionCost (no markup)
+                // Track full option in hardwareCost (quote route will subtract standardOptionCost before markup)
+                priceBreakdown.totalStandardOptionCost += standardPrice
+                priceBreakdown.totalHardwareCost += optionPrice
               }
             }
           }
@@ -779,7 +830,17 @@ export async function POST(
               ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
               : null
             const quantity = optionBom?.quantity || 1
-            const totalPrice = (standardOption.price ?? 0) * quantity
+
+            // Get price from MasterPart.cost via partNumber
+            let unitPrice = 0
+            if (standardOption.partNumber) {
+              const masterPart = await prisma.masterPart.findUnique({
+                where: { partNumber: standardOption.partNumber },
+                select: { cost: true }
+              })
+              unitPrice = masterPart?.cost ?? 0
+            }
+            const totalPrice = unitPrice * quantity
 
             componentBreakdown.optionCosts.push({
               categoryName: productSubOption.category.name,
@@ -791,7 +852,7 @@ export async function POST(
             componentBreakdown.totalOptionCost += totalPrice
             componentCost += totalPrice
             priceBreakdown.totalStandardOptionCost += totalPrice // Track for no-markup
-            priceBreakdown.totalOtherCost += totalPrice // Standard options tracked as "other" (no markup)
+            priceBreakdown.totalHardwareCost += totalPrice // All hardware options in hardwareCost
           }
         }
       }

@@ -2428,9 +2428,9 @@ export default function ProjectDetailView() {
                         </label>
                         <div className="flex gap-2">
                           <select
-                            value={addComponentSelectedOptions[option.category.id] || ''}
+                            value={addComponentSelectedOptions[option.category.id] === null ? 'none' : (addComponentSelectedOptions[option.category.id] || '')}
                             onChange={(e) => {
-                              const newValue = e.target.value ? parseInt(e.target.value) : null
+                              const newValue = e.target.value === 'none' ? null : (e.target.value ? parseInt(e.target.value) : undefined)
                               setAddComponentSelectedOptions({
                                 ...addComponentSelectedOptions,
                                 [option.category.id]: newValue
@@ -2454,6 +2454,7 @@ export default function ProjectDetailView() {
                             className={`${isRangeMode ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900`}
                           >
                             <option value="">Select option...</option>
+                            <option value="none">None (No hardware)</option>
                             {option.category.individualOptions?.map((individualOption: any) => (
                               <option key={individualOption.id} value={individualOption.id}>
                                 {individualOption.name}
@@ -2668,9 +2669,9 @@ export default function ProjectDetailView() {
                       <p className="text-xs text-gray-500 mb-2">{option.category.description}</p>
                     )}
                     <select
-                      value={selectedOptions[option.category.id] || ''}
+                      value={selectedOptions[option.category.id] === null ? 'none' : (selectedOptions[option.category.id] || '')}
                       onChange={(e) => {
-                        const newValue = e.target.value ? parseInt(e.target.value) : null
+                        const newValue = e.target.value === 'none' ? null : (e.target.value ? parseInt(e.target.value) : undefined)
                         setSelectedOptions({
                           ...selectedOptions,
                           [option.category.id]: newValue
@@ -2683,6 +2684,7 @@ export default function ProjectDetailView() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                     >
                       <option value="">Select option...</option>
+                      <option value="none">None (No hardware)</option>
                       {option.category.individualOptions?.map((individualOption: any) => (
                         <option key={individualOption.id} value={individualOption.id}>
                           {individualOption.name}
