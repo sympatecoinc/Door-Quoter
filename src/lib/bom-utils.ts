@@ -540,10 +540,10 @@ export function cutlistToCSV(
 
 // Helper function to convert summary to CSV
 export function summaryToCSV(projectName: string, summaryItems: AggregatedBomItem[]): string {
-  const headers = ['Part Number', 'Part Name', 'Type', 'Size (WxH)', 'Pieces', 'Unit', 'Stock Length', 'Stock Pieces to Order', 'Waste %', 'Area (SQ FT)']
+  const headers = ['Part Number', 'Part Name', 'Type', 'Size (WxH)', 'Pieces', 'Unit', 'Stock Length']
 
   const rows = summaryItems.map(item => {
-    // For glass, show the specific size; for extrusions, show cut lengths; for hardware with LF/IN, show calculated lengths
+    // For glass, show the specific size; for extrusions, show cut lengths
     let sizeStr = ''
     if (item.partType === 'Glass' && item.glassWidth && item.glassHeight) {
       sizeStr = `${item.glassWidth.toFixed(3)}" x ${item.glassHeight.toFixed(3)}"`
@@ -551,17 +551,24 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
       // For extrusions, show unique cut lengths
       const uniqueCuts = [...new Set(item.cutLengths.map((l: number) => l.toFixed(3)))]
       sizeStr = uniqueCuts.join('; ')
+    }
+    // Note: LF/IN hardware items no longer show length in Size column - it goes to Pieces
+
+    // Determine pieces value
+    let piecesValue: string | number = item.totalQuantity
+    if (item.partType === 'Extrusion' && item.stockPiecesNeeded !== null) {
+      piecesValue = item.stockPiecesNeeded
     } else if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
                (item.unit === 'LF' || item.unit === 'IN') &&
                item.totalCalculatedLength) {
-      // For hardware/fastener with LF/IN units, show total calculated length
-      sizeStr = `${item.totalCalculatedLength.toFixed(3)} ${item.unit}`
+      // For LF/IN items, show the calculated length as the pieces value (without unit suffix)
+      piecesValue = item.totalCalculatedLength.toFixed(3)
     }
 
-    // Calculate area for glass
-    let areaStr = ''
-    if (item.partType === 'Glass' && item.totalArea) {
-      areaStr = item.totalArea.toFixed(2)
+    // Determine unit - extrusions and glass use EA
+    let unitStr = item.unit
+    if (item.partType === 'Extrusion' || item.partType === 'Glass') {
+      unitStr = 'EA'
     }
 
     return [
@@ -569,12 +576,9 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
       item.partName,
       item.partType,
       sizeStr,
-      item.totalQuantity,
-      item.unit,
-      item.stockLength || '',
-      item.stockPiecesNeeded !== null ? item.stockPiecesNeeded : '',
-      item.wastePercent !== null ? `${item.wastePercent}%` : '',
-      areaStr
+      piecesValue,
+      unitStr,
+      item.stockLength || ''
     ].map(field => `"${String(field).replace(/"/g, '""')}"`)
   })
 
