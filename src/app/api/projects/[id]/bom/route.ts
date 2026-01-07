@@ -28,14 +28,17 @@ async function getFinishCode(finishType: string): Promise<string> {
 }
 
 // Helper function to find stock length for extrusions using the new formula-based approach
-async function findStockLength(partNumber: string, bom: any, variables: Record<string, number>): Promise<{ stockLength: number | null, isMillFinish: boolean }> {
+async function findStockLength(partNumber: string, bom: any, variables: Record<string, number>): Promise<{ stockLength: number | null, isMillFinish: boolean, binLocation: string | null }> {
   try {
     const masterPart = await prisma.masterPart.findUnique({
       where: { partNumber },
       include: {
-        stockLengthRules: { where: { isActive: true } }
+        stockLengthRules: { where: { isActive: true } },
+        binLocationRef: true
       }
     })
+
+    const binLocation = masterPart?.binLocationRef?.code || null
 
     if (masterPart && masterPart.partType === 'Extrusion' && masterPart.stockLengthRules.length > 0) {
       // Calculate the required part length from the ProductBOM formula
@@ -45,15 +48,16 @@ async function findStockLength(partNumber: string, bom: any, variables: Record<s
       if (bestRule) {
         return {
           stockLength: bestRule.stockLength || null,
-          isMillFinish: masterPart.isMillFinish || false
+          isMillFinish: masterPart.isMillFinish || false,
+          binLocation
         }
       }
     }
 
-    return { stockLength: null, isMillFinish: masterPart?.isMillFinish || false }
+    return { stockLength: null, isMillFinish: masterPart?.isMillFinish || false, binLocation }
   } catch (error) {
     console.error(`Error finding stock length for ${partNumber}:`, error)
-    return { stockLength: null, isMillFinish: false }
+    return { stockLength: null, isMillFinish: false, binLocation: null }
   }
 }
 
@@ -190,6 +194,7 @@ export async function GET(
           let fullPartNumber = bom.partNumber || ''
           let stockLength: number | null = null
           let isMillFinish = false
+          let binLocation: string | null = null
 
           if (bom.partType === 'Extrusion' && fullPartNumber) {
             // Find stock length and isMillFinish flag for extrusions from MasterPart
@@ -197,6 +202,7 @@ export async function GET(
               const stockInfo = await findStockLength(bom.partNumber, bom, variables)
               stockLength = stockInfo.stockLength
               isMillFinish = stockInfo.isMillFinish
+              binLocation = stockInfo.binLocation
             }
 
             // Only append finish color code if NOT mill finish (using masterPart.isMillFinish)
@@ -259,7 +265,9 @@ export async function GET(
             description: bom.description || '',
             color: opening.finishColor || 'N/A',
             includeOnPickList: includeOnPickList,
-            includeInJambKit: includeInJambKit
+            includeInJambKit: includeInJambKit,
+            isMilled: bom.isMilled !== false, // Default to true if not set
+            binLocation: binLocation
           })
         }
 
@@ -415,6 +423,7 @@ export async function GET(
                   let stockLength: number | null = null
                   let isMillFinish = false
                   let percentOfStock: number | null = null
+                  let optionBinLocation: string | null = null
 
                   if (optionBom && optionBom.formula) {
                     // Calculate cut length using the formula from ProductBOM
@@ -434,6 +443,7 @@ export async function GET(
                       )
                       stockLength = stockInfo.stockLength
                       isMillFinish = stockInfo.isMillFinish
+                      optionBinLocation = stockInfo.binLocation
 
                       // Build full part number with finish code and stock length
                       // For extrusions (cut list items), apply finish code based on isMillFinish only
@@ -489,7 +499,9 @@ export async function GET(
                     color: opening.finishColor || 'N/A',
                     isIncluded: false,
                     isStandard: true,
-                    optionPrice: standardOption.price
+                    optionPrice: standardOption.price,
+                    isMilled: optionBom?.isMilled !== false,
+                    binLocation: optionBinLocation
                   })
                 }
                 continue
@@ -522,6 +534,7 @@ export async function GET(
                 let stockLength: number | null = null
                 let isMillFinish = false
                 let percentOfStock: number | null = null
+                let optionBinLocation: string | null = null
 
                 if (optionBom && optionBom.formula) {
                   // Calculate cut length using the formula from ProductBOM
@@ -541,6 +554,7 @@ export async function GET(
                     )
                     stockLength = stockInfo.stockLength
                     isMillFinish = stockInfo.isMillFinish
+                    optionBinLocation = stockInfo.binLocation
 
                     // Build full part number with finish code and stock length
                     // For extrusions (cut list items), apply finish code based on isMillFinish only
@@ -611,7 +625,9 @@ export async function GET(
                   color: opening.finishColor || 'N/A',
                   isIncluded: isIncluded,
                   isStandard: isStandardOption,
-                  optionPrice: individualOption.price
+                  optionPrice: individualOption.price,
+                  isMilled: optionBom?.isMilled !== false,
+                  binLocation: optionBinLocation
                 })
               }
             }
@@ -645,6 +661,7 @@ export async function GET(
               let stockLength: number | null = null
               let isMillFinish = false
               let percentOfStock: number | null = null
+              let optionBinLocation: string | null = null
 
               if (optionBom && optionBom.formula) {
                 // Calculate cut length using the formula from ProductBOM
@@ -664,6 +681,7 @@ export async function GET(
                   )
                   stockLength = stockInfo.stockLength
                   isMillFinish = stockInfo.isMillFinish
+                  optionBinLocation = stockInfo.binLocation
 
                   // Build full part number with finish code and stock length
                   // For extrusions (cut list items), apply finish code based on isMillFinish only
@@ -719,7 +737,9 @@ export async function GET(
                 color: opening.finishColor || 'N/A',
                 isIncluded: false,
                 isStandard: true,
-                optionPrice: standardOption.price
+                optionPrice: standardOption.price,
+                isMilled: optionBom?.isMilled !== false,
+                binLocation: optionBinLocation
               })
             }
           }
