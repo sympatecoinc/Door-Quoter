@@ -311,6 +311,8 @@ export interface BOMItemForCutList {
   panelWidth?: number
   panelHeight?: number
   color?: string
+  isMilled?: boolean
+  binLocation?: string
 }
 
 // Aggregated cut list item result
@@ -327,6 +329,8 @@ export interface AggregatedCutListItem {
   unitCount: number
   totalQty: number
   color?: string
+  isMilled?: boolean
+  binLocation?: string
 }
 
 // Aggregate BOM items for cut list (extrusions only, grouped by product + size + cut length).
@@ -393,7 +397,9 @@ export function aggregateCutListItems(bomItems: BOMItemForCutList[]): Aggregated
         qtyPerUnit: qtyPerUnit,
         unitCount: unitCount,
         totalQty: qtyPerUnit * unitCount,
-        color: item.color
+        color: item.color,
+        isMilled: item.isMilled,
+        binLocation: item.binLocation
       }
     }
   }
@@ -482,20 +488,21 @@ export function cutlistToCSV(
   cutListItems: AggregatedCutListItem[],
   batchInfo?: BatchInfo
 ): string {
-  const headers = ['Product', 'Size (WxH)', 'Part Number', 'Part Name', 'Stock Length', 'Cut Length', 'Qty Per Unit', 'Unit Count', 'Total Qty', 'Color']
+  const headers = ['Product', 'Check Off', 'Part Number', 'Part Name', 'Cut Length', 'Qty Per Unit', 'Unit Count', 'Total Qty', 'Machined or Cut', 'Bin Location', 'Production Time']
 
   const rows = cutListItems.map(item => {
     return [
       item.productName || '',
-      `${item.panelWidth}"x${item.panelHeight}"`,
+      '', // Check Off - empty column for manual checking
       item.partNumber,
       item.partName || '',
-      item.stockLength || '',
       item.cutLength ? item.cutLength.toFixed(3) : '',
       item.qtyPerUnit,
       item.unitCount,
       item.totalQty,
-      item.color || ''
+      item.isMilled ? 'Machined' : 'Cut',
+      item.binLocation || '',
+      '' // Production Time - placeholder
     ].map(field => `"${String(field).replace(/"/g, '""')}"`)
   })
 
@@ -517,15 +524,16 @@ export function cutlistToCSV(
         for (const item of batchInfo.remainderItems) {
           const remainderRow = [
             item.productName || '',
-            `${item.panelWidth}"x${item.panelHeight}"`,
+            '', // Check Off - empty column for manual checking
             item.partNumber,
             item.partName || '',
-            item.stockLength || '',
             item.cutLength ? item.cutLength.toFixed(3) : '',
             item.qtyPerUnit,
             item.unitCount,
             item.totalQty,
-            item.color || ''
+            item.isMilled ? 'Machined' : 'Cut',
+            item.binLocation || '',
+            '' // Production Time - placeholder
           ].map(field => `"${String(field).replace(/"/g, '""')}"`)
           csv += remainderRow.join(',') + '\n'
         }

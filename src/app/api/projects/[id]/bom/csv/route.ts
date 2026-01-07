@@ -374,7 +374,7 @@ export async function GET(
             partName: `${panel.glassType} Glass`,
             partType: 'Glass',
             quantity: 1,
-            cutLength: `${glassWidth.toFixed(3)}" x ${glassHeight.toFixed(3)}" (${glassArea} SQ FT)`,
+            cutLength: `${glassWidth.toFixed(3)} x ${glassHeight.toFixed(3)}`,
             percentOfStock: '',
             isMilled: true, // Glass is not milled, but default to true for consistency
             unit: 'SQ FT',
@@ -628,7 +628,6 @@ export async function GET(
 
           const headers = [
             'Product Name',
-            'Component Size',
             'Qty in Project',
             'Part Number',
             'Part Name',
@@ -638,26 +637,23 @@ export async function GET(
             '% of Stock',
             'Milled',
             'Unit',
-            'Color',
-            'Description'
+            'Color'
           ]
 
           const csvRows = [
             headers.join(','),
             ...uniqueBomItems.map(item => [
-              `"${item.productName}"`,
-              `"${item.panelWidth || 0}" × ${item.panelHeight || 0}""`,
+              `"${(item.productName || '').replace(/"/g, '""')}"`,
               quantity,
-              `"${item.partNumber}"`,
-              `"${item.partName}"`,
-              `"${item.partType}"`,
+              `"${(item.partNumber || '').replace(/"/g, '""')}"`,
+              `"${(item.partName || '').replace(/"/g, '""')}"`,
+              `"${(item.partType || '').replace(/"/g, '""')}"`,
               item.quantity,
-              `"${item.cutLength}"`,
+              `"${(item.cutLength || '').replace(/"/g, '""')}"`,
               `"${item.percentOfStock}"`,
               `"${item.isMilled ? 'Yes' : 'No'}"`,
               `"${item.unit}"`,
-              `"${item.color}"`,
-              `"${item.description}"`
+              `"${(item.color || '').replace(/"/g, '""')}"`
             ].join(','))
           ]
 
@@ -717,7 +713,6 @@ export async function GET(
           const headers = [
             'Opening',
             'Product Name',
-            'Component Size',
             'Part Number',
             'Part Name',
             'Part Type',
@@ -726,26 +721,23 @@ export async function GET(
             '% of Stock',
             'Milled',
             'Unit',
-            'Color',
-            'Description'
+            'Color'
           ]
 
           const csvRows = [
             headers.join(','),
             ...uniquePanelBomItems.map(item => [
-              `"${item.openingName}"`,
-              `"${item.productName}"`,
-              `"${item.panelWidth || 0}" × ${item.panelHeight || 0}""`,
-              `"${item.partNumber}"`,
-              `"${item.partName}"`,
-              `"${item.partType}"`,
+              `"${(item.openingName || '').replace(/"/g, '""')}"`,
+              `"${(item.productName || '').replace(/"/g, '""')}"`,
+              `"${(item.partNumber || '').replace(/"/g, '""')}"`,
+              `"${(item.partName || '').replace(/"/g, '""')}"`,
+              `"${(item.partType || '').replace(/"/g, '""')}"`,
               item.quantity,
-              `"${item.cutLength}"`,
+              `"${(item.cutLength || '').replace(/"/g, '""')}"`,
               `"${item.percentOfStock}"`,
               `"${item.isMilled ? 'Yes' : 'No'}"`,
               `"${item.unit}"`,
-              `"${item.color}"`,
-              `"${item.description}"`
+              `"${(item.color || '').replace(/"/g, '""')}"`
             ].join(','))
           ]
 
@@ -785,7 +777,6 @@ export async function GET(
     const headers = [
       'Opening',
       'Product Name',
-      'Component Size',
       'Part Number',
       'Part Name',
       'Part Type',
@@ -794,26 +785,23 @@ export async function GET(
       '% of Stock',
       'Milled',
       'Unit',
-      'Color',
-      'Description'
+      'Color'
     ]
 
     const csvRows = [
       headers.join(','),
       ...sortedBomItems.map(item => [
-        `"${item.openingName}"`,
-        `"${item.productName}"`,
-`"${item.panelWidth || 0}" × ${item.panelHeight || 0}""`,
-        `"${item.partNumber}"`,
-        `"${item.partName}"`,
-        `"${item.partType}"`,
+        `"${(item.openingName || '').replace(/"/g, '""')}"`,
+        `"${(item.productName || '').replace(/"/g, '""')}"`,
+        `"${(item.partNumber || '').replace(/"/g, '""')}"`,
+        `"${(item.partName || '').replace(/"/g, '""')}"`,
+        `"${(item.partType || '').replace(/"/g, '""')}"`,
         item.quantity,
-        `"${item.cutLength}"`,
+        `"${(item.cutLength || '').replace(/"/g, '""')}"`,
         `"${item.percentOfStock}"`,
         `"${item.isMilled ? 'Yes' : 'No'}"`,
         `"${item.unit}"`,
-        `"${item.color}"`,
-        `"${item.description}"`
+        `"${(item.color || '').replace(/"/g, '""')}"`
       ].join(','))
     ]
 
