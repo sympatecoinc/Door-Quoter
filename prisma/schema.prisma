@@ -78,6 +78,11 @@ model Opening {
   priceCalculatedAt     DateTime? // Track when price was last calculated
   finishColor           String?   // Finish type for extrusions (e.g., "Mill Finish", "Powder Coated", "Anodized")
   includeStarterChannels Boolean  @default(false) // Whether to include starter channels (E-12306) in BOM
+  // Finished Opening Tolerance Fields
+  isFinishedOpening     Boolean   @default(false) // Whether this is a finished opening (applies tolerances)
+  openingType           String?   // "THINWALL" or "FRAMED" - determines which default tolerances to use
+  widthToleranceTotal   Float?    // Override: total inches to deduct from width (null = use defaults)
+  heightToleranceTotal  Float?    // Override: total inches to deduct from height (null = use defaults)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   project               Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -141,6 +146,10 @@ model Product {
   elevationImageData   String?                // Base64 encoded elevation image
   elevationFileName    String?                // Original elevation filename
   installationPrice    Float                  @default(0) // Installation cost for this product type (optional)
+  minWidth             Float?                 // Minimum allowed width (inches)
+  maxWidth             Float?                 // Maximum allowed width (inches)
+  minHeight            Float?                 // Minimum allowed height (inches)
+  maxHeight            Float?                 // Maximum allowed height (inches)
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
   componentInstances   ComponentInstance[]
@@ -841,6 +850,26 @@ model GlobalSetting {
   updatedAt   DateTime @updatedAt
 
   @@map("GlobalSettings")
+}
+
+// Tolerance Settings - Default tolerances for finished openings by opening type
+model ToleranceSettings {
+  id                          Int      @id @default(autoincrement())
+  name                        String   @default("default")
+
+  // ThinWall Tolerances (total inches to deduct)
+  thinwallWidthTolerance      Float    @default(1.0)   // Total inches to deduct from width
+  thinwallHeightTolerance     Float    @default(1.5)   // Total inches to deduct from height
+
+  // Framed Tolerances (total inches to deduct)
+  framedWidthTolerance        Float    @default(0.5)   // Total inches to deduct from width
+  framedHeightTolerance       Float    @default(0.75)  // Total inches to deduct from height
+
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  @@unique([name])
+  @@map("ToleranceSettings")
 }
 
 // Bin Location - Physical storage locations for inventory

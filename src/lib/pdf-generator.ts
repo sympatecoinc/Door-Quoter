@@ -29,6 +29,11 @@ export interface OpeningDrawingData {
   totalHeight: number // inches
   elevationImages: DrawingImageData[]
   planViews?: DrawingImageData[]
+  // Framed opening fields
+  roughWidth?: number
+  roughHeight?: number
+  openingType?: string // "THINWALL" or "FRAMED"
+  isFinishedOpening?: boolean
 }
 
 export interface ProjectDrawingData {
@@ -318,10 +323,22 @@ async function addCombinedViewPage(
     align: 'center'
   })
 
+  // Framed Opening Size (if applicable)
+  let dividerY = 32
+  if (openingData.isFinishedOpening && openingData.roughWidth && openingData.roughHeight) {
+    const sizeLabel = openingData.openingType === 'THINWALL' ? 'Finished' : 'Rough'
+    const framedSizeText = `Framed Opening Size: ${openingData.roughWidth}" W × ${openingData.roughHeight}" H (${sizeLabel})`
+    pdf.setFontSize(10)
+    pdf.setTextColor(100, 100, 100)
+    pdf.text(framedSizeText, pageWidth / 2, 26, { align: 'center' })
+    pdf.setTextColor(0, 0, 0)
+    dividerY = 34
+  }
+
   // Divider line
   pdf.setLineWidth(0.5)
   pdf.setDrawColor(150, 150, 150)
-  pdf.line(15, 32, pageWidth - 15, 32)
+  pdf.line(15, dividerY, pageWidth - 15, dividerY)
 
   // Door Schedule Table (top left, below header) - matching modal design
   const scheduleX = 15
@@ -1111,12 +1128,24 @@ function addElevationPage(
     align: 'center'
   })
 
+  // Framed Opening Size (if applicable)
+  let dimensionsY = 30
+  if (openingData.isFinishedOpening && openingData.roughWidth && openingData.roughHeight) {
+    const sizeLabel = openingData.openingType === 'THINWALL' ? 'Finished' : 'Rough'
+    const framedSizeText = `Framed Opening Size: ${openingData.roughWidth}" W × ${openingData.roughHeight}" H (${sizeLabel})`
+    pdf.setFontSize(9)
+    pdf.setTextColor(100, 100, 100)
+    pdf.text(framedSizeText, pageWidth / 2, 29, { align: 'center' })
+    pdf.setTextColor(0, 0, 0)
+    dimensionsY = 35
+  }
+
   // Dimensions
   pdf.setFontSize(10)
   pdf.text(
     `Overall: ${openingData.totalWidth}" W × ${openingData.totalHeight}" H`,
     pageWidth / 2,
-    30,
+    dimensionsY,
     { align: 'center' }
   )
 
@@ -1216,12 +1245,24 @@ function addPlanViewPage(
     align: 'center'
   })
 
+  // Framed Opening Size (if applicable)
+  let dimensionsY = 30
+  if (openingData.isFinishedOpening && openingData.roughWidth && openingData.roughHeight) {
+    const sizeLabel = openingData.openingType === 'THINWALL' ? 'Finished' : 'Rough'
+    const framedSizeText = `Framed Opening Size: ${openingData.roughWidth}" W × ${openingData.roughHeight}" H (${sizeLabel})`
+    pdf.setFontSize(9)
+    pdf.setTextColor(100, 100, 100)
+    pdf.text(framedSizeText, pageWidth / 2, 29, { align: 'center' })
+    pdf.setTextColor(0, 0, 0)
+    dimensionsY = 35
+  }
+
   // Dimensions (plan view only shows width)
   pdf.setFontSize(10)
   pdf.text(
     `Overall: ${openingData.totalWidth}" W`,
     pageWidth / 2,
-    30,
+    dimensionsY,
     { align: 'center' }
   )
 

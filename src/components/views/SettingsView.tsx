@@ -28,6 +28,17 @@ export default function SettingsView() {
   const [syncingPurchaseOrders, setSyncingPurchaseOrders] = useState(false)
   const [syncingSalesOrders, setSyncingSalesOrders] = useState(false)
 
+  // Tolerance Settings state
+  const [toleranceSettings, setToleranceSettings] = useState({
+    thinwallWidthTolerance: 1.0,
+    thinwallHeightTolerance: 1.5,
+    framedWidthTolerance: 0.5,
+    framedHeightTolerance: 0.75
+  })
+  const [loadingTolerances, setLoadingTolerances] = useState(true)
+  const [savingTolerances, setSavingTolerances] = useState(false)
+  const [toleranceNotification, setToleranceNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+
   // Load saved settings and current user on component mount
   useEffect(() => {
     try {
@@ -49,7 +60,54 @@ export default function SettingsView() {
 
     // Check QuickBooks status
     checkQBStatus()
+
+    // Fetch tolerance settings
+    fetchToleranceSettings()
   }, [])
+
+  const fetchToleranceSettings = async () => {
+    try {
+      setLoadingTolerances(true)
+      const response = await fetch('/api/tolerance-settings')
+      if (response.ok) {
+        const data = await response.json()
+        setToleranceSettings({
+          thinwallWidthTolerance: data.thinwallWidthTolerance ?? 1.0,
+          thinwallHeightTolerance: data.thinwallHeightTolerance ?? 1.5,
+          framedWidthTolerance: data.framedWidthTolerance ?? 0.5,
+          framedHeightTolerance: data.framedHeightTolerance ?? 0.75
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching tolerance settings:', error)
+    } finally {
+      setLoadingTolerances(false)
+    }
+  }
+
+  const handleSaveToleranceSettings = async () => {
+    setSavingTolerances(true)
+    setToleranceNotification(null)
+    try {
+      const response = await fetch('/api/tolerance-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toleranceSettings)
+      })
+
+      if (response.ok) {
+        setToleranceNotification({ type: 'success', message: 'Tolerance settings saved successfully!' })
+      } else {
+        const error = await response.json()
+        setToleranceNotification({ type: 'error', message: error.error || 'Failed to save tolerance settings' })
+      }
+    } catch (error) {
+      console.error('Error saving tolerance settings:', error)
+      setToleranceNotification({ type: 'error', message: 'Failed to save tolerance settings' })
+    } finally {
+      setSavingTolerances(false)
+    }
+  }
 
   const fetchCurrentUser = async () => {
     try {
@@ -443,6 +501,159 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,,3.2,TRUE,
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Opening Tolerance Defaults */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Opening Tolerance Defaults</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Configure default tolerances for finished openings. These values are deducted from rough opening dimensions to calculate finished sizes.
+          </p>
+
+          {/* Tolerance Notification */}
+          {toleranceNotification && (
+            <div className={`mb-4 p-3 rounded-lg flex items-center justify-between ${
+              toleranceNotification.type === 'success'
+                ? 'bg-green-50 text-green-800 border border-green-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                {toleranceNotification.type === 'success'
+                  ? <CheckCircle className="w-4 h-4" />
+                  : <AlertCircle className="w-4 h-4" />
+                }
+                <span className="text-sm">{toleranceNotification.message}</span>
+              </div>
+              <button
+                onClick={() => setToleranceNotification(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {loadingTolerances ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <span className="ml-2 text-gray-600">Loading tolerance settings...</span>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* ThinWall Tolerances */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">ThinWall Openings</h3>
+                <p className="text-xs text-gray-500 mb-3">Default gap tolerances for ThinWall product installations</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Width Tolerance (total)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.125"
+                      min="0"
+                      value={toleranceSettings.thinwallWidthTolerance}
+                      onChange={(e) => setToleranceSettings(prev => ({
+                        ...prev,
+                        thinwallWidthTolerance: parseFloat(e.target.value) || 0
+                      }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      {(toleranceSettings.thinwallWidthTolerance / 2).toFixed(3)}" per side
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Height Tolerance (total)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.125"
+                      min="0"
+                      value={toleranceSettings.thinwallHeightTolerance}
+                      onChange={(e) => setToleranceSettings(prev => ({
+                        ...prev,
+                        thinwallHeightTolerance: parseFloat(e.target.value) || 0
+                      }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      {(toleranceSettings.thinwallHeightTolerance / 2).toFixed(3)}" top & bottom
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Framed Tolerances */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Framed Openings</h3>
+                <p className="text-xs text-gray-500 mb-3">Default gap tolerances for Framed product installations</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Width Tolerance (total)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.125"
+                      min="0"
+                      value={toleranceSettings.framedWidthTolerance}
+                      onChange={(e) => setToleranceSettings(prev => ({
+                        ...prev,
+                        framedWidthTolerance: parseFloat(e.target.value) || 0
+                      }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      {(toleranceSettings.framedWidthTolerance / 2).toFixed(3)}" per side
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Height Tolerance (total)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.125"
+                      min="0"
+                      value={toleranceSettings.framedHeightTolerance}
+                      onChange={(e) => setToleranceSettings(prev => ({
+                        ...prev,
+                        framedHeightTolerance: parseFloat(e.target.value) || 0
+                      }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      {(toleranceSettings.framedHeightTolerance / 2).toFixed(3)}" top & bottom
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex justify-end">
+                <button
+                  onClick={handleSaveToleranceSettings}
+                  disabled={savingTolerances}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {savingTolerances ? (
+                    <>
+                      <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Tolerance Settings
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Calculation Equations Reference */}

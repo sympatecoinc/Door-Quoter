@@ -404,6 +404,10 @@ interface Product {
   glassHeightFormula?: string
   glassQuantityFormula?: string
   installationPrice?: number
+  minWidth?: number | null
+  maxWidth?: number | null
+  minHeight?: number | null
+  maxHeight?: number | null
   _count: {
     productBOMs: number
     productSubOptions: number
@@ -532,6 +536,12 @@ export default function ProductDetailView({
   const [editingInstallationPrice, setEditingInstallationPrice] = useState(false)
   const [installationPriceValue, setInstallationPriceValue] = useState('')
   const [savingInstallationPrice, setSavingInstallationPrice] = useState(false)
+  const [editingSizeConstraints, setEditingSizeConstraints] = useState(false)
+  const [minWidthValue, setMinWidthValue] = useState('')
+  const [maxWidthValue, setMaxWidthValue] = useState('')
+  const [minHeightValue, setMinHeightValue] = useState('')
+  const [maxHeightValue, setMaxHeightValue] = useState('')
+  const [savingSizeConstraints, setSavingSizeConstraints] = useState(false)
   const [expandedCategory, setExpandedCategory] = useState<number | null>(null)
   const [settingStandard, setSettingStandard] = useState(false)
   const [optionBomModalOpen, setOptionBomModalOpen] = useState(false)
@@ -935,6 +945,57 @@ export default function ProductDetailView({
       showError('Error updating installation price')
     } finally {
       setSavingInstallationPrice(false)
+    }
+  }
+
+  function startEditSizeConstraints() {
+    setMinWidthValue(productDetails?.minWidth?.toString() || '')
+    setMaxWidthValue(productDetails?.maxWidth?.toString() || '')
+    setMinHeightValue(productDetails?.minHeight?.toString() || '')
+    setMaxHeightValue(productDetails?.maxHeight?.toString() || '')
+    setEditingSizeConstraints(true)
+  }
+
+  function cancelEditSizeConstraints() {
+    setMinWidthValue('')
+    setMaxWidthValue('')
+    setMinHeightValue('')
+    setMaxHeightValue('')
+    setEditingSizeConstraints(false)
+  }
+
+  async function handleSaveSizeConstraints() {
+    setSavingSizeConstraints(true)
+    try {
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          minWidth: minWidthValue || null,
+          maxWidth: maxWidthValue || null,
+          minHeight: minHeightValue || null,
+          maxHeight: maxHeightValue || null
+        })
+      })
+
+      if (response.ok) {
+        // Refresh product details
+        const detailsResponse = await fetch(`/api/products/${product.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setProductDetails(data)
+        }
+        setEditingSizeConstraints(false)
+        onRefresh()
+        showSuccess('Size constraints updated successfully!')
+      } else {
+        showError('Failed to update size constraints')
+      }
+    } catch (error) {
+      console.error('Error updating size constraints:', error)
+      showError('Error updating size constraints')
+    } finally {
+      setSavingSizeConstraints(false)
     }
   }
 
@@ -2130,6 +2191,160 @@ export default function ProductDetailView({
                 <p className="text-sm text-gray-600 mt-2">
                   This price will be used for automatic installation cost calculations in quotes when "Per Product Total" method is selected.
                 </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Size Constraints Section */}
+        <div className="col-span-full mt-6">
+          <div className="bg-gray-50 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Size Constraints</h3>
+                <p className="text-sm text-gray-500">
+                  Optional minimum and maximum dimensions for this product type
+                </p>
+              </div>
+              {!editingSizeConstraints && (
+                <button
+                  onClick={startEditSizeConstraints}
+                  className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                >
+                  <Edit2 className="w-4 h-4 mr-1" />
+                  Edit Constraints
+                </button>
+              )}
+            </div>
+
+            {editingSizeConstraints ? (
+              <div className="bg-white rounded-lg p-4 border border-gray-200">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-3">Width (inches)</h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Minimum</label>
+                          <input
+                            type="number"
+                            step="0.125"
+                            min="0"
+                            value={minWidthValue}
+                            onChange={(e) => setMinWidthValue(e.target.value)}
+                            placeholder="No min"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Maximum</label>
+                          <input
+                            type="number"
+                            step="0.125"
+                            min="0"
+                            value={maxWidthValue}
+                            onChange={(e) => setMaxWidthValue(e.target.value)}
+                            placeholder="No max"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-3">Height (inches)</h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Minimum</label>
+                          <input
+                            type="number"
+                            step="0.125"
+                            min="0"
+                            value={minHeightValue}
+                            onChange={(e) => setMinHeightValue(e.target.value)}
+                            placeholder="No min"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Maximum</label>
+                          <input
+                            type="number"
+                            step="0.125"
+                            min="0"
+                            value={maxHeightValue}
+                            onChange={(e) => setMaxHeightValue(e.target.value)}
+                            placeholder="No max"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-3 pt-2">
+                    <button
+                      onClick={cancelEditSizeConstraints}
+                      disabled={savingSizeConstraints}
+                      className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveSizeConstraints}
+                      disabled={savingSizeConstraints}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                    >
+                      {savingSizeConstraints ? (
+                        <>
+                          <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4 mr-2" />
+                          Save
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Width</h4>
+                  <div className="flex items-center space-x-4">
+                    <div>
+                      <span className="text-xs text-gray-500">Min:</span>
+                      <span className="ml-1 text-gray-900">
+                        {productDetails?.minWidth ? `${productDetails.minWidth}"` : 'None'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500">Max:</span>
+                      <span className="ml-1 text-gray-900">
+                        {productDetails?.maxWidth ? `${productDetails.maxWidth}"` : 'None'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Height</h4>
+                  <div className="flex items-center space-x-4">
+                    <div>
+                      <span className="text-xs text-gray-500">Min:</span>
+                      <span className="ml-1 text-gray-900">
+                        {productDetails?.minHeight ? `${productDetails.minHeight}"` : 'None'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500">Max:</span>
+                      <span className="ml-1 text-gray-900">
+                        {productDetails?.maxHeight ? `${productDetails.maxHeight}"` : 'None'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

@@ -50,7 +50,12 @@ export async function POST(request: NextRequest) {
       height, // Support the form field name
       price = 0,
       multiplier,
-      finishColor
+      finishColor,
+      // Finished Opening Tolerance Fields
+      isFinishedOpening = false,
+      openingType,
+      widthToleranceTotal,
+      heightToleranceTotal
       // Note: includeStarterChannels removed - now handled via category options
     } = await request.json()
 
@@ -83,7 +88,8 @@ export async function POST(request: NextRequest) {
     const openingData: any = {
       projectId: parseInt(projectId),
       name: openingName,
-      price: parseFloat(price) || 0
+      price: parseFloat(price) || 0,
+      isFinishedOpening: Boolean(isFinishedOpening)
     }
 
     if (multiplier !== undefined) {
@@ -94,30 +100,94 @@ export async function POST(request: NextRequest) {
       openingData.finishColor = finishColor
     }
 
+    // Add opening type if provided
+    if (openingType && ['THINWALL', 'FRAMED'].includes(openingType)) {
+      openingData.openingType = openingType
+    }
+
+    // Add tolerance overrides if provided
+    if (widthToleranceTotal !== undefined && widthToleranceTotal !== null) {
+      openingData.widthToleranceTotal = parseFloat(widthToleranceTotal)
+    }
+    if (heightToleranceTotal !== undefined && heightToleranceTotal !== null) {
+      openingData.heightToleranceTotal = parseFloat(heightToleranceTotal)
+    }
+
     // Note: includeStarterChannels removed - now handled via category options
 
     // Add size fields only if they have values
+    let finalRoughWidth = null
+    let finalRoughHeight = null
+
     if (roughWidth && roughWidth !== '') {
-      openingData.roughWidth = parseFloat(roughWidth)
+      finalRoughWidth = parseFloat(roughWidth)
+      openingData.roughWidth = finalRoughWidth
     }
     if (roughHeight && roughHeight !== '') {
-      openingData.roughHeight = parseFloat(roughHeight)
+      finalRoughHeight = parseFloat(roughHeight)
+      openingData.roughHeight = finalRoughHeight
     }
-    if (finishedWidth && finishedWidth !== '') {
-      openingData.finishedWidth = parseFloat(finishedWidth)
-    }
-    if (finishedHeight && finishedHeight !== '') {
-      openingData.finishedHeight = parseFloat(finishedHeight)
-    }
-    
+
     // Support simplified width/height fields from form
     if (width && width !== '' && !roughWidth) {
-      openingData.roughWidth = parseFloat(width)
-      openingData.finishedWidth = parseFloat(width)
+      finalRoughWidth = parseFloat(width)
+      openingData.roughWidth = finalRoughWidth
     }
     if (height && height !== '' && !roughHeight) {
-      openingData.roughHeight = parseFloat(height)
-      openingData.finishedHeight = parseFloat(height)
+      finalRoughHeight = parseFloat(height)
+      openingData.roughHeight = finalRoughHeight
+    }
+
+    // Calculate finished dimensions for finished openings
+    if (isFinishedOpening && finalRoughWidth !== null && finalRoughHeight !== null) {
+      // Get tolerances - use overrides if provided, otherwise fetch defaults
+      let widthTol = widthToleranceTotal !== undefined && widthToleranceTotal !== null
+        ? parseFloat(widthToleranceTotal)
+        : null
+      let heightTol = heightToleranceTotal !== undefined && heightToleranceTotal !== null
+        ? parseFloat(heightToleranceTotal)
+        : null
+
+      // If no overrides, get defaults based on opening type
+      if (widthTol === null || heightTol === null) {
+        const toleranceSettings = await prisma.toleranceSettings.findFirst({
+          where: { name: 'default' }
+        })
+
+        const defaults = toleranceSettings || {
+          thinwallWidthTolerance: 1.0,
+          thinwallHeightTolerance: 1.5,
+          framedWidthTolerance: 0.5,
+          framedHeightTolerance: 0.75
+        }
+
+        if (widthTol === null) {
+          widthTol = openingType === 'FRAMED'
+            ? defaults.framedWidthTolerance
+            : defaults.thinwallWidthTolerance
+        }
+        if (heightTol === null) {
+          heightTol = openingType === 'FRAMED'
+            ? defaults.framedHeightTolerance
+            : defaults.thinwallHeightTolerance
+        }
+      }
+
+      // Calculate finished dimensions (rough - tolerance)
+      openingData.finishedWidth = finalRoughWidth - widthTol
+      openingData.finishedHeight = finalRoughHeight - heightTol
+    } else {
+      // Non-finished opening: use provided values or copy from rough
+      if (finishedWidth && finishedWidth !== '') {
+        openingData.finishedWidth = parseFloat(finishedWidth)
+      } else if (finalRoughWidth !== null) {
+        openingData.finishedWidth = finalRoughWidth
+      }
+      if (finishedHeight && finishedHeight !== '') {
+        openingData.finishedHeight = parseFloat(finishedHeight)
+      } else if (finalRoughHeight !== null) {
+        openingData.finishedHeight = finalRoughHeight
+      }
     }
 
     const opening = await prisma.opening.create({

@@ -484,7 +484,12 @@ export async function GET(
       totalWidth: totalWidth,
       totalHeight: totalHeight,
       elevationImages: elevationImages,
-      planViews: planViews.length > 0 ? planViews : undefined
+      planViews: planViews.length > 0 ? planViews : undefined,
+      // Framed opening fields
+      roughWidth: opening.roughWidth ?? undefined,
+      roughHeight: opening.roughHeight ?? undefined,
+      openingType: opening.openingType ?? undefined,
+      isFinishedOpening: opening.isFinishedOpening ?? false
     }
 
     // Generate PDF

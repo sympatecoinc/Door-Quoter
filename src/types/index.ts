@@ -131,6 +131,9 @@ export function isProjectStatus(status: ProjectStatus): boolean {
   return PROJECT_STATUSES.includes(status)
 }
 
+// Opening Type enum for finished opening tolerances
+export type OpeningType = 'THINWALL' | 'FRAMED'
+
 export interface Opening {
   id: number
   projectId: number
@@ -141,8 +144,25 @@ export interface Opening {
   finishedHeight: number
   price: number
   finishColor?: string | null
+  // Finished Opening Tolerance Fields
+  isFinishedOpening?: boolean
+  openingType?: OpeningType | null
+  widthToleranceTotal?: number | null
+  heightToleranceTotal?: number | null
   createdAt: Date
   updatedAt: Date
+}
+
+// Tolerance Settings for finished openings
+export interface ToleranceSettings {
+  id?: number
+  name?: string
+  thinwallWidthTolerance: number
+  thinwallHeightTolerance: number
+  framedWidthTolerance: number
+  framedHeightTolerance: number
+  createdAt?: Date
+  updatedAt?: Date
 }
 
 export interface Panel {
@@ -163,6 +183,16 @@ export interface Product {
   name: string
   description?: string
   type: string
+  productType?: string
+  archived?: boolean
+  glassWidthFormula?: string
+  glassHeightFormula?: string
+  glassQuantityFormula?: string
+  installationPrice?: number
+  minWidth?: number | null
+  maxWidth?: number | null
+  minHeight?: number | null
+  maxHeight?: number | null
   createdAt: Date
   updatedAt: Date
 }

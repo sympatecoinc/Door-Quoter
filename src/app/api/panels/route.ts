@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { validateComponentSize } from '@/lib/component-validation'
 
 export async function GET(request: NextRequest) {
   try {
@@ -45,7 +46,9 @@ export async function POST(request: NextRequest) {
       slidingDirection = 'Left',
       isCorner = false,
       cornerDirection = 'Up',
-      quantity = 1
+      quantity = 1,
+      productId,
+      skipValidation = false
     } = await request.json()
 
     if (!openingId || !type) {
@@ -62,6 +65,77 @@ export async function POST(request: NextRequest) {
         { error: 'Quantity must be between 1 and 50' },
         { status: 400 }
       )
+    }
+
+    // Validate component size for Finished Openings
+    if (!skipValidation) {
+      const opening = await prisma.opening.findUnique({
+        where: { id: parseInt(openingId) },
+        include: {
+          panels: {
+            select: { id: true, width: true }
+          }
+        }
+      })
+
+      if (opening?.isFinishedOpening && opening.finishedWidth && opening.finishedHeight) {
+        // Get product constraints if productId is provided
+        let productConstraints: { minWidth?: number | null, maxWidth?: number | null, minHeight?: number | null, maxHeight?: number | null } = {}
+        let skipProductValidation = false
+
+        if (productId) {
+          const product = await prisma.product.findUnique({
+            where: { id: parseInt(productId) },
+            select: { minWidth: true, maxWidth: true, minHeight: true, maxHeight: true, productType: true }
+          })
+          if (product) {
+            // Skip validation for CORNER_90 and FRAME products
+            if (product.productType === 'CORNER_90' || product.productType === 'FRAME') {
+              skipProductValidation = true
+            } else {
+              productConstraints = {
+                minWidth: product.minWidth,
+                maxWidth: product.maxWidth,
+                minHeight: product.minHeight,
+                maxHeight: product.maxHeight
+              }
+            }
+          }
+        }
+
+        // Only validate non-corner/non-frame products
+        if (!skipProductValidation) {
+          const parsedWidth = parseFloat(width) || 0
+          const parsedHeight = parseFloat(height) || 0
+
+          // Filter out corners/frames from existing panels width calculation
+          const existingWidths = opening.panels.map(p => p.width)
+
+          // Account for multiple panels being created
+          const totalNewWidth = parsedWidth * panelCount
+
+          const validationResult = validateComponentSize(
+            totalNewWidth,
+            parsedHeight,
+            {
+              finishedWidth: opening.finishedWidth,
+              finishedHeight: opening.finishedHeight,
+              existingPanelWidths: existingWidths
+            },
+            productConstraints
+          )
+
+          if (!validationResult.valid) {
+            return NextResponse.json(
+              {
+                error: 'Component size validation failed',
+                validationErrors: validationResult.errors
+              },
+              { status: 400 }
+            )
+          }
+        }
+      }
     }
 
     // Get the max displayOrder for this opening to append new panels at the end
