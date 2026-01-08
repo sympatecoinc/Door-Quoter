@@ -114,7 +114,15 @@ export async function GET(
                           include: {
                             category: {
                               include: {
-                                individualOptions: true
+                                individualOptions: {
+                                  include: {
+                                    linkedParts: {
+                                      include: {
+                                        masterPart: true
+                                      }
+                                    }
+                                  }
+                                }
                               }
                             }
                           }
@@ -629,6 +637,42 @@ export async function GET(
                   isMilled: optionBom?.isMilled !== false,
                   binLocation: optionBinLocation
                 })
+
+                // Process linked parts for this option
+                if (individualOption.linkedParts && individualOption.linkedParts.length > 0) {
+                  for (const linkedPart of individualOption.linkedParts) {
+                    const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
+
+                    // Build part number with finish code if applicable
+                    let linkedPartNumber = linkedPart.masterPart.partNumber
+                    if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+                      const finishCode = await getFinishCode(opening.finishColor)
+                      if (finishCode) {
+                        linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                      }
+                    }
+
+                    bomItems.push({
+                      openingName: opening.name,
+                      panelId: panel.id,
+                      productName: product.name,
+                      panelWidth: effectiveWidth,
+                      panelHeight: effectiveHeight,
+                      partNumber: linkedPartNumber,
+                      partName: linkedPart.masterPart.baseName,
+                      partType: linkedPart.masterPart.partType || 'Hardware',
+                      quantity: linkedQuantity,
+                      cutLength: null,
+                      stockLength: null,
+                      percentOfStock: null,
+                      unit: linkedPart.masterPart.unit || 'EA',
+                      description: `Linked: ${individualOption.name}`,
+                      color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
+                      addToPackingList: linkedPart.masterPart.addToPackingList,
+                      isLinkedPart: true
+                    })
+                  }
+                }
               }
             }
           } catch (error) {
@@ -741,6 +785,42 @@ export async function GET(
                 isMilled: optionBom?.isMilled !== false,
                 binLocation: optionBinLocation
               })
+
+              // Process linked parts for standard option
+              if (standardOption.linkedParts && standardOption.linkedParts.length > 0) {
+                for (const linkedPart of standardOption.linkedParts) {
+                  const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
+
+                  // Build part number with finish code if applicable
+                  let linkedPartNumber = linkedPart.masterPart.partNumber
+                  if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+                    const finishCode = await getFinishCode(opening.finishColor)
+                    if (finishCode) {
+                      linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                    }
+                  }
+
+                  bomItems.push({
+                    openingName: opening.name,
+                    panelId: panel.id,
+                    productName: product.name,
+                    panelWidth: effectiveWidth,
+                    panelHeight: effectiveHeight,
+                    partNumber: linkedPartNumber,
+                    partName: linkedPart.masterPart.baseName,
+                    partType: linkedPart.masterPart.partType || 'Hardware',
+                    quantity: linkedQuantity,
+                    cutLength: null,
+                    stockLength: null,
+                    percentOfStock: null,
+                    unit: linkedPart.masterPart.unit || 'EA',
+                    description: `Linked: ${standardOption.name}`,
+                    color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
+                    addToPackingList: linkedPart.masterPart.addToPackingList,
+                    isLinkedPart: true
+                  })
+                }
+              }
             }
           }
         }

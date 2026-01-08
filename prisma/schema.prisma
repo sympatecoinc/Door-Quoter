@@ -192,6 +192,7 @@ model IndividualOption {
   category                    SubOptionCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   productSubOptionsAsStandard ProductSubOption[] @relation("StandardOption")
   productBOMs                 ProductBOM[]       // BOM entries for this option (per product)
+  linkedParts                 OptionLinkedPart[] // Parts automatically added to BOM when this option is selected
 
   @@map("IndividualOptions")
 }
@@ -309,6 +310,9 @@ model MasterPart {
 
   // Inventory notifications for this part
   notifications           InventoryNotification[]
+
+  // Option linked parts - parts added when an option is selected
+  optionLinkedParts       OptionLinkedPart[]
 
   @@map("MasterParts")
 }
@@ -595,6 +599,21 @@ model GlassTypePart {
 
   @@unique([glassTypeId, masterPartId])
   @@map("GlassTypeParts")
+}
+
+// Option Linked Parts - Parts automatically included when an option is selected (e.g., handle requires hook lock)
+model OptionLinkedPart {
+  id           Int              @id @default(autoincrement())
+  optionId     Int
+  masterPartId Int
+  quantity     Float            @default(1) // Fixed quantity to add
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  option       IndividualOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  masterPart   MasterPart       @relation(fields: [masterPartId], references: [id], onDelete: Cascade)
+
+  @@unique([optionId, masterPartId])
+  @@map("OptionLinkedParts")
 }
 
 // Pricing Modes - Configurable pricing strategies for projects

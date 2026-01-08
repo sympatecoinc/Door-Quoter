@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, ArrowLeft, Trash2, Search, Camera, X, Upload, Copy, Check, Pencil, Scissors } from 'lucide-react'
+import { Plus, ArrowLeft, Trash2, Search, Camera, X, Upload, Copy, Check, Pencil, Scissors, Link } from 'lucide-react'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 
@@ -15,6 +15,22 @@ interface Category {
     productSubOptions: number
   }
   individualOptions: IndividualOption[]
+}
+
+interface LinkedPart {
+  id: number
+  optionId: number
+  masterPartId: number
+  quantity: number
+  masterPart: {
+    id: number
+    partNumber: string
+    baseName: string
+    description?: string
+    unit?: string
+    cost?: number
+    partType?: string
+  }
 }
 
 interface IndividualOption {
@@ -32,6 +48,7 @@ interface IndividualOption {
   planImageOriginalName?: string
   isCutListItem?: boolean
   masterPartType?: string | null
+  linkedParts?: LinkedPart[]
   category?: {
     name: string
   }
@@ -61,6 +78,16 @@ export default function CategoryDetailView({
   const [editingOption, setEditingOption] = useState<IndividualOption | null>(null)
   const [saving, setSaving] = useState(false)
 
+  // Linked parts state
+  const [selectedOptionForLinkedParts, setSelectedOptionForLinkedParts] = useState<IndividualOption | null>(null)
+  const [linkedParts, setLinkedParts] = useState<LinkedPart[]>([])
+  const [loadingLinkedParts, setLoadingLinkedParts] = useState(false)
+  const [allMasterParts, setAllMasterParts] = useState<any[]>([])
+  const [linkedPartSearchTerm, setLinkedPartSearchTerm] = useState('')
+  const [addingLinkedPart, setAddingLinkedPart] = useState(false)
+  const [newLinkedPartId, setNewLinkedPartId] = useState<number | null>(null)
+  const [newLinkedPartQty, setNewLinkedPartQty] = useState('1')
+
   // Copy SVG Origin ID to clipboard
   const handleCopyOriginId = async () => {
     const originId = categoryDetails?.svgOriginId || category.svgOriginId
@@ -73,6 +100,7 @@ export default function CategoryDetailView({
 
   // Handle Escape key to close modals one at a time
   useEscapeKey([
+    { isOpen: selectedOptionForLinkedParts !== null, isBlocked: addingLinkedPart, onClose: () => setSelectedOptionForLinkedParts(null) },
     { isOpen: editingOption !== null, isBlocked: saving, onClose: () => setEditingOption(null) },
     { isOpen: selectedOptionForImages !== null, isBlocked: uploadingElevation || uploadingPlan, onClose: () => setSelectedOptionForImages(null) },
     { isOpen: showAddOptionForm, isBlocked: creating, onClose: () => setShowAddOptionForm(false) },
@@ -328,6 +356,127 @@ export default function CategoryDetailView({
     }
   }
 
+  // Fetch linked parts when modal opens
+  async function fetchLinkedParts(optionId: number) {
+    setLoadingLinkedParts(true)
+    try {
+      const response = await fetch(`/api/options/${optionId}/parts`)
+      if (response.ok) {
+        const data = await response.json()
+        setLinkedParts(data)
+      }
+    } catch (error) {
+      console.error('Error fetching linked parts:', error)
+    } finally {
+      setLoadingLinkedParts(false)
+    }
+  }
+
+  // Fetch all master parts for dropdown
+  async function fetchAllMasterParts() {
+    try {
+      const response = await fetch('/api/master-parts')
+      if (response.ok) {
+        const data = await response.json()
+        setAllMasterParts(data)
+      }
+    } catch (error) {
+      console.error('Error fetching master parts:', error)
+    }
+  }
+
+  // Open linked parts modal
+  async function handleOpenLinkedParts(option: IndividualOption, e: React.MouseEvent) {
+    e.stopPropagation()
+    setSelectedOptionForLinkedParts(option)
+    setLinkedPartSearchTerm('')
+    setNewLinkedPartId(null)
+    setNewLinkedPartQty('1')
+    fetchLinkedParts(option.id)
+    if (allMasterParts.length === 0) {
+      fetchAllMasterParts()
+    }
+  }
+
+  // Add linked part
+  async function handleAddLinkedPart() {
+    if (!selectedOptionForLinkedParts || !newLinkedPartId) return
+
+    setAddingLinkedPart(true)
+    try {
+      const response = await fetch(`/api/options/${selectedOptionForLinkedParts.id}/parts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          masterPartId: newLinkedPartId,
+          quantity: parseFloat(newLinkedPartQty) || 1
+        })
+      })
+
+      if (response.ok) {
+        await fetchLinkedParts(selectedOptionForLinkedParts.id)
+        setNewLinkedPartId(null)
+        setNewLinkedPartQty('1')
+        setLinkedPartSearchTerm('')
+        // Refresh category details to update badge
+        const detailsResponse = await fetch(`/api/categories/${category.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setCategoryDetails(data)
+        }
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to add linked part')
+      }
+    } catch (error) {
+      console.error('Error adding linked part:', error)
+      alert('Error adding linked part')
+    } finally {
+      setAddingLinkedPart(false)
+    }
+  }
+
+  // Delete linked part
+  async function handleDeleteLinkedPart(partId: number) {
+    if (!selectedOptionForLinkedParts) return
+    if (!confirm('Remove this linked part?')) return
+
+    try {
+      const response = await fetch(`/api/options/${selectedOptionForLinkedParts.id}/parts?partId=${partId}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        await fetchLinkedParts(selectedOptionForLinkedParts.id)
+        // Refresh category details to update badge
+        const detailsResponse = await fetch(`/api/categories/${category.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setCategoryDetails(data)
+        }
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to remove linked part')
+      }
+    } catch (error) {
+      console.error('Error removing linked part:', error)
+    }
+  }
+
+  // Filter master parts for linked parts dropdown
+  const filteredLinkedMasterParts = allMasterParts.filter(part => {
+    // Exclude parts already linked
+    if (linkedParts.some(lp => lp.masterPartId === part.id)) return false
+    // Apply search filter
+    if (linkedPartSearchTerm.trim()) {
+      return (
+        part.baseName.toLowerCase().includes(linkedPartSearchTerm.toLowerCase()) ||
+        part.partNumber.toLowerCase().includes(linkedPartSearchTerm.toLowerCase())
+      )
+    }
+    return true
+  })
+
   return (
     <div>
       {/* Header */}
@@ -418,6 +567,13 @@ export default function CategoryDetailView({
                       </span>
                     )}
                     <button
+                      onClick={(e) => handleOpenLinkedParts(option, e)}
+                      className={`p-1 transition-colors ${option.linkedParts && option.linkedParts.length > 0 ? 'text-green-600 hover:text-green-700' : 'text-gray-400 hover:text-green-600'}`}
+                      title="Linked parts"
+                    >
+                      <Link className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={(e) => {
                         e.stopPropagation()
                         setEditingOption(option)
@@ -451,6 +607,12 @@ export default function CategoryDetailView({
                 )}
                 <div className="flex justify-end items-center">
                   <div className="flex gap-1 flex-wrap">
+                    {option.linkedParts && option.linkedParts.length > 0 && (
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded flex items-center gap-1">
+                        <Link className="w-3 h-3" />
+                        {option.linkedParts.length} linked
+                      </span>
+                    )}
                     {option.isCutListItem && (
                       <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded flex items-center gap-1">
                         <Scissors className="w-3 h-3" />
@@ -834,6 +996,135 @@ export default function CategoryDetailView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Linked Parts Modal */}
+      {selectedOptionForLinkedParts && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <Link className="w-5 h-5" />
+                  Linked Parts
+                </h2>
+                <p className="text-sm text-gray-600">{selectedOptionForLinkedParts.name}</p>
+                {selectedOptionForLinkedParts.partNumber && (
+                  <p className="text-xs text-gray-500">Part #: {selectedOptionForLinkedParts.partNumber}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setSelectedOptionForLinkedParts(null)}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Parts linked here will be automatically added to the BOM when this option is selected.
+            </p>
+
+            {/* Current linked parts */}
+            <div className="mb-6">
+              <h3 className="font-medium text-gray-900 mb-3">Current Linked Parts</h3>
+              {loadingLinkedParts ? (
+                <div className="flex justify-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                </div>
+              ) : linkedParts.length > 0 ? (
+                <div className="space-y-2">
+                  {linkedParts.map((lp) => (
+                    <div key={lp.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">{lp.masterPart.baseName}</p>
+                        <p className="text-xs text-gray-500">
+                          Part #: {lp.masterPart.partNumber} | Qty: {lp.quantity}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteLinkedPart(lp.id)}
+                        className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                        title="Remove linked part"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 text-center py-4">No linked parts yet</p>
+              )}
+            </div>
+
+            {/* Add new linked part */}
+            <div className="border-t pt-4">
+              <h3 className="font-medium text-gray-900 mb-3">Add Linked Part</h3>
+              <div className="space-y-3">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    value={linkedPartSearchTerm}
+                    onChange={(e) => setLinkedPartSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    placeholder="Search parts..."
+                  />
+                </div>
+
+                <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg">
+                  {filteredLinkedMasterParts.slice(0, 50).map((part) => (
+                    <div
+                      key={part.id}
+                      className={`p-2 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${newLinkedPartId === part.id ? 'bg-blue-50' : ''}`}
+                      onClick={() => setNewLinkedPartId(part.id)}
+                    >
+                      <p className="font-medium text-sm text-gray-900">{part.baseName}</p>
+                      <p className="text-xs text-gray-500">Part #: {part.partNumber}</p>
+                    </div>
+                  ))}
+                  {filteredLinkedMasterParts.length === 0 && (
+                    <p className="text-sm text-gray-500 text-center py-4">No parts found</p>
+                  )}
+                </div>
+
+                {newLinkedPartId && (
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                      <input
+                        type="number"
+                        value={newLinkedPartQty}
+                        onChange={(e) => setNewLinkedPartQty(e.target.value)}
+                        min="0.01"
+                        step="0.01"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      />
+                    </div>
+                    <button
+                      onClick={handleAddLinkedPart}
+                      disabled={addingLinkedPart}
+                      className="mt-6 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {addingLinkedPart ? 'Adding...' : 'Add'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-6">
+              <button
+                onClick={() => setSelectedOptionForLinkedParts(null)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
