@@ -127,12 +127,12 @@ const expectedTables = [
 
 // Expected column counts per table (update when schema changes)
 const expectedColumnCounts = {
-  'MasterParts': 25,  // includes customPricePerLb
+  'MasterParts': 26,  // includes customPricePerLb, inventory fields, binLocationId
   'Openings': 21,
   'ProductBOMs': 22,
   'Users': 11,
   'Profiles': 7,
-  'ExtrusionVariants': 13,
+  'ExtrusionVariants': 14,  // includes inventory fields, binLocationId
   'GlobalSettings': 8
 };
 
@@ -349,15 +349,15 @@ pkill -f "cloud_sql_proxy.*staging"
 
 | Metric | Value |
 |--------|-------|
-| Total Tables | 38 |
-| MasterParts columns | 25 |
+| Total Tables | 50 |
+| MasterParts columns | 26 |
 | Openings columns | 21 |
 | ProductBOMs columns | 22 |
 | Users columns | 11 |
-| ExtrusionVariants columns | 13 |
+| ExtrusionVariants columns | 14 |
 | GlobalSettings columns | 8 |
 
-*Last updated: 2024-12-24*
+*Last updated: 2026-01-08*
 
 ---
 

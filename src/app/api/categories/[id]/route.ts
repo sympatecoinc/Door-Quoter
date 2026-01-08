@@ -9,7 +9,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const category = await prisma.subOptionCategory.findUnique({
       where: { id: categoryId },
       include: {
-        individualOptions: true,
+        individualOptions: {
+          include: {
+            linkedParts: {
+              include: {
+                masterPart: {
+                  select: {
+                    id: true,
+                    partNumber: true,
+                    baseName: true,
+                    description: true,
+                    unit: true,
+                    cost: true,
+                    partType: true
+                  }
+                }
+              }
+            }
+          }
+        },
         _count: {
           select: {
             individualOptions: true,
