@@ -37,6 +37,7 @@ interface Opening {
   roughHeight?: number
   finishedWidth?: number
   finishedHeight?: number
+  isFinishedOpening?: boolean
   price: number
   multiplier: number
   priceCalculatedAt?: string | null
@@ -63,6 +64,10 @@ interface Panel {
       name: string
       type: string
       productType: string
+      minWidth?: number | null
+      maxWidth?: number | null
+      minHeight?: number | null
+      maxHeight?: number | null
       productBOMs?: {
         id: number
         updatedAt: string
@@ -163,8 +168,20 @@ export default function ProjectDetailView() {
   const [addingOpening, setAddingOpening] = useState(false)
   const [newOpening, setNewOpening] = useState({
     name: '',
-    finishColor: ''
-    // Note: includeStarterChannels removed - now handled via category options
+    finishColor: '',
+    // Finished Opening fields
+    isFinishedOpening: false,
+    openingType: 'THINWALL' as 'THINWALL' | 'FRAMED',
+    roughWidth: '',
+    roughHeight: '',
+    widthToleranceTotal: null as number | null,
+    heightToleranceTotal: null as number | null
+  })
+  const [toleranceDefaults, setToleranceDefaults] = useState({
+    thinwallWidthTolerance: 1.0,
+    thinwallHeightTolerance: 1.5,
+    framedWidthTolerance: 0.5,
+    framedHeightTolerance: 0.75
   })
   const [finishTypes, setFinishTypes] = useState<any[]>([])
   const [showAddComponent, setShowAddComponent] = useState(false)
@@ -173,11 +190,13 @@ export default function ProjectDetailView() {
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
   const [componentWidth, setComponentWidth] = useState<string>('')
   const [componentHeight, setComponentHeight] = useState<string>('')
+  const [widthDivisor, setWidthDivisor] = useState<string>('1')
   const [swingDirection, setSwingDirection] = useState<string>('Right In')
   const [slidingDirection, setSlidingDirection] = useState<string>('Left')
   const [cornerDirection, setCornerDirection] = useState<string>('Up')
   const [glassType, setGlassType] = useState<string>('Clear')
   const [componentQuantity, setComponentQuantity] = useState<string>('1')
+  const [componentValidationErrors, setComponentValidationErrors] = useState<string[]>([])
   // Hardware options for add component modal
   const [addComponentOptions, setAddComponentOptions] = useState<any[]>([])
   const [addComponentSelectedOptions, setAddComponentSelectedOptions] = useState<Record<number, number | null>>({})
@@ -189,6 +208,7 @@ export default function ProjectDetailView() {
   const [includedOptions, setIncludedOptions] = useState<number[]>([]) // Hardware options marked as included (no charge)
   const [editingComponentWidth, setEditingComponentWidth] = useState<string>('')
   const [editingComponentHeight, setEditingComponentHeight] = useState<string>('')
+  const [editWidthDivisor, setEditWidthDivisor] = useState<string>('1')
   const [editingGlassType, setEditingGlassType] = useState<string>('')
   const [editingDirection, setEditingDirection] = useState<string>('')
   const [editingProductType, setEditingProductType] = useState<string>('')
@@ -486,6 +506,7 @@ export default function ProjectDetailView() {
     fetchGlassTypes()
     fetchPricingModes()
     fetchFinishTypes()
+    fetchToleranceDefaults()
   }, [])
 
   async function fetchProject() {
@@ -554,6 +575,23 @@ export default function ProjectDetailView() {
       }
     } catch (error) {
       console.error('Error fetching finish types:', error)
+    }
+  }
+
+  async function fetchToleranceDefaults() {
+    try {
+      const response = await fetch('/api/tolerance-settings')
+      if (response.ok) {
+        const data = await response.json()
+        setToleranceDefaults({
+          thinwallWidthTolerance: data.thinwallWidthTolerance ?? 1.0,
+          thinwallHeightTolerance: data.thinwallHeightTolerance ?? 1.5,
+          framedWidthTolerance: data.framedWidthTolerance ?? 0.5,
+          framedHeightTolerance: data.framedHeightTolerance ?? 0.75
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching tolerance defaults:', error)
     }
   }
 
@@ -749,26 +787,56 @@ export default function ProjectDetailView() {
       showError('Opening number is required')
       return
     }
-    
+
+    // For finished openings, validate dimensions are provided
+    if (newOpening.isFinishedOpening && (!newOpening.roughWidth || !newOpening.roughHeight)) {
+      showError('Rough opening dimensions are required for finished openings')
+      return
+    }
+
     setAddingOpening(true)
     try {
+      // Build request body
+      const requestBody: any = {
+        projectId: selectedProjectId,
+        name: newOpening.name,
+        finishColor: newOpening.finishColor,
+        isFinishedOpening: newOpening.isFinishedOpening
+      }
+
+      // Add finished opening fields if applicable
+      if (newOpening.isFinishedOpening) {
+        requestBody.openingType = newOpening.openingType
+        requestBody.roughWidth = parseFloat(newOpening.roughWidth)
+        requestBody.roughHeight = parseFloat(newOpening.roughHeight)
+        // Only include tolerance overrides if they differ from defaults
+        if (newOpening.widthToleranceTotal !== null) {
+          requestBody.widthToleranceTotal = newOpening.widthToleranceTotal
+        }
+        if (newOpening.heightToleranceTotal !== null) {
+          requestBody.heightToleranceTotal = newOpening.heightToleranceTotal
+        }
+      }
+
       const response = await fetch('/api/openings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          projectId: selectedProjectId,
-          name: newOpening.name,
-          finishColor: newOpening.finishColor
-        })
+        body: JSON.stringify(requestBody)
       })
 
       if (response.ok) {
         // Reset form and close modal first
         setNewOpening({
           name: '',
-          finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : ''
+          finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
+          isFinishedOpening: false,
+          openingType: 'THINWALL',
+          roughWidth: '',
+          roughHeight: '',
+          widthToleranceTotal: null,
+          heightToleranceTotal: null
         })
         setShowAddOpening(false)
 
@@ -1152,8 +1220,379 @@ export default function ProjectDetailView() {
     }
   }
 
+  // Validate component dimensions for Finished Openings
+  function validateComponentDimensions(): boolean {
+    const opening = project?.openings.find(o => o.id === selectedOpeningId)
+    const selectedProduct = products.find(p => p.id === selectedProductId)
+
+    // Skip validation if not a finished opening
+    if (!opening?.isFinishedOpening || !opening.finishedWidth || !opening.finishedHeight) {
+      setComponentValidationErrors([])
+      return true
+    }
+
+    // Skip for CORNER_90 and FRAME products
+    if (selectedProduct?.productType === 'CORNER_90' || selectedProduct?.productType === 'FRAME') {
+      setComponentValidationErrors([])
+      return true
+    }
+
+    const width = parseFloat(componentWidth) || 0
+    const height = parseFloat(componentHeight) || 0
+    const quantity = parseInt(componentQuantity) || 1
+
+    const errors: string[] = []
+
+    // Height validation
+    if (height > opening.finishedHeight) {
+      errors.push(`Height (${height}") exceeds opening finished height (${opening.finishedHeight}")`)
+    }
+
+    // Width validation - sum of all panels
+    const existingPanels = opening.panels.filter(p =>
+      p.componentInstance?.product?.productType !== 'CORNER_90' &&
+      p.componentInstance?.product?.productType !== 'FRAME'
+    )
+    const existingWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
+    const totalWidth = existingWidth + (width * quantity)
+
+    if (totalWidth > opening.finishedWidth) {
+      const available = opening.finishedWidth - existingWidth
+      errors.push(`Total width (${totalWidth.toFixed(3)}") exceeds opening (${opening.finishedWidth}"). Available: ${available.toFixed(3)}"`)
+    }
+
+    // Product min/max constraints
+    if (selectedProduct?.minWidth && width < selectedProduct.minWidth) {
+      errors.push(`Width below product minimum (${selectedProduct.minWidth}")`)
+    }
+    if (selectedProduct?.maxWidth && width > selectedProduct.maxWidth) {
+      errors.push(`Width exceeds product maximum (${selectedProduct.maxWidth}")`)
+    }
+    if (selectedProduct?.minHeight && height < selectedProduct.minHeight) {
+      errors.push(`Height below product minimum (${selectedProduct.minHeight}")`)
+    }
+    if (selectedProduct?.maxHeight && height > selectedProduct.maxHeight) {
+      errors.push(`Height exceeds product maximum (${selectedProduct.maxHeight}")`)
+    }
+
+    setComponentValidationErrors(errors)
+    return errors.length === 0
+  }
+
+  // Auto-size component to remaining available space
+  function handleAutoSize() {
+    const opening = project?.openings.find(o => o.id === selectedOpeningId)
+    const selectedProduct = products.find(p => p.id === selectedProductId)
+
+    if (!opening?.isFinishedOpening || !opening.finishedWidth || !opening.finishedHeight) {
+      showError('Auto-size only works for Finished Openings')
+      return
+    }
+
+    // Calculate existing panel widths (exclude corners and frames)
+    const existingPanels = opening.panels.filter(p =>
+      p.componentInstance?.product?.productType !== 'CORNER_90' &&
+      p.componentInstance?.product?.productType !== 'FRAME'
+    )
+    const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
+    let availableWidth = opening.finishedWidth - usedWidth
+    let finalHeight = opening.finishedHeight
+
+    if (availableWidth <= 0) {
+      showError(`No space available - existing components use ${usedWidth.toFixed(3)}" of ${opening.finishedWidth}" opening width`)
+      return
+    }
+
+    // Apply product constraints
+    if (selectedProduct?.minWidth && availableWidth < selectedProduct.minWidth) {
+      showError(`Available space (${availableWidth.toFixed(3)}") is less than product minimum (${selectedProduct.minWidth}")`)
+      return
+    }
+
+    if (selectedProduct?.maxWidth && availableWidth > selectedProduct.maxWidth) {
+      availableWidth = selectedProduct.maxWidth
+    }
+
+    if (selectedProduct?.minHeight && finalHeight < selectedProduct.minHeight) {
+      showError(`Opening height (${finalHeight}") is less than product minimum (${selectedProduct.minHeight}")`)
+      return
+    }
+
+    if (selectedProduct?.maxHeight && finalHeight > selectedProduct.maxHeight) {
+      finalHeight = selectedProduct.maxHeight
+    }
+
+    setComponentWidth(availableWidth.toFixed(3))
+    setComponentHeight(finalHeight.toFixed(3))
+    setComponentValidationErrors([])
+    showSuccess('Dimensions auto-filled based on remaining space')
+  }
+
+  // Auto-fill width only to remaining available space (with optional divisor for splitting between components)
+  function handleAutoWidth() {
+    const opening = project?.openings.find(o => o.id === selectedOpeningId)
+    const selectedProduct = products.find(p => p.id === selectedProductId)
+    const divisor = Math.max(1, parseInt(widthDivisor) || 1)
+
+    if (!opening?.isFinishedOpening || !opening.finishedWidth) {
+      showError('Auto width only works for Finished Openings')
+      return
+    }
+
+    // Calculate existing panel widths (exclude corners and frames)
+    const existingPanels = opening.panels.filter(p =>
+      p.componentInstance?.product?.productType !== 'CORNER_90' &&
+      p.componentInstance?.product?.productType !== 'FRAME'
+    )
+    const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
+    const totalAvailableWidth = opening.finishedWidth - usedWidth
+
+    if (totalAvailableWidth <= 0) {
+      showError(`No space available - existing components use ${usedWidth.toFixed(3)}" of ${opening.finishedWidth}" opening width`)
+      return
+    }
+
+    // Divide available width by divisor
+    let widthPerComponent = totalAvailableWidth / divisor
+
+    // Apply product constraints to the divided width
+    if (selectedProduct?.minWidth && widthPerComponent < selectedProduct.minWidth) {
+      showError(`Divided width (${widthPerComponent.toFixed(3)}") is less than product minimum (${selectedProduct.minWidth}")`)
+      return
+    }
+
+    if (selectedProduct?.maxWidth && widthPerComponent > selectedProduct.maxWidth) {
+      widthPerComponent = selectedProduct.maxWidth
+    }
+
+    setComponentWidth(widthPerComponent.toFixed(3))
+    if (divisor > 1) {
+      showSuccess(`Width auto-filled: ${widthPerComponent.toFixed(3)}" (${totalAvailableWidth.toFixed(3)}" ÷ ${divisor})`)
+    } else {
+      showSuccess(`Width auto-filled: ${widthPerComponent.toFixed(3)}"`)
+    }
+  }
+
+  // Auto-fill height only to opening height
+  function handleAutoHeight() {
+    const opening = project?.openings.find(o => o.id === selectedOpeningId)
+    const selectedProduct = products.find(p => p.id === selectedProductId)
+
+    if (!opening?.isFinishedOpening || !opening.finishedHeight) {
+      showError('Auto height only works for Finished Openings')
+      return
+    }
+
+    let finalHeight = opening.finishedHeight
+
+    // Apply product constraints
+    if (selectedProduct?.minHeight && finalHeight < selectedProduct.minHeight) {
+      showError(`Opening height (${finalHeight}") is less than product minimum (${selectedProduct.minHeight}")`)
+      return
+    }
+
+    if (selectedProduct?.maxHeight && finalHeight > selectedProduct.maxHeight) {
+      finalHeight = selectedProduct.maxHeight
+    }
+
+    setComponentHeight(finalHeight.toFixed(3))
+    showSuccess(`Height auto-filled: ${finalHeight.toFixed(3)}"`)
+  }
+
+  // Validate edit component dimensions for Finished Openings
+  function validateEditComponentDimensions(): boolean {
+    // Find the opening for the current panel
+    const currentOpening = project?.openings.find(o => o.panels.some(p => p.id === currentPanelId))
+    const currentPanel = currentOpening?.panels.find(p => p.id === currentPanelId)
+    const selectedProduct = currentPanel?.componentInstance?.product
+
+    // Skip validation if not a finished opening
+    if (!currentOpening?.isFinishedOpening || !currentOpening.finishedWidth || !currentOpening.finishedHeight) {
+      setComponentValidationErrors([])
+      return true
+    }
+
+    // Skip for CORNER_90 and FRAME products
+    if (selectedProduct?.productType === 'CORNER_90' || selectedProduct?.productType === 'FRAME') {
+      setComponentValidationErrors([])
+      return true
+    }
+
+    const width = parseFloat(editingComponentWidth) || 0
+    const height = parseFloat(editingComponentHeight) || 0
+
+    const errors: string[] = []
+
+    // Height validation
+    if (height > currentOpening.finishedHeight) {
+      errors.push(`Height (${height}") exceeds opening finished height (${currentOpening.finishedHeight}")`)
+    }
+
+    // Width validation - exclude current panel from sum
+    const otherPanels = currentOpening.panels.filter(p =>
+      p.id !== currentPanelId &&
+      p.componentInstance?.product?.productType !== 'CORNER_90' &&
+      p.componentInstance?.product?.productType !== 'FRAME'
+    )
+    const otherWidth = otherPanels.reduce((sum, p) => sum + (p.width || 0), 0)
+    const totalWidth = otherWidth + width
+
+    if (totalWidth > currentOpening.finishedWidth) {
+      const available = currentOpening.finishedWidth - otherWidth
+      errors.push(`Total width (${totalWidth.toFixed(3)}") exceeds opening (${currentOpening.finishedWidth}"). Available: ${available.toFixed(3)}"`)
+    }
+
+    // Product min/max constraints
+    if (selectedProduct?.minWidth && width < selectedProduct.minWidth) {
+      errors.push(`Width below product minimum (${selectedProduct.minWidth}")`)
+    }
+    if (selectedProduct?.maxWidth && width > selectedProduct.maxWidth) {
+      errors.push(`Width exceeds product maximum (${selectedProduct.maxWidth}")`)
+    }
+    if (selectedProduct?.minHeight && height < selectedProduct.minHeight) {
+      errors.push(`Height below product minimum (${selectedProduct.minHeight}")`)
+    }
+    if (selectedProduct?.maxHeight && height > selectedProduct.maxHeight) {
+      errors.push(`Height exceeds product maximum (${selectedProduct.maxHeight}")`)
+    }
+
+    setComponentValidationErrors(errors)
+    return errors.length === 0
+  }
+
+  // Auto-size edit component to remaining available space
+  function handleEditAutoSize() {
+    const currentOpening = project?.openings.find(o => o.panels.some(p => p.id === currentPanelId))
+    const currentPanel = currentOpening?.panels.find(p => p.id === currentPanelId)
+    const selectedProduct = currentPanel?.componentInstance?.product
+
+    if (!currentOpening?.isFinishedOpening || !currentOpening.finishedWidth || !currentOpening.finishedHeight) {
+      showError('Auto-size only works for Finished Openings')
+      return
+    }
+
+    // Calculate available width (excluding current panel)
+    const otherPanels = currentOpening.panels.filter(p =>
+      p.id !== currentPanelId &&
+      p.componentInstance?.product?.productType !== 'CORNER_90' &&
+      p.componentInstance?.product?.productType !== 'FRAME'
+    )
+    const usedWidth = otherPanels.reduce((sum, p) => sum + (p.width || 0), 0)
+    let availableWidth = currentOpening.finishedWidth - usedWidth
+    let finalHeight = currentOpening.finishedHeight
+
+    if (availableWidth <= 0) {
+      showError(`No space available - other components use ${usedWidth.toFixed(3)}" of ${currentOpening.finishedWidth}" opening width`)
+      return
+    }
+
+    // Apply product constraints
+    if (selectedProduct?.minWidth && availableWidth < selectedProduct.minWidth) {
+      showError(`Available space (${availableWidth.toFixed(3)}") is less than product minimum (${selectedProduct.minWidth}")`)
+      return
+    }
+
+    if (selectedProduct?.maxWidth && availableWidth > selectedProduct.maxWidth) {
+      availableWidth = selectedProduct.maxWidth
+    }
+
+    if (selectedProduct?.minHeight && finalHeight < selectedProduct.minHeight) {
+      showError(`Opening height (${finalHeight}") is less than product minimum (${selectedProduct.minHeight}")`)
+      return
+    }
+
+    if (selectedProduct?.maxHeight && finalHeight > selectedProduct.maxHeight) {
+      finalHeight = selectedProduct.maxHeight
+    }
+
+    setEditingComponentWidth(availableWidth.toFixed(3))
+    setEditingComponentHeight(finalHeight.toFixed(3))
+    setComponentValidationErrors([])
+    showSuccess('Dimensions auto-filled based on remaining space')
+  }
+
+  // Auto-fill edit width only to remaining available space (with optional divisor for splitting between components)
+  function handleEditAutoWidth() {
+    const currentOpening = project?.openings.find(o => o.panels.some(p => p.id === currentPanelId))
+    const currentPanel = currentOpening?.panels.find(p => p.id === currentPanelId)
+    const selectedProduct = currentPanel?.componentInstance?.product
+    const divisor = Math.max(1, parseInt(editWidthDivisor) || 1)
+
+    if (!currentOpening?.isFinishedOpening || !currentOpening.finishedWidth) {
+      showError('Auto width only works for Finished Openings')
+      return
+    }
+
+    // Calculate available width (excluding current panel)
+    const otherPanels = currentOpening.panels.filter(p =>
+      p.id !== currentPanelId &&
+      p.componentInstance?.product?.productType !== 'CORNER_90' &&
+      p.componentInstance?.product?.productType !== 'FRAME'
+    )
+    const usedWidth = otherPanels.reduce((sum, p) => sum + (p.width || 0), 0)
+    const totalAvailableWidth = currentOpening.finishedWidth - usedWidth
+
+    if (totalAvailableWidth <= 0) {
+      showError(`No space available - other components use ${usedWidth.toFixed(3)}" of ${currentOpening.finishedWidth}" opening width`)
+      return
+    }
+
+    // Divide available width by divisor
+    let widthPerComponent = totalAvailableWidth / divisor
+
+    // Apply product constraints to the divided width
+    if (selectedProduct?.minWidth && widthPerComponent < selectedProduct.minWidth) {
+      showError(`Divided width (${widthPerComponent.toFixed(3)}") is less than product minimum (${selectedProduct.minWidth}")`)
+      return
+    }
+
+    if (selectedProduct?.maxWidth && widthPerComponent > selectedProduct.maxWidth) {
+      widthPerComponent = selectedProduct.maxWidth
+    }
+
+    setEditingComponentWidth(widthPerComponent.toFixed(3))
+    if (divisor > 1) {
+      showSuccess(`Width auto-filled: ${widthPerComponent.toFixed(3)}" (${totalAvailableWidth.toFixed(3)}" ÷ ${divisor})`)
+    } else {
+      showSuccess(`Width auto-filled: ${widthPerComponent.toFixed(3)}"`)
+    }
+  }
+
+  // Auto-fill edit height only to opening height
+  function handleEditAutoHeight() {
+    const currentOpening = project?.openings.find(o => o.panels.some(p => p.id === currentPanelId))
+    const currentPanel = currentOpening?.panels.find(p => p.id === currentPanelId)
+    const selectedProduct = currentPanel?.componentInstance?.product
+
+    if (!currentOpening?.isFinishedOpening || !currentOpening.finishedHeight) {
+      showError('Auto height only works for Finished Openings')
+      return
+    }
+
+    let finalHeight = currentOpening.finishedHeight
+
+    // Apply product constraints
+    if (selectedProduct?.minHeight && finalHeight < selectedProduct.minHeight) {
+      showError(`Opening height (${finalHeight}") is less than product minimum (${selectedProduct.minHeight}")`)
+      return
+    }
+
+    if (selectedProduct?.maxHeight && finalHeight > selectedProduct.maxHeight) {
+      finalHeight = selectedProduct.maxHeight
+    }
+
+    setEditingComponentHeight(finalHeight.toFixed(3))
+    showSuccess(`Height auto-filled: ${finalHeight.toFixed(3)}"`)
+  }
+
   async function handleAddComponent() {
     if (!selectedOpeningId || !selectedProductId) return
+
+    // Client-side validation first
+    if (!validateComponentDimensions()) {
+      showError('Please fix validation errors before adding component')
+      return
+    }
 
     const selectedProduct = products.find(p => p.id === selectedProductId)
     const isCorner = selectedProduct?.productType === 'CORNER_90'
@@ -1201,66 +1640,79 @@ export default function ProjectDetailView() {
           slidingDirection: slidingDirection,
           isCorner: isCorner,
           cornerDirection: cornerDirection,
-          quantity: parseInt(componentQuantity) || 1
+          quantity: parseInt(componentQuantity) || 1,
+          productId: selectedProductId
         })
       })
 
-      if (panelResponse.ok) {
-        const panelsData = await panelResponse.json()  // Now an array
-
-        // Create component instances for all panels
-        // Merge option selections with quantity selections
-        const mergedSelections = {
-          ...addComponentSelectedOptions,
-          ...addComponentOptionQuantities
+      if (!panelResponse.ok) {
+        const errorData = await panelResponse.json()
+        // Handle validation errors from server
+        if (errorData.validationErrors) {
+          setComponentValidationErrors(errorData.validationErrors)
+          showError('Component size validation failed')
+          return
         }
-
-        for (const panelData of panelsData) {
-          const componentResponse = await fetch('/api/component-instances', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              panelId: panelData.id,
-              productId: selectedProductId,
-              subOptionSelections: mergedSelections
-            })
-          })
-
-          if (!componentResponse.ok) {
-            console.error('Error creating component instance for panel:', panelData.id)
-          }
-        }
-
-        // Reset form and close modal
-        setShowAddComponent(false)
-        setSelectedOpeningId(null)
-        setSelectedProductId(null)
-        setComponentWidth('')
-        setComponentHeight('')
-        setComponentQuantity('1')
-        setSwingDirection('Right In')
-        setSlidingDirection('Left')
-        setGlassType('Clear')
-        setAddComponentOptions([])
-        setAddComponentSelectedOptions({})
-        setAddComponentOptionQuantities({})
-
-        // Recalculate opening price
-        if (selectedOpeningId) {
-          try {
-            await fetch(`/api/openings/${selectedOpeningId}/calculate-price`, {
-              method: 'POST'
-            })
-          } catch (error) {
-            console.error('Error recalculating opening price:', error)
-          }
-        }
-
-        // Silent refresh to preserve scroll position
-        await refreshProject()
+        showError(errorData.error || 'Failed to add component')
+        return
       }
+
+      const panelsData = await panelResponse.json()  // Now an array
+
+      // Create component instances for all panels
+      // Merge option selections with quantity selections
+      const mergedSelections = {
+        ...addComponentSelectedOptions,
+        ...addComponentOptionQuantities
+      }
+
+      for (const panelData of panelsData) {
+        const componentResponse = await fetch('/api/component-instances', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            panelId: panelData.id,
+            productId: selectedProductId,
+            subOptionSelections: mergedSelections
+          })
+        })
+
+        if (!componentResponse.ok) {
+          console.error('Error creating component instance for panel:', panelData.id)
+        }
+      }
+
+      // Reset form and close modal
+      setShowAddComponent(false)
+      setSelectedOpeningId(null)
+      setSelectedProductId(null)
+      setComponentWidth('')
+      setComponentHeight('')
+      setComponentQuantity('1')
+      setWidthDivisor('1')
+      setComponentValidationErrors([])
+      setSwingDirection('Right In')
+      setSlidingDirection('Left')
+      setGlassType('Clear')
+      setAddComponentOptions([])
+      setAddComponentSelectedOptions({})
+      setAddComponentOptionQuantities({})
+
+      // Recalculate opening price
+      if (selectedOpeningId) {
+        try {
+          await fetch(`/api/openings/${selectedOpeningId}/calculate-price`, {
+            method: 'POST'
+          })
+        } catch (error) {
+          console.error('Error recalculating opening price:', error)
+        }
+      }
+
+      // Silent refresh to preserve scroll position
+      await refreshProject()
     } catch (error) {
       console.error('Error adding component:', error)
       alert('Error adding component')
@@ -1870,7 +2322,7 @@ export default function ProjectDetailView() {
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     {opening.roughWidth && opening.roughHeight && (
                       <span>
-{`${opening.roughWidth}" W × ${opening.roughHeight}" H (Rough)`}
+{`Framed Opening Size: ${opening.roughWidth}" W × ${opening.roughHeight}" H (${opening.openingType === 'THINWALL' ? 'Finished' : 'Rough'})`}
                       </span>
                     )}
                     {opening.finishColor && (
@@ -2041,13 +2493,15 @@ export default function ProjectDetailView() {
       {/* Add Opening Modal */}
       {showAddOpening && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Add New Opening</h2>
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <strong>Note:</strong> Opening sizes will be calculated from the components you add. BOMs can be generated per opening and per project.
-              </p>
-            </div>
+            {!newOpening.isFinishedOpening && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> Opening sizes will be calculated from the components you add. BOMs can be generated per opening and per project.
+                </p>
+              </div>
+            )}
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Opening Number</label>
@@ -2077,7 +2531,147 @@ export default function ProjectDetailView() {
                   This finish will apply to all extrusions in this opening
                 </p>
               </div>
-              {/* Note: Starter channels checkbox removed - now configured via category options in Products */}
+
+              {/* Finished Opening Toggle */}
+              <div className="border-t border-gray-200 pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Opening is Framed
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Enable to specify opening dimensions and apply tolerances
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewOpening(prev => ({
+                      ...prev,
+                      isFinishedOpening: !prev.isFinishedOpening
+                    }))}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      newOpening.isFinishedOpening ? 'bg-blue-600' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        newOpening.isFinishedOpening ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Finished Opening Fields */}
+              {newOpening.isFinishedOpening && (
+                <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  {/* Opening Type */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Opening Type</label>
+                    <select
+                      value={newOpening.openingType}
+                      onChange={(e) => {
+                        const type = e.target.value as 'THINWALL' | 'FRAMED'
+                        setNewOpening(prev => ({
+                          ...prev,
+                          openingType: type,
+                          // Reset tolerance overrides to use new defaults
+                          widthToleranceTotal: null,
+                          heightToleranceTotal: null
+                        }))
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    >
+                      <option value="THINWALL">ThinWall</option>
+                      <option value="FRAMED">Trimmed</option>
+                    </select>
+                  </div>
+
+                  {/* Opening Dimensions - label changes based on opening type */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {newOpening.openingType === 'THINWALL' ? 'Finished Width (in)' : 'Rough Width (in)'}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.0625"
+                        value={newOpening.roughWidth}
+                        onChange={(e) => setNewOpening(prev => ({ ...prev, roughWidth: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        placeholder="40"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {newOpening.openingType === 'THINWALL' ? 'Finished Height (in)' : 'Rough Height (in)'}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.0625"
+                        value={newOpening.roughHeight}
+                        onChange={(e) => setNewOpening(prev => ({ ...prev, roughHeight: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        placeholder="96"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tolerance Values */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Width Tolerance (total)</label>
+                      <input
+                        type="number"
+                        step="0.125"
+                        min="0"
+                        value={newOpening.widthToleranceTotal ?? (
+                          newOpening.openingType === 'FRAMED'
+                            ? toleranceDefaults.framedWidthTolerance
+                            : toleranceDefaults.thinwallWidthTolerance
+                        )}
+                        onChange={(e) => setNewOpening(prev => ({
+                          ...prev,
+                          widthToleranceTotal: parseFloat(e.target.value) || 0
+                        }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {((newOpening.widthToleranceTotal ?? (
+                          newOpening.openingType === 'FRAMED'
+                            ? toleranceDefaults.framedWidthTolerance
+                            : toleranceDefaults.thinwallWidthTolerance
+                        )) / 2).toFixed(3)}" per side
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Height Tolerance (total)</label>
+                      <input
+                        type="number"
+                        step="0.125"
+                        min="0"
+                        value={newOpening.heightToleranceTotal ?? (
+                          newOpening.openingType === 'FRAMED'
+                            ? toleranceDefaults.framedHeightTolerance
+                            : toleranceDefaults.thinwallHeightTolerance
+                        )}
+                        onChange={(e) => setNewOpening(prev => ({
+                          ...prev,
+                          heightToleranceTotal: parseFloat(e.target.value) || 0
+                        }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {((newOpening.heightToleranceTotal ?? (
+                          newOpening.openingType === 'FRAMED'
+                            ? toleranceDefaults.framedHeightTolerance
+                            : toleranceDefaults.thinwallHeightTolerance
+                        )) / 2).toFixed(3)}" top & bottom
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex justify-end space-x-3 pt-6">
               <button
@@ -2086,7 +2680,13 @@ export default function ProjectDetailView() {
                     setShowAddOpening(false)
                     setNewOpening({
                       name: '',
-                      finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : ''
+                      finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
+                      isFinishedOpening: false,
+                      openingType: 'THINWALL',
+                      roughWidth: '',
+                      roughHeight: '',
+                      widthToleranceTotal: null,
+                      heightToleranceTotal: null
                     })
                   }
                 }}
@@ -2097,7 +2697,7 @@ export default function ProjectDetailView() {
               </button>
               <button
                 onClick={handleAddOpening}
-                disabled={addingOpening || !newOpening.name.trim()}
+                disabled={addingOpening || !newOpening.name.trim() || (newOpening.isFinishedOpening && (!newOpening.roughWidth || !newOpening.roughHeight))}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {addingOpening && (
@@ -2211,64 +2811,109 @@ export default function ProjectDetailView() {
                     </div>
                   )
                 }
-                
+
+                const opening = project?.openings.find(o => o.id === selectedOpeningId)
+                const showAutoButtons = opening?.isFinishedOpening && !isCornerProduct && !isFrameProduct
+                const heightDisabled = (() => {
+                  const nonFramePanels = opening?.panels?.filter(p =>
+                    p.componentInstance?.product?.productType !== 'FRAME'
+                  ) || []
+                  return nonFramePanels.length > 0
+                })()
+
                 return (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Width</label>
-                      <input
-                        type="number"
-                        value={componentWidth}
-                        onChange={(e) => setComponentWidth(e.target.value)}
-                        placeholder="Enter width"
-                        step="0.01"
-                        min="0"
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
-                          componentWidth && parseFloat(componentWidth) <= 0 
-                            ? 'border-red-300 bg-red-50' 
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Width Input with inline Auto button */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Width</label>
+                        <div className={`flex border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 ${
+                          componentWidth && parseFloat(componentWidth) <= 0
+                            ? 'border-red-300 bg-red-50'
                             : 'border-gray-300'
-                        }`}
-                      />
-                      {componentWidth && parseFloat(componentWidth) <= 0 && (
-                        <p className="text-red-500 text-xs mt-1">Width must be greater than 0</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Height</label>
-                      <input
-                        type="number"
-                        value={componentHeight}
-                        onChange={(e) => setComponentHeight(e.target.value)}
-                        placeholder="Enter height"
-                        step="0.01"
-                        min="0"
-                        disabled={(() => {
-                          const opening = project?.openings.find(o => o.id === selectedOpeningId)
-                          const nonFramePanels = opening?.panels?.filter(p =>
-                            p.componentInstance?.product?.productType !== 'FRAME'
-                          ) || []
-                          return nonFramePanels.length > 0
-                        })()}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
-                          (() => {
-                            const opening = project?.openings.find(o => o.id === selectedOpeningId)
-                            const nonFramePanels = opening?.panels?.filter(p =>
-                              p.componentInstance?.product?.productType !== 'FRAME'
-                            ) || []
-                            const isDisabled = nonFramePanels.length > 0
-                            if (isDisabled) {
-                              return 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-300'
-                            }
-                            return componentHeight && parseFloat(componentHeight) <= 0
+                        }`}>
+                          <input
+                            type="number"
+                            value={componentWidth}
+                            onChange={(e) => setComponentWidth(e.target.value)}
+                            placeholder="Enter width"
+                            step="0.01"
+                            min="0"
+                            className="flex-1 px-3 py-2 border-0 focus:ring-0 text-gray-900 bg-transparent"
+                          />
+                          {showAutoButtons && (
+                            <button
+                              type="button"
+                              onClick={handleAutoWidth}
+                              className="px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-sm font-medium border-l border-gray-300"
+                              title={`Auto-fill remaining width (${opening?.finishedWidth}" opening)`}
+                            >
+                              Auto
+                            </button>
+                          )}
+                        </div>
+                        {componentWidth && parseFloat(componentWidth) <= 0 && (
+                          <p className="text-red-500 text-xs mt-1">Width must be greater than 0</p>
+                        )}
+                      </div>
+                      {/* Height Input with inline Auto button */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Height</label>
+                        <div className={`flex border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 ${
+                          heightDisabled
+                            ? 'bg-gray-100 border-gray-300'
+                            : componentHeight && parseFloat(componentHeight) <= 0
                               ? 'border-red-300 bg-red-50'
                               : 'border-gray-300'
-                          })()
-                        }`}
-                      />
-                      {componentHeight && parseFloat(componentHeight) <= 0 && (
-                        <p className="text-red-500 text-xs mt-1">Height must be greater than 0</p>
-                      )}
+                        }`}>
+                          <input
+                            type="number"
+                            value={componentHeight}
+                            onChange={(e) => setComponentHeight(e.target.value)}
+                            placeholder="Enter height"
+                            step="0.01"
+                            min="0"
+                            disabled={heightDisabled}
+                            className={`flex-1 px-3 py-2 border-0 focus:ring-0 text-gray-900 bg-transparent ${
+                              heightDisabled ? 'text-gray-500 cursor-not-allowed' : ''
+                            }`}
+                          />
+                          {showAutoButtons && (
+                            <button
+                              type="button"
+                              onClick={handleAutoHeight}
+                              disabled={heightDisabled}
+                              className={`px-3 py-2 text-sm font-medium border-l border-gray-300 transition-colors ${
+                                heightDisabled
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                  : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                              }`}
+                              title={`Auto-fill opening height (${opening?.finishedHeight}")`}
+                            >
+                              Auto
+                            </button>
+                          )}
+                        </div>
+                        {componentHeight && parseFloat(componentHeight) <= 0 && (
+                          <p className="text-red-500 text-xs mt-1">Height must be greater than 0</p>
+                        )}
+                      </div>
                     </div>
+                    {/* Divide By input - only show for finished openings */}
+                    {showAutoButtons && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-600">÷</span>
+                        <input
+                          type="number"
+                          value={widthDivisor}
+                          onChange={(e) => setWidthDivisor(e.target.value)}
+                          min="1"
+                          step="1"
+                          className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        />
+                        <span className="text-xs text-gray-500">Split remaining width between this many components</span>
+                      </div>
+                    )}
                   </div>
                 )
               })()}
@@ -2519,6 +3164,17 @@ export default function ProjectDetailView() {
                   </p>
                 </div>
               )}
+              {/* Validation Errors */}
+              {componentValidationErrors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-red-800 mb-1">Size Validation Errors</h4>
+                  <ul className="text-sm text-red-700 list-disc list-inside">
+                    {componentValidationErrors.map((error, index) => (
+                      <li key={index}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
             <div className="flex justify-end space-x-3 pt-6">
               <button
@@ -2529,6 +3185,8 @@ export default function ProjectDetailView() {
                   setComponentWidth('')
                   setComponentHeight('')
                   setComponentQuantity('1')
+                  setWidthDivisor('1')
+                  setComponentValidationErrors([])
                   setSwingDirection('Right In')
                   setSlidingDirection('Left')
                   setGlassType('Clear')
@@ -2553,10 +3211,12 @@ export default function ProjectDetailView() {
 
                   // For other components, dimensions and valid quantity are required
                   const quantityValue = parseInt(componentQuantity)
+                  const hasValidationErrors = componentValidationErrors.length > 0
                   return !componentWidth || !componentHeight ||
                          parseFloat(componentWidth) <= 0 ||
                          parseFloat(componentHeight) <= 0 ||
-                         !quantityValue || quantityValue <= 0
+                         !quantityValue || quantityValue <= 0 ||
+                         hasValidationErrors
                 })()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
@@ -2576,36 +3236,84 @@ export default function ProjectDetailView() {
             {/* Dimensions Section */}
             <div className="mb-6 p-4 bg-gray-50 rounded-lg">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Dimensions</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Width (inches)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.125"
-                    min="0.125"
-                    value={editingComponentWidth}
-                    onChange={(e) => setEditingComponentWidth(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Width"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Height (inches)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.125"
-                    min="0.125"
-                    value={editingComponentHeight}
-                    onChange={(e) => setEditingComponentHeight(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Height"
-                  />
-                </div>
-              </div>
+              {(() => {
+                const currentOpening = project?.openings.find(o => o.panels.some(p => p.id === currentPanelId))
+                const currentPanel = currentOpening?.panels.find(p => p.id === currentPanelId)
+                const productType = currentPanel?.componentInstance?.product?.productType
+                const showAutoButtons = currentOpening?.isFinishedOpening && productType !== 'CORNER_90' && productType !== 'FRAME'
+
+                return (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Width Input with inline Auto button */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Width (inches)</label>
+                        <div className="flex border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+                          <input
+                            type="number"
+                            step="0.125"
+                            min="0.125"
+                            value={editingComponentWidth}
+                            onChange={(e) => setEditingComponentWidth(e.target.value)}
+                            className="flex-1 px-3 py-2 border-0 focus:ring-0 text-gray-900 bg-transparent"
+                            placeholder="Width"
+                          />
+                          {showAutoButtons && (
+                            <button
+                              type="button"
+                              onClick={handleEditAutoWidth}
+                              className="px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-sm font-medium border-l border-gray-300"
+                              title={`Auto-fill remaining width (${currentOpening?.finishedWidth}" opening)`}
+                            >
+                              Auto
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {/* Height Input with inline Auto button */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Height (inches)</label>
+                        <div className="flex border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+                          <input
+                            type="number"
+                            step="0.125"
+                            min="0.125"
+                            value={editingComponentHeight}
+                            onChange={(e) => setEditingComponentHeight(e.target.value)}
+                            className="flex-1 px-3 py-2 border-0 focus:ring-0 text-gray-900 bg-transparent"
+                            placeholder="Height"
+                          />
+                          {showAutoButtons && (
+                            <button
+                              type="button"
+                              onClick={handleEditAutoHeight}
+                              className="px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-sm font-medium border-l border-gray-300"
+                              title={`Auto-fill opening height (${currentOpening?.finishedHeight}")`}
+                            >
+                              Auto
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {/* Divide By input - only show for finished openings */}
+                    {showAutoButtons && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-600">÷</span>
+                        <input
+                          type="number"
+                          value={editWidthDivisor}
+                          onChange={(e) => setEditWidthDivisor(e.target.value)}
+                          min="1"
+                          step="1"
+                          className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        />
+                        <span className="text-xs text-gray-500">Split remaining width between this many components</span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Glass Type Section */}
@@ -2697,6 +3405,17 @@ export default function ProjectDetailView() {
               ) : (
                 <p className="text-gray-500 text-center py-4">No configurable options for this product</p>
               )}
+              {/* Validation Errors */}
+              {componentValidationErrors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-4">
+                  <h4 className="text-sm font-medium text-red-800 mb-1">Size Validation Errors</h4>
+                  <ul className="text-sm text-red-700 list-disc list-inside">
+                    {componentValidationErrors.map((error, index) => (
+                      <li key={index}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
             <div className="flex justify-end space-x-3 pt-6">
               <button
@@ -2707,11 +3426,13 @@ export default function ProjectDetailView() {
                   setIncludedOptions([])
                   setEditingComponentWidth('')
                   setEditingComponentHeight('')
+                  setEditWidthDivisor('1')
                   setEditingGlassType('')
                   setEditingDirection('')
                   setEditingProductType('')
                   setEditingPlanViews([])
                   setCurrentPanelId(null)
+                  setComponentValidationErrors([])
                 }}
                 disabled={savingComponent}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
@@ -2721,6 +3442,12 @@ export default function ProjectDetailView() {
               <button
                 onClick={async () => {
                   if (!selectedComponentId || !currentPanelId) return
+
+                  // Client-side validation first
+                  if (!validateEditComponentDimensions()) {
+                    showError('Please fix validation errors before saving')
+                    return
+                  }
 
                   const width = parseFloat(editingComponentWidth)
                   const height = parseFloat(editingComponentHeight)
@@ -2757,7 +3484,14 @@ export default function ProjectDetailView() {
                     })
 
                     if (!panelResponse.ok) {
-                      showError('Error updating component dimensions')
+                      const errorData = await panelResponse.json()
+                      // Handle validation errors from server
+                      if (errorData.validationErrors) {
+                        setComponentValidationErrors(errorData.validationErrors)
+                        showError('Component size validation failed')
+                        return
+                      }
+                      showError(errorData.error || 'Error updating component dimensions')
                       return
                     }
 
@@ -2803,11 +3537,13 @@ export default function ProjectDetailView() {
                     setIncludedOptions([])
                     setEditingComponentWidth('')
                     setEditingComponentHeight('')
+                    setEditWidthDivisor('1')
                     setEditingGlassType('')
                     setEditingDirection('')
                     setEditingProductType('')
                     setEditingPlanViews([])
                     setCurrentPanelId(null)
+                    setComponentValidationErrors([])
                   } catch (error) {
                     console.error('Error updating component:', error)
                     showError('Error updating component')
@@ -2815,7 +3551,7 @@ export default function ProjectDetailView() {
                     setSavingComponent(false)
                   }
                 }}
-                disabled={savingComponent}
+                disabled={savingComponent || componentValidationErrors.length > 0}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {savingComponent && (

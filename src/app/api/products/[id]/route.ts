@@ -66,7 +66,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       glassQuantityFormula,
       elevationImageData,
       elevationFileName,
-      installationPrice
+      installationPrice,
+      minWidth,
+      maxWidth,
+      minHeight,
+      maxHeight
     } = await request.json()
 
     // Prepare update data
@@ -101,6 +105,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (elevationImageData !== undefined) updateData.elevationImageData = elevationImageData
     if (elevationFileName !== undefined) updateData.elevationFileName = elevationFileName
     if (installationPrice !== undefined) updateData.installationPrice = installationPrice
+
+    // Size constraint fields - allow null to clear the constraint
+    if (minWidth !== undefined) updateData.minWidth = minWidth !== null && minWidth !== '' ? parseFloat(minWidth) : null
+    if (maxWidth !== undefined) updateData.maxWidth = maxWidth !== null && maxWidth !== '' ? parseFloat(maxWidth) : null
+    if (minHeight !== undefined) updateData.minHeight = minHeight !== null && minHeight !== '' ? parseFloat(minHeight) : null
+    if (maxHeight !== undefined) updateData.maxHeight = maxHeight !== null && maxHeight !== '' ? parseFloat(maxHeight) : null
 
     const product = await prisma.product.update({
       where: { id: productId },

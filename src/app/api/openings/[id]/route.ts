@@ -56,7 +56,7 @@ export async function PUT(
   try {
     const resolvedParams = await params
     const openingId = parseInt(resolvedParams.id)
-    
+
     if (isNaN(openingId)) {
       return NextResponse.json(
         { error: 'Invalid opening ID' },
@@ -65,14 +65,116 @@ export async function PUT(
     }
 
     // Note: includeStarterChannels removed - now handled via category options
-    const { name, roughWidth, roughHeight, finishedWidth, finishedHeight, price, multiplier, finishColor } = await request.json()
-
-    const updateData: any = {
+    const {
       name,
-      roughWidth: roughWidth ? parseFloat(roughWidth) : null,
-      roughHeight: roughHeight ? parseFloat(roughHeight) : null,
-      finishedWidth: finishedWidth ? parseFloat(finishedWidth) : null,
-      finishedHeight: finishedHeight ? parseFloat(finishedHeight) : null
+      roughWidth,
+      roughHeight,
+      finishedWidth,
+      finishedHeight,
+      price,
+      multiplier,
+      finishColor,
+      // Finished Opening Tolerance Fields
+      isFinishedOpening,
+      openingType,
+      widthToleranceTotal,
+      heightToleranceTotal
+    } = await request.json()
+
+    // Get existing opening data
+    const existingOpening = await prisma.opening.findUnique({
+      where: { id: openingId }
+    })
+
+    if (!existingOpening) {
+      return NextResponse.json(
+        { error: 'Opening not found' },
+        { status: 404 }
+      )
+    }
+
+    const updateData: any = {}
+
+    // Only update fields that are explicitly provided
+    if (name !== undefined) {
+      updateData.name = name
+    }
+
+    // Handle tolerance fields
+    if (isFinishedOpening !== undefined) {
+      updateData.isFinishedOpening = Boolean(isFinishedOpening)
+    }
+    if (openingType !== undefined) {
+      updateData.openingType = openingType && ['THINWALL', 'FRAMED'].includes(openingType) ? openingType : null
+    }
+    if (widthToleranceTotal !== undefined) {
+      updateData.widthToleranceTotal = widthToleranceTotal !== null ? parseFloat(widthToleranceTotal) : null
+    }
+    if (heightToleranceTotal !== undefined) {
+      updateData.heightToleranceTotal = heightToleranceTotal !== null ? parseFloat(heightToleranceTotal) : null
+    }
+
+    // Handle dimension fields
+    let finalRoughWidth = roughWidth !== undefined ? (roughWidth ? parseFloat(roughWidth) : null) : existingOpening.roughWidth
+    let finalRoughHeight = roughHeight !== undefined ? (roughHeight ? parseFloat(roughHeight) : null) : existingOpening.roughHeight
+
+    if (roughWidth !== undefined) {
+      updateData.roughWidth = finalRoughWidth
+    }
+    if (roughHeight !== undefined) {
+      updateData.roughHeight = finalRoughHeight
+    }
+
+    // Determine if this should be a finished opening
+    const finalIsFinished = isFinishedOpening !== undefined ? Boolean(isFinishedOpening) : existingOpening.isFinishedOpening
+    const finalOpeningType = openingType !== undefined ? openingType : existingOpening.openingType
+
+    // Calculate finished dimensions for finished openings
+    if (finalIsFinished && finalRoughWidth !== null && finalRoughHeight !== null) {
+      // Get tolerances - use new values if provided, else use existing overrides, else fetch defaults
+      let widthTol = widthToleranceTotal !== undefined
+        ? (widthToleranceTotal !== null ? parseFloat(widthToleranceTotal) : null)
+        : existingOpening.widthToleranceTotal
+      let heightTol = heightToleranceTotal !== undefined
+        ? (heightToleranceTotal !== null ? parseFloat(heightToleranceTotal) : null)
+        : existingOpening.heightToleranceTotal
+
+      // If no overrides, get defaults based on opening type
+      if (widthTol === null || heightTol === null) {
+        const toleranceSettings = await prisma.toleranceSettings.findFirst({
+          where: { name: 'default' }
+        })
+
+        const defaults = toleranceSettings || {
+          thinwallWidthTolerance: 1.0,
+          thinwallHeightTolerance: 1.5,
+          framedWidthTolerance: 0.5,
+          framedHeightTolerance: 0.75
+        }
+
+        if (widthTol === null) {
+          widthTol = finalOpeningType === 'FRAMED'
+            ? defaults.framedWidthTolerance
+            : defaults.thinwallWidthTolerance
+        }
+        if (heightTol === null) {
+          heightTol = finalOpeningType === 'FRAMED'
+            ? defaults.framedHeightTolerance
+            : defaults.thinwallHeightTolerance
+        }
+      }
+
+      // Calculate finished dimensions (rough - tolerance)
+      updateData.finishedWidth = finalRoughWidth - widthTol
+      updateData.finishedHeight = finalRoughHeight - heightTol
+    } else {
+      // Non-finished opening: use provided values directly
+      if (finishedWidth !== undefined) {
+        updateData.finishedWidth = finishedWidth ? parseFloat(finishedWidth) : null
+      }
+      if (finishedHeight !== undefined) {
+        updateData.finishedHeight = finishedHeight ? parseFloat(finishedHeight) : null
+      }
     }
 
     if (price !== undefined) {
