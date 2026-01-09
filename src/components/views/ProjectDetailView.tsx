@@ -2781,9 +2781,10 @@ export default function ProjectDetailView() {
 
       {/* Add Component Modal */}
       {showAddComponent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Add Component</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <h2 className="text-xl font-bold text-gray-900 mb-4 flex-shrink-0">Add Component</h2>
+            <div className="overflow-y-auto flex-1 pr-2">
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Product</label>
@@ -3264,7 +3265,8 @@ export default function ProjectDetailView() {
                 </div>
               )}
             </div>
-            <div className="flex justify-end space-x-3 pt-6">
+            </div>
+            <div className="flex justify-end space-x-3 pt-6 flex-shrink-0 border-t mt-4">
               <button
                 onClick={() => {
                   setShowAddComponent(false)
