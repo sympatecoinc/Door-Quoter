@@ -38,6 +38,7 @@ interface Opening {
   finishedWidth?: number
   finishedHeight?: number
   isFinishedOpening?: boolean
+  openingType?: 'THINWALL' | 'FRAMED'
   price: number
   multiplier: number
   priceCalculatedAt?: string | null
@@ -162,6 +163,21 @@ export default function ProjectDetailView() {
   const [editingOpeningId, setEditingOpeningId] = useState<number | null>(null)
   const [editingOpeningName, setEditingOpeningName] = useState('')
   const [editingOpeningFinishColor, setEditingOpeningFinishColor] = useState('')
+  const [editingOpeningRoughWidth, setEditingOpeningRoughWidth] = useState('')
+  const [editingOpeningRoughHeight, setEditingOpeningRoughHeight] = useState('')
+  const [editingOpeningIsFinished, setEditingOpeningIsFinished] = useState(false)
+  const [editingOpeningType, setEditingOpeningType] = useState<'THINWALL' | 'FRAMED'>('THINWALL')
+  const [showSizeRedistributionModal, setShowSizeRedistributionModal] = useState(false)
+  const [sizeRedistributionData, setSizeRedistributionData] = useState<{
+    openingId: number
+    widthDiff: number
+    heightDiff: number
+    newWidth: number
+    newHeight: number
+    panels: { id: number; name: string; width: number; height: number }[]
+  } | null>(null)
+  const [redistributionMethod, setRedistributionMethod] = useState<'equal' | 'single'>('equal')
+  const [selectedPanelForResize, setSelectedPanelForResize] = useState<number | null>(null)
   const [isUpdatingOpening, setIsUpdatingOpening] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showAddOpening, setShowAddOpening] = useState(false)
@@ -206,6 +222,8 @@ export default function ProjectDetailView() {
   const [selectedComponentId, setSelectedComponentId] = useState<number | null>(null)
   const [componentOptions, setComponentOptions] = useState<any[]>([])
   const [selectedOptions, setSelectedOptions] = useState<Record<string, number | null>>({})
+  const [editComponentOptionQuantities, setEditComponentOptionQuantities] = useState<Record<string, number>>({})
+  const [editComponentProductBOMs, setEditComponentProductBOMs] = useState<any[]>([])
   const [includedOptions, setIncludedOptions] = useState<number[]>([]) // Hardware options marked as included (no charge)
   const [editingComponentWidth, setEditingComponentWidth] = useState<string>('')
   const [editingComponentHeight, setEditingComponentHeight] = useState<string>('')
@@ -988,6 +1006,10 @@ export default function ProjectDetailView() {
       setEditingOpeningId(opening.id)
       setEditingOpeningName(opening.name)
       setEditingOpeningFinishColor(opening.finishColor || '')
+      setEditingOpeningRoughWidth(opening.roughWidth?.toString() || '')
+      setEditingOpeningRoughHeight(opening.roughHeight?.toString() || '')
+      setEditingOpeningIsFinished(opening.isFinishedOpening || false)
+      setEditingOpeningType(opening.openingType || 'THINWALL')
       setShowEditOpeningModal(true)
     }
 
@@ -999,6 +1021,68 @@ export default function ProjectDetailView() {
   async function handleUpdateOpening() {
     if (!editingOpeningId || !editingOpeningName.trim()) return
 
+    // Check if this is a finished opening with size changes and existing panels
+    const opening = project?.openings.find(o => o.id === editingOpeningId)
+    if (opening?.isFinishedOpening && editingOpeningRoughWidth && editingOpeningRoughHeight) {
+      const currentRoughWidth = opening.roughWidth || 0
+      const currentRoughHeight = opening.roughHeight || 0
+      const newRoughWidth = parseFloat(editingOpeningRoughWidth)
+      const newRoughHeight = parseFloat(editingOpeningRoughHeight)
+
+      // Get non-FRAME, non-CORNER panels
+      const resizablePanels = opening.panels?.filter(p => {
+        const productType = p.componentInstance?.product?.productType
+        return productType !== 'FRAME' && productType !== 'CORNER_90'
+      }) || []
+
+      // Check if there are size changes and panels to redistribute
+      const widthChanged = Math.abs(newRoughWidth - currentRoughWidth) > 0.001
+      const heightChanged = Math.abs(newRoughHeight - currentRoughHeight) > 0.001
+
+      if ((widthChanged || heightChanged) && resizablePanels.length > 0) {
+        // Calculate new finished dimensions using tolerance
+        let widthTolerance = 0
+        let heightTolerance = 0
+        if (editingOpeningType === 'FRAMED') {
+          widthTolerance = toleranceDefaults.framedWidthTolerance
+          heightTolerance = toleranceDefaults.framedHeightTolerance
+        } else {
+          widthTolerance = toleranceDefaults.thinwallWidthTolerance
+          heightTolerance = toleranceDefaults.thinwallHeightTolerance
+        }
+        const newFinishedWidth = newRoughWidth - widthTolerance
+        const newFinishedHeight = newRoughHeight - heightTolerance
+        const currentFinishedWidth = opening.finishedWidth || 0
+        const currentFinishedHeight = opening.finishedHeight || 0
+
+        // Show redistribution modal
+        setSizeRedistributionData({
+          openingId: editingOpeningId,
+          widthDiff: newFinishedWidth - currentFinishedWidth,
+          heightDiff: newFinishedHeight - currentFinishedHeight,
+          newWidth: newFinishedWidth,
+          newHeight: newFinishedHeight,
+          panels: resizablePanels.map((p, idx) => ({
+            id: p.id,
+            name: p.componentInstance?.product?.name || `Panel ${idx + 1}`,
+            width: p.width,
+            height: p.height
+          }))
+        })
+        setRedistributionMethod('equal')
+        setSelectedPanelForResize(resizablePanels[0]?.id || null)
+        setShowSizeRedistributionModal(true)
+        return
+      }
+    }
+
+    // No redistribution needed, just update the opening
+    await performOpeningUpdate()
+  }
+
+  async function performOpeningUpdate() {
+    if (!editingOpeningId) return
+
     setIsUpdatingOpening(true)
     try {
       const response = await fetch(`/api/openings/${editingOpeningId}`, {
@@ -1008,7 +1092,9 @@ export default function ProjectDetailView() {
         },
         body: JSON.stringify({
           name: editingOpeningName,
-          finishColor: editingOpeningFinishColor || null
+          finishColor: editingOpeningFinishColor || null,
+          roughWidth: editingOpeningRoughWidth || null,
+          roughHeight: editingOpeningRoughHeight || null
         }),
       })
 
@@ -1025,12 +1111,90 @@ export default function ProjectDetailView() {
         setEditingOpeningId(null)
         setEditingOpeningName('')
         setEditingOpeningFinishColor('')
+        setEditingOpeningRoughWidth('')
+        setEditingOpeningRoughHeight('')
+        setEditingOpeningIsFinished(false)
+        setEditingOpeningType('THINWALL')
       } else {
         showError('Error updating opening')
       }
     } catch (error) {
       console.error('Error updating opening:', error)
       showError('Error updating opening')
+    } finally {
+      setIsUpdatingOpening(false)
+    }
+  }
+
+  async function handleApplyRedistribution() {
+    if (!sizeRedistributionData) return
+
+    setIsUpdatingOpening(true)
+    try {
+      const { panels, widthDiff, heightDiff, newHeight } = sizeRedistributionData
+
+      // Calculate new panel dimensions
+      const panelUpdates: { id: number; width: number; height: number }[] = []
+
+      if (redistributionMethod === 'equal') {
+        // Split width difference equally among all panels
+        const widthPerPanel = widthDiff / panels.length
+        for (const panel of panels) {
+          panelUpdates.push({
+            id: panel.id,
+            width: panel.width + widthPerPanel,
+            height: newHeight // All panels get the new height
+          })
+        }
+      } else {
+        // Apply width difference to single selected panel
+        for (const panel of panels) {
+          if (panel.id === selectedPanelForResize) {
+            panelUpdates.push({
+              id: panel.id,
+              width: panel.width + widthDiff,
+              height: newHeight
+            })
+          } else {
+            panelUpdates.push({
+              id: panel.id,
+              width: panel.width,
+              height: newHeight // Still update height for all
+            })
+          }
+        }
+      }
+
+      // First update the opening
+      await performOpeningUpdate()
+
+      // Then update all panels
+      for (const update of panelUpdates) {
+        await fetch(`/api/panels/${update.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            width: update.width,
+            height: update.height,
+            skipValidation: true // Skip validation since we're doing the resize intentionally
+          })
+        })
+      }
+
+      // Refresh and recalculate
+      const updatedProject = await refreshProject()
+      if (updatedProject) {
+        await calculateAllOpeningPrices(updatedProject)
+      }
+
+      // Close modals and reset state
+      setShowSizeRedistributionModal(false)
+      setSizeRedistributionData(null)
+      setRedistributionMethod('equal')
+      setSelectedPanelForResize(null)
+    } catch (error) {
+      console.error('Error applying redistribution:', error)
+      showError('Error resizing components')
     } finally {
       setIsUpdatingOpening(false)
     }
@@ -1198,8 +1362,13 @@ export default function ProjectDetailView() {
         const existingHeight = nonFramePanels[0].height
         setComponentHeight(existingHeight.toString())
       } else {
-        // First panel in opening (or only Frame panels) - reset height
-        setComponentHeight('')
+        // First panel in opening (or only Frame panels)
+        // If finished opening with set height, auto-populate with finished height
+        if (opening?.isFinishedOpening && opening.finishedHeight) {
+          setComponentHeight(opening.finishedHeight.toString())
+        } else {
+          setComponentHeight('')
+        }
       }
 
       // Fetch products
@@ -1781,7 +1950,25 @@ export default function ProjectDetailView() {
           if (productResponse.ok) {
             const productData = await productResponse.json()
             setComponentOptions(productData.productSubOptions || [])
-            setSelectedOptions(JSON.parse(componentData.subOptionSelections || '{}'))
+
+            // Parse subOptionSelections and separate options from quantities
+            const allSelections = JSON.parse(componentData.subOptionSelections || '{}')
+            const options: Record<string, number | null> = {}
+            const quantities: Record<string, number> = {}
+
+            for (const [key, value] of Object.entries(allSelections)) {
+              if (key.endsWith('_qty')) {
+                // This is a quantity entry
+                quantities[key] = value as number
+              } else {
+                // This is an option selection
+                options[key] = value as number | null
+              }
+            }
+
+            setSelectedOptions(options)
+            setEditComponentOptionQuantities(quantities)
+            setEditComponentProductBOMs(productData.productBOMs || [])
             setIncludedOptions(JSON.parse(componentData.includedOptions || '[]'))
             setEditingProductType(productData.productType || '')
             setEditingPlanViews(productData.planViews || [])
@@ -2741,9 +2928,10 @@ export default function ProjectDetailView() {
 
       {/* Add Component Modal */}
       {showAddComponent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Add Component</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <h2 className="text-xl font-bold text-gray-900 mb-4 flex-shrink-0">Add Component</h2>
+            <div className="overflow-y-auto flex-1 pr-2">
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Product</label>
@@ -3224,7 +3412,8 @@ export default function ProjectDetailView() {
                 </div>
               )}
             </div>
-            <div className="flex justify-end space-x-3 pt-6">
+            </div>
+            <div className="flex justify-end space-x-3 pt-6 flex-shrink-0 border-t mt-4">
               <button
                 onClick={() => {
                   setShowAddComponent(false)
@@ -3278,9 +3467,10 @@ export default function ProjectDetailView() {
 
       {/* Component Edit Modal */}
       {showComponentEdit && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Edit Component</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <h2 className="text-xl font-bold text-gray-900 mb-4 flex-shrink-0">Edit Component</h2>
+            <div className="overflow-y-auto flex-1 pr-2">
             
             {/* Dimensions Section */}
             <div className="mb-6 p-4 bg-gray-50 rounded-lg">
@@ -3415,46 +3605,98 @@ export default function ProjectDetailView() {
             )}
 
             {/* Options Section */}
-            <div className="space-y-4 max-h-96 overflow-y-auto">
+            <div className="space-y-4">
               <h3 className="text-sm font-semibold text-gray-700">Product Options</h3>
               {componentOptions.length > 0 ? (
-                componentOptions.map((option) => (
-                  <div key={option.id}>
-                    <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
-                      {option.category.name}
-                      {selectedOptions[option.category.id] === option.standardOptionId && (
-                        <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard Option Applied</span>
+                componentOptions.map((option) => {
+                  const selectedOptionId = selectedOptions[option.category.id]
+                  // Convert to number for comparison since JSON parsing may have made it a string
+                  const selectedOptionIdNum = selectedOptionId !== null && selectedOptionId !== undefined
+                    ? Number(selectedOptionId)
+                    : null
+                  const optionBom = editComponentProductBOMs?.find(
+                    (bom: any) => bom.optionId === selectedOptionIdNum
+                  )
+                  const isRangeMode = optionBom?.quantityMode === 'RANGE'
+                  const quantityKey = `${option.category.id}_qty`
+
+                  return (
+                    <div key={option.id}>
+                      <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
+                        {option.category.name}
+                        {selectedOptions[option.category.id] === option.standardOptionId && (
+                          <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard Option Applied</span>
+                        )}
+                      </label>
+                      {option.category.description && (
+                        <p className="text-xs text-gray-500 mb-2">{option.category.description}</p>
                       )}
-                    </label>
-                    {option.category.description && (
-                      <p className="text-xs text-gray-500 mb-2">{option.category.description}</p>
-                    )}
-                    <select
-                      value={selectedOptions[option.category.id] === null ? 'none' : (selectedOptions[option.category.id] || '')}
-                      onChange={(e) => {
-                        const newValue = e.target.value === 'none' ? null : (e.target.value ? parseInt(e.target.value) : undefined)
-                        setSelectedOptions({
-                          ...selectedOptions,
-                          [option.category.id]: newValue
-                        })
-                        // If unselecting an option, remove it from included list
-                        if (!newValue && selectedOptions[option.category.id]) {
-                          setIncludedOptions(includedOptions.filter(id => id !== selectedOptions[option.category.id]))
-                        }
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                    >
-                      <option value="">Select option...</option>
-                      <option value="none">None (No hardware)</option>
-                      {option.category.individualOptions?.map((individualOption: any) => (
-                        <option key={individualOption.id} value={individualOption.id}>
-                          {individualOption.name}
-                          {option.standardOptionId === individualOption.id && ' \u2605'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))
+                      <div className="flex gap-2">
+                        <select
+                          value={selectedOptions[option.category.id] === null ? 'none' : (selectedOptions[option.category.id] || '')}
+                          onChange={(e) => {
+                            const newValue = e.target.value === 'none' ? null : (e.target.value ? parseInt(e.target.value) : undefined)
+                            setSelectedOptions({
+                              ...selectedOptions,
+                              [option.category.id]: newValue
+                            })
+                            // If unselecting an option, remove it from included list
+                            if (!newValue && selectedOptions[option.category.id]) {
+                              setIncludedOptions(includedOptions.filter(id => id !== selectedOptions[option.category.id]))
+                            }
+                            // Check if new option has RANGE mode and set default quantity
+                            const newOptionBom = editComponentProductBOMs?.find(
+                              (bom: any) => bom.optionId === newValue
+                            )
+                            if (newOptionBom?.quantityMode === 'RANGE') {
+                              setEditComponentOptionQuantities({
+                                ...editComponentOptionQuantities,
+                                [quantityKey]: newOptionBom.defaultQuantity || newOptionBom.minQuantity || 0
+                              })
+                            } else {
+                              // Remove quantity selection if not RANGE mode
+                              const newQuantities = { ...editComponentOptionQuantities }
+                              delete newQuantities[quantityKey]
+                              setEditComponentOptionQuantities(newQuantities)
+                            }
+                          }}
+                          className={`${isRangeMode ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900`}
+                        >
+                          <option value="">Select option...</option>
+                          <option value="none">None (No hardware)</option>
+                          {option.category.individualOptions?.map((individualOption: any) => (
+                            <option key={individualOption.id} value={individualOption.id}>
+                              {individualOption.name}
+                              {option.standardOptionId === individualOption.id && ' \u2605'}
+                            </option>
+                          ))}
+                        </select>
+                        {isRangeMode && (
+                          <select
+                            value={editComponentOptionQuantities[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}
+                            onChange={(e) => {
+                              setEditComponentOptionQuantities({
+                                ...editComponentOptionQuantities,
+                                [quantityKey]: parseInt(e.target.value)
+                              })
+                            }}
+                            className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                            title="Select quantity"
+                          >
+                            {Array.from(
+                              { length: (optionBom.maxQuantity || 4) - (optionBom.minQuantity || 0) + 1 },
+                              (_, i) => (optionBom.minQuantity || 0) + i
+                            ).map((qty) => (
+                              <option key={qty} value={qty}>
+                                {qty}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
               ) : (
                 <p className="text-gray-500 text-center py-4">No configurable options for this product</p>
               )}
@@ -3470,12 +3712,15 @@ export default function ProjectDetailView() {
                 </div>
               )}
             </div>
-            <div className="flex justify-end space-x-3 pt-6">
+            </div>
+            <div className="flex justify-end space-x-3 pt-6 flex-shrink-0 border-t mt-4">
               <button
                 onClick={() => {
                   setShowComponentEdit(false)
                   setSelectedComponentId(null)
                   setSelectedOptions({})
+                  setEditComponentOptionQuantities({})
+                  setEditComponentProductBOMs([])
                   setIncludedOptions([])
                   setEditingComponentWidth('')
                   setEditingComponentHeight('')
@@ -3548,14 +3793,18 @@ export default function ProjectDetailView() {
                       return
                     }
 
-                    // Update component options
+                    // Update component options - merge options with quantities
+                    const mergedSelections = {
+                      ...selectedOptions,
+                      ...editComponentOptionQuantities
+                    }
                     const componentResponse = await fetch(`/api/components/${selectedComponentId}`, {
                       method: 'PATCH',
                       headers: {
                         'Content-Type': 'application/json',
                       },
                       body: JSON.stringify({
-                        subOptionSelections: selectedOptions,
+                        subOptionSelections: mergedSelections,
                         includedOptions: includedOptions
                       })
                     })
@@ -3587,6 +3836,8 @@ export default function ProjectDetailView() {
                     setShowComponentEdit(false)
                     setSelectedComponentId(null)
                     setSelectedOptions({})
+                    setEditComponentOptionQuantities({})
+                    setEditComponentProductBOMs([])
                     setIncludedOptions([])
                     setEditingComponentWidth('')
                     setEditingComponentHeight('')
@@ -4223,6 +4474,10 @@ export default function ProjectDetailView() {
                   setEditingOpeningId(null)
                   setEditingOpeningName('')
                   setEditingOpeningFinishColor('')
+                  setEditingOpeningRoughWidth('')
+                  setEditingOpeningRoughHeight('')
+                  setEditingOpeningIsFinished(false)
+                  setEditingOpeningType('THINWALL')
                 }}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
               >
@@ -4261,6 +4516,37 @@ export default function ProjectDetailView() {
                   ))}
                 </select>
               </div>
+              {/* Width and Height fields for finished openings */}
+              {editingOpeningIsFinished && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {editingOpeningType === 'THINWALL' ? 'Finished Width (in)' : 'Rough Width (in)'}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      value={editingOpeningRoughWidth}
+                      onChange={(e) => setEditingOpeningRoughWidth(e.target.value)}
+                      placeholder="Width..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {editingOpeningType === 'THINWALL' ? 'Finished Height (in)' : 'Rough Height (in)'}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      value={editingOpeningRoughHeight}
+                      onChange={(e) => setEditingOpeningRoughHeight(e.target.value)}
+                      placeholder="Height..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end space-x-2 mt-6">
@@ -4270,6 +4556,10 @@ export default function ProjectDetailView() {
                   setEditingOpeningId(null)
                   setEditingOpeningName('')
                   setEditingOpeningFinishColor('')
+                  setEditingOpeningRoughWidth('')
+                  setEditingOpeningRoughHeight('')
+                  setEditingOpeningIsFinished(false)
+                  setEditingOpeningType('THINWALL')
                 }}
                 disabled={isUpdatingOpening}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
@@ -4285,6 +4575,181 @@ export default function ProjectDetailView() {
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                 )}
                 {isUpdatingOpening ? 'Updating...' : 'Update Opening'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Size Redistribution Modal */}
+      {showSizeRedistributionModal && sizeRedistributionData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              Adjust Component Sizes
+            </h3>
+            <p className="text-sm text-gray-600 mb-6">
+              The opening size has changed. How would you like to adjust the existing components?
+            </p>
+
+            {/* Size Change Summary */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <h4 className="text-sm font-medium text-blue-900 mb-2">Size Change Summary</h4>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-blue-700">Width Change:</span>
+                  <span className={`ml-2 font-semibold ${sizeRedistributionData.widthDiff >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                    {sizeRedistributionData.widthDiff >= 0 ? '+' : ''}{sizeRedistributionData.widthDiff.toFixed(3)}"
+                  </span>
+                </div>
+                <div>
+                  <span className="text-blue-700">Height Change:</span>
+                  <span className={`ml-2 font-semibold ${sizeRedistributionData.heightDiff >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                    {sizeRedistributionData.heightDiff >= 0 ? '+' : ''}{sizeRedistributionData.heightDiff.toFixed(3)}"
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Redistribution Options */}
+            <div className="space-y-4 mb-6">
+              <h4 className="text-sm font-medium text-gray-700">Width Adjustment Method</h4>
+
+              {/* Equal Distribution Option */}
+              <label
+                className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                  redistributionMethod === 'equal'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="redistribution"
+                  value="equal"
+                  checked={redistributionMethod === 'equal'}
+                  onChange={() => setRedistributionMethod('equal')}
+                  className="mt-1 mr-3"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">Split Equally</div>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Distribute the {Math.abs(sizeRedistributionData.widthDiff).toFixed(3)}" width change equally across all {sizeRedistributionData.panels.length} component{sizeRedistributionData.panels.length > 1 ? 's' : ''}.
+                  </p>
+                  {redistributionMethod === 'equal' && sizeRedistributionData.panels.length > 0 && (
+                    <div className="mt-3 p-3 bg-white rounded border border-blue-200">
+                      <div className="text-xs font-medium text-gray-500 mb-2">Preview:</div>
+                      <div className="space-y-1">
+                        {sizeRedistributionData.panels.map((panel, idx) => {
+                          const newWidth = panel.width + (sizeRedistributionData.widthDiff / sizeRedistributionData.panels.length)
+                          return (
+                            <div key={panel.id} className="flex justify-between text-sm">
+                              <span className="text-gray-700">{panel.name}</span>
+                              <span className="text-gray-500">
+                                {panel.width.toFixed(3)}" → <span className="font-medium text-gray-900">{newWidth.toFixed(3)}"</span>
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </label>
+
+              {/* Single Panel Option */}
+              <label
+                className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                  redistributionMethod === 'single'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="redistribution"
+                  value="single"
+                  checked={redistributionMethod === 'single'}
+                  onChange={() => setRedistributionMethod('single')}
+                  className="mt-1 mr-3"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">Adjust Single Component</div>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Apply the entire width change to one specific component.
+                  </p>
+                  {redistributionMethod === 'single' && (
+                    <div className="mt-3 space-y-3">
+                      <select
+                        value={selectedPanelForResize || ''}
+                        onChange={(e) => setSelectedPanelForResize(parseInt(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+                      >
+                        {sizeRedistributionData.panels.map((panel) => (
+                          <option key={panel.id} value={panel.id}>
+                            {panel.name} (currently {panel.width.toFixed(3)}" wide)
+                          </option>
+                        ))}
+                      </select>
+                      {selectedPanelForResize && (
+                        <div className="p-3 bg-white rounded border border-blue-200">
+                          <div className="text-xs font-medium text-gray-500 mb-2">Preview:</div>
+                          <div className="space-y-1">
+                            {sizeRedistributionData.panels.map((panel) => {
+                              const isSelected = panel.id === selectedPanelForResize
+                              const newWidth = isSelected ? panel.width + sizeRedistributionData.widthDiff : panel.width
+                              return (
+                                <div key={panel.id} className={`flex justify-between text-sm ${isSelected ? 'font-medium' : ''}`}>
+                                  <span className={isSelected ? 'text-blue-700' : 'text-gray-700'}>
+                                    {panel.name} {isSelected && '←'}
+                                  </span>
+                                  <span className="text-gray-500">
+                                    {panel.width.toFixed(3)}" → <span className={`font-medium ${isSelected ? 'text-blue-700' : 'text-gray-900'}`}>{newWidth.toFixed(3)}"</span>
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </label>
+            </div>
+
+            {/* Height Note */}
+            {sizeRedistributionData.heightDiff !== 0 && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-6">
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Note:</span> All component heights will be updated to {sizeRedistributionData.newHeight.toFixed(3)}" to match the new opening height.
+                </p>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowSizeRedistributionModal(false)
+                  setSizeRedistributionData(null)
+                  setRedistributionMethod('equal')
+                  setSelectedPanelForResize(null)
+                }}
+                disabled={isUpdatingOpening}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyRedistribution}
+                disabled={isUpdatingOpening || (redistributionMethod === 'single' && !selectedPanelForResize)}
+                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center font-medium"
+              >
+                {isUpdatingOpening && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                )}
+                {isUpdatingOpening ? 'Applying...' : 'Apply Changes'}
               </button>
             </div>
           </div>
