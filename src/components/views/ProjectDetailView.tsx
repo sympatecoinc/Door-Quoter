@@ -38,6 +38,7 @@ interface Opening {
   finishedWidth?: number
   finishedHeight?: number
   isFinishedOpening?: boolean
+  openingType?: 'THINWALL' | 'FRAMED'
   price: number
   multiplier: number
   priceCalculatedAt?: string | null
@@ -162,6 +163,10 @@ export default function ProjectDetailView() {
   const [editingOpeningId, setEditingOpeningId] = useState<number | null>(null)
   const [editingOpeningName, setEditingOpeningName] = useState('')
   const [editingOpeningFinishColor, setEditingOpeningFinishColor] = useState('')
+  const [editingOpeningRoughWidth, setEditingOpeningRoughWidth] = useState('')
+  const [editingOpeningRoughHeight, setEditingOpeningRoughHeight] = useState('')
+  const [editingOpeningIsFinished, setEditingOpeningIsFinished] = useState(false)
+  const [editingOpeningType, setEditingOpeningType] = useState<'THINWALL' | 'FRAMED'>('THINWALL')
   const [isUpdatingOpening, setIsUpdatingOpening] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showAddOpening, setShowAddOpening] = useState(false)
@@ -206,6 +211,8 @@ export default function ProjectDetailView() {
   const [selectedComponentId, setSelectedComponentId] = useState<number | null>(null)
   const [componentOptions, setComponentOptions] = useState<any[]>([])
   const [selectedOptions, setSelectedOptions] = useState<Record<string, number | null>>({})
+  const [editComponentOptionQuantities, setEditComponentOptionQuantities] = useState<Record<string, number>>({})
+  const [editComponentProductBOMs, setEditComponentProductBOMs] = useState<any[]>([])
   const [includedOptions, setIncludedOptions] = useState<number[]>([]) // Hardware options marked as included (no charge)
   const [editingComponentWidth, setEditingComponentWidth] = useState<string>('')
   const [editingComponentHeight, setEditingComponentHeight] = useState<string>('')
@@ -988,6 +995,10 @@ export default function ProjectDetailView() {
       setEditingOpeningId(opening.id)
       setEditingOpeningName(opening.name)
       setEditingOpeningFinishColor(opening.finishColor || '')
+      setEditingOpeningRoughWidth(opening.roughWidth?.toString() || '')
+      setEditingOpeningRoughHeight(opening.roughHeight?.toString() || '')
+      setEditingOpeningIsFinished(opening.isFinishedOpening || false)
+      setEditingOpeningType(opening.openingType || 'THINWALL')
       setShowEditOpeningModal(true)
     }
 
@@ -1008,7 +1019,9 @@ export default function ProjectDetailView() {
         },
         body: JSON.stringify({
           name: editingOpeningName,
-          finishColor: editingOpeningFinishColor || null
+          finishColor: editingOpeningFinishColor || null,
+          roughWidth: editingOpeningRoughWidth || null,
+          roughHeight: editingOpeningRoughHeight || null
         }),
       })
 
@@ -1025,6 +1038,10 @@ export default function ProjectDetailView() {
         setEditingOpeningId(null)
         setEditingOpeningName('')
         setEditingOpeningFinishColor('')
+        setEditingOpeningRoughWidth('')
+        setEditingOpeningRoughHeight('')
+        setEditingOpeningIsFinished(false)
+        setEditingOpeningType('THINWALL')
       } else {
         showError('Error updating opening')
       }
@@ -1198,8 +1215,13 @@ export default function ProjectDetailView() {
         const existingHeight = nonFramePanels[0].height
         setComponentHeight(existingHeight.toString())
       } else {
-        // First panel in opening (or only Frame panels) - reset height
-        setComponentHeight('')
+        // First panel in opening (or only Frame panels)
+        // If finished opening with set height, auto-populate with finished height
+        if (opening?.isFinishedOpening && opening.finishedHeight) {
+          setComponentHeight(opening.finishedHeight.toString())
+        } else {
+          setComponentHeight('')
+        }
       }
 
       // Fetch products
@@ -1781,7 +1803,25 @@ export default function ProjectDetailView() {
           if (productResponse.ok) {
             const productData = await productResponse.json()
             setComponentOptions(productData.productSubOptions || [])
-            setSelectedOptions(JSON.parse(componentData.subOptionSelections || '{}'))
+
+            // Parse subOptionSelections and separate options from quantities
+            const allSelections = JSON.parse(componentData.subOptionSelections || '{}')
+            const options: Record<string, number | null> = {}
+            const quantities: Record<string, number> = {}
+
+            for (const [key, value] of Object.entries(allSelections)) {
+              if (key.endsWith('_qty')) {
+                // This is a quantity entry
+                quantities[key] = value as number
+              } else {
+                // This is an option selection
+                options[key] = value as number | null
+              }
+            }
+
+            setSelectedOptions(options)
+            setEditComponentOptionQuantities(quantities)
+            setEditComponentProductBOMs(productData.productBOMs || [])
             setIncludedOptions(JSON.parse(componentData.includedOptions || '[]'))
             setEditingProductType(productData.productType || '')
             setEditingPlanViews(productData.planViews || [])
@@ -3418,43 +3458,91 @@ export default function ProjectDetailView() {
             <div className="space-y-4 max-h-96 overflow-y-auto">
               <h3 className="text-sm font-semibold text-gray-700">Product Options</h3>
               {componentOptions.length > 0 ? (
-                componentOptions.map((option) => (
-                  <div key={option.id}>
-                    <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
-                      {option.category.name}
-                      {selectedOptions[option.category.id] === option.standardOptionId && (
-                        <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard Option Applied</span>
+                componentOptions.map((option) => {
+                  const selectedOptionId = selectedOptions[option.category.id]
+                  const optionBom = editComponentProductBOMs?.find(
+                    (bom: any) => bom.optionId === selectedOptionId
+                  )
+                  const isRangeMode = optionBom?.quantityMode === 'RANGE'
+                  const quantityKey = `${option.category.id}_qty`
+
+                  return (
+                    <div key={option.id}>
+                      <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
+                        {option.category.name}
+                        {selectedOptions[option.category.id] === option.standardOptionId && (
+                          <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard Option Applied</span>
+                        )}
+                      </label>
+                      {option.category.description && (
+                        <p className="text-xs text-gray-500 mb-2">{option.category.description}</p>
                       )}
-                    </label>
-                    {option.category.description && (
-                      <p className="text-xs text-gray-500 mb-2">{option.category.description}</p>
-                    )}
-                    <select
-                      value={selectedOptions[option.category.id] === null ? 'none' : (selectedOptions[option.category.id] || '')}
-                      onChange={(e) => {
-                        const newValue = e.target.value === 'none' ? null : (e.target.value ? parseInt(e.target.value) : undefined)
-                        setSelectedOptions({
-                          ...selectedOptions,
-                          [option.category.id]: newValue
-                        })
-                        // If unselecting an option, remove it from included list
-                        if (!newValue && selectedOptions[option.category.id]) {
-                          setIncludedOptions(includedOptions.filter(id => id !== selectedOptions[option.category.id]))
-                        }
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                    >
-                      <option value="">Select option...</option>
-                      <option value="none">None (No hardware)</option>
-                      {option.category.individualOptions?.map((individualOption: any) => (
-                        <option key={individualOption.id} value={individualOption.id}>
-                          {individualOption.name}
-                          {option.standardOptionId === individualOption.id && ' \u2605'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))
+                      <div className="flex gap-2">
+                        <select
+                          value={selectedOptions[option.category.id] === null ? 'none' : (selectedOptions[option.category.id] || '')}
+                          onChange={(e) => {
+                            const newValue = e.target.value === 'none' ? null : (e.target.value ? parseInt(e.target.value) : undefined)
+                            setSelectedOptions({
+                              ...selectedOptions,
+                              [option.category.id]: newValue
+                            })
+                            // If unselecting an option, remove it from included list
+                            if (!newValue && selectedOptions[option.category.id]) {
+                              setIncludedOptions(includedOptions.filter(id => id !== selectedOptions[option.category.id]))
+                            }
+                            // Check if new option has RANGE mode and set default quantity
+                            const newOptionBom = editComponentProductBOMs?.find(
+                              (bom: any) => bom.optionId === newValue
+                            )
+                            if (newOptionBom?.quantityMode === 'RANGE') {
+                              setEditComponentOptionQuantities({
+                                ...editComponentOptionQuantities,
+                                [quantityKey]: newOptionBom.defaultQuantity || newOptionBom.minQuantity || 0
+                              })
+                            } else {
+                              // Remove quantity selection if not RANGE mode
+                              const newQuantities = { ...editComponentOptionQuantities }
+                              delete newQuantities[quantityKey]
+                              setEditComponentOptionQuantities(newQuantities)
+                            }
+                          }}
+                          className={`${isRangeMode ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900`}
+                        >
+                          <option value="">Select option...</option>
+                          <option value="none">None (No hardware)</option>
+                          {option.category.individualOptions?.map((individualOption: any) => (
+                            <option key={individualOption.id} value={individualOption.id}>
+                              {individualOption.name}
+                              {option.standardOptionId === individualOption.id && ' \u2605'}
+                            </option>
+                          ))}
+                        </select>
+                        {isRangeMode && (
+                          <select
+                            value={editComponentOptionQuantities[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}
+                            onChange={(e) => {
+                              setEditComponentOptionQuantities({
+                                ...editComponentOptionQuantities,
+                                [quantityKey]: parseInt(e.target.value)
+                              })
+                            }}
+                            className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                            title="Select quantity"
+                          >
+                            {Array.from(
+                              { length: (optionBom.maxQuantity || 4) - (optionBom.minQuantity || 0) + 1 },
+                              (_, i) => (optionBom.minQuantity || 0) + i
+                            ).map((qty) => (
+                              <option key={qty} value={qty}>
+                                {qty}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
               ) : (
                 <p className="text-gray-500 text-center py-4">No configurable options for this product</p>
               )}
@@ -3476,6 +3564,8 @@ export default function ProjectDetailView() {
                   setShowComponentEdit(false)
                   setSelectedComponentId(null)
                   setSelectedOptions({})
+                  setEditComponentOptionQuantities({})
+                  setEditComponentProductBOMs([])
                   setIncludedOptions([])
                   setEditingComponentWidth('')
                   setEditingComponentHeight('')
@@ -3548,14 +3638,18 @@ export default function ProjectDetailView() {
                       return
                     }
 
-                    // Update component options
+                    // Update component options - merge options with quantities
+                    const mergedSelections = {
+                      ...selectedOptions,
+                      ...editComponentOptionQuantities
+                    }
                     const componentResponse = await fetch(`/api/components/${selectedComponentId}`, {
                       method: 'PATCH',
                       headers: {
                         'Content-Type': 'application/json',
                       },
                       body: JSON.stringify({
-                        subOptionSelections: selectedOptions,
+                        subOptionSelections: mergedSelections,
                         includedOptions: includedOptions
                       })
                     })
@@ -3587,6 +3681,8 @@ export default function ProjectDetailView() {
                     setShowComponentEdit(false)
                     setSelectedComponentId(null)
                     setSelectedOptions({})
+                    setEditComponentOptionQuantities({})
+                    setEditComponentProductBOMs([])
                     setIncludedOptions([])
                     setEditingComponentWidth('')
                     setEditingComponentHeight('')
@@ -4223,6 +4319,10 @@ export default function ProjectDetailView() {
                   setEditingOpeningId(null)
                   setEditingOpeningName('')
                   setEditingOpeningFinishColor('')
+                  setEditingOpeningRoughWidth('')
+                  setEditingOpeningRoughHeight('')
+                  setEditingOpeningIsFinished(false)
+                  setEditingOpeningType('THINWALL')
                 }}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
               >
@@ -4261,6 +4361,37 @@ export default function ProjectDetailView() {
                   ))}
                 </select>
               </div>
+              {/* Width and Height fields for finished openings */}
+              {editingOpeningIsFinished && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {editingOpeningType === 'THINWALL' ? 'Finished Width (in)' : 'Rough Width (in)'}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      value={editingOpeningRoughWidth}
+                      onChange={(e) => setEditingOpeningRoughWidth(e.target.value)}
+                      placeholder="Width..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {editingOpeningType === 'THINWALL' ? 'Finished Height (in)' : 'Rough Height (in)'}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      value={editingOpeningRoughHeight}
+                      onChange={(e) => setEditingOpeningRoughHeight(e.target.value)}
+                      placeholder="Height..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end space-x-2 mt-6">
@@ -4270,6 +4401,10 @@ export default function ProjectDetailView() {
                   setEditingOpeningId(null)
                   setEditingOpeningName('')
                   setEditingOpeningFinishColor('')
+                  setEditingOpeningRoughWidth('')
+                  setEditingOpeningRoughHeight('')
+                  setEditingOpeningIsFinished(false)
+                  setEditingOpeningType('THINWALL')
                 }}
                 disabled={isUpdatingOpening}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
