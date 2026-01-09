@@ -162,7 +162,15 @@ export async function GET(
                           include: {
                             category: {
                               include: {
-                                individualOptions: true
+                                individualOptions: {
+                                  include: {
+                                    linkedParts: {
+                                      include: {
+                                        masterPart: true
+                                      }
+                                    }
+                                  }
+                                }
                               }
                             }
                           }
@@ -259,6 +267,9 @@ export async function GET(
 
         // Process each BOM item for this component
         for (const bom of product.productBOMs) {
+          // Skip option-linked BOMs - these are handled in the options section below
+          if (bom.optionId) continue
+
           const variables = {
             width: panel.width || 0,
             height: panel.height || 0,
@@ -419,12 +430,67 @@ export async function GET(
                     }
                   }
 
-                  // Apply finish code if addFinishToPartNumber is set
-                  if (standardOption.addFinishToPartNumber && opening.finishColor && standardOption.partNumber) {
-                    const finishCode = await getFinishCode(opening.finishColor)
-                    if (finishCode) {
-                      partNumber = `${partNumber}${finishCode}`
+                  // Check if this option has a ProductBOM entry (for cut list items)
+                  const optionBom = standardOption.isCutListItem
+                    ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
+                    : null
+
+                  let cutLength: number | null = null
+                  let stockLength: number | null = null
+                  let isMillFinish = false
+                  let percentOfStock = ''
+
+                  if (optionBom && optionBom.formula) {
+                    // Calculate cut length using the formula from ProductBOM
+                    cutLength = evaluateFormula(optionBom.formula, {
+                      width: panel.width || 0,
+                      height: panel.height || 0,
+                      Width: panel.width || 0,
+                      Height: panel.height || 0
+                    })
+
+                    // Look up stock length from MasterPart if partNumber exists
+                    if (standardOption.partNumber) {
+                      const stockInfo = await findStockLength(
+                        standardOption.partNumber,
+                        { formula: optionBom.formula, partType: 'Extrusion' },
+                        { width: panel.width || 0, height: panel.height || 0 }
+                      )
+                      stockLength = stockInfo.stockLength
+                      isMillFinish = stockInfo.isMillFinish
+
+                      // Build full part number with finish code and stock length
+                      if (opening.finishColor && !isMillFinish) {
+                        const finishCode = await getFinishCode(opening.finishColor)
+                        if (finishCode) {
+                          partNumber = `${partNumber}${finishCode}`
+                        }
+                      }
+                      if (stockLength) {
+                        partNumber = `${partNumber}-${stockLength}`
+                      }
+
+                      // Calculate percent of stock
+                      if (cutLength && stockLength && stockLength > 0) {
+                        percentOfStock = ((cutLength / stockLength) * 100).toFixed(1) + '%'
+                      }
                     }
+                  } else {
+                    // Apply finish code if addFinishToPartNumber is set (non-cut-list options)
+                    if (standardOption.addFinishToPartNumber && opening.finishColor && standardOption.partNumber) {
+                      const finishCode = await getFinishCode(opening.finishColor)
+                      if (finishCode) {
+                        partNumber = `${partNumber}${finishCode}`
+                      }
+                    }
+                  }
+
+                  // Determine quantity
+                  let optionQuantity = 1
+                  if (optionBom?.quantityMode === 'RANGE') {
+                    optionQuantity = optionBom.defaultQuantity || optionBom.minQuantity || 1
+                  } else {
+                    optionQuantity = optionBom?.quantity || 1
                   }
 
                   bomItems.push({
@@ -434,15 +500,48 @@ export async function GET(
                     panelHeight: panel.height,
                     partNumber: partNumber,
                     partName: standardOption.name,
-                    partType: 'Option',
-                    quantity: 1,
-                    cutLength: '',
-                    percentOfStock: '',
-                    isMilled: true, // Options are not extrusions
-                    unit: 'EA',
+                    partType: optionBom ? 'Extrusion' : 'Option',
+                    quantity: optionQuantity,
+                    cutLength: cutLength ? cutLength.toFixed(3) : '',
+                    percentOfStock: percentOfStock,
+                    isMilled: optionBom?.isMilled !== false,
+                    unit: optionBom ? 'IN' : 'EA',
                     description: `${productSubOption.category.name}: ${standardOption.name} (Standard - Included)`,
                     color: opening.finishColor || 'N/A'
                   })
+
+                  // Process linked parts for standard option
+                  if (standardOption.linkedParts && standardOption.linkedParts.length > 0) {
+                    for (const linkedPart of standardOption.linkedParts) {
+                      const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
+
+                      // Build part number with finish code if applicable
+                      let linkedPartNumber = linkedPart.masterPart.partNumber
+                      if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+                        const finishCode = await getFinishCode(opening.finishColor)
+                        if (finishCode) {
+                          linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                        }
+                      }
+
+                      bomItems.push({
+                        openingName: opening.name,
+                        productName: product.name,
+                        panelWidth: panel.width,
+                        panelHeight: panel.height,
+                        partNumber: linkedPartNumber,
+                        partName: linkedPart.masterPart.baseName,
+                        partType: linkedPart.masterPart.partType || 'Hardware',
+                        quantity: linkedQuantity,
+                        cutLength: '',
+                        percentOfStock: '',
+                        isMilled: true,
+                        unit: linkedPart.masterPart.unit || 'EA',
+                        description: `Linked: ${standardOption.name}`,
+                        color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A'
+                      })
+                    }
+                  }
                 }
                 continue
               }
@@ -464,11 +563,58 @@ export async function GET(
                   }
                 }
 
-                // Apply finish code if addFinishToPartNumber is set
-                if (individualOption.addFinishToPartNumber && opening.finishColor && individualOption.partNumber) {
-                  const finishCode = await getFinishCode(opening.finishColor)
-                  if (finishCode) {
-                    partNumber = `${partNumber}${finishCode}`
+                // Check if this option has a ProductBOM entry (for cut list items)
+                const optionBom = individualOption.isCutListItem
+                  ? product.productBOMs?.find((bom: any) => bom.optionId === individualOption.id)
+                  : null
+
+                let cutLength: number | null = null
+                let stockLength: number | null = null
+                let isMillFinish = false
+                let percentOfStock = ''
+
+                if (optionBom && optionBom.formula) {
+                  // Calculate cut length using the formula from ProductBOM
+                  cutLength = evaluateFormula(optionBom.formula, {
+                    width: panel.width || 0,
+                    height: panel.height || 0,
+                    Width: panel.width || 0,
+                    Height: panel.height || 0
+                  })
+
+                  // Look up stock length from MasterPart if partNumber exists
+                  if (individualOption.partNumber) {
+                    const stockInfo = await findStockLength(
+                      individualOption.partNumber,
+                      { formula: optionBom.formula, partType: 'Extrusion' },
+                      { width: panel.width || 0, height: panel.height || 0 }
+                    )
+                    stockLength = stockInfo.stockLength
+                    isMillFinish = stockInfo.isMillFinish
+
+                    // Build full part number with finish code and stock length
+                    if (opening.finishColor && !isMillFinish) {
+                      const finishCode = await getFinishCode(opening.finishColor)
+                      if (finishCode) {
+                        partNumber = `${partNumber}${finishCode}`
+                      }
+                    }
+                    if (stockLength) {
+                      partNumber = `${partNumber}-${stockLength}`
+                    }
+
+                    // Calculate percent of stock
+                    if (cutLength && stockLength && stockLength > 0) {
+                      percentOfStock = ((cutLength / stockLength) * 100).toFixed(1) + '%'
+                    }
+                  }
+                } else {
+                  // Apply finish code if addFinishToPartNumber is set (non-cut-list options)
+                  if (individualOption.addFinishToPartNumber && opening.finishColor && individualOption.partNumber) {
+                    const finishCode = await getFinishCode(opening.finishColor)
+                    if (finishCode) {
+                      partNumber = `${partNumber}${finishCode}`
+                    }
                   }
                 }
 
@@ -479,6 +625,23 @@ export async function GET(
                   description += ' (Included)'
                 }
 
+                // Determine quantity: check for user selection first (RANGE mode), then BOM quantity
+                const quantityKey = `${categoryId}_qty`
+                let optionQuantity = 1
+                if (selections[quantityKey] !== undefined) {
+                  // User-selected quantity (RANGE mode)
+                  optionQuantity = Number(selections[quantityKey])
+                } else if (optionBom?.quantityMode === 'RANGE') {
+                  // RANGE mode but no selection - use default
+                  optionQuantity = optionBom.defaultQuantity || optionBom.minQuantity || 1
+                } else {
+                  // FIXED mode - use BOM quantity
+                  optionQuantity = optionBom?.quantity || 1
+                }
+
+                // Skip if quantity is 0 (user explicitly chose to exclude)
+                if (optionQuantity === 0) continue
+
                 bomItems.push({
                   openingName: opening.name,
                   productName: product.name,
@@ -486,15 +649,48 @@ export async function GET(
                   panelHeight: panel.height,
                   partNumber: partNumber,
                   partName: individualOption.name,
-                  partType: 'Option',
-                  quantity: 1,
-                  cutLength: '',
-                  percentOfStock: '',
-                  isMilled: true, // Options are not extrusions
-                  unit: 'EA',
+                  partType: optionBom ? 'Extrusion' : 'Option',
+                  quantity: optionQuantity,
+                  cutLength: cutLength ? cutLength.toFixed(3) : '',
+                  percentOfStock: percentOfStock,
+                  isMilled: optionBom?.isMilled !== false,
+                  unit: optionBom ? 'IN' : 'EA',
                   description: description,
                   color: opening.finishColor || 'N/A'
                 })
+
+                // Process linked parts for this option
+                if (individualOption.linkedParts && individualOption.linkedParts.length > 0) {
+                  for (const linkedPart of individualOption.linkedParts) {
+                    const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
+
+                    // Build part number with finish code if applicable
+                    let linkedPartNumber = linkedPart.masterPart.partNumber
+                    if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+                      const finishCode = await getFinishCode(opening.finishColor)
+                      if (finishCode) {
+                        linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                      }
+                    }
+
+                    bomItems.push({
+                      openingName: opening.name,
+                      productName: product.name,
+                      panelWidth: panel.width,
+                      panelHeight: panel.height,
+                      partNumber: linkedPartNumber,
+                      partName: linkedPart.masterPart.baseName,
+                      partType: linkedPart.masterPart.partType || 'Hardware',
+                      quantity: linkedQuantity,
+                      cutLength: '',
+                      percentOfStock: '',
+                      isMilled: true,
+                      unit: linkedPart.masterPart.unit || 'EA',
+                      description: `Linked: ${individualOption.name}`,
+                      color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A'
+                    })
+                  }
+                }
               }
             }
           } catch (error) {
@@ -518,12 +714,67 @@ export async function GET(
                 }
               }
 
-              // Apply finish code if addFinishToPartNumber is set
-              if (standardOption.addFinishToPartNumber && opening.finishColor && standardOption.partNumber) {
-                const finishCode = await getFinishCode(opening.finishColor)
-                if (finishCode) {
-                  partNumber = `${partNumber}${finishCode}`
+              // Check if this option has a ProductBOM entry (for cut list items)
+              const optionBom = standardOption.isCutListItem
+                ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
+                : null
+
+              let cutLength: number | null = null
+              let stockLength: number | null = null
+              let isMillFinish = false
+              let percentOfStock = ''
+
+              if (optionBom && optionBom.formula) {
+                // Calculate cut length using the formula from ProductBOM
+                cutLength = evaluateFormula(optionBom.formula, {
+                  width: panel.width || 0,
+                  height: panel.height || 0,
+                  Width: panel.width || 0,
+                  Height: panel.height || 0
+                })
+
+                // Look up stock length from MasterPart if partNumber exists
+                if (standardOption.partNumber) {
+                  const stockInfo = await findStockLength(
+                    standardOption.partNumber,
+                    { formula: optionBom.formula, partType: 'Extrusion' },
+                    { width: panel.width || 0, height: panel.height || 0 }
+                  )
+                  stockLength = stockInfo.stockLength
+                  isMillFinish = stockInfo.isMillFinish
+
+                  // Build full part number with finish code and stock length
+                  if (opening.finishColor && !isMillFinish) {
+                    const finishCode = await getFinishCode(opening.finishColor)
+                    if (finishCode) {
+                      partNumber = `${partNumber}${finishCode}`
+                    }
+                  }
+                  if (stockLength) {
+                    partNumber = `${partNumber}-${stockLength}`
+                  }
+
+                  // Calculate percent of stock
+                  if (cutLength && stockLength && stockLength > 0) {
+                    percentOfStock = ((cutLength / stockLength) * 100).toFixed(1) + '%'
+                  }
                 }
+              } else {
+                // Apply finish code if addFinishToPartNumber is set (non-cut-list options)
+                if (standardOption.addFinishToPartNumber && opening.finishColor && standardOption.partNumber) {
+                  const finishCode = await getFinishCode(opening.finishColor)
+                  if (finishCode) {
+                    partNumber = `${partNumber}${finishCode}`
+                  }
+                }
+              }
+
+              // Determine quantity for standard option not in selections
+              let optionQuantity = 1
+              if (optionBom?.quantityMode === 'RANGE') {
+                optionQuantity = optionBom.defaultQuantity || optionBom.minQuantity || 1
+              } else {
+                optionQuantity = optionBom?.quantity || 1
               }
 
               bomItems.push({
@@ -533,15 +784,48 @@ export async function GET(
                 panelHeight: panel.height,
                 partNumber: partNumber,
                 partName: standardOption.name,
-                partType: 'Option',
-                quantity: 1,
-                cutLength: '',
-                percentOfStock: '',
-                isMilled: true, // Options are not extrusions
-                unit: 'EA',
+                partType: optionBom ? 'Extrusion' : 'Option',
+                quantity: optionQuantity,
+                cutLength: cutLength ? cutLength.toFixed(3) : '',
+                percentOfStock: percentOfStock,
+                isMilled: optionBom?.isMilled !== false,
+                unit: optionBom ? 'IN' : 'EA',
                 description: `${productSubOption.category.name}: ${standardOption.name} (Standard - Included)`,
                 color: opening.finishColor || 'N/A'
               })
+
+              // Process linked parts for standard option
+              if (standardOption.linkedParts && standardOption.linkedParts.length > 0) {
+                for (const linkedPart of standardOption.linkedParts) {
+                  const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
+
+                  // Build part number with finish code if applicable
+                  let linkedPartNumber = linkedPart.masterPart.partNumber
+                  if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+                    const finishCode = await getFinishCode(opening.finishColor)
+                    if (finishCode) {
+                      linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                    }
+                  }
+
+                  bomItems.push({
+                    openingName: opening.name,
+                    productName: product.name,
+                    panelWidth: panel.width,
+                    panelHeight: panel.height,
+                    partNumber: linkedPartNumber,
+                    partName: linkedPart.masterPart.baseName,
+                    partType: linkedPart.masterPart.partType || 'Hardware',
+                    quantity: linkedQuantity,
+                    cutLength: '',
+                    percentOfStock: '',
+                    isMilled: true,
+                    unit: linkedPart.masterPart.unit || 'EA',
+                    description: `Linked: ${standardOption.name}`,
+                    color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A'
+                  })
+                }
+              }
             }
           }
         }
