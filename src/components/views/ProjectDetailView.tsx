@@ -201,6 +201,7 @@ export default function ProjectDetailView() {
   const [addComponentOptions, setAddComponentOptions] = useState<any[]>([])
   const [addComponentSelectedOptions, setAddComponentSelectedOptions] = useState<Record<number, number | null>>({})
   const [addComponentOptionQuantities, setAddComponentOptionQuantities] = useState<Record<string, number>>({})
+  const [hardwareOptionsExpanded, setHardwareOptionsExpanded] = useState(false)
   const [showComponentEdit, setShowComponentEdit] = useState(false)
   const [selectedComponentId, setSelectedComponentId] = useState<number | null>(null)
   const [componentOptions, setComponentOptions] = useState<any[]>([])
@@ -1328,15 +1329,14 @@ export default function ProjectDetailView() {
     showSuccess('Dimensions auto-filled based on remaining space')
   }
 
-  // Auto-fill width only to remaining available space (with optional divisor for splitting between components)
-  function handleAutoWidth() {
+  // Calculate auto width without setting state (helper function)
+  function calculateAutoWidth(divisorOverride?: number): { width: number | null, error?: string } {
     const opening = project?.openings.find(o => o.id === selectedOpeningId)
     const selectedProduct = products.find(p => p.id === selectedProductId)
-    const divisor = Math.max(1, parseInt(widthDivisor) || 1)
+    const divisor = Math.max(1, divisorOverride ?? (parseInt(widthDivisor) || 1))
 
     if (!opening?.isFinishedOpening || !opening.finishedWidth) {
-      showError('Auto width only works for Finished Openings')
-      return
+      return { width: null, error: 'Auto width only works for Finished Openings' }
     }
 
     // Calculate existing panel widths (exclude corners and frames)
@@ -1348,8 +1348,7 @@ export default function ProjectDetailView() {
     const totalAvailableWidth = opening.finishedWidth - usedWidth
 
     if (totalAvailableWidth <= 0) {
-      showError(`No space available - existing components use ${usedWidth.toFixed(3)}" of ${opening.finishedWidth}" opening width`)
-      return
+      return { width: null, error: `No space available - existing components use ${usedWidth.toFixed(3)}" of ${opening.finishedWidth}" opening width` }
     }
 
     // Divide available width by divisor
@@ -1357,19 +1356,48 @@ export default function ProjectDetailView() {
 
     // Apply product constraints to the divided width
     if (selectedProduct?.minWidth && widthPerComponent < selectedProduct.minWidth) {
-      showError(`Divided width (${widthPerComponent.toFixed(3)}") is less than product minimum (${selectedProduct.minWidth}")`)
-      return
+      return { width: null, error: `Divided width (${widthPerComponent.toFixed(3)}") is less than product minimum (${selectedProduct.minWidth}")` }
     }
 
     if (selectedProduct?.maxWidth && widthPerComponent > selectedProduct.maxWidth) {
       widthPerComponent = selectedProduct.maxWidth
     }
 
-    setComponentWidth(widthPerComponent.toFixed(3))
-    if (divisor > 1) {
-      showSuccess(`Width auto-filled: ${widthPerComponent.toFixed(3)}" (${totalAvailableWidth.toFixed(3)}" ÷ ${divisor})`)
-    } else {
-      showSuccess(`Width auto-filled: ${widthPerComponent.toFixed(3)}"`)
+    return { width: widthPerComponent }
+  }
+
+  // Auto-fill width only to remaining available space (with optional divisor for splitting between components)
+  function handleAutoWidth() {
+    const divisor = Math.max(1, parseInt(widthDivisor) || 1)
+    const result = calculateAutoWidth(divisor)
+
+    if (result.error) {
+      showError(result.error)
+      return
+    }
+
+    if (result.width !== null) {
+      setComponentWidth(result.width.toFixed(3))
+      if (divisor > 1) {
+        showSuccess(`Width auto-filled: ${result.width.toFixed(3)}" (divided by ${divisor})`)
+      } else {
+        showSuccess(`Width auto-filled: ${result.width.toFixed(3)}"`)
+      }
+    }
+  }
+
+  // Handle divisor change - auto-calculate width and sync quantity
+  function handleDivisorChange(newDivisor: string) {
+    const divisorValue = Math.max(1, parseInt(newDivisor) || 1)
+    setWidthDivisor(newDivisor)
+
+    // Sync quantity with divisor
+    setComponentQuantity(divisorValue.toString())
+
+    // Auto-calculate width based on new divisor
+    const result = calculateAutoWidth(divisorValue)
+    if (result.width !== null) {
+      setComponentWidth(result.width.toFixed(3))
     }
   }
 
@@ -1696,6 +1724,7 @@ export default function ProjectDetailView() {
       setSwingDirection('Right In')
       setSlidingDirection('Left')
       setGlassType('Clear')
+      setHardwareOptionsExpanded(false)
       setAddComponentOptions([])
       setAddComponentSelectedOptions({})
       setAddComponentOptionQuantities({})
@@ -2713,7 +2742,7 @@ export default function ProjectDetailView() {
       {/* Add Component Modal */}
       {showAddComponent && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Add Component</h2>
             <div className="space-y-4">
               <div>
@@ -2827,11 +2856,7 @@ export default function ProjectDetailView() {
                       {/* Width Input with inline Auto button */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Width</label>
-                        <div className={`flex border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 ${
-                          componentWidth && parseFloat(componentWidth) <= 0
-                            ? 'border-red-300 bg-red-50'
-                            : 'border-gray-300'
-                        }`}>
+                        <div className="flex">
                           <input
                             type="number"
                             value={componentWidth}
@@ -2839,13 +2864,19 @@ export default function ProjectDetailView() {
                             placeholder="Enter width"
                             step="0.01"
                             min="0"
-                            className="flex-1 px-3 py-2 border-0 focus:ring-0 text-gray-900 bg-transparent"
+                            className={`flex-1 min-w-0 px-3 py-2 border focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
+                              showAutoButtons ? 'rounded-l-lg border-r-0' : 'rounded-lg'
+                            } ${
+                              componentWidth && parseFloat(componentWidth) <= 0
+                                ? 'border-red-300 bg-red-50'
+                                : 'border-gray-300'
+                            }`}
                           />
                           {showAutoButtons && (
                             <button
                               type="button"
                               onClick={handleAutoWidth}
-                              className="px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-sm font-medium border-l border-gray-300"
+                              className="flex-shrink-0 px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-sm font-medium border border-gray-300 rounded-r-lg"
                               title={`Auto-fill remaining width (${opening?.finishedWidth}" opening)`}
                             >
                               Auto
@@ -2859,13 +2890,7 @@ export default function ProjectDetailView() {
                       {/* Height Input with inline Auto button */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Height</label>
-                        <div className={`flex border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 ${
-                          heightDisabled
-                            ? 'bg-gray-100 border-gray-300'
-                            : componentHeight && parseFloat(componentHeight) <= 0
-                              ? 'border-red-300 bg-red-50'
-                              : 'border-gray-300'
-                        }`}>
+                        <div className="flex">
                           <input
                             type="number"
                             value={componentHeight}
@@ -2874,8 +2899,14 @@ export default function ProjectDetailView() {
                             step="0.01"
                             min="0"
                             disabled={heightDisabled}
-                            className={`flex-1 px-3 py-2 border-0 focus:ring-0 text-gray-900 bg-transparent ${
-                              heightDisabled ? 'text-gray-500 cursor-not-allowed' : ''
+                            className={`flex-1 min-w-0 px-3 py-2 border focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
+                              showAutoButtons ? 'rounded-l-lg border-r-0' : 'rounded-lg'
+                            } ${
+                              heightDisabled
+                                ? 'bg-gray-100 border-gray-300 text-gray-500 cursor-not-allowed'
+                                : componentHeight && parseFloat(componentHeight) <= 0
+                                  ? 'border-red-300 bg-red-50'
+                                  : 'border-gray-300'
                             }`}
                           />
                           {showAutoButtons && (
@@ -2883,7 +2914,7 @@ export default function ProjectDetailView() {
                               type="button"
                               onClick={handleAutoHeight}
                               disabled={heightDisabled}
-                              className={`px-3 py-2 text-sm font-medium border-l border-gray-300 transition-colors ${
+                              className={`flex-shrink-0 px-3 py-2 text-sm font-medium border border-gray-300 rounded-r-lg transition-colors ${
                                 heightDisabled
                                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                   : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
@@ -2906,12 +2937,12 @@ export default function ProjectDetailView() {
                         <input
                           type="number"
                           value={widthDivisor}
-                          onChange={(e) => setWidthDivisor(e.target.value)}
+                          onChange={(e) => handleDivisorChange(e.target.value)}
                           min="1"
                           step="1"
                           className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                         />
-                        <span className="text-xs text-gray-500">Split remaining width between this many components</span>
+                        <span className="text-xs text-gray-500">Split width & set quantity</span>
                       </div>
                     )}
                   </div>
@@ -2952,30 +2983,55 @@ export default function ProjectDetailView() {
                 )
               })()}
 
-              {/* Direction Selection - Show for Swing, Sliding, and Corner */}
+              {/* Direction and Glass Type Selection - Side by side with separate backgrounds */}
               {selectedProductId && (() => {
                 const selectedProduct = products.find(p => p.id === selectedProductId)
+                const showGlassType = selectedProduct?.productType !== 'FRAME'
+                const hasDirection = ['SWING_DOOR', 'SLIDING_DOOR', 'CORNER_90'].includes(selectedProduct?.productType || '')
+                const planViewOptions = selectedProduct?.planViews || []
+                const hasPlanViews = planViewOptions.length > 0
 
-                if (selectedProduct?.productType === 'SWING_DOOR') {
-                  const planViewOptions = selectedProduct.planViews || []
+                // Glass Type element with its own background
+                const glassTypeElement = showGlassType ? (
+                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Glass Type</label>
+                    <select
+                      value={glassType}
+                      onChange={(e) => setGlassType(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+                    >
+                      {glassTypes.length > 0 ? (
+                        glassTypes.map((type) => (
+                          <option key={type.id} value={type.name}>
+                            {type.name} (${type.pricePerSqFt}/sqft)
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No glass types available</option>
+                      )}
+                    </select>
+                  </div>
+                ) : null
 
-                  if (planViewOptions.length === 0) {
-                    return (
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                        <p className="text-sm text-yellow-800">
-                          No elevation views have been added to this product. Please add elevation views in the product settings to enable direction selection.
-                        </p>
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <div>
+                // Direction element based on product type - each with its own background
+                let directionElement = null
+                if (hasDirection && !hasPlanViews) {
+                  const viewType = selectedProduct?.productType === 'SWING_DOOR' ? 'elevation' : 'plan'
+                  directionElement = (
+                    <div className="col-span-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                      <p className="text-sm text-yellow-800">
+                        No {viewType} views have been added to this product. Please add {viewType} views in the product settings to enable direction selection.
+                      </p>
+                    </div>
+                  )
+                } else if (selectedProduct?.productType === 'SWING_DOOR') {
+                  directionElement = (
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
                       <select
                         value={swingDirection}
                         onChange={(e) => setSwingDirection(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
                       >
                         {planViewOptions.map((planView: any) => (
                           <option key={planView.id} value={planView.name}>
@@ -2986,25 +3042,13 @@ export default function ProjectDetailView() {
                     </div>
                   )
                 } else if (selectedProduct?.productType === 'SLIDING_DOOR') {
-                  const planViewOptions = selectedProduct.planViews || []
-
-                  if (planViewOptions.length === 0) {
-                    return (
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                        <p className="text-sm text-yellow-800">
-                          No plan views have been added to this product. Please add plan views in the product settings to enable direction selection.
-                        </p>
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <div>
+                  directionElement = (
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
                       <select
                         value={slidingDirection}
                         onChange={(e) => setSlidingDirection(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
                       >
                         {planViewOptions.map((planView: any) => (
                           <option key={planView.id} value={planView.name}>
@@ -3015,25 +3059,13 @@ export default function ProjectDetailView() {
                     </div>
                   )
                 } else if (selectedProduct?.productType === 'CORNER_90') {
-                  const planViewOptions = selectedProduct.planViews || []
-
-                  if (planViewOptions.length === 0) {
-                    return (
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                        <p className="text-sm text-yellow-800">
-                          No plan views have been added to this product. Please add plan views in the product settings to enable direction selection.
-                        </p>
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <div>
+                  directionElement = (
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
                       <select
                         value={cornerDirection}
                         onChange={(e) => setCornerDirection(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
                       >
                         {planViewOptions.map((planView: any) => (
                           <option key={planView.id} value={planView.name}>
@@ -3041,129 +3073,145 @@ export default function ProjectDetailView() {
                           </option>
                         ))}
                       </select>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Corner components will be added perpendicular to this direction
-                      </p>
                     </div>
                   )
+                }
+
+                // If both exist, show in grid. If only one, show full width
+                if (directionElement && glassTypeElement) {
+                  return (
+                    <div className="grid grid-cols-2 gap-4">
+                      {directionElement}
+                      {glassTypeElement}
+                    </div>
+                  )
+                } else if (glassTypeElement) {
+                  return glassTypeElement
+                } else if (directionElement) {
+                  return directionElement
                 }
                 return null
               })()}
               
-              {/* Hardware Options - Show after direction selection */}
-              {selectedProductId && addComponentOptions.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-700">Hardware Options</h3>
-                  {addComponentOptions.map((option) => {
-                    const selectedOptionId = addComponentSelectedOptions[option.category.id]
-                    const selectedProduct = products.find(p => p.id === selectedProductId)
-                    const optionBom = selectedProduct?.productBOMs?.find(
-                      (bom: any) => bom.optionId === selectedOptionId
-                    )
-                    const isRangeMode = optionBom?.quantityMode === 'RANGE'
-                    const quantityKey = `${option.category.id}_qty`
+              {/* Hardware Options - Collapsible section */}
+              {selectedProductId && addComponentOptions.length > 0 && (() => {
+                const allStandard = addComponentOptions.every(
+                  option => addComponentSelectedOptions[option.category.id] === option.standardOptionId
+                )
 
-                    return (
-                      <div key={option.id}>
-                        <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
-                          {option.category.name}
-                          {addComponentSelectedOptions[option.category.id] === option.standardOptionId && (
-                            <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard Option Applied</span>
-                          )}
-                        </label>
-                        <div className="flex gap-2">
-                          <select
-                            value={addComponentSelectedOptions[option.category.id] === null ? 'none' : (addComponentSelectedOptions[option.category.id] || '')}
-                            onChange={(e) => {
-                              const newValue = e.target.value === 'none' ? null : (e.target.value ? parseInt(e.target.value) : undefined)
-                              setAddComponentSelectedOptions({
-                                ...addComponentSelectedOptions,
-                                [option.category.id]: newValue
-                              })
-                              // Check if new option has RANGE mode and set default quantity
-                              const newOptionBom = selectedProduct?.productBOMs?.find(
-                                (bom: any) => bom.optionId === newValue
-                              )
-                              if (newOptionBom?.quantityMode === 'RANGE') {
-                                setAddComponentOptionQuantities({
-                                  ...addComponentOptionQuantities,
-                                  [quantityKey]: newOptionBom.defaultQuantity || newOptionBom.minQuantity || 0
-                                })
-                              } else {
-                                // Remove quantity selection if not RANGE mode
-                                const newQuantities = { ...addComponentOptionQuantities }
-                                delete newQuantities[quantityKey]
-                                setAddComponentOptionQuantities(newQuantities)
-                              }
-                            }}
-                            className={`${isRangeMode ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900`}
-                          >
-                            <option value="">Select option...</option>
-                            <option value="none">None (No hardware)</option>
-                            {option.category.individualOptions?.map((individualOption: any) => (
-                              <option key={individualOption.id} value={individualOption.id}>
-                                {individualOption.name}
-                              </option>
-                            ))}
-                          </select>
-                          {isRangeMode && (
-                            <select
-                              value={addComponentOptionQuantities[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}
-                              onChange={(e) => {
-                                setAddComponentOptionQuantities({
-                                  ...addComponentOptionQuantities,
-                                  [quantityKey]: parseInt(e.target.value)
-                                })
-                              }}
-                              className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                              title="Select quantity"
-                            >
-                              {Array.from(
-                                { length: (optionBom.maxQuantity || 4) - (optionBom.minQuantity || 0) + 1 },
-                                (_, i) => (optionBom.minQuantity || 0) + i
-                              ).map((qty) => (
-                                <option key={qty} value={qty}>
-                                  {qty}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                        {isRangeMode && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            Select quantity ({optionBom.minQuantity}-{optionBom.maxQuantity})
-                          </p>
+                return (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setHardwareOptionsExpanded(!hardwareOptionsExpanded)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-gray-700">Hardware Options</h3>
+                        {allStandard && !hardwareOptionsExpanded && (
+                          <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard Options Applied</span>
                         )}
                       </div>
-                    )
-                  })}
-                </div>
-              )}
+                      <svg
+                        className={`w-5 h-5 text-gray-500 transition-transform ${hardwareOptionsExpanded ? 'rotate-180' : ''}`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {hardwareOptionsExpanded && (
+                      <div className="p-4 space-y-3 bg-white">
+                        {addComponentOptions.map((option) => {
+                          const selectedOptionId = addComponentSelectedOptions[option.category.id]
+                          const selectedProduct = products.find(p => p.id === selectedProductId)
+                          const optionBom = selectedProduct?.productBOMs?.find(
+                            (bom: any) => bom.optionId === selectedOptionId
+                          )
+                          const isRangeMode = optionBom?.quantityMode === 'RANGE'
+                          const quantityKey = `${option.category.id}_qty`
 
-              {/* Glass Type Selection - Show for all components except FRAME */}
-              {selectedProductId && products.find(p => p.id === selectedProductId)?.productType !== 'FRAME' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Glass Type</label>
-                  <select
-                    value={glassType}
-                    onChange={(e) => setGlassType(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                  >
-                    {glassTypes.length > 0 ? (
-                      glassTypes.map((type) => (
-                        <option key={type.id} value={type.name}>
-                          {type.name} (${type.pricePerSqFt}/sqft)
-                        </option>
-                      ))
-                    ) : (
-                      <option value="">No glass types available</option>
+                          return (
+                            <div key={option.id}>
+                              <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
+                                {option.category.name}
+                                {addComponentSelectedOptions[option.category.id] === option.standardOptionId && (
+                                  <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard</span>
+                                )}
+                              </label>
+                              <div className="flex gap-2">
+                                <select
+                                  value={addComponentSelectedOptions[option.category.id] === null ? 'none' : (addComponentSelectedOptions[option.category.id] || '')}
+                                  onChange={(e) => {
+                                    const newValue = e.target.value === 'none' ? null : (e.target.value ? parseInt(e.target.value) : undefined)
+                                    setAddComponentSelectedOptions({
+                                      ...addComponentSelectedOptions,
+                                      [option.category.id]: newValue
+                                    })
+                                    // Check if new option has RANGE mode and set default quantity
+                                    const newOptionBom = selectedProduct?.productBOMs?.find(
+                                      (bom: any) => bom.optionId === newValue
+                                    )
+                                    if (newOptionBom?.quantityMode === 'RANGE') {
+                                      setAddComponentOptionQuantities({
+                                        ...addComponentOptionQuantities,
+                                        [quantityKey]: newOptionBom.defaultQuantity || newOptionBom.minQuantity || 0
+                                      })
+                                    } else {
+                                      // Remove quantity selection if not RANGE mode
+                                      const newQuantities = { ...addComponentOptionQuantities }
+                                      delete newQuantities[quantityKey]
+                                      setAddComponentOptionQuantities(newQuantities)
+                                    }
+                                  }}
+                                  className={`${isRangeMode ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900`}
+                                >
+                                  <option value="">Select option...</option>
+                                  <option value="none">None (No hardware)</option>
+                                  {option.category.individualOptions?.map((individualOption: any) => (
+                                    <option key={individualOption.id} value={individualOption.id}>
+                                      {individualOption.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                {isRangeMode && (
+                                  <select
+                                    value={addComponentOptionQuantities[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}
+                                    onChange={(e) => {
+                                      setAddComponentOptionQuantities({
+                                        ...addComponentOptionQuantities,
+                                        [quantityKey]: parseInt(e.target.value)
+                                      })
+                                    }}
+                                    className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                                    title="Select quantity"
+                                  >
+                                    {Array.from(
+                                      { length: (optionBom.maxQuantity || 4) - (optionBom.minQuantity || 0) + 1 },
+                                      (_, i) => (optionBom.minQuantity || 0) + i
+                                    ).map((qty) => (
+                                      <option key={qty} value={qty}>
+                                        {qty}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                              {isRangeMode && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Select quantity ({optionBom.minQuantity}-{optionBom.maxQuantity})
+                                </p>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
                     )}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Select the type of glass for this component
-                  </p>
-                </div>
-              )}
+                  </div>
+                )
+              })()}
+
               {/* Validation Errors */}
               {componentValidationErrors.length > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -3190,6 +3238,7 @@ export default function ProjectDetailView() {
                   setSwingDirection('Right In')
                   setSlidingDirection('Left')
                   setGlassType('Clear')
+                  setHardwareOptionsExpanded(false)
                   setAddComponentOptions([])
                   setAddComponentSelectedOptions({})
                   setAddComponentOptionQuantities({})
@@ -3248,21 +3297,23 @@ export default function ProjectDetailView() {
                       {/* Width Input with inline Auto button */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Width (inches)</label>
-                        <div className="flex border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+                        <div className="flex">
                           <input
                             type="number"
                             step="0.125"
                             min="0.125"
                             value={editingComponentWidth}
                             onChange={(e) => setEditingComponentWidth(e.target.value)}
-                            className="flex-1 px-3 py-2 border-0 focus:ring-0 text-gray-900 bg-transparent"
+                            className={`flex-1 min-w-0 px-3 py-2 border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
+                              showAutoButtons ? 'rounded-l-lg border-r-0' : 'rounded-lg'
+                            }`}
                             placeholder="Width"
                           />
                           {showAutoButtons && (
                             <button
                               type="button"
                               onClick={handleEditAutoWidth}
-                              className="px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-sm font-medium border-l border-gray-300"
+                              className="flex-shrink-0 px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-sm font-medium border border-gray-300 rounded-r-lg"
                               title={`Auto-fill remaining width (${currentOpening?.finishedWidth}" opening)`}
                             >
                               Auto
@@ -3273,21 +3324,23 @@ export default function ProjectDetailView() {
                       {/* Height Input with inline Auto button */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Height (inches)</label>
-                        <div className="flex border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+                        <div className="flex">
                           <input
                             type="number"
                             step="0.125"
                             min="0.125"
                             value={editingComponentHeight}
                             onChange={(e) => setEditingComponentHeight(e.target.value)}
-                            className="flex-1 px-3 py-2 border-0 focus:ring-0 text-gray-900 bg-transparent"
+                            className={`flex-1 min-w-0 px-3 py-2 border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
+                              showAutoButtons ? 'rounded-l-lg border-r-0' : 'rounded-lg'
+                            }`}
                             placeholder="Height"
                           />
                           {showAutoButtons && (
                             <button
                               type="button"
                               onClick={handleEditAutoHeight}
-                              className="px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-sm font-medium border-l border-gray-300"
+                              className="flex-shrink-0 px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-sm font-medium border border-gray-300 rounded-r-lg"
                               title={`Auto-fill opening height (${currentOpening?.finishedHeight}")`}
                             >
                               Auto
