@@ -3610,8 +3610,12 @@ export default function ProjectDetailView() {
               {componentOptions.length > 0 ? (
                 componentOptions.map((option) => {
                   const selectedOptionId = selectedOptions[option.category.id]
+                  // Convert to number for comparison since JSON parsing may have made it a string
+                  const selectedOptionIdNum = selectedOptionId !== null && selectedOptionId !== undefined
+                    ? Number(selectedOptionId)
+                    : null
                   const optionBom = editComponentProductBOMs?.find(
-                    (bom: any) => bom.optionId === selectedOptionId
+                    (bom: any) => bom.optionId === selectedOptionIdNum
                   )
                   const isRangeMode = optionBom?.quantityMode === 'RANGE'
                   const quantityKey = `${option.category.id}_qty`
