@@ -167,6 +167,17 @@ export default function ProjectDetailView() {
   const [editingOpeningRoughHeight, setEditingOpeningRoughHeight] = useState('')
   const [editingOpeningIsFinished, setEditingOpeningIsFinished] = useState(false)
   const [editingOpeningType, setEditingOpeningType] = useState<'THINWALL' | 'FRAMED'>('THINWALL')
+  const [showSizeRedistributionModal, setShowSizeRedistributionModal] = useState(false)
+  const [sizeRedistributionData, setSizeRedistributionData] = useState<{
+    openingId: number
+    widthDiff: number
+    heightDiff: number
+    newWidth: number
+    newHeight: number
+    panels: { id: number; name: string; width: number; height: number }[]
+  } | null>(null)
+  const [redistributionMethod, setRedistributionMethod] = useState<'equal' | 'single'>('equal')
+  const [selectedPanelForResize, setSelectedPanelForResize] = useState<number | null>(null)
   const [isUpdatingOpening, setIsUpdatingOpening] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showAddOpening, setShowAddOpening] = useState(false)
@@ -1010,6 +1021,68 @@ export default function ProjectDetailView() {
   async function handleUpdateOpening() {
     if (!editingOpeningId || !editingOpeningName.trim()) return
 
+    // Check if this is a finished opening with size changes and existing panels
+    const opening = project?.openings.find(o => o.id === editingOpeningId)
+    if (opening?.isFinishedOpening && editingOpeningRoughWidth && editingOpeningRoughHeight) {
+      const currentRoughWidth = opening.roughWidth || 0
+      const currentRoughHeight = opening.roughHeight || 0
+      const newRoughWidth = parseFloat(editingOpeningRoughWidth)
+      const newRoughHeight = parseFloat(editingOpeningRoughHeight)
+
+      // Get non-FRAME, non-CORNER panels
+      const resizablePanels = opening.panels?.filter(p => {
+        const productType = p.componentInstance?.product?.productType
+        return productType !== 'FRAME' && productType !== 'CORNER_90'
+      }) || []
+
+      // Check if there are size changes and panels to redistribute
+      const widthChanged = Math.abs(newRoughWidth - currentRoughWidth) > 0.001
+      const heightChanged = Math.abs(newRoughHeight - currentRoughHeight) > 0.001
+
+      if ((widthChanged || heightChanged) && resizablePanels.length > 0) {
+        // Calculate new finished dimensions using tolerance
+        let widthTolerance = 0
+        let heightTolerance = 0
+        if (editingOpeningType === 'FRAMED') {
+          widthTolerance = toleranceDefaults.framedWidthTolerance
+          heightTolerance = toleranceDefaults.framedHeightTolerance
+        } else {
+          widthTolerance = toleranceDefaults.thinwallWidthTolerance
+          heightTolerance = toleranceDefaults.thinwallHeightTolerance
+        }
+        const newFinishedWidth = newRoughWidth - widthTolerance
+        const newFinishedHeight = newRoughHeight - heightTolerance
+        const currentFinishedWidth = opening.finishedWidth || 0
+        const currentFinishedHeight = opening.finishedHeight || 0
+
+        // Show redistribution modal
+        setSizeRedistributionData({
+          openingId: editingOpeningId,
+          widthDiff: newFinishedWidth - currentFinishedWidth,
+          heightDiff: newFinishedHeight - currentFinishedHeight,
+          newWidth: newFinishedWidth,
+          newHeight: newFinishedHeight,
+          panels: resizablePanels.map((p, idx) => ({
+            id: p.id,
+            name: p.componentInstance?.product?.name || `Panel ${idx + 1}`,
+            width: p.width,
+            height: p.height
+          }))
+        })
+        setRedistributionMethod('equal')
+        setSelectedPanelForResize(resizablePanels[0]?.id || null)
+        setShowSizeRedistributionModal(true)
+        return
+      }
+    }
+
+    // No redistribution needed, just update the opening
+    await performOpeningUpdate()
+  }
+
+  async function performOpeningUpdate() {
+    if (!editingOpeningId) return
+
     setIsUpdatingOpening(true)
     try {
       const response = await fetch(`/api/openings/${editingOpeningId}`, {
@@ -1048,6 +1121,80 @@ export default function ProjectDetailView() {
     } catch (error) {
       console.error('Error updating opening:', error)
       showError('Error updating opening')
+    } finally {
+      setIsUpdatingOpening(false)
+    }
+  }
+
+  async function handleApplyRedistribution() {
+    if (!sizeRedistributionData) return
+
+    setIsUpdatingOpening(true)
+    try {
+      const { panels, widthDiff, heightDiff, newHeight } = sizeRedistributionData
+
+      // Calculate new panel dimensions
+      const panelUpdates: { id: number; width: number; height: number }[] = []
+
+      if (redistributionMethod === 'equal') {
+        // Split width difference equally among all panels
+        const widthPerPanel = widthDiff / panels.length
+        for (const panel of panels) {
+          panelUpdates.push({
+            id: panel.id,
+            width: panel.width + widthPerPanel,
+            height: newHeight // All panels get the new height
+          })
+        }
+      } else {
+        // Apply width difference to single selected panel
+        for (const panel of panels) {
+          if (panel.id === selectedPanelForResize) {
+            panelUpdates.push({
+              id: panel.id,
+              width: panel.width + widthDiff,
+              height: newHeight
+            })
+          } else {
+            panelUpdates.push({
+              id: panel.id,
+              width: panel.width,
+              height: newHeight // Still update height for all
+            })
+          }
+        }
+      }
+
+      // First update the opening
+      await performOpeningUpdate()
+
+      // Then update all panels
+      for (const update of panelUpdates) {
+        await fetch(`/api/panels/${update.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            width: update.width,
+            height: update.height,
+            skipValidation: true // Skip validation since we're doing the resize intentionally
+          })
+        })
+      }
+
+      // Refresh and recalculate
+      const updatedProject = await refreshProject()
+      if (updatedProject) {
+        await calculateAllOpeningPrices(updatedProject)
+      }
+
+      // Close modals and reset state
+      setShowSizeRedistributionModal(false)
+      setSizeRedistributionData(null)
+      setRedistributionMethod('equal')
+      setSelectedPanelForResize(null)
+    } catch (error) {
+      console.error('Error applying redistribution:', error)
+      showError('Error resizing components')
     } finally {
       setIsUpdatingOpening(false)
     }
@@ -4424,6 +4571,181 @@ export default function ProjectDetailView() {
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                 )}
                 {isUpdatingOpening ? 'Updating...' : 'Update Opening'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Size Redistribution Modal */}
+      {showSizeRedistributionModal && sizeRedistributionData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              Adjust Component Sizes
+            </h3>
+            <p className="text-sm text-gray-600 mb-6">
+              The opening size has changed. How would you like to adjust the existing components?
+            </p>
+
+            {/* Size Change Summary */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <h4 className="text-sm font-medium text-blue-900 mb-2">Size Change Summary</h4>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-blue-700">Width Change:</span>
+                  <span className={`ml-2 font-semibold ${sizeRedistributionData.widthDiff >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                    {sizeRedistributionData.widthDiff >= 0 ? '+' : ''}{sizeRedistributionData.widthDiff.toFixed(3)}"
+                  </span>
+                </div>
+                <div>
+                  <span className="text-blue-700">Height Change:</span>
+                  <span className={`ml-2 font-semibold ${sizeRedistributionData.heightDiff >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                    {sizeRedistributionData.heightDiff >= 0 ? '+' : ''}{sizeRedistributionData.heightDiff.toFixed(3)}"
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Redistribution Options */}
+            <div className="space-y-4 mb-6">
+              <h4 className="text-sm font-medium text-gray-700">Width Adjustment Method</h4>
+
+              {/* Equal Distribution Option */}
+              <label
+                className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                  redistributionMethod === 'equal'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="redistribution"
+                  value="equal"
+                  checked={redistributionMethod === 'equal'}
+                  onChange={() => setRedistributionMethod('equal')}
+                  className="mt-1 mr-3"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">Split Equally</div>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Distribute the {Math.abs(sizeRedistributionData.widthDiff).toFixed(3)}" width change equally across all {sizeRedistributionData.panels.length} component{sizeRedistributionData.panels.length > 1 ? 's' : ''}.
+                  </p>
+                  {redistributionMethod === 'equal' && sizeRedistributionData.panels.length > 0 && (
+                    <div className="mt-3 p-3 bg-white rounded border border-blue-200">
+                      <div className="text-xs font-medium text-gray-500 mb-2">Preview:</div>
+                      <div className="space-y-1">
+                        {sizeRedistributionData.panels.map((panel, idx) => {
+                          const newWidth = panel.width + (sizeRedistributionData.widthDiff / sizeRedistributionData.panels.length)
+                          return (
+                            <div key={panel.id} className="flex justify-between text-sm">
+                              <span className="text-gray-700">{panel.name}</span>
+                              <span className="text-gray-500">
+                                {panel.width.toFixed(3)}" → <span className="font-medium text-gray-900">{newWidth.toFixed(3)}"</span>
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </label>
+
+              {/* Single Panel Option */}
+              <label
+                className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                  redistributionMethod === 'single'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="redistribution"
+                  value="single"
+                  checked={redistributionMethod === 'single'}
+                  onChange={() => setRedistributionMethod('single')}
+                  className="mt-1 mr-3"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">Adjust Single Component</div>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Apply the entire width change to one specific component.
+                  </p>
+                  {redistributionMethod === 'single' && (
+                    <div className="mt-3 space-y-3">
+                      <select
+                        value={selectedPanelForResize || ''}
+                        onChange={(e) => setSelectedPanelForResize(parseInt(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+                      >
+                        {sizeRedistributionData.panels.map((panel) => (
+                          <option key={panel.id} value={panel.id}>
+                            {panel.name} (currently {panel.width.toFixed(3)}" wide)
+                          </option>
+                        ))}
+                      </select>
+                      {selectedPanelForResize && (
+                        <div className="p-3 bg-white rounded border border-blue-200">
+                          <div className="text-xs font-medium text-gray-500 mb-2">Preview:</div>
+                          <div className="space-y-1">
+                            {sizeRedistributionData.panels.map((panel) => {
+                              const isSelected = panel.id === selectedPanelForResize
+                              const newWidth = isSelected ? panel.width + sizeRedistributionData.widthDiff : panel.width
+                              return (
+                                <div key={panel.id} className={`flex justify-between text-sm ${isSelected ? 'font-medium' : ''}`}>
+                                  <span className={isSelected ? 'text-blue-700' : 'text-gray-700'}>
+                                    {panel.name} {isSelected && '←'}
+                                  </span>
+                                  <span className="text-gray-500">
+                                    {panel.width.toFixed(3)}" → <span className={`font-medium ${isSelected ? 'text-blue-700' : 'text-gray-900'}`}>{newWidth.toFixed(3)}"</span>
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </label>
+            </div>
+
+            {/* Height Note */}
+            {sizeRedistributionData.heightDiff !== 0 && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-6">
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Note:</span> All component heights will be updated to {sizeRedistributionData.newHeight.toFixed(3)}" to match the new opening height.
+                </p>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowSizeRedistributionModal(false)
+                  setSizeRedistributionData(null)
+                  setRedistributionMethod('equal')
+                  setSelectedPanelForResize(null)
+                }}
+                disabled={isUpdatingOpening}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyRedistribution}
+                disabled={isUpdatingOpening || (redistributionMethod === 'single' && !selectedPanelForResize)}
+                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center font-medium"
+              >
+                {isUpdatingOpening && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                )}
+                {isUpdatingOpening ? 'Applying...' : 'Apply Changes'}
               </button>
             </div>
           </div>
