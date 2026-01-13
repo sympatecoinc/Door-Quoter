@@ -874,16 +874,6 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                       </button>
                     </>
                   )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      openEditModal(project)
-                    }}
-                    className="text-gray-600 hover:text-gray-800"
-                    title="Edit project"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
                 </div>
               </div>
 

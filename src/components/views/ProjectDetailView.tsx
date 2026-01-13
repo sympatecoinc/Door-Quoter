@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 
 // Direction options are now loaded dynamically from product plan views
-import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive, X, ChevronDown, Package, Receipt } from 'lucide-react'
+import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive, X, ChevronDown, Receipt } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
@@ -2216,6 +2216,7 @@ export default function ProjectDetailView() {
       showError('Error downloading purchasing summary CSV')
     }
   }
+
 
   function handleBomViewModeChange(mode: 'byOpening' | 'summary') {
     setBomViewMode(mode)
