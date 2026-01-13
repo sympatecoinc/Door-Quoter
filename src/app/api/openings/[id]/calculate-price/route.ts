@@ -659,6 +659,10 @@ export async function POST(
         }
       }
 
+      // Track option IDs whose BOMs are processed in the BOM loop
+      // to prevent double-counting in the option pricing section
+      const processedOptionBomIds = new Set<number>()
+
       for (const bom of product.productBOMs) {
         // Skip option-linked BOM items if the option is not selected
         if (bom.optionId) {
@@ -673,6 +677,8 @@ export async function POST(
             if (!selectedOptionId || parseInt(selectedOptionId) !== bom.optionId) {
               continue
             }
+            // Track that this option's BOM will be processed (cost already added)
+            processedOptionBomIds.add(bom.optionId)
           }
         }
 
@@ -835,32 +841,41 @@ export async function POST(
                 globalMaterialPricePerLb
               )
 
+              // Check if this option's BOM was already processed in the BOM loop
+              // to prevent double-counting extrusion options with ProductBOM entries
+              const bomAlreadyProcessed = processedOptionBomIds.has(selectedOption.id)
+
               if (isStandardSelected) {
                 // Standard option selected - cost only, no markup
-                const optionPrice = isIncluded ? 0 : priceResult.totalPrice
+                // If BOM was already processed, don't add cost again (it's already in totalBOMCost)
+                const optionPrice = isIncluded || bomAlreadyProcessed ? 0 : priceResult.totalPrice
 
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
                   optionName: selectedOption.name,
                   price: optionPrice,
                   isStandard: true,
-                  isIncluded: isIncluded
+                  isIncluded: isIncluded,
+                  ...(bomAlreadyProcessed && { bomProcessedSeparately: true })
                 })
 
                 componentBreakdown.totalOptionCost += optionPrice
                 componentCost += optionPrice
                 priceBreakdown.totalStandardOptionCost += optionPrice // Track for no-markup
-                // Track in correct category based on part type
-                if (priceResult.isExtrusion) {
-                  priceBreakdown.totalExtrusionCost += optionPrice
-                } else {
-                  priceBreakdown.totalHardwareCost += optionPrice
+                // Track in correct category based on part type (only if not already processed in BOM)
+                if (!bomAlreadyProcessed) {
+                  if (priceResult.isExtrusion) {
+                    priceBreakdown.totalExtrusionCost += optionPrice
+                  } else {
+                    priceBreakdown.totalHardwareCost += optionPrice
+                  }
                 }
               } else {
                 // Non-standard option selected
                 // Standard portion: at cost (no markup) - always include base standard cost
                 // Upgrade portion: full price minus standard (markup applied at project level)
-                const optionPrice = isIncluded ? 0 : priceResult.totalPrice
+                // If BOM was already processed, don't add cost again
+                const optionPrice = isIncluded || bomAlreadyProcessed ? 0 : priceResult.totalPrice
 
                 // Get standard option price using helper
                 const standardOptionBom = standardOption?.isCutListItem
@@ -886,7 +901,8 @@ export async function POST(
                   price: optionPrice,
                   isStandard: false,
                   standardDeducted: standardPriceResult.unitPrice,
-                  isIncluded: isIncluded
+                  isIncluded: isIncluded,
+                  ...(bomAlreadyProcessed && { bomProcessedSeparately: true })
                 })
 
                 componentBreakdown.totalOptionCost += optionPrice
@@ -894,11 +910,14 @@ export async function POST(
 
                 // Track the standard portion in standardOptionCost (no markup)
                 // Track full option in correct category (quote route will subtract standardOptionCost before markup)
-                priceBreakdown.totalStandardOptionCost += standardPriceResult.totalPrice
-                if (priceResult.isExtrusion) {
-                  priceBreakdown.totalExtrusionCost += optionPrice
-                } else {
-                  priceBreakdown.totalHardwareCost += optionPrice
+                // Only add if not already processed in BOM loop
+                if (!bomAlreadyProcessed) {
+                  priceBreakdown.totalStandardOptionCost += standardPriceResult.totalPrice
+                  if (priceResult.isExtrusion) {
+                    priceBreakdown.totalExtrusionCost += optionPrice
+                  } else {
+                    priceBreakdown.totalHardwareCost += optionPrice
+                  }
                 }
               }
             }
