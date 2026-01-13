@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, ArrowLeft, Calendar, User, FileText, Users, Truck, ShoppingCart, Download, Factory } from 'lucide-react'
+import { X, Calendar, User, FileText, Users, Truck, ShoppingCart, Download, Factory, Edit } from 'lucide-react'
 import ProjectContacts from '../projects/ProjectContacts'
 import ProjectNotes from '../projects/ProjectNotes'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
@@ -54,6 +54,7 @@ interface ProjectContact {
 interface ProjectDetailModalProps {
   projectId: number
   onBack: () => void
+  onEdit?: () => void
 }
 
 type TabType = 'overview' | 'contacts' | 'notes' | 'shipping' | 'purchasing' | 'production'
@@ -129,7 +130,7 @@ interface CutListData {
   totalUniqueProducts: number
 }
 
-export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailModalProps) {
+export default function ProjectDetailModal({ projectId, onBack, onEdit }: ProjectDetailModalProps) {
   const [project, setProject] = useState<Project | null>(null)
   const [activeTab, setActiveTab] = useState<TabType>('overview')
   const [loading, setLoading] = useState(true)
@@ -169,8 +170,19 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
   const [loadingPickList, setLoadingPickList] = useState(false)
   const [downloadingPickList, setDownloadingPickList] = useState(false)
 
+  // Edit Project modal state
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editStatus, setEditStatus] = useState('')
+  const [editDueDate, setEditDueDate] = useState('')
+  const [updatingProject, setUpdatingProject] = useState(false)
+
+  // Print All state
+  const [downloadingPrintAll, setDownloadingPrintAll] = useState(false)
+
   // Handle Escape key to close modal
   useEscapeKey([
+    { isOpen: showEditModal, isBlocked: updatingProject, onClose: () => setShowEditModal(false) },
     { isOpen: true, isBlocked: saving, onClose: onBack },
   ])
 
@@ -539,6 +551,77 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
     }
   }
 
+  const handleOpenEditModal = () => {
+    if (!project) return
+    setEditName(project.name)
+    setEditStatus(project.status)
+    setEditDueDate(project.dueDate ? project.dueDate.split('T')[0] : '')
+    setShowEditModal(true)
+  }
+
+  const handleSaveProject = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!project) return
+
+    try {
+      setUpdatingProject(true)
+      setError(null)
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editName,
+          status: editStatus,
+          dueDate: editDueDate || null
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to update project')
+
+      await fetchProject()
+      setShowEditModal(false)
+    } catch (err) {
+      console.error('Error saving project:', err)
+      setError('Failed to save project')
+    } finally {
+      setUpdatingProject(false)
+    }
+  }
+
+  const handleDownloadPrintAll = async () => {
+    if (!project) return
+
+    setDownloadingPrintAll(true)
+    try {
+      const response = await fetch(`/api/projects/${projectId}/print-all`)
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+
+        const contentDisposition = response.headers.get('Content-Disposition')
+        let filename = `${project.name}-PrintAll.zip`
+        if (contentDisposition && contentDisposition.includes('filename=')) {
+          filename = contentDisposition.split('filename=')[1].replace(/"/g, '')
+        }
+
+        link.setAttribute('download', filename)
+        link.style.visibility = 'hidden'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      } else {
+        console.error('Failed to download print all package')
+      }
+    } catch (error) {
+      console.error('Error downloading print all package:', error)
+    } finally {
+      setDownloadingPrintAll(false)
+    }
+  }
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Not set'
     const date = new Date(dateString)
@@ -594,31 +677,41 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onBack}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-              title="Back to customer"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-semibold text-gray-900">{project.name}</h2>
-                <span className={`text-xs px-2 py-1 rounded ${statusColors[project.status] || 'bg-gray-100 text-gray-700'}`}>
-                  {statusLabels[project.status] || project.status}
-                </span>
-              </div>
-              <div className="text-sm text-gray-500 mt-1">{project.customer.companyName}</div>
-              <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
-                <span>Due: {formatDate(project.dueDate)}</span>
-                <span>Created: {formatDate(project.createdAt)}</span>
-              </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-semibold text-gray-900">{project.name}</h2>
+              <span className={`text-xs px-2 py-1 rounded ${statusColors[project.status] || 'bg-gray-100 text-gray-700'}`}>
+                {statusLabels[project.status] || project.status}
+              </span>
+              <button
+                onClick={handleOpenEditModal}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                title="Edit project"
+              >
+                <Edit className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleDownloadPrintAll}
+                disabled={downloadingPrintAll}
+                className="text-orange-500 hover:text-orange-600 transition-colors disabled:opacity-50"
+                title="Download all project files (Purchasing Summary, Cut List, Pick List, Assembly List)"
+              >
+                {downloadingPrintAll ? (
+                  <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )}
+              </button>
+            </div>
+            <div className="text-sm text-gray-500 mt-1">{project.customer.companyName}</div>
+            <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+              <span>Due: {formatDate(project.dueDate)}</span>
+              <span>Created: {formatDate(project.createdAt)}</span>
             </div>
           </div>
           <button
             onClick={onBack}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 hover:text-gray-600 transition-colors self-start"
           >
             <X className="w-6 h-6" />
           </button>
@@ -1525,6 +1618,77 @@ export default function ProjectDetailModal({ projectId, onBack }: ProjectDetailM
           )}
         </div>
       </div>
+
+      {/* Edit Project Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Edit Project</h2>
+            <form onSubmit={handleSaveProject} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Project Name
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  disabled={updatingProject}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                  placeholder="Enter project name"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Status
+                </label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  disabled={updatingProject}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                >
+                  {Object.entries(statusLabels).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Due Date
+                </label>
+                <input
+                  type="date"
+                  value={editDueDate}
+                  onChange={(e) => setEditDueDate(e.target.value)}
+                  disabled={updatingProject}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
+                />
+              </div>
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  disabled={updatingProject}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingProject}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {updatingProject ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
