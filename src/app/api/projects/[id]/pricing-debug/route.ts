@@ -68,6 +68,71 @@ function calculateExtrusionPricePerPiece(
   return basePricePerFoot * (stockLengthInches / 12)
 }
 
+// Helper function to calculate option price - handles both hardware and extrusions
+async function calculateOptionPrice(
+  option: { partNumber?: string | null; isCutListItem: boolean; id: number; name: string },
+  optionBom: any | null,
+  quantity: number,
+  componentWidth: number,
+  componentHeight: number,
+  extrusionCostingMethod: string,
+  excludedPartNumbers: string[],
+  finishColor: string | null,
+  globalMaterialPricePerLb: number
+): Promise<{ unitPrice: number; totalPrice: number; isExtrusion: boolean; breakdown?: any }> {
+  if (!option.partNumber) {
+    return { unitPrice: 0, totalPrice: 0, isExtrusion: false }
+  }
+
+  // Look up MasterPart to check if it's an extrusion
+  const masterPart = await prisma.masterPart.findUnique({
+    where: { partNumber: option.partNumber },
+    select: { partType: true, cost: true }
+  })
+
+  if (!masterPart) {
+    return { unitPrice: 0, totalPrice: 0, isExtrusion: false }
+  }
+
+  // If it's an extrusion with a BOM entry, use full extrusion pricing logic
+  if (masterPart.partType === 'Extrusion' && optionBom) {
+    // Create a BOM-like object for calculateBOMItemPrice
+    const bomForPricing = {
+      partNumber: option.partNumber,
+      partName: option.name,
+      partType: 'Extrusion',
+      quantity: quantity,
+      formula: optionBom.formula,
+      cost: optionBom.cost
+    }
+
+    const { cost, breakdown } = await calculateBOMItemPrice(
+      bomForPricing,
+      componentWidth,
+      componentHeight,
+      extrusionCostingMethod,
+      excludedPartNumbers,
+      finishColor,
+      globalMaterialPricePerLb
+    )
+
+    return {
+      unitPrice: cost / quantity,
+      totalPrice: cost,
+      isExtrusion: true,
+      breakdown
+    }
+  }
+
+  // For hardware and other part types, use direct cost
+  const unitPrice = masterPart.cost ?? 0
+  return {
+    unitPrice,
+    totalPrice: unitPrice * quantity,
+    isExtrusion: false
+  }
+}
+
 // Calculate BOM item price with detailed breakdown
 async function calculateBOMItemPrice(
   bom: any,
@@ -605,29 +670,37 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 : null
               const quantity = optionBom?.quantity || 1
 
-              let unitPrice = 0
-              if (standardOption.partNumber) {
-                const masterPart = await prisma.masterPart.findUnique({
-                  where: { partNumber: standardOption.partNumber },
-                  select: { cost: true }
-                })
-                unitPrice = masterPart?.cost ?? 0
-              }
-              const totalPrice = unitPrice * quantity
+              // Calculate price using helper that handles both hardware and extrusions
+              const priceResult = await calculateOptionPrice(
+                standardOption,
+                optionBom,
+                quantity,
+                effectiveWidth,
+                effectiveHeight,
+                extrusionCostingMethod,
+                project.excludedPartNumbers || [],
+                opening.finishColor,
+                globalMaterialPricePerLb
+              )
 
               componentData.optionItems.push({
                 category: category.name,
                 optionName: standardOption.name,
                 partNumber: standardOption.partNumber,
-                unitPrice,
+                unitPrice: priceResult.unitPrice,
                 quantity,
-                price: totalPrice,
+                price: priceResult.totalPrice,
                 isStandard: true,
                 isIncluded: false
               })
-              componentData.totalOptionCost += totalPrice
-              standardOptionCost += totalPrice
-              openingData.costSummary.hardware.base += totalPrice
+              componentData.totalOptionCost += priceResult.totalPrice
+              standardOptionCost += priceResult.totalPrice
+              // Track in correct category based on part type
+              if (priceResult.isExtrusion) {
+                openingData.costSummary.extrusion.base += priceResult.totalPrice
+              } else {
+                openingData.costSummary.hardware.base += priceResult.totalPrice
+              }
             }
             continue
           }
@@ -653,23 +726,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               ? userSelectedQuantity
               : (optionBom?.quantity || 1)
 
-            let unitPrice = 0
-            if (selectedOption.partNumber) {
-              const masterPart = await prisma.masterPart.findUnique({
-                where: { partNumber: selectedOption.partNumber },
-                select: { cost: true }
-              })
-              unitPrice = masterPart?.cost ?? 0
-            }
+            // Calculate price using helper that handles both hardware and extrusions
+            const priceResult = await calculateOptionPrice(
+              selectedOption,
+              optionBom,
+              quantity,
+              effectiveWidth,
+              effectiveHeight,
+              extrusionCostingMethod,
+              project.excludedPartNumbers || [],
+              opening.finishColor,
+              globalMaterialPricePerLb
+            )
 
-            const optionPrice = isIncluded ? 0 : unitPrice * quantity
+            const optionPrice = isIncluded ? 0 : priceResult.totalPrice
 
             if (isStandardSelected) {
               componentData.optionItems.push({
                 category: category.name,
                 optionName: selectedOption.name,
                 partNumber: selectedOption.partNumber,
-                unitPrice,
+                unitPrice: priceResult.unitPrice,
                 quantity,
                 price: optionPrice,
                 isStandard: true,
@@ -677,34 +754,51 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               })
               componentData.totalOptionCost += optionPrice
               standardOptionCost += optionPrice
-              openingData.costSummary.hardware.base += optionPrice
-            } else {
-              // Get standard option price
-              let standardUnitPrice = 0
-              if (standardOption?.partNumber) {
-                const standardMasterPart = await prisma.masterPart.findUnique({
-                  where: { partNumber: standardOption.partNumber },
-                  select: { cost: true }
-                })
-                standardUnitPrice = standardMasterPart?.cost ?? 0
+              // Track in correct category based on part type
+              if (priceResult.isExtrusion) {
+                openingData.costSummary.extrusion.base += optionPrice
+              } else {
+                openingData.costSummary.hardware.base += optionPrice
               }
-              const standardPrice = standardUnitPrice * quantity
+            } else {
+              // Get standard option price using helper
+              const standardOptionBom = standardOption?.isCutListItem
+                ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
+                : null
+              const standardPriceResult = standardOption
+                ? await calculateOptionPrice(
+                    standardOption,
+                    standardOptionBom,
+                    quantity,
+                    effectiveWidth,
+                    effectiveHeight,
+                    extrusionCostingMethod,
+                    project.excludedPartNumbers || [],
+                    opening.finishColor,
+                    globalMaterialPricePerLb
+                  )
+                : { unitPrice: 0, totalPrice: 0, isExtrusion: false }
 
               componentData.optionItems.push({
                 category: category.name,
                 optionName: selectedOption.name,
                 partNumber: selectedOption.partNumber,
-                unitPrice,
+                unitPrice: priceResult.unitPrice,
                 quantity,
                 price: optionPrice,
                 isStandard: false,
                 isIncluded,
-                standardDeducted: standardUnitPrice,
-                standardPrice
+                standardDeducted: standardPriceResult.unitPrice,
+                standardPrice: standardPriceResult.totalPrice
               })
               componentData.totalOptionCost += optionPrice
-              standardOptionCost += standardPrice
-              openingData.costSummary.hardware.base += optionPrice
+              standardOptionCost += standardPriceResult.totalPrice
+              // Track in correct category based on part type
+              if (priceResult.isExtrusion) {
+                openingData.costSummary.extrusion.base += optionPrice
+              } else {
+                openingData.costSummary.hardware.base += optionPrice
+              }
             }
           }
         }
@@ -722,29 +816,37 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 : null
               const quantity = optionBom?.quantity || 1
 
-              let unitPrice = 0
-              if (standardOption.partNumber) {
-                const masterPart = await prisma.masterPart.findUnique({
-                  where: { partNumber: standardOption.partNumber },
-                  select: { cost: true }
-                })
-                unitPrice = masterPart?.cost ?? 0
-              }
-              const totalPrice = unitPrice * quantity
+              // Calculate price using helper that handles both hardware and extrusions
+              const priceResult = await calculateOptionPrice(
+                standardOption,
+                optionBom,
+                quantity,
+                effectiveWidth,
+                effectiveHeight,
+                extrusionCostingMethod,
+                project.excludedPartNumbers || [],
+                opening.finishColor,
+                globalMaterialPricePerLb
+              )
 
               componentData.optionItems.push({
                 category: productSubOption.category.name,
                 optionName: standardOption.name,
                 partNumber: standardOption.partNumber,
-                unitPrice,
+                unitPrice: priceResult.unitPrice,
                 quantity,
-                price: totalPrice,
+                price: priceResult.totalPrice,
                 isStandard: true,
                 isIncluded: false
               })
-              componentData.totalOptionCost += totalPrice
-              standardOptionCost += totalPrice
-              openingData.costSummary.hardware.base += totalPrice
+              componentData.totalOptionCost += priceResult.totalPrice
+              standardOptionCost += priceResult.totalPrice
+              // Track in correct category based on part type
+              if (priceResult.isExtrusion) {
+                openingData.costSummary.extrusion.base += priceResult.totalPrice
+              } else {
+                openingData.costSummary.hardware.base += priceResult.totalPrice
+              }
             }
           }
         }

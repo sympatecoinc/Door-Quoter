@@ -100,6 +100,71 @@ function getFrameDimensions(panels: any[], currentPanelId: number): { width: num
   return { width, height }
 }
 
+// Helper function to calculate option price - handles both hardware and extrusions
+async function calculateOptionPrice(
+  option: { partNumber?: string | null; isCutListItem: boolean; id: number; name: string },
+  optionBom: any | null,
+  quantity: number,
+  componentWidth: number,
+  componentHeight: number,
+  extrusionCostingMethod: string,
+  excludedPartNumbers: string[],
+  finishColor: string | null,
+  globalMaterialPricePerLb: number
+): Promise<{ unitPrice: number; totalPrice: number; isExtrusion: boolean; breakdown?: any }> {
+  if (!option.partNumber) {
+    return { unitPrice: 0, totalPrice: 0, isExtrusion: false }
+  }
+
+  // Look up MasterPart to check if it's an extrusion
+  const masterPart = await prisma.masterPart.findUnique({
+    where: { partNumber: option.partNumber },
+    select: { partType: true, cost: true }
+  })
+
+  if (!masterPart) {
+    return { unitPrice: 0, totalPrice: 0, isExtrusion: false }
+  }
+
+  // If it's an extrusion with a BOM entry, use full extrusion pricing logic
+  if (masterPart.partType === 'Extrusion' && optionBom) {
+    // Create a BOM-like object for calculateBOMItemPrice
+    const bomForPricing = {
+      partNumber: option.partNumber,
+      partName: option.name,
+      partType: 'Extrusion',
+      quantity: quantity,
+      formula: optionBom.formula,
+      cost: optionBom.cost
+    }
+
+    const { cost, breakdown } = await calculateBOMItemPrice(
+      bomForPricing,
+      componentWidth,
+      componentHeight,
+      extrusionCostingMethod,
+      excludedPartNumbers,
+      finishColor,
+      globalMaterialPricePerLb
+    )
+
+    return {
+      unitPrice: cost / quantity,
+      totalPrice: cost,
+      isExtrusion: true,
+      breakdown
+    }
+  }
+
+  // For hardware and other part types, use direct cost
+  const unitPrice = masterPart.cost ?? 0
+  return {
+    unitPrice,
+    totalPrice: unitPrice * quantity,
+    isExtrusion: false
+  }
+}
+
 // Function to calculate the price of a single BOM item using component dimensions
 async function calculateBOMItemPrice(bom: any, componentWidth: number, componentHeight: number, extrusionCostingMethod?: string, excludedPartNumbers?: string[], finishColor?: string | null, globalMaterialPricePerLb?: number): Promise<{cost: number, breakdown: any}> {
   const variables = {
@@ -699,28 +764,35 @@ export async function POST(
                   : null
                 const quantity = optionBom?.quantity || 1
 
-                // Get price from MasterPart.cost via partNumber
-                let unitPrice = 0
-                if (standardOption.partNumber) {
-                  const masterPart = await prisma.masterPart.findUnique({
-                    where: { partNumber: standardOption.partNumber },
-                    select: { cost: true }
-                  })
-                  unitPrice = masterPart?.cost ?? 0
-                }
-                const totalPrice = unitPrice * quantity
+                // Calculate price using helper that handles both hardware and extrusions
+                const priceResult = await calculateOptionPrice(
+                  standardOption,
+                  optionBom,
+                  quantity,
+                  effectiveWidth,
+                  effectiveHeight,
+                  extrusionCostingMethod,
+                  opening.project.excludedPartNumbers || [],
+                  opening.finishColor,
+                  globalMaterialPricePerLb
+                )
 
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
                   optionName: standardOption.name,
-                  price: totalPrice, // Cost price * quantity, no markup
+                  price: priceResult.totalPrice, // Cost price, no markup
                   isStandard: true,
                   isIncluded: false
                 })
-                componentBreakdown.totalOptionCost += totalPrice
-                componentCost += totalPrice
-                priceBreakdown.totalStandardOptionCost += totalPrice // Track for no-markup
-                priceBreakdown.totalHardwareCost += totalPrice // All hardware options in hardwareCost
+                componentBreakdown.totalOptionCost += priceResult.totalPrice
+                componentCost += priceResult.totalPrice
+                priceBreakdown.totalStandardOptionCost += priceResult.totalPrice // Track for no-markup
+                // Track in correct category based on part type
+                if (priceResult.isExtrusion) {
+                  priceBreakdown.totalExtrusionCost += priceResult.totalPrice
+                } else {
+                  priceBreakdown.totalHardwareCost += priceResult.totalPrice
+                }
               }
               continue
             }
@@ -750,19 +822,22 @@ export async function POST(
                 ? userSelectedQuantity
                 : (optionBom?.quantity || 1)
 
-              // Get price from MasterPart.cost via partNumber
-              let unitPrice = 0
-              if (selectedOption.partNumber) {
-                const masterPart = await prisma.masterPart.findUnique({
-                  where: { partNumber: selectedOption.partNumber },
-                  select: { cost: true }
-                })
-                unitPrice = masterPart?.cost ?? 0
-              }
+              // Calculate price using helper that handles both hardware and extrusions
+              const priceResult = await calculateOptionPrice(
+                selectedOption,
+                optionBom,
+                quantity,
+                effectiveWidth,
+                effectiveHeight,
+                extrusionCostingMethod,
+                opening.project.excludedPartNumbers || [],
+                opening.finishColor,
+                globalMaterialPricePerLb
+              )
 
               if (isStandardSelected) {
                 // Standard option selected - cost only, no markup
-                const optionPrice = isIncluded ? 0 : unitPrice * quantity
+                const optionPrice = isIncluded ? 0 : priceResult.totalPrice
 
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
@@ -775,30 +850,42 @@ export async function POST(
                 componentBreakdown.totalOptionCost += optionPrice
                 componentCost += optionPrice
                 priceBreakdown.totalStandardOptionCost += optionPrice // Track for no-markup
-                priceBreakdown.totalHardwareCost += optionPrice // All hardware options in hardwareCost
+                // Track in correct category based on part type
+                if (priceResult.isExtrusion) {
+                  priceBreakdown.totalExtrusionCost += optionPrice
+                } else {
+                  priceBreakdown.totalHardwareCost += optionPrice
+                }
               } else {
                 // Non-standard option selected
                 // Standard portion: at cost (no markup) - always include base standard cost
                 // Upgrade portion: full price minus standard (markup applied at project level)
-                const optionPrice = isIncluded ? 0 : unitPrice * quantity
+                const optionPrice = isIncluded ? 0 : priceResult.totalPrice
 
-                // Get standard option price from MasterPart
-                let standardUnitPrice = 0
-                if (standardOption?.partNumber) {
-                  const standardMasterPart = await prisma.masterPart.findUnique({
-                    where: { partNumber: standardOption.partNumber },
-                    select: { cost: true }
-                  })
-                  standardUnitPrice = standardMasterPart?.cost ?? 0
-                }
-                const standardPrice = standardUnitPrice * quantity
+                // Get standard option price using helper
+                const standardOptionBom = standardOption?.isCutListItem
+                  ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
+                  : null
+                const standardPriceResult = standardOption
+                  ? await calculateOptionPrice(
+                      standardOption,
+                      standardOptionBom,
+                      quantity,
+                      effectiveWidth,
+                      effectiveHeight,
+                      extrusionCostingMethod,
+                      opening.project.excludedPartNumbers || [],
+                      opening.finishColor,
+                      globalMaterialPricePerLb
+                    )
+                  : { unitPrice: 0, totalPrice: 0, isExtrusion: false }
 
                 componentBreakdown.optionCosts.push({
                   categoryName: category.name,
                   optionName: selectedOption.name,
                   price: optionPrice,
                   isStandard: false,
-                  standardDeducted: standardUnitPrice,
+                  standardDeducted: standardPriceResult.unitPrice,
                   isIncluded: isIncluded
                 })
 
@@ -806,9 +893,13 @@ export async function POST(
                 componentCost += optionPrice
 
                 // Track the standard portion in standardOptionCost (no markup)
-                // Track full option in hardwareCost (quote route will subtract standardOptionCost before markup)
-                priceBreakdown.totalStandardOptionCost += standardPrice
-                priceBreakdown.totalHardwareCost += optionPrice
+                // Track full option in correct category (quote route will subtract standardOptionCost before markup)
+                priceBreakdown.totalStandardOptionCost += standardPriceResult.totalPrice
+                if (priceResult.isExtrusion) {
+                  priceBreakdown.totalExtrusionCost += optionPrice
+                } else {
+                  priceBreakdown.totalHardwareCost += optionPrice
+                }
               }
             }
           }
@@ -831,28 +922,35 @@ export async function POST(
               : null
             const quantity = optionBom?.quantity || 1
 
-            // Get price from MasterPart.cost via partNumber
-            let unitPrice = 0
-            if (standardOption.partNumber) {
-              const masterPart = await prisma.masterPart.findUnique({
-                where: { partNumber: standardOption.partNumber },
-                select: { cost: true }
-              })
-              unitPrice = masterPart?.cost ?? 0
-            }
-            const totalPrice = unitPrice * quantity
+            // Calculate price using helper that handles both hardware and extrusions
+            const priceResult = await calculateOptionPrice(
+              standardOption,
+              optionBom,
+              quantity,
+              effectiveWidth,
+              effectiveHeight,
+              extrusionCostingMethod,
+              opening.project.excludedPartNumbers || [],
+              opening.finishColor,
+              globalMaterialPricePerLb
+            )
 
             componentBreakdown.optionCosts.push({
               categoryName: productSubOption.category.name,
               optionName: standardOption.name,
-              price: totalPrice, // At cost * quantity
+              price: priceResult.totalPrice, // At cost
               isStandard: true,
               isIncluded: false
             })
-            componentBreakdown.totalOptionCost += totalPrice
-            componentCost += totalPrice
-            priceBreakdown.totalStandardOptionCost += totalPrice // Track for no-markup
-            priceBreakdown.totalHardwareCost += totalPrice // All hardware options in hardwareCost
+            componentBreakdown.totalOptionCost += priceResult.totalPrice
+            componentCost += priceResult.totalPrice
+            priceBreakdown.totalStandardOptionCost += priceResult.totalPrice // Track for no-markup
+            // Track in correct category based on part type
+            if (priceResult.isExtrusion) {
+              priceBreakdown.totalExtrusionCost += priceResult.totalPrice
+            } else {
+              priceBreakdown.totalHardwareCost += priceResult.totalPrice
+            }
           }
         }
       }
