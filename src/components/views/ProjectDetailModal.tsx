@@ -588,6 +588,33 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit }: Projec
     }
   }
 
+  const handleArchiveProject = async () => {
+    if (!project) return
+    if (!confirm('Are you sure you want to archive this project? It will be hidden from normal project views.')) return
+
+    try {
+      setUpdatingProject(true)
+      setError(null)
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'ARCHIVE'
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to archive project')
+
+      await fetchProject()
+      setShowEditModal(false)
+    } catch (err) {
+      console.error('Error archiving project:', err)
+      setError('Failed to archive project')
+    } finally {
+      setUpdatingProject(false)
+    }
+  }
+
   const handleDownloadPrintAll = async () => {
     if (!project) return
 
@@ -640,6 +667,7 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit }: Projec
     'QUOTE_ACCEPTED': 'bg-green-100 text-green-700',
     'ACTIVE': 'bg-indigo-100 text-indigo-700',
     'COMPLETE': 'bg-emerald-100 text-emerald-700',
+    'ARCHIVE': 'bg-red-100 text-red-700',
   }
 
   const statusLabels: Record<string, string> = {
@@ -650,6 +678,7 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit }: Projec
     'QUOTE_ACCEPTED': 'Quote Accepted',
     'ACTIVE': 'Active',
     'COMPLETE': 'Complete',
+    'ARCHIVE': 'Archived',
   }
 
   if (loading) {
@@ -1686,6 +1715,18 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit }: Projec
                 </button>
               </div>
             </form>
+            {project.status !== 'ARCHIVE' && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={handleArchiveProject}
+                  disabled={updatingProject}
+                  className="w-full px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
+                >
+                  Archive Project
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
