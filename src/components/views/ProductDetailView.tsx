@@ -2557,6 +2557,19 @@ export default function ProductDetailView({
                       required
                     />
                   </div>
+                  {(editPartUnit === 'LF' || editPartUnit === 'IN') && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Length Formula</label>
+                      <FormulaInput
+                        value={editPartFormula}
+                        onChange={setEditPartFormula}
+                        placeholder="e.g., width + 2, height * 0.5"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Use "width" and "height" variables (case-insensitive). Supports +, -, *, /, parentheses, and decimal numbers.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

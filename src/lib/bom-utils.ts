@@ -116,6 +116,8 @@ export interface AggregatedBomItem {
   totalArea: number
   glassWidth: number | null
   glassHeight: number | null
+  // For Hardware/Fastener with LF/IN units - store the specific calculated length (like glassWidth for glass)
+  calculatedLength: number | null
   stockPiecesNeeded: number | null
   wastePercent: number | null
 }
@@ -126,12 +128,21 @@ export function aggregateBomItems(bomItems: BomItem[]): AggregatedBomItem[] {
 
   for (const item of bomItems) {
     // For glass, group by part number AND dimensions to get separate rows per size
+    // For hardware/fastener with length formulas (LF/IN units), group by part number AND calculated length
     let key = item.partNumber
     if (item.partType === 'Glass' && item.glassWidth && item.glassHeight) {
       key = `${item.partNumber}|${item.glassWidth.toFixed(3)}x${item.glassHeight.toFixed(3)}`
+    } else if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
+               (item.unit === 'LF' || item.unit === 'IN') &&
+               item.calculatedLength) {
+      key = `${item.partNumber}|${item.calculatedLength.toFixed(3)}`
     }
 
     if (!aggregated[key]) {
+      // For Hardware/Fastener with LF/IN units, store the specific calculated length
+      const isLengthBasedHardware = (item.partType === 'Hardware' || item.partType === 'Fastener') &&
+                                     (item.unit === 'LF' || item.unit === 'IN')
+
       aggregated[key] = {
         partNumber: item.partNumber,
         partName: item.partName,
@@ -148,6 +159,8 @@ export function aggregateBomItems(bomItems: BomItem[]): AggregatedBomItem[] {
         // Glass size fields (for unique glass sizes)
         glassWidth: item.partType === 'Glass' ? (item.glassWidth ?? null) : null,
         glassHeight: item.partType === 'Glass' ? (item.glassHeight ?? null) : null,
+        // Hardware/Fastener calculated length (for LF/IN units with different lengths)
+        calculatedLength: isLengthBasedHardware ? (item.calculatedLength ?? null) : null,
         // Stock optimization fields (for extrusions)
         stockPiecesNeeded: null,
         wastePercent: null
@@ -552,6 +565,7 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
 
   const rows = summaryItems.map(item => {
     // For glass, show the specific size; for extrusions, show cut lengths
+    // For hardware/fastener with LF/IN units, show the calculated length
     let sizeStr = ''
     if (item.partType === 'Glass' && item.glassWidth && item.glassHeight) {
       sizeStr = `${item.glassWidth.toFixed(3)}" x ${item.glassHeight.toFixed(3)}"`
@@ -559,8 +573,12 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
       // For extrusions, show unique cut lengths
       const uniqueCuts = [...new Set(item.cutLengths.map((l: number) => l.toFixed(3)))]
       sizeStr = uniqueCuts.join('; ')
+    } else if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
+               (item.unit === 'LF' || item.unit === 'IN') &&
+               item.calculatedLength) {
+      // For hardware/fastener with length formulas, show the cut length
+      sizeStr = `${item.calculatedLength.toFixed(3)}"`
     }
-    // Note: LF/IN hardware items no longer show length in Size column - it goes to Pieces
 
     // Determine pieces value
     let piecesValue: string | number = item.totalQuantity
