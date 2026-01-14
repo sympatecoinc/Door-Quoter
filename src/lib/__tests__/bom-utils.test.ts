@@ -388,6 +388,7 @@ describe('summaryToCSV', () => {
         totalArea: 0,
         glassWidth: null,
         glassHeight: null,
+        calculatedLength: null,
         stockPiecesNeeded: null,
         wastePercent: null
       }]
@@ -414,6 +415,7 @@ describe('summaryToCSV', () => {
         totalArea: 8.2,
         glassWidth: 24.5,
         glassHeight: 48.25,
+        calculatedLength: null,
         stockPiecesNeeded: null,
         wastePercent: null
       }]
@@ -441,6 +443,7 @@ describe('summaryToCSV', () => {
         totalArea: 0,
         glassWidth: null,
         glassHeight: null,
+        calculatedLength: null,
         stockPiecesNeeded: 2,
         wastePercent: 28.1
       }]
@@ -466,6 +469,7 @@ describe('summaryToCSV', () => {
         totalArea: 0,
         glassWidth: null,
         glassHeight: null,
+        calculatedLength: null,
         stockPiecesNeeded: 2,
         wastePercent: 47.9
       }]
@@ -493,6 +497,7 @@ describe('summaryToCSV', () => {
         totalArea: 0,
         glassWidth: null,
         glassHeight: null,
+        calculatedLength: 12.5,  // Individual calculated length for grouping
         stockPiecesNeeded: null,
         wastePercent: null
       }]
