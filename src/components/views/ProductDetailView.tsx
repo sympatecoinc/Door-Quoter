@@ -560,6 +560,9 @@ export default function ProductDetailView({
   const [deletingPartName, setDeletingPartName] = useState('')
   const [isDeletingPart, setIsDeletingPart] = useState(false)
 
+  // BOM Sort State
+  const [bomSortOption, setBomSortOption] = useState<'partType' | 'partNumber' | 'recentlyAdded'>('partType')
+
   // Fetch detailed product data including linked categories and plan views
   useEffect(() => {
     async function fetchProductDetails() {
@@ -1465,14 +1468,44 @@ export default function ProductDetailView({
             <div className="bg-gray-50 rounded-lg p-6">
           {/* Filter out option-based BOM entries - those should only show in linked categories */}
           {(() => {
-            const regularBOMs = productDetails?.productBOMs?.filter((b: any) => !b.optionId) || []
+            const filteredBOMs = productDetails?.productBOMs?.filter((b: any) => !b.optionId) || []
+
+            // Sort BOMs based on selected sort option
+            const typeOrder: Record<string, number> = { 'Extrusion': 1, 'Hardware': 2, 'Fastener': 3, 'Glass': 4, 'Option': 5 }
+            const regularBOMs = [...filteredBOMs].sort((a: any, b: any) => {
+              if (bomSortOption === 'partType') {
+                // Sort by part type, then alphabetically by part name within groups
+                const aOrder = typeOrder[a.partType] || 6
+                const bOrder = typeOrder[b.partType] || 6
+                if (aOrder !== bOrder) return aOrder - bOrder
+                return (a.partName || '').localeCompare(b.partName || '')
+              } else if (bomSortOption === 'partNumber') {
+                // Sort alphabetically by part number
+                return (a.partNumber || '').localeCompare(b.partNumber || '')
+              } else {
+                // Sort by recently added (newest first) - use id as proxy for creation order
+                return (b.id || 0) - (a.id || 0)
+              }
+            })
+
             return (
               <>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Parts & BOM</h3>
-            <span className="text-sm text-gray-500">
-              {regularBOMs.length} parts
-            </span>
+            <div className="flex items-center gap-4">
+              <select
+                value={bomSortOption}
+                onChange={(e) => setBomSortOption(e.target.value as 'partType' | 'partNumber' | 'recentlyAdded')}
+                className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="partType">Sort: Part Type</option>
+                <option value="partNumber">Sort: Part Number</option>
+                <option value="recentlyAdded">Sort: Recently Added</option>
+              </select>
+              <span className="text-sm text-gray-500">
+                {regularBOMs.length} parts
+              </span>
+            </div>
           </div>
 
           <div className="space-y-6">
