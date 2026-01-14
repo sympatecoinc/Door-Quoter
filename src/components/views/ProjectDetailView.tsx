@@ -2799,8 +2799,8 @@ export default function ProjectDetailView() {
                       }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                     >
-                      <option value="THINWALL">ThinWall</option>
-                      <option value="FRAMED">Trimmed</option>
+                      <option value="THINWALL">Finished</option>
+                      <option value="FRAMED">Un-Finished</option>
                     </select>
                   </div>
 
