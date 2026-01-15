@@ -134,6 +134,9 @@ export function isProjectStatus(status: ProjectStatus): boolean {
 // Opening Type enum for finished opening tolerances
 export type OpeningType = 'THINWALL' | 'FRAMED'
 
+// Product Category - determines which opening types a product can be used with
+export type ProductCategory = 'THINWALL' | 'TRIMMED' | 'BOTH'
+
 export interface Opening {
   id: number
   projectId: number
@@ -184,6 +187,8 @@ export interface Product {
   description?: string
   type: string
   productType?: string
+  productCategory?: ProductCategory
+  defaultWidth?: number | null
   archived?: boolean
   glassWidthFormula?: string
   glassHeightFormula?: string

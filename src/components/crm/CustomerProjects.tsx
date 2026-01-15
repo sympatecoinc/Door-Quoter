@@ -537,11 +537,14 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
       : statusFilters.includes(project.status)
 
     // Filter by type (leads vs projects)
+    // Archive status should match if the Archive filter is selected
     let matchesType = true
     if (filterType === 'leads') {
-      matchesType = LEAD_STATUSES.includes(project.status as ProjectStatus)
+      matchesType = LEAD_STATUSES.includes(project.status as ProjectStatus) ||
+        (isArchived && archiveFilterSelected)
     } else if (filterType === 'projects') {
-      matchesType = PROJECT_STATUSES.includes(project.status as ProjectStatus)
+      matchesType = PROJECT_STATUSES.includes(project.status as ProjectStatus) ||
+        (isArchived && archiveFilterSelected)
     }
 
     return matchesSearch && matchesStatus && matchesType
@@ -805,7 +808,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
               key={project.id}
               onClick={() => onProjectClick?.(project.id)}
               className={`bg-white rounded-xl shadow-sm border border-gray-200 p-6 ${
-                project.status === 'Archive' ? 'opacity-60 bg-gray-50' : ''
+                project.status === ProjectStatus.ARCHIVE ? 'opacity-60 bg-gray-50' : ''
               } ${onProjectClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
             >
               <div className="flex justify-between items-start mb-4">

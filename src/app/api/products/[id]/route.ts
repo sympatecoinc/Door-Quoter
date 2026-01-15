@@ -61,6 +61,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       description,
       type,
       productType,
+      productCategory,
+      defaultWidth,
       glassWidthFormula,
       glassHeightFormula,
       glassQuantityFormula,
@@ -90,12 +92,27 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (type !== undefined) updateData.type = type || 'Product'
     if (productType !== undefined) {
       // Validate productType
-      const validProductTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL', 'CORNER_90']
+      const validProductTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL', 'CORNER_90', 'FRAME']
       if (!validProductTypes.includes(productType)) {
         return NextResponse.json(
-          { error: 'Invalid product type. Must be one of: Swing Door, Sliding Door, Fixed Panel, 90 Degree Corner' },
+          { error: 'Invalid product type. Must be one of: Swing Door, Sliding Door, Fixed Panel, 90 Degree Corner, Frame' },
           { status: 400 }
         )
+      }
+      // Check singleton constraint when changing TO FRAME
+      if (productType === 'FRAME') {
+        const existingFrame = await prisma.product.findFirst({
+          where: {
+            productType: 'FRAME',
+            id: { not: productId }
+          }
+        })
+        if (existingFrame) {
+          return NextResponse.json(
+            { error: 'A Frame product already exists. Only one Frame product is allowed.' },
+            { status: 400 }
+          )
+        }
       }
       updateData.productType = productType
     }
@@ -111,6 +128,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (maxWidth !== undefined) updateData.maxWidth = maxWidth !== null && maxWidth !== '' ? parseFloat(maxWidth) : null
     if (minHeight !== undefined) updateData.minHeight = minHeight !== null && minHeight !== '' ? parseFloat(minHeight) : null
     if (maxHeight !== undefined) updateData.maxHeight = maxHeight !== null && maxHeight !== '' ? parseFloat(maxHeight) : null
+
+    // Product category for streamlined opening flow
+    if (productCategory !== undefined) {
+      const validCategories = ['THINWALL', 'TRIMMED', 'BOTH']
+      if (validCategories.includes(productCategory)) {
+        updateData.productCategory = productCategory
+      }
+    }
+
+    // Default width for component creation
+    if (defaultWidth !== undefined) {
+      updateData.defaultWidth = defaultWidth !== null && defaultWidth !== '' ? parseFloat(defaultWidth) : null
+    }
 
     const product = await prisma.product.update({
       where: { id: productId },

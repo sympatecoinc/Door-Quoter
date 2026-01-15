@@ -414,6 +414,7 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           <ProjectDetailModal
             projectId={selectedProjectId}
             onBack={() => setSelectedProjectId(null)}
+            onStatusChange={() => setRefreshKey(k => k + 1)}
           />
         )}
 

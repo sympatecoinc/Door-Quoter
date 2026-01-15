@@ -27,14 +27,16 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // Lead phase statuses (pre-acceptance) - projects in quoting phase
+    const LEAD_STATUSES = ['STAGING', 'APPROVED', 'REVISE', 'QUOTE_SENT']
+    // Project phase statuses (post-acceptance) - won projects
+    const PROJECT_STATUSES = ['QUOTE_ACCEPTED', 'ACTIVE', 'COMPLETE']
+
     const [customers, total] = await Promise.all([
       prisma.customer.findMany({
         where,
         include: {
           contacts: true,
-          leads: {
-            where: { stage: { not: 'Lost' } }
-          },
           projects: {
             select: { id: true, name: true, status: true }
           }
@@ -46,8 +48,21 @@ export async function GET(request: NextRequest) {
       prisma.customer.count({ where })
     ])
 
+    // Transform customers to include leadCount and projectCount based on project status
+    const customersWithCounts = customers.map(customer => {
+      const leadCount = customer.projects.filter(p => LEAD_STATUSES.includes(p.status)).length
+      const projectCount = customer.projects.filter(p => PROJECT_STATUSES.includes(p.status)).length
+      return {
+        ...customer,
+        leadCount,
+        projectCount,
+        // Keep projects array for backward compatibility but also add leads array for display
+        leads: customer.projects.filter(p => LEAD_STATUSES.includes(p.status))
+      }
+    })
+
     return NextResponse.json({
-      customers,
+      customers: customersWithCounts,
       pagination: {
         page,
         limit,

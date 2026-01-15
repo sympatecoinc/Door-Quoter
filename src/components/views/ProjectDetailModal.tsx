@@ -55,6 +55,7 @@ interface ProjectDetailModalProps {
   projectId: number
   onBack: () => void
   onEdit?: () => void
+  onStatusChange?: () => void
 }
 
 type TabType = 'overview' | 'contacts' | 'notes' | 'shipping' | 'purchasing' | 'production'
@@ -130,7 +131,7 @@ interface CutListData {
   totalUniqueProducts: number
 }
 
-export default function ProjectDetailModal({ projectId, onBack, onEdit }: ProjectDetailModalProps) {
+export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatusChange }: ProjectDetailModalProps) {
   const [project, setProject] = useState<Project | null>(null)
   const [activeTab, setActiveTab] = useState<TabType>('overview')
   const [loading, setLoading] = useState(true)
@@ -180,8 +181,12 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit }: Projec
   // Print All state
   const [downloadingPrintAll, setDownloadingPrintAll] = useState(false)
 
+  // Archive confirmation state
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
+
   // Handle Escape key to close modal
   useEscapeKey([
+    { isOpen: showArchiveConfirm, isBlocked: updatingProject, onClose: () => setShowArchiveConfirm(false) },
     { isOpen: showEditModal, isBlocked: updatingProject, onClose: () => setShowEditModal(false) },
     { isOpen: true, isBlocked: saving, onClose: onBack },
   ])
@@ -590,7 +595,6 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit }: Projec
 
   const handleArchiveProject = async () => {
     if (!project) return
-    if (!confirm('Are you sure you want to archive this project? It will be hidden from normal project views.')) return
 
     try {
       setUpdatingProject(true)
@@ -605,8 +609,9 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit }: Projec
 
       if (!response.ok) throw new Error('Failed to archive project')
 
-      await fetchProject()
-      setShowEditModal(false)
+      setShowArchiveConfirm(false)
+      onStatusChange?.()
+      onBack()
     } catch (err) {
       console.error('Error archiving project:', err)
       setError('Failed to archive project')
@@ -1719,7 +1724,7 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit }: Projec
               <div className="mt-4 pt-4 border-t border-gray-200">
                 <button
                   type="button"
-                  onClick={handleArchiveProject}
+                  onClick={() => setShowArchiveConfirm(true)}
                   disabled={updatingProject}
                   className="w-full px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
                 >
@@ -1727,6 +1732,44 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit }: Projec
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Archive Confirmation Modal */}
+      {showArchiveConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Archive Project
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to archive <strong>{project?.name}</strong>? It will be hidden from normal project views.
+            </p>
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-orange-700">
+                You can restore this project later by changing its status from the archived projects list.
+              </p>
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowArchiveConfirm(false)}
+                disabled={updatingProject}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleArchiveProject}
+                disabled={updatingProject}
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center"
+              >
+                {updatingProject && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                )}
+                {updatingProject ? 'Archiving...' : 'Archive Project'}
+              </button>
+            </div>
           </div>
         </div>
       )}

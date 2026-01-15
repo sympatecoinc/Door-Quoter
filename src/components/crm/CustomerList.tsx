@@ -19,6 +19,8 @@ interface Customer {
   contacts: any[]
   leads: any[]
   projects: any[]
+  leadCount: number
+  projectCount: number
 }
 
 interface CustomerListData {
@@ -58,8 +60,12 @@ export default function CustomerList({ onAddCustomer, onViewCustomer }: Customer
       })
 
       // Add multiple status filters if any are selected
+      // If no filters selected, exclude Archived by default
       if (statusFilters.length > 0) {
         params.append('status', statusFilters.join(','))
+      } else {
+        // Default: show Active, Inactive, Prospect but not Archived
+        params.append('status', 'Active,Inactive,Prospect')
       }
 
       const response = await fetch(`/api/customers?${params}`)
@@ -91,12 +97,13 @@ export default function CustomerList({ onAddCustomer, onViewCustomer }: Customer
     const colors: { [key: string]: string } = {
       'Active': 'bg-green-100 text-green-800',
       'Inactive': 'bg-gray-100 text-gray-800',
-      'Prospect': 'bg-blue-100 text-blue-800'
+      'Prospect': 'bg-blue-100 text-blue-800',
+      'Archived': 'bg-slate-100 text-slate-800'
     }
     return colors[status] || 'bg-gray-100 text-gray-800'
   }
 
-  const statuses = ['Active', 'Inactive', 'Prospect']
+  const statuses = ['Active', 'Inactive', 'Prospect', 'Archived']
 
   return (
     <div className="space-y-6">
@@ -161,6 +168,9 @@ export default function CustomerList({ onAddCustomer, onViewCustomer }: Customer
                     : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
                   'Prospect': isActive
                     ? 'bg-blue-100 text-blue-800'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
+                  'Archived': isActive
+                    ? 'bg-slate-100 text-slate-800'
                     : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
                 }[status]
 
@@ -280,10 +290,10 @@ export default function CustomerList({ onAddCustomer, onViewCustomer }: Customer
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {customer.leads.length}
+                        {customer.leadCount}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {customer.projects.length}
+                        {customer.projectCount}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(customer.status)}`}>

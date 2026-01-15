@@ -542,6 +542,11 @@ export default function ProductDetailView({
   const [minHeightValue, setMinHeightValue] = useState('')
   const [maxHeightValue, setMaxHeightValue] = useState('')
   const [savingSizeConstraints, setSavingSizeConstraints] = useState(false)
+  // Product Settings (Category & Default Width)
+  const [editingProductSettings, setEditingProductSettings] = useState(false)
+  const [productCategoryValue, setProductCategoryValue] = useState('')
+  const [defaultWidthValue, setDefaultWidthValue] = useState('')
+  const [savingProductSettings, setSavingProductSettings] = useState(false)
   const [expandedCategory, setExpandedCategory] = useState<number | null>(null)
   const [settingStandard, setSettingStandard] = useState(false)
   const [optionBomModalOpen, setOptionBomModalOpen] = useState(false)
@@ -553,6 +558,9 @@ export default function ProductDetailView({
   const [optionBomMaxQuantity, setOptionBomMaxQuantity] = useState('')
   const [optionBomDefaultQuantity, setOptionBomDefaultQuantity] = useState('')
   const [savingOptionBom, setSavingOptionBom] = useState(false)
+
+  // Determine if this is a Frame product (hide certain sections)
+  const isFrameProduct = (productDetails?.productType || product?.productType) === 'FRAME'
 
   // Delete BOM Part Modal State
   const [showDeletePartModal, setShowDeletePartModal] = useState(false)
@@ -1002,6 +1010,51 @@ export default function ProductDetailView({
     }
   }
 
+  function startEditProductSettings() {
+    setProductCategoryValue(productDetails?.productCategory || 'BOTH')
+    setDefaultWidthValue(productDetails?.defaultWidth?.toString() || '')
+    setEditingProductSettings(true)
+  }
+
+  function cancelEditProductSettings() {
+    setProductCategoryValue('')
+    setDefaultWidthValue('')
+    setEditingProductSettings(false)
+  }
+
+  async function handleSaveProductSettings() {
+    setSavingProductSettings(true)
+    try {
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productCategory: productCategoryValue || 'BOTH',
+          defaultWidth: defaultWidthValue || null
+        })
+      })
+
+      if (response.ok) {
+        // Refresh product details
+        const detailsResponse = await fetch(`/api/products/${product.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setProductDetails(data)
+        }
+        setEditingProductSettings(false)
+        onRefresh()
+        showSuccess('Product settings updated successfully!')
+      } else {
+        showError('Failed to update product settings')
+      }
+    } catch (error) {
+      console.error('Error updating product settings:', error)
+      showError('Error updating product settings')
+    } finally {
+      setSavingProductSettings(false)
+    }
+  }
+
   async function handleLinkCategory(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedCategoryId) return
@@ -1059,6 +1112,31 @@ export default function ProductDetailView({
     } catch (error) {
       console.error('Error unlinking category:', error)
       alert('Error unlinking category')
+    }
+  }
+
+  async function handleToggleMandatory(categoryId: number, currentValue: boolean) {
+    try {
+      const response = await fetch(`/api/products/${product.id}/categories/${categoryId}/mandatory`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isMandatory: !currentValue })
+      })
+
+      if (response.ok) {
+        // Refresh product details
+        const detailsResponse = await fetch(`/api/products/${product.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setProductDetails(data)
+        }
+        showSuccess(`Category ${!currentValue ? 'marked as mandatory' : 'no longer mandatory'}`)
+      } else {
+        showError('Failed to update mandatory status')
+      }
+    } catch (error) {
+      console.error('Error toggling mandatory:', error)
+      showError('Error updating mandatory status')
     }
   }
 
@@ -1825,115 +1903,122 @@ export default function ProductDetailView({
         </div>
         </div>
 
-        {/* Glass Size Display Section */}
-        <div className="col-span-full mt-6">
-          <div className="bg-gray-50 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Glass Size Formulas</h3>
-              <button
-                onClick={() => setShowGlassModal(true)}
-                className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-              >
-                <Edit2 className="w-4 h-4 mr-1" />
-                Edit Glass Formulas
-              </button>
-            </div>
+        {/* Glass Size Display Section - Hidden for Frame products */}
+        {!isFrameProduct && (
+          <div className="col-span-full mt-6">
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Glass Size Formulas</h3>
+                <button
+                  onClick={() => setShowGlassModal(true)}
+                  className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                >
+                  <Edit2 className="w-4 h-4 mr-1" />
+                  Edit Glass Formulas
+                </button>
+              </div>
 
-            <GlassFormulasDisplay product={productDetails || product} />
+              <GlassFormulasDisplay product={productDetails || product} />
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Elevation Image Section */}
-        <div className="col-span-full mt-6">
-          <div className="bg-gray-50 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Elevation View</h3>
-              <button
-                onClick={() => setShowElevationUpload(true)}
-                className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-              >
-                <Upload className="w-4 h-4 mr-1" />
-                Upload Elevation
-              </button>
-            </div>
-
-            {productDetails?.elevationImageData ? (
-              <div className="flex items-center space-x-4">
-                <img
-                  src={productDetails.elevationImageData}
-                  alt="Elevation view"
-                  className="w-48 h-48 object-contain border border-gray-300 rounded bg-white"
-                />
-                <div className="text-sm text-gray-600">
-                  <p><strong>File:</strong> {productDetails.elevationFileName || 'Unknown'}</p>
-                </div>
+        {/* Elevation Image Section - Hidden for Frame products */}
+        {!isFrameProduct && (
+          <div className="col-span-full mt-6">
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Elevation View</h3>
+                <button
+                  onClick={() => setShowElevationUpload(true)}
+                  className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                >
+                  <Upload className="w-4 h-4 mr-1" />
+                  Upload Elevation
+                </button>
               </div>
-            ) : (
-              <div className="text-gray-500 text-sm italic">
-                No elevation image uploaded. Click "Upload Elevation" to add one.
-              </div>
-            )}
-          </div>
-        </div>
 
-        {/* Plan Views Section */}
-        <div className="col-span-full mt-6">
-          <div className="bg-gray-50 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Plan Views</h3>
-              <button
-                onClick={() => setShowPlanViewForm(true)}
-                className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Add Plan View
-              </button>
-            </div>
-
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-              </div>
-            ) : planViews.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {planViews.map((planView) => (
-                  <div key={planView.id} className="bg-white rounded-lg border border-gray-200 p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <h4 className="font-medium text-gray-900">{planView.name}</h4>
-                      <button
-                        onClick={() => handleDeletePlanView(planView.id, planView.name)}
-                        className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                        title="Delete plan view"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <img
-                      src={planView.imageData}
-                      alt={planView.name}
-                      className="w-full h-48 object-contain border border-gray-300 rounded bg-gray-50"
-                    />
-                    {planView.fileName && (
-                      <p className="text-xs text-gray-500 mt-2">{planView.fileName}</p>
-                    )}
+              {productDetails?.elevationImageData ? (
+                <div className="flex items-center space-x-4">
+                  <img
+                    src={productDetails.elevationImageData}
+                    alt="Elevation view"
+                    className="w-48 h-48 object-contain border border-gray-300 rounded bg-white"
+                  />
+                  <div className="text-sm text-gray-600">
+                    <p><strong>File:</strong> {productDetails.elevationFileName || 'Unknown'}</p>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <ImageIcon className="w-8 h-8 mx-auto mb-2" />
-                <p>No plan views defined for this product yet.</p>
-                <p className="text-sm mt-2">Plan views will be used as opening direction options (e.g., Right-In, Right-Out).</p>
-              </div>
-            )}
+                </div>
+              ) : (
+                <div className="text-gray-500 text-sm italic">
+                  No elevation image uploaded. Click "Upload Elevation" to add one.
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Link Categories Section */}
-        <div className="col-span-full mt-6">
-          <div className="bg-gray-50 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Linked Categories</h3>
+        {/* Plan Views Section - Hidden for Frame products */}
+        {!isFrameProduct && (
+          <div className="col-span-full mt-6">
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Plan Views</h3>
+                <button
+                  onClick={() => setShowPlanViewForm(true)}
+                  className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Plan View
+                </button>
+              </div>
+
+              {loading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                </div>
+              ) : planViews.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {planViews.map((planView) => (
+                    <div key={planView.id} className="bg-white rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <h4 className="font-medium text-gray-900">{planView.name}</h4>
+                        <button
+                          onClick={() => handleDeletePlanView(planView.id, planView.name)}
+                          className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                          title="Delete plan view"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <img
+                        src={planView.imageData}
+                        alt={planView.name}
+                        className="w-full h-48 object-contain border border-gray-300 rounded bg-gray-50"
+                      />
+                      {planView.fileName && (
+                        <p className="text-xs text-gray-500 mt-2">{planView.fileName}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <ImageIcon className="w-8 h-8 mx-auto mb-2" />
+                  <p>No plan views defined for this product yet.</p>
+                  <p className="text-sm mt-2">Plan views will be used as opening direction options (e.g., Right-In, Right-Out).</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Link Categories Section - Hidden for Frame products */}
+        {!isFrameProduct && (
+          <div className="col-span-full mt-6">
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Linked Categories</h3>
               <div className="flex items-center space-x-3">
                 <span className="text-sm text-gray-500">
                   {productDetails?._count?.productSubOptions || 0} categories
@@ -1965,6 +2050,9 @@ export default function ProductDetailView({
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Standard Hardware
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Mandatory
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Options
@@ -2005,6 +2093,18 @@ export default function ProductDetailView({
                                 <span className="text-sm text-gray-400 italic">None set</span>
                               )}
                             </td>
+                            <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => handleToggleMandatory(productSubOption.categoryId, productSubOption.isMandatory || false)}
+                                className={`px-2 py-1 text-xs rounded-lg transition-colors ${
+                                  productSubOption.isMandatory
+                                    ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                }`}
+                              >
+                                {productSubOption.isMandatory ? 'Required' : 'Optional'}
+                              </button>
+                            </td>
                             <td className="px-6 py-4">
                               <span className="text-sm text-gray-500">
                                 {productSubOption.category.individualOptions?.length || 0} options
@@ -2025,7 +2125,7 @@ export default function ProductDetailView({
                           </tr>
                           {expandedCategory === productSubOption.categoryId && (
                             <tr>
-                              <td colSpan={5} className="px-6 py-4 bg-gray-50">
+                              <td colSpan={6} className="px-6 py-4 bg-gray-50">
                                 <div className="space-y-2">
                                   <div className="text-sm font-medium text-gray-700 mb-3">
                                     Select standard hardware for this category:
@@ -2144,12 +2244,14 @@ export default function ProductDetailView({
             )}
           </div>
         </div>
+        )}
 
-        {/* Installation Price Section */}
-        <div className="col-span-full mt-6">
-          <div className="bg-gray-50 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Installation Price</h3>
+        {/* Installation Price Section - Hidden for Frame products */}
+        {!isFrameProduct && (
+          <div className="col-span-full mt-6">
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Installation Price</h3>
               {!editingInstallationPrice && (
                 <button
                   onClick={startEditInstallationPrice}
@@ -2228,16 +2330,126 @@ export default function ProductDetailView({
             )}
           </div>
         </div>
+        )}
 
-        {/* Size Constraints Section */}
-        <div className="col-span-full mt-6">
-          <div className="bg-gray-50 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Size Constraints</h3>
-                <p className="text-sm text-gray-500">
-                  Optional minimum and maximum dimensions for this product type
-                </p>
+        {/* Product Settings Section - Hidden for Frame products */}
+        {!isFrameProduct && (
+          <div className="col-span-full mt-6">
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Product Settings</h3>
+                  <p className="text-sm text-gray-500">
+                    Opening type compatibility and default component dimensions
+                  </p>
+                </div>
+                {!editingProductSettings && (
+                  <button
+                    onClick={startEditProductSettings}
+                    className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                  >
+                    <Edit2 className="w-4 h-4 mr-1" />
+                    Edit Settings
+                  </button>
+                )}
+              </div>
+
+              {editingProductSettings ? (
+                <div className="bg-white rounded-lg p-4 border border-gray-200">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Product Category</label>
+                        <select
+                          value={productCategoryValue}
+                          onChange={(e) => setProductCategoryValue(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="BOTH">Both (Thinwall & Trimmed)</option>
+                          <option value="THINWALL">Thinwall Only</option>
+                          <option value="TRIMMED">Trimmed Only</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Controls which opening types this product appears for
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Default Width (inches)</label>
+                        <input
+                          type="number"
+                          step="0.125"
+                          min="0"
+                          value={defaultWidthValue}
+                          onChange={(e) => setDefaultWidthValue(e.target.value)}
+                          placeholder="No default"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Pre-fills width when adding this product as a component
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end space-x-3 pt-2">
+                      <button
+                        onClick={cancelEditProductSettings}
+                        disabled={savingProductSettings}
+                        className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveProductSettings}
+                        disabled={savingProductSettings}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                      >
+                        {savingProductSettings ? (
+                          <>
+                            <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4 mr-2" />
+                            Save
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Product Category</h4>
+                    <span className="text-gray-900">
+                      {productDetails?.productCategory === 'THINWALL' ? 'Thinwall Only' :
+                       productDetails?.productCategory === 'TRIMMED' ? 'Trimmed Only' :
+                       'Both (Thinwall & Trimmed)'}
+                    </span>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Default Width</h4>
+                    <span className="text-gray-900">
+                      {productDetails?.defaultWidth ? `${productDetails.defaultWidth}"` : 'None'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Size Constraints Section - Hidden for Frame products */}
+        {!isFrameProduct && (
+          <div className="col-span-full mt-6">
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Size Constraints</h3>
+                  <p className="text-sm text-gray-500">
+                    Optional minimum and maximum dimensions for this product type
+                  </p>
               </div>
               {!editingSizeConstraints && (
                 <button
@@ -2382,6 +2594,7 @@ export default function ProductDetailView({
             )}
           </div>
         </div>
+        )}
 
         {/* Export Product Section */}
         <div className="col-span-full mt-6">

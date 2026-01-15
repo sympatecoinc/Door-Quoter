@@ -5,9 +5,28 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const includeArchived = searchParams.get('includeArchived') === 'true'
-    
+    const openingType = searchParams.get('openingType') // 'THINWALL' or 'FRAMED'
+
+    // Build where clause based on filters
+    const where: any = includeArchived ? {} : { archived: false }
+
+    // Filter products by category based on opening type
+    if (openingType === 'THINWALL') {
+      // Show products with category THINWALL or BOTH, plus CORNER_90 (universal)
+      where.OR = [
+        { productCategory: { in: ['THINWALL', 'BOTH'] } },
+        { productType: 'CORNER_90' }
+      ]
+    } else if (openingType === 'FRAMED') {
+      // Show products with category TRIMMED or BOTH, plus CORNER_90 and FRAME
+      where.OR = [
+        { productCategory: { in: ['TRIMMED', 'BOTH'] } },
+        { productType: { in: ['CORNER_90', 'FRAME'] } }
+      ]
+    }
+
     const products = await prisma.product.findMany({
-      where: includeArchived ? {} : { archived: false },
+      where,
       include: {
         productSubOptions: {
           include: {
@@ -73,6 +92,19 @@ export async function POST(request: NextRequest) {
         { error: 'Invalid product type. Must be one of: Swing Door, Sliding Door, Fixed Panel, 90 Degree Corner, Frame' },
         { status: 400 }
       )
+    }
+
+    // Check singleton constraint for FRAME products
+    if (productType === 'FRAME') {
+      const existingFrame = await prisma.product.findFirst({
+        where: { productType: 'FRAME' }
+      })
+      if (existingFrame) {
+        return NextResponse.json(
+          { error: 'A Frame product already exists. Only one Frame product is allowed.' },
+          { status: 400 }
+        )
+      }
     }
 
     // Create product

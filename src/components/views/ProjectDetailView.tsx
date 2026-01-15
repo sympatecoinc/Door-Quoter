@@ -207,6 +207,10 @@ export default function ProjectDetailView() {
   const [componentWidth, setComponentWidth] = useState<string>('')
   const [componentHeight, setComponentHeight] = useState<string>('')
   const [widthDivisor, setWidthDivisor] = useState<string>('1')
+  // Divide remaining space state
+  const [showDivideSpace, setShowDivideSpace] = useState(false)
+  const [divideComponentCount, setDivideComponentCount] = useState(2)
+  const [divideProducts, setDivideProducts] = useState<(number | null)[]>([null, null])
   const [swingDirection, setSwingDirection] = useState<string>('Right In')
   const [slidingDirection, setSlidingDirection] = useState<string>('Left')
   const [cornerDirection, setCornerDirection] = useState<string>('Up')
@@ -815,17 +819,17 @@ export default function ProjectDetailView() {
 
     setAddingOpening(true)
     try {
-      // Build request body
+      // Build request body - always include openingType for product filtering and Frame auto-add
       const requestBody: any = {
         projectId: selectedProjectId,
         name: newOpening.name,
         finishColor: newOpening.finishColor,
-        isFinishedOpening: newOpening.isFinishedOpening
+        isFinishedOpening: newOpening.isFinishedOpening,
+        openingType: newOpening.openingType // Always send for Frame auto-add and product filtering
       }
 
-      // Add finished opening fields if applicable
+      // Add dimension fields if specified
       if (newOpening.isFinishedOpening) {
-        requestBody.openingType = newOpening.openingType
         requestBody.roughWidth = parseFloat(newOpening.roughWidth)
         requestBody.roughHeight = parseFloat(newOpening.roughHeight)
         // Only include tolerance overrides if they differ from defaults
@@ -1371,9 +1375,10 @@ export default function ProjectDetailView() {
         }
       }
 
-      // Fetch products
+      // Fetch products filtered by opening type
       try {
-        const response = await fetch('/api/products')
+        const openingType = opening?.openingType || 'THINWALL'
+        const response = await fetch(`/api/products?openingType=${openingType}`)
         if (response.ok) {
           const productsData = await response.json()
           setProducts(productsData)
@@ -1782,6 +1787,123 @@ export default function ProjectDetailView() {
     showSuccess(`Height auto-filled: ${finalHeight.toFixed(3)}"`)
   }
 
+  // Handle dividing remaining space between N products
+  async function handleDivideRemainingSpace() {
+    const selectedProducts = divideProducts.filter((p): p is number => p !== null)
+    if (!selectedOpeningId || selectedProducts.length === 0) return
+
+    const opening = project?.openings.find(o => o.id === selectedOpeningId)
+    if (!opening?.isFinishedOpening || !opening.finishedWidth) {
+      showError('Divide remaining space only works for finished openings')
+      return
+    }
+
+    // Calculate remaining width
+    const existingPanels = opening.panels.filter(p =>
+      p.componentInstance?.product?.productType !== 'CORNER_90' &&
+      p.componentInstance?.product?.productType !== 'FRAME'
+    )
+    const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
+    const remainingWidth = opening.finishedWidth - usedWidth
+
+    if (remainingWidth <= 0) {
+      showError('No remaining space to divide')
+      return
+    }
+
+    const widthPerComponent = remainingWidth / selectedProducts.length
+
+    // Get height from existing panels or opening
+    const nonFramePanels = opening.panels.filter(p =>
+      p.componentInstance?.product?.productType !== 'FRAME'
+    )
+    const height = nonFramePanels[0]?.height || opening.finishedHeight || 0
+
+    if (height <= 0) {
+      showError('Unable to determine component height')
+      return
+    }
+
+    try {
+      // Create panels with their component instances for each selected product
+      for (const productId of selectedProducts) {
+        const product = products.find(p => p.id === productId)
+
+        // Determine panel type based on product type
+        let panelType = 'Fixed Panel'
+        if (product?.productType === 'SWING_DOOR') panelType = 'Swing Door'
+        else if (product?.productType === 'SLIDING_DOOR') panelType = 'Sliding Door'
+        else if (product?.productType === 'FIXED_PANEL') panelType = 'Fixed Panel'
+
+        // Step 1: Create the panel
+        const panelResponse = await fetch('/api/panels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            openingId: selectedOpeningId,
+            type: panelType,
+            width: widthPerComponent,
+            height: height,
+            glassType: 'Clear',
+            locking: product?.productType === 'SWING_DOOR' ? 'Standard' : 'N/A',
+            productId: productId,
+            quantity: 1,
+            swingDirection: product?.productType === 'SWING_DOOR' ? 'Right In' : undefined,
+            slidingDirection: product?.productType === 'SLIDING_DOOR' ? 'Left' : undefined,
+            skipValidation: true // We already calculated the exact remaining space
+          })
+        })
+
+        if (!panelResponse.ok) {
+          const error = await panelResponse.json()
+          throw new Error(error.error || 'Failed to add component')
+        }
+
+        const panelsData = await panelResponse.json()
+
+        // Step 2: Create component instance for each panel (links panel to product)
+        for (const panelData of panelsData) {
+          const componentResponse = await fetch('/api/component-instances', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              panelId: panelData.id,
+              productId: productId,
+              subOptionSelections: {}
+            })
+          })
+
+          if (!componentResponse.ok) {
+            console.error('Error creating component instance for panel:', panelData.id)
+          }
+        }
+      }
+
+      // Recalculate opening price
+      if (selectedOpeningId) {
+        try {
+          await fetch(`/api/openings/${selectedOpeningId}/calculate-price`, {
+            method: 'POST'
+          })
+        } catch (error) {
+          console.error('Error recalculating opening price:', error)
+        }
+      }
+
+      // Refresh project data
+      await fetchProject()
+
+      // Reset state
+      setShowDivideSpace(false)
+      setDivideProduct1(null)
+      setDivideProduct2(null)
+
+      showSuccess('Both components added successfully!')
+    } catch (error: any) {
+      showError(error.message || 'Failed to add components')
+    }
+  }
+
   async function handleAddComponent() {
     if (!selectedOpeningId || !selectedProductId) return
 
@@ -1889,6 +2011,9 @@ export default function ProjectDetailView() {
       setComponentHeight('')
       setComponentQuantity('1')
       setWidthDivisor('1')
+      setShowDivideSpace(false)
+      setDivideProduct1(null)
+      setDivideProduct2(null)
       setComponentValidationErrors([])
       setSwingDirection('Right In')
       setSlidingDirection('Left')
@@ -2720,6 +2845,7 @@ export default function ProjectDetailView() {
               </div>
             )}
             <div className="space-y-4">
+              {/* 1. Opening Number */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Opening Number</label>
                 <input
@@ -2731,6 +2857,35 @@ export default function ProjectDetailView() {
                   required
                 />
               </div>
+
+              {/* 2. Opening Type: Thinwall or Trimmed */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Opening Type</label>
+                <select
+                  value={newOpening.openingType}
+                  onChange={(e) => {
+                    const type = e.target.value as 'THINWALL' | 'FRAMED'
+                    setNewOpening(prev => ({
+                      ...prev,
+                      openingType: type,
+                      // Reset tolerance overrides to use new defaults
+                      widthToleranceTotal: null,
+                      heightToleranceTotal: null
+                    }))
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                >
+                  <option value="THINWALL">Thinwall</option>
+                  <option value="FRAMED">Trimmed</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {newOpening.openingType === 'FRAMED'
+                    ? 'A Frame will be automatically added to this opening'
+                    : 'Components will be filtered to show Thinwall products'}
+                </p>
+              </div>
+
+              {/* 3. Extrusion Finish */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Extrusion Finish</label>
                 <select
@@ -2749,15 +2904,15 @@ export default function ProjectDetailView() {
                 </p>
               </div>
 
-              {/* Finished Opening Toggle */}
+              {/* 4. Specify Dimensions Toggle */}
               <div className="border-t border-gray-200 pt-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
-                      Opening is Framed
+                      Specify Dimensions
                     </label>
                     <p className="text-xs text-gray-500 mt-1">
-                      Enable to specify opening dimensions and apply tolerances
+                      Enable to enter opening dimensions and apply tolerances
                     </p>
                   </div>
                   <button
@@ -2779,32 +2934,10 @@ export default function ProjectDetailView() {
                 </div>
               </div>
 
-              {/* Finished Opening Fields */}
+              {/* 5. Dimension Fields (shown when Specify Dimensions is enabled) */}
               {newOpening.isFinishedOpening && (
                 <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  {/* Opening Type */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Opening Type</label>
-                    <select
-                      value={newOpening.openingType}
-                      onChange={(e) => {
-                        const type = e.target.value as 'THINWALL' | 'FRAMED'
-                        setNewOpening(prev => ({
-                          ...prev,
-                          openingType: type,
-                          // Reset tolerance overrides to use new defaults
-                          widthToleranceTotal: null,
-                          heightToleranceTotal: null
-                        }))
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                    >
-                      <option value="THINWALL">Finished</option>
-                      <option value="FRAMED">Un-Finished</option>
-                    </select>
-                  </div>
-
-                  {/* Opening Dimensions - label changes based on opening type */}
+                  {/* Opening Dimensions */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2834,59 +2967,10 @@ export default function ProjectDetailView() {
                     </div>
                   </div>
 
-                  {/* Tolerance Values */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Width Tolerance (total)</label>
-                      <input
-                        type="number"
-                        step="0.125"
-                        min="0"
-                        value={newOpening.widthToleranceTotal ?? (
-                          newOpening.openingType === 'FRAMED'
-                            ? toleranceDefaults.framedWidthTolerance
-                            : toleranceDefaults.thinwallWidthTolerance
-                        )}
-                        onChange={(e) => setNewOpening(prev => ({
-                          ...prev,
-                          widthToleranceTotal: parseFloat(e.target.value) || 0
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        {((newOpening.widthToleranceTotal ?? (
-                          newOpening.openingType === 'FRAMED'
-                            ? toleranceDefaults.framedWidthTolerance
-                            : toleranceDefaults.thinwallWidthTolerance
-                        )) / 2).toFixed(3)}" per side
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Height Tolerance (total)</label>
-                      <input
-                        type="number"
-                        step="0.125"
-                        min="0"
-                        value={newOpening.heightToleranceTotal ?? (
-                          newOpening.openingType === 'FRAMED'
-                            ? toleranceDefaults.framedHeightTolerance
-                            : toleranceDefaults.thinwallHeightTolerance
-                        )}
-                        onChange={(e) => setNewOpening(prev => ({
-                          ...prev,
-                          heightToleranceTotal: parseFloat(e.target.value) || 0
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        {((newOpening.heightToleranceTotal ?? (
-                          newOpening.openingType === 'FRAMED'
-                            ? toleranceDefaults.framedHeightTolerance
-                            : toleranceDefaults.thinwallHeightTolerance
-                        )) / 2).toFixed(3)}" top & bottom
-                      </p>
-                    </div>
-                  </div>
+                  {/* Tolerance Note */}
+                  <p className="text-xs text-gray-500">
+                    Tolerances are automatically applied based on opening type. Adjust defaults in Quote Settings.
+                  </p>
                 </div>
               )}
             </div>
@@ -2957,6 +3041,11 @@ export default function ProjectDetailView() {
                     } else {
                       setAddComponentOptions([])
                       setAddComponentSelectedOptions({})
+                    }
+
+                    // Pre-fill width from product defaultWidth if available
+                    if (product?.defaultWidth && product.productType !== 'CORNER_90' && product.productType !== 'FRAME') {
+                      setComponentWidth(product.defaultWidth.toString())
                     }
 
                     // Set direction to first plan view name if available
@@ -3119,19 +3208,95 @@ export default function ProjectDetailView() {
                         )}
                       </div>
                     </div>
-                    {/* Divide By input - only show for finished openings */}
+                    {/* Divide Remaining Space - only show for finished openings */}
                     {showAutoButtons && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-600">÷</span>
-                        <input
-                          type="number"
-                          value={widthDivisor}
-                          onChange={(e) => handleDivisorChange(e.target.value)}
-                          min="1"
-                          step="1"
-                          className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        />
-                        <span className="text-xs text-gray-500">Split width & set quantity</span>
+                      <div className="mt-4 border-t border-gray-200 pt-4">
+                        <button
+                          type="button"
+                          onClick={() => setShowDivideSpace(!showDivideSpace)}
+                          className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
+                        >
+                          <span className={`transform transition-transform ${showDivideSpace ? 'rotate-90' : ''}`}>▶</span>
+                          Divide Remaining Space
+                        </button>
+                        {showDivideSpace && (() => {
+                          const opening = project?.openings.find(o => o.id === selectedOpeningId)
+                          const existingPanels = opening?.panels.filter(p =>
+                            p.componentInstance?.product?.productType !== 'CORNER_90' &&
+                            p.componentInstance?.product?.productType !== 'FRAME'
+                          ) || []
+                          const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
+                          const remainingWidth = (opening?.finishedWidth || 0) - usedWidth
+                          const selectedProducts = divideProducts.filter(p => p !== null)
+                          const widthPerComponent = remainingWidth > 0 && selectedProducts.length > 0 ? remainingWidth / selectedProducts.length : 0
+                          const allProductsSelected = selectedProducts.length === divideComponentCount
+
+                          return (
+                            <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-3">
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-700">Remaining width:</span>
+                                <span className="text-sm font-medium text-gray-900">{remainingWidth.toFixed(2)}"</span>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Number of Components</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="10"
+                                  value={divideComponentCount}
+                                  onChange={(e) => {
+                                    const count = Math.max(1, Math.min(10, parseInt(e.target.value) || 1))
+                                    setDivideComponentCount(count)
+                                    // Resize the products array to match count
+                                    setDivideProducts(prev => {
+                                      const newProducts = [...prev]
+                                      while (newProducts.length < count) newProducts.push(null)
+                                      return newProducts.slice(0, count)
+                                    })
+                                  }}
+                                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                {Array.from({ length: divideComponentCount }).map((_, index) => (
+                                  <div key={index}>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Product {index + 1}</label>
+                                    <select
+                                      value={divideProducts[index] || ''}
+                                      onChange={(e) => {
+                                        const newProducts = [...divideProducts]
+                                        newProducts[index] = parseInt(e.target.value) || null
+                                        setDivideProducts(newProducts)
+                                      }}
+                                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+                                    >
+                                      <option value="">Select product...</option>
+                                      {products.filter(p => p.productType !== 'CORNER_90' && p.productType !== 'FRAME').map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ))}
+                              </div>
+                              {selectedProducts.length > 0 && remainingWidth > 0 && (
+                                <p className="text-xs text-gray-600">
+                                  Each component: <span className="font-medium">{widthPerComponent.toFixed(2)}"</span> wide
+                                </p>
+                              )}
+                              {remainingWidth <= 0 && (
+                                <p className="text-xs text-red-600">No remaining space to divide</p>
+                              )}
+                              <button
+                                type="button"
+                                onClick={handleDivideRemainingSpace}
+                                disabled={!allProductsSelected || remainingWidth <= 0}
+                                className="w-full px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Add {divideComponentCount} Component{divideComponentCount > 1 ? 's' : ''}
+                              </button>
+                            </div>
+                          )
+                        })()}
                       </div>
                     )}
                   </div>
@@ -3412,6 +3577,24 @@ export default function ProjectDetailView() {
                   </ul>
                 </div>
               )}
+
+              {/* Mandatory Options Warning */}
+              {(() => {
+                const mandatoryOptions = addComponentOptions.filter((opt: any) => opt.isMandatory)
+                const missingMandatory = mandatoryOptions.filter((opt: any) =>
+                  addComponentSelectedOptions[opt.category.id] === undefined ||
+                  addComponentSelectedOptions[opt.category.id] === null
+                )
+                if (missingMandatory.length === 0) return null
+                return (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <h4 className="text-sm font-medium text-yellow-800 mb-1">Required Options</h4>
+                    <p className="text-sm text-yellow-700">
+                      Please select: {missingMandatory.map((m: any) => m.category.name).join(', ')}
+                    </p>
+                  </div>
+                )
+              })()}
             </div>
             </div>
             <div className="flex justify-end space-x-3 pt-6 flex-shrink-0 border-t mt-4">
@@ -3424,6 +3607,9 @@ export default function ProjectDetailView() {
                   setComponentHeight('')
                   setComponentQuantity('1')
                   setWidthDivisor('1')
+                  setShowDivideSpace(false)
+                  setDivideProduct1(null)
+                  setDivideProduct2(null)
                   setComponentValidationErrors([])
                   setSwingDirection('Right In')
                   setSlidingDirection('Left')
@@ -3444,6 +3630,14 @@ export default function ProjectDetailView() {
                   const selectedProduct = products.find(p => p.id === selectedProductId)
                   const isCorner = selectedProduct?.productType === 'CORNER_90'
                   const isFrame = selectedProduct?.productType === 'FRAME'
+
+                  // Check mandatory options
+                  const mandatoryOptions = addComponentOptions.filter((opt: any) => opt.isMandatory)
+                  const missingMandatory = mandatoryOptions.filter((opt: any) =>
+                    addComponentSelectedOptions[opt.category.id] === undefined ||
+                    addComponentSelectedOptions[opt.category.id] === null
+                  )
+                  if (missingMandatory.length > 0) return true
 
                   // For corner and frame components, only product selection is required
                   if (isCorner || isFrame) return false
@@ -3540,21 +3734,6 @@ export default function ProjectDetailView() {
                         </div>
                       </div>
                     </div>
-                    {/* Divide By input - only show for finished openings */}
-                    {showAutoButtons && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-600">÷</span>
-                        <input
-                          type="number"
-                          value={editWidthDivisor}
-                          onChange={(e) => setEditWidthDivisor(e.target.value)}
-                          min="1"
-                          step="1"
-                          className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        />
-                        <span className="text-xs text-gray-500">Split remaining width between this many components</span>
-                      </div>
-                    )}
                   </div>
                 )
               })()}
