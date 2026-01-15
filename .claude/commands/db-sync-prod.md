@@ -8,7 +8,7 @@ This command will:
 1. Verify gcloud authentication
 2. Start Cloud SQL proxy for production
 3. Check migration status
-4. **NEW: Detect schema drift (missing tables/columns)**
+4. **Detect and FIX schema drift using `prisma migrate diff`**
 5. Apply pending migrations
 6. Verify sync success
 
@@ -44,7 +44,7 @@ Run these checks in parallel:
 cd /home/kylepalmer/Door-Quoter && npx prisma validate
 
 # Get latest migration
-ls /home/kylepalmer/Door-Quoter/prisma/migrations/ | tail -1
+ls /home/kylepalmer/Door-Quoter/prisma/migrations/ | grep -v "migration_lock" | tail -1
 ```
 
 **Expected project:** `door-quoter`
@@ -102,96 +102,91 @@ cd /home/kylepalmer/Door-Quoter && DATABASE_URL="postgresql://postgres:SimplePas
 
 ### 3.3 Schema Drift Detection (CRITICAL)
 
-**Even if migrations show "up to date", schema drift can occur when schema.prisma is modified without creating migrations.**
+**IMPORTANT: Even if migrations show "up to date", schema drift can occur when schema.prisma is modified without creating migrations.**
 
-Run this comprehensive drift detection:
+**Use Prisma's built-in drift detection - this is the most reliable method:**
 
 ```bash
-DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" node -e "
-const { PrismaClient } = require('@prisma/client');
-const fs = require('fs');
-const prisma = new PrismaClient();
-
-// Expected tables from schema.prisma (update when schema changes)
-const expectedTables = [
-  'Projects', 'ProjectStatusHistory', 'Openings', 'Panels', 'Products',
-  'SubOptionCategories', 'IndividualOptions', 'ProductSubOptions', 'BOMs',
-  'ProductBOMs', 'ComponentInstances', 'MasterParts', 'StockLengthRules',
-  'PricingRules', 'Customers', 'Contacts', 'Leads', 'Activities',
-  'CustomerFiles', 'QuoteAttachments', 'ProjectContacts', 'ProjectNotes',
-  'ComponentLibrary', 'ProductPlanViews', 'GlassTypes', 'GlassTypeParts',
-  'PricingModes', 'Profiles', 'Users', 'Sessions', 'QuoteDocuments',
-  'ProductQuoteDocuments', 'ExtrusionFinishPricing', 'ExtrusionVariants',
-  'Vendors', 'VendorContacts', 'QuickBooksTokens', 'GlobalSettings'
-];
-
-// Expected column counts per table (update when schema changes)
-const expectedColumnCounts = {
-  'MasterParts': 26,  // includes customPricePerLb, inventory fields, binLocationId
-  'Openings': 21,
-  'ProductBOMs': 22,
-  'Users': 11,
-  'Profiles': 7,
-  'ExtrusionVariants': 14,  // includes inventory fields, binLocationId
-  'GlobalSettings': 8
-};
-
-async function checkDrift() {
-  const dbTables = await prisma.\$queryRaw\`
-    SELECT table_name FROM information_schema.tables
-    WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name != '_prisma_migrations'
-  \`;
-  const dbTableNames = dbTables.map(t => t.table_name);
-
-  const missingTables = expectedTables.filter(t => !dbTableNames.includes(t));
-
-  const colCounts = await prisma.\$queryRaw\`
-    SELECT table_name, COUNT(*) as col_count
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-    GROUP BY table_name
-  \`;
-  const colCountMap = Object.fromEntries(colCounts.map(c => [c.table_name, Number(c.col_count)]));
-
-  const columnDrift = [];
-  for (const [table, expected] of Object.entries(expectedColumnCounts)) {
-    const actual = colCountMap[table] || 0;
-    if (actual !== expected) {
-      columnDrift.push({ table, expected, actual, diff: expected - actual });
-    }
-  }
-
-  console.log('=== Schema Drift Detection ===');
-  console.log('Tables in DB:', dbTableNames.length);
-  console.log('Expected tables:', expectedTables.length);
-
-  if (missingTables.length > 0) {
-    console.log('\\n*** MISSING TABLES ***');
-    missingTables.forEach(t => console.log('  -', t));
-  }
-
-  if (columnDrift.length > 0) {
-    console.log('\\n*** COLUMN COUNT MISMATCHES ***');
-    columnDrift.forEach(d => console.log(\`  - \${d.table}: expected \${d.expected}, got \${d.actual} (missing \${d.diff})\`));
-  }
-
-  if (missingTables.length === 0 && columnDrift.length === 0) {
-    console.log('\\n*** NO DRIFT DETECTED - Schema is in sync! ***');
-  } else {
-    console.log('\\n*** DRIFT DETECTED - Run prisma migrate deploy or create new migration ***');
-  }
-
-  await prisma.\$disconnect();
-}
-
-checkDrift().catch(e => { console.error('Error:', e.message); prisma.\$disconnect(); });
-"
+DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate diff \
+  --from-schema-datasource prisma/schema.prisma \
+  --to-schema-datamodel prisma/schema.prisma \
+  --script
 ```
 
-**If drift detected:**
-- Missing tables/columns mean schema.prisma was modified without a migration
-- Create a new migration: `npx prisma migrate dev --name fix_schema_drift`
-- Or manually create SQL migration file (see Step 4.3)
+**Interpreting results:**
+- If output is `-- This is an empty migration.` → **No drift, schema is in sync!**
+- If output contains SQL statements → **Drift detected, must fix!**
+
+**If drift detected, the output will show exactly what SQL needs to run.** For example:
+```sql
+-- AlterTable
+ALTER TABLE "Products" ADD COLUMN "productCategory" "ProductCategory" NOT NULL DEFAULT 'Both';
+ALTER TABLE "Products" ADD COLUMN "defaultWidth" DOUBLE PRECISION;
+ALTER TABLE "ProductSubOptions" ADD COLUMN "isMandatory" BOOLEAN NOT NULL DEFAULT false;
+```
+
+---
+
+### 3.4 Fix Schema Drift (If Detected)
+
+**If drift was detected in Step 3.3, you MUST fix it before continuing.**
+
+#### Option A: Direct SQL Execution (Recommended for simple drift)
+
+Execute the SQL from the diff output directly using a heredoc:
+
+```bash
+DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" node << 'SCRIPT'
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+async function fix() {
+  // Copy the SQL statements from the migrate diff output here
+  // Use IF NOT EXISTS to make idempotent
+
+  // Example:
+  // await prisma.$executeRawUnsafe(`ALTER TABLE "Products" ADD COLUMN IF NOT EXISTS "newColumn" TEXT`);
+
+  console.log('Schema drift fixed');
+  await prisma.$disconnect();
+}
+
+fix().catch(e => { console.error('Error:', e.message); prisma.$disconnect(); });
+SCRIPT
+```
+
+#### Option B: Create Migration File (Recommended for tracking)
+
+1. Create migration folder:
+```bash
+mkdir -p prisma/migrations/$(date +%Y%m%d)_fix_schema_drift
+```
+
+2. Create `migration.sql` with the SQL from the diff output
+
+3. Apply to production and mark as applied:
+```bash
+# Apply the SQL directly first
+DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" node << 'SCRIPT'
+// Execute the SQL statements here
+SCRIPT
+
+# Then mark migration as applied
+DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate resolve --applied [MIGRATION_FOLDER_NAME]
+```
+
+#### After fixing drift, re-run Step 3.3 to verify:
+
+```bash
+DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate diff \
+  --from-schema-datasource prisma/schema.prisma \
+  --to-schema-datamodel prisma/schema.prisma \
+  --script
+```
+
+**Expected output:** `-- This is an empty migration.`
+
+**DO NOT PROCEED until drift is fixed!**
 
 ---
 
@@ -209,49 +204,13 @@ If error `P3005: The database schema is not empty`:
 
 ```bash
 # Get first migration name
-ls /home/kylepalmer/Door-Quoter/prisma/migrations/ | head -1
+ls /home/kylepalmer/Door-Quoter/prisma/migrations/ | grep -v "migration_lock" | head -1
 
 # Mark as applied
 cd /home/kylepalmer/Door-Quoter && DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate resolve --applied [MIGRATION_NAME]
 
 # Re-run deploy
 cd /home/kylepalmer/Door-Quoter && DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate deploy
-```
-
-### 4.3 Create Migration for Schema Drift
-
-If drift was detected and no pending migrations exist, create a new migration:
-
-```bash
-# Option 1: Auto-generate migration (if local dev DB is in sync with schema.prisma)
-npx prisma migrate dev --name fix_schema_drift
-
-# Option 2: Manually create migration folder and SQL file
-mkdir -p prisma/migrations/$(date +%Y%m%d)_fix_schema_drift
-
-# Then create migration.sql with appropriate ALTER TABLE statements
-```
-
-**Example migration SQL for common drift issues:**
-
-```sql
--- Add missing column
-ALTER TABLE "MasterParts" ADD COLUMN IF NOT EXISTS "customPricePerLb" DOUBLE PRECISION;
-
--- Create missing table
-CREATE TABLE IF NOT EXISTS "GlobalSettings" (
-    "id" SERIAL NOT NULL,
-    "key" TEXT NOT NULL,
-    "value" TEXT NOT NULL,
-    "dataType" TEXT NOT NULL DEFAULT 'number',
-    "category" TEXT,
-    "description" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "GlobalSettings_pkey" PRIMARY KEY ("id")
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS "GlobalSettings_key_key" ON "GlobalSettings"("key");
 ```
 
 ---
@@ -266,24 +225,33 @@ cd /home/kylepalmer/Door-Quoter && DATABASE_URL="postgresql://postgres:SimplePas
 
 **Expected:** `Database schema is up to date!`
 
-### 5.2 Re-run Drift Detection
+### 5.2 Verify No Schema Drift
 
-Run the drift detection from Step 3.3 again to confirm no drift remains.
+**CRITICAL: Always run this check even if migrations are up to date!**
 
-**Expected output:** `*** NO DRIFT DETECTED - Schema is in sync! ***`
+```bash
+DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate diff \
+  --from-schema-datasource prisma/schema.prisma \
+  --to-schema-datamodel prisma/schema.prisma \
+  --script
+```
+
+**Expected output:** `-- This is an empty migration.`
+
+**If any SQL statements appear, go back to Step 3.4 and fix the drift!**
 
 ### 5.3 Test Connection
 
 ```bash
-DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" node -e "
+DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" node << 'SCRIPT'
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 Promise.all([prisma.product.count(), prisma.user.count(), prisma.masterPart.count()])
 .then(([products, users, parts]) => {
   console.log('Production Counts - Products:', products, '| Users:', users, '| MasterParts:', parts);
-  prisma.\$disconnect();
+  prisma.$disconnect();
 }).catch(e => console.error('Error:', e.message));
-"
+SCRIPT
 ```
 
 ---
@@ -307,9 +275,8 @@ pkill -f "cloud_sql_proxy.*door-app-db"
 | Check | Status |
 |-------|--------|
 | Migrations | [X] applied |
-| Schema Drift | None detected |
+| Schema Drift | None (verified with prisma migrate diff) |
 | Connection | Verified |
-| Tables | [count] |
 | Products | [count] |
 | Proxy | Stopped |
 ```
@@ -324,6 +291,12 @@ pkill -f "cloud_sql_proxy.*door-app-db"
 
 # Check status
 DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate status
+
+# Check for schema drift (MOST IMPORTANT COMMAND)
+DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate diff \
+  --from-schema-datasource prisma/schema.prisma \
+  --to-schema-datamodel prisma/schema.prisma \
+  --script
 
 # Apply migrations
 DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate deploy
@@ -345,20 +318,21 @@ pkill -f "cloud_sql_proxy.*door-app-db"
 
 ---
 
-## Expected Schema Metrics (Update when schema changes)
+## Why Schema Drift Happens
 
-| Metric | Value |
-|--------|-------|
-| Total Tables | 50 |
-| MasterParts columns | 26 |
-| Openings columns | 21 |
-| ProductBOMs columns | 22 |
-| Users columns | 11 |
-| ExtrusionVariants columns | 14 |
-| GlobalSettings columns | 8 |
+Schema drift occurs when:
+1. `schema.prisma` is modified but no migration is created
+2. A migration is created locally but not deployed to production
+3. Manual changes are made directly to the database
 
-*Last updated: 2026-01-08*
+**The `prisma migrate diff` command compares:**
+- `--from-schema-datasource`: The actual database (reads connection from schema.prisma)
+- `--to-schema-datamodel`: The desired schema (from schema.prisma file)
+
+This is more reliable than hardcoded column counts because it automatically detects ALL differences.
 
 ---
+
+*Last updated: 2026-01-15*
 
 *Syncs production database only. Use /db-sync-stage for staging.*
