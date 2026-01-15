@@ -1895,8 +1895,7 @@ export default function ProjectDetailView() {
 
       // Reset state
       setShowDivideSpace(false)
-      setDivideProduct1(null)
-      setDivideProduct2(null)
+      setDivideProducts([null, null])
 
       showSuccess('Both components added successfully!')
     } catch (error: any) {
@@ -2012,8 +2011,7 @@ export default function ProjectDetailView() {
       setComponentQuantity('1')
       setWidthDivisor('1')
       setShowDivideSpace(false)
-      setDivideProduct1(null)
-      setDivideProduct2(null)
+      setDivideProducts([null, null])
       setComponentValidationErrors([])
       setSwingDirection('Right In')
       setSlidingDirection('Left')
@@ -3608,8 +3606,7 @@ export default function ProjectDetailView() {
                   setComponentQuantity('1')
                   setWidthDivisor('1')
                   setShowDivideSpace(false)
-                  setDivideProduct1(null)
-                  setDivideProduct2(null)
+                  setDivideProducts([null, null])
                   setComponentValidationErrors([])
                   setSwingDirection('Right In')
                   setSlidingDirection('Left')
