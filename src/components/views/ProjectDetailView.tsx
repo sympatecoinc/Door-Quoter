@@ -1354,6 +1354,23 @@ export default function ProjectDetailView() {
 
   async function handleShowAddComponent(openingId: number) {
     const proceedWithAddComponent = async () => {
+      // Reset all component modal state first
+      setSelectedProductId(null)
+      setComponentWidth('')
+      setComponentQuantity('1')
+      setWidthDivisor('1')
+      setShowDivideSpace(false)
+      setDivideProducts([null, null])
+      setComponentValidationErrors([])
+      setSwingDirection('Right In')
+      setSlidingDirection('Left')
+      setCornerDirection('Left')
+      setGlassType('Clear')
+      setHardwareOptionsExpanded(false)
+      setAddComponentOptions([])
+      setAddComponentSelectedOptions({})
+      setAddComponentOptionQuantities({})
+
       setSelectedOpeningId(openingId)
 
       // Find the opening and check if it has existing panels (excluding FRAME panels)
