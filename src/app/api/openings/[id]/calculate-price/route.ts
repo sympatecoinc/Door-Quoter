@@ -116,14 +116,23 @@ async function calculateOptionPrice(
     return { unitPrice: 0, totalPrice: 0, isExtrusion: false }
   }
 
-  // Look up MasterPart to check if it's an extrusion
+  // Look up MasterPart to check if it's an extrusion or has a sale price
   const masterPart = await prisma.masterPart.findUnique({
     where: { partNumber: option.partNumber },
-    select: { partType: true, cost: true }
+    select: { partType: true, cost: true, salePrice: true }
   })
 
   if (!masterPart) {
     return { unitPrice: 0, totalPrice: 0, isExtrusion: false }
+  }
+
+  // PRIORITY: Check for sale price first - bypasses all other pricing
+  if (masterPart.salePrice && masterPart.salePrice > 0) {
+    return {
+      unitPrice: masterPart.salePrice,
+      totalPrice: masterPart.salePrice * quantity,
+      isExtrusion: false // Sale price items don't need extrusion-specific handling
+    }
   }
 
   // If it's an extrusion with a BOM entry, use full extrusion pricing logic
@@ -185,6 +194,28 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
     totalCost: 0,
     finishCost: 0,
     finishDetails: ''
+  }
+
+  // PRIORITY CHECK: Sale Price - bypasses ALL other pricing methods
+  // If a part has a salePrice set, use it directly without any markup calculations
+  if (bom.partNumber) {
+    try {
+      const salePriceCheck = await prisma.masterPart.findUnique({
+        where: { partNumber: bom.partNumber },
+        select: { salePrice: true }
+      })
+
+      if (salePriceCheck?.salePrice && salePriceCheck.salePrice > 0) {
+        cost = salePriceCheck.salePrice * (bom.quantity || 1)
+        breakdown.method = 'sale_price'
+        breakdown.unitCost = salePriceCheck.salePrice
+        breakdown.totalCost = cost
+        breakdown.details = `Sale price (no markup): $${salePriceCheck.salePrice} × ${bom.quantity || 1}`
+        return { cost, breakdown }
+      }
+    } catch (error) {
+      console.error('Error checking sale price:', error)
+    }
   }
 
   // Method 0: Check for Hardware items with LF (linear foot) unit and formula
@@ -257,6 +288,64 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
           breakdown.totalCost = cost
           breakdown.details = `Hardware cost: $${masterPart.cost} × ${bom.quantity || 1}`
           return { cost, breakdown }
+        }
+
+        // For CutStock: Use StockLengthRules with fixed pricePerPiece from ExtrusionVariant
+        if (masterPart.partType === 'CutStock' && masterPart.stockLengthRules.length > 0) {
+          const requiredLength = calculateRequiredPartLength(bom, variables)
+          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
+
+          if (bestRule && bestRule.stockLength) {
+            // Look up pricePerPiece from ExtrusionVariant for this stock length
+            const variant = await prisma.extrusionVariant.findFirst({
+              where: {
+                masterPartId: masterPart.id,
+                stockLength: bestRule.stockLength,
+                isActive: true
+              }
+            })
+
+            const pricePerPiece = variant?.pricePerPiece ?? bestRule.basePrice ?? 0
+
+            if (pricePerPiece > 0) {
+              const usagePercentage = requiredLength / bestRule.stockLength
+
+              // Apply same costing methods as extrusions but with fixed price
+              if (extrusionCostingMethod === 'PERCENTAGE_BASED' && usagePercentage < 0.5) {
+                cost = pricePerPiece * usagePercentage * (bom.quantity || 1)
+                breakdown.method = 'cutstock_percentage_based'
+                breakdown.details = `CutStock percentage: ${(usagePercentage * 100).toFixed(1)}% of stock (${requiredLength}"/${bestRule.stockLength}") × $${pricePerPiece.toFixed(2)} × ${bom.quantity || 1}`
+              } else if (extrusionCostingMethod === 'HYBRID') {
+                const remainingPercentage = 1 - usagePercentage
+                if (usagePercentage >= 0.5) {
+                  const usedPortionCost = pricePerPiece * usagePercentage * (bom.quantity || 1)
+                  const remainingPortionCost = pricePerPiece * remainingPercentage * (bom.quantity || 1)
+                  cost = usedPortionCost + remainingPortionCost
+                  breakdown.method = 'cutstock_hybrid_split'
+                  breakdown.details = `CutStock hybrid: ${(usagePercentage * 100).toFixed(1)}% used ($${usedPortionCost.toFixed(2)}) + ${(remainingPercentage * 100).toFixed(1)}% remaining ($${remainingPortionCost.toFixed(2)})`
+                  ;(breakdown as any).hybridBreakdown = {
+                    usedPercentage: usagePercentage,
+                    remainingPercentage: remainingPercentage,
+                    usedPortionCost,
+                    remainingPortionCost
+                  }
+                } else {
+                  cost = pricePerPiece * usagePercentage * (bom.quantity || 1)
+                  breakdown.method = 'cutstock_hybrid_percentage'
+                  breakdown.details = `CutStock hybrid (<50%): ${(usagePercentage * 100).toFixed(1)}% of stock × $${pricePerPiece.toFixed(2)} × ${bom.quantity || 1}`
+                }
+              } else {
+                // FULL_STOCK - charge full piece price
+                cost = pricePerPiece * (bom.quantity || 1)
+                breakdown.method = 'cutstock_full_piece'
+                breakdown.details = `CutStock full piece: $${pricePerPiece.toFixed(2)} × ${bom.quantity || 1}`
+              }
+
+              breakdown.unitCost = cost / (bom.quantity || 1)
+              breakdown.totalCost = cost
+              return { cost, breakdown }
+            }
+          }
         }
 
         // For Extrusions: Use StockLengthRules based on calculated part length from ProductBOM formula
@@ -708,7 +797,7 @@ export async function POST(
         }
 
         // Track costs by category for accurate markup calculation
-        if (breakdown.partType === 'Extrusion') {
+        if (breakdown.partType === 'Extrusion' || breakdown.partType === 'CutStock') {
           priceBreakdown.totalExtrusionCost += cost
         } else if (breakdown.partType === 'Hardware') {
           priceBreakdown.totalHardwareCost += cost

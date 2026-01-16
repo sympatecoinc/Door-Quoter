@@ -72,6 +72,7 @@ export async function POST(request: NextRequest) {
       description,
       type = 'Product',
       productType = 'SWING_DOOR',
+      productCategory = 'BOTH',
       elevationImageData,
       planImageData,
       elevationFileName,
@@ -107,13 +108,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Validate productCategory
+    const validProductCategories = ['THINWALL', 'TRIMMED', 'BOTH']
+    if (!validProductCategories.includes(productCategory)) {
+      return NextResponse.json(
+        { error: 'Invalid product category. Must be one of: Thinwall, Trimmed, Both' },
+        { status: 400 }
+      )
+    }
+
     // Create product
     const product = await prisma.product.create({
       data: {
         name,
         description,
         type,
-        productType
+        productType,
+        productCategory
       }
     })
 

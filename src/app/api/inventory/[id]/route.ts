@@ -83,13 +83,16 @@ export async function PATCH(
 
     const body = await request.json()
     // binLocation is sent from the UI, maps to binLocationLegacy in schema
-    const { cost, qtyOnHand, binLocation, reorderPoint, reorderQty, vendorId } = body
+    const { cost, salePrice, qtyOnHand, binLocation, reorderPoint, reorderQty, vendorId } = body
 
     const updateData: any = {}
 
     // Optional fields - only update if provided
     if (cost !== undefined) {
       updateData.cost = cost !== null ? parseFloat(cost) : null
+    }
+    if (salePrice !== undefined) {
+      updateData.salePrice = salePrice !== null ? parseFloat(salePrice) : null
     }
     if (qtyOnHand !== undefined) {
       updateData.qtyOnHand = parseFloat(qtyOnHand) || 0

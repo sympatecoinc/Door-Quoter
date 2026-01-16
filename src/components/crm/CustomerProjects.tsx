@@ -30,6 +30,7 @@ interface Customer {
   id: number
   companyName: string
   contactName?: string
+  status?: string
 }
 
 interface CustomerProjectsProps {
@@ -551,10 +552,54 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   })
 
 
+  // Skeleton loading component
+  const SkeletonCard = () => (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 animate-pulse">
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex-1">
+          <div className="flex items-center space-x-3 mb-2">
+            <div className="h-6 bg-gray-200 rounded w-48"></div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="h-4 bg-gray-200 rounded w-24"></div>
+            <div className="h-4 bg-gray-200 rounded w-20"></div>
+          </div>
+        </div>
+        <div className="flex items-center space-x-3">
+          <div className="h-8 bg-gray-200 rounded w-28"></div>
+          <div className="h-8 bg-gray-200 rounded w-24"></div>
+        </div>
+      </div>
+      <div className="mt-4 pt-4 border-t border-gray-200">
+        <div className="flex flex-wrap gap-2">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-7 bg-gray-200 rounded-lg w-20"></div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+
   if (loading) {
     return (
-      <div className="flex justify-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="space-y-6">
+        {/* Skeleton header matching actual header structure */}
+        <div className="flex justify-between items-center">
+          <div className="flex items-center animate-pulse">
+            <div className="w-5 h-5 bg-gray-200 rounded mr-2"></div>
+            <div className="h-7 bg-gray-200 rounded w-24"></div>
+          </div>
+        </div>
+        {/* Skeleton search/filter bar */}
+        <div className="flex items-center gap-4 animate-pulse">
+          <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+          <div className="h-7 bg-gray-200 rounded-lg w-16"></div>
+        </div>
+        {/* Skeleton cards */}
+        <div className="space-y-4">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       </div>
     )
   }
@@ -880,11 +925,15 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                 </div>
               </div>
 
-              {/* Status Hot Buttons - filtered based on filterType */}
+              {/* Status Hot Buttons - filtered based on filterType and customer status */}
               <div className="mt-4 pt-4 border-t border-gray-200">
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(STATUS_CONFIG)
                     .filter(([key]) => {
+                      // Prospects can only have lead statuses
+                      if (customer.status === 'Prospect') {
+                        return LEAD_STATUSES.includes(key as ProjectStatus)
+                      }
                       // Filter status buttons based on filterType
                       if (filterType === 'leads') {
                         // Only show lead statuses for leads
@@ -1006,7 +1055,15 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                   disabled={updating}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 text-gray-900"
                 >
-                  {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+                  {Object.entries(STATUS_CONFIG)
+                    .filter(([key]) => {
+                      // Prospects can only have lead statuses
+                      if (customer.status === 'Prospect') {
+                        return LEAD_STATUSES.includes(key as ProjectStatus)
+                      }
+                      return true
+                    })
+                    .map(([key, config]) => (
                     <option key={key} value={key}>
                       {config.label}
                     </option>

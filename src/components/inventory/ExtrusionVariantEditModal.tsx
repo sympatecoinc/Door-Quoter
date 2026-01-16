@@ -27,7 +27,8 @@ export default function ExtrusionVariantEditModal({
     qtyOnHand: 0,
     binLocation: '',
     reorderPoint: '',
-    notes: ''
+    notes: '',
+    pricePerPiece: ''
   })
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -39,7 +40,8 @@ export default function ExtrusionVariantEditModal({
         qtyOnHand: variant.qtyOnHand ?? 0,
         binLocation: variant.binLocation ?? '',
         reorderPoint: variant.reorderPoint?.toString() ?? '',
-        notes: variant.notes ?? ''
+        notes: variant.notes ?? '',
+        pricePerPiece: variant.pricePerPiece?.toString() ?? ''
       })
     }
   }, [variant])
@@ -59,7 +61,8 @@ export default function ExtrusionVariantEditModal({
         qtyOnHand: Number(formData.qtyOnHand),
         binLocation: formData.binLocation || null,
         reorderPoint: formData.reorderPoint ? Number(formData.reorderPoint) : null,
-        notes: formData.notes || null
+        notes: formData.notes || null,
+        pricePerPiece: formData.pricePerPiece ? Number(formData.pricePerPiece) : null
       })
       onClose()
     } catch (err) {
@@ -128,6 +131,28 @@ export default function ExtrusionVariantEditModal({
                 {variant.masterPart?.baseName}
               </p>
             </div>
+
+            {/* Price Per Piece - Only for CutStock parts */}
+            {variant.masterPart?.partType === 'CutStock' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Price Per Piece
+                  <span className="text-xs text-yellow-600 ml-2">(CutStock)</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-gray-500">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.pricePerPiece}
+                    onChange={(e) => setFormData({ ...formData, pricePerPiece: e.target.value })}
+                    className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                    placeholder="0.00"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Fixed price per stock piece for CutStock items</p>
+              </div>
+            )}
 
             {/* Quantity */}
             <div>

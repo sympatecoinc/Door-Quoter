@@ -738,19 +738,13 @@ export default function ProjectDetailView() {
     setCreatingSalesOrder(true)
     try {
       const response = await fetch(`/api/projects/${selectedProjectId}/create-sales-order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pushToQuickBooks: true })
+        method: 'POST'
       })
 
       const data = await response.json()
 
       if (response.ok) {
-        if (data.warning) {
-          showSuccess(`Sales Order ${data.salesOrder.orderNumber} created! ${data.warning}`)
-        } else {
-          showSuccess(`Sales Order ${data.salesOrder.orderNumber} created and synced to QuickBooks!`)
-        }
+        showSuccess(`Sales Order ${data.salesOrder.orderNumber} created!`)
         setExistingSalesOrderNumber(data.salesOrder.orderNumber)
       } else if (response.status === 400 && data.existingOrderNumber) {
         setExistingSalesOrderNumber(data.existingOrderNumber)
@@ -4431,13 +4425,15 @@ export default function ProjectDetailView() {
                                             <td className="border border-gray-200 px-3 py-2 text-sm text-gray-900">{item.partName}</td>
                                             <td className="border border-gray-200 px-3 py-2 text-sm">
                                               <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                                                item.partType === 'Extrusion' 
+                                                item.partType === 'Extrusion'
                                                   ? 'bg-blue-100 text-blue-800'
+                                                  : item.partType === 'CutStock'
+                                                  ? 'bg-yellow-100 text-yellow-800'
                                                   : item.partType === 'Hardware'
                                                   ? 'bg-green-100 text-green-800'
                                                   : 'bg-purple-100 text-purple-800'
                                               }`}>
-                                                {item.partType}
+                                                {item.partType === 'CutStock' ? 'Cut Stock' : item.partType}
                                               </span>
                                             </td>
                                             <td className="border border-gray-200 px-3 py-2 text-sm text-center text-gray-900">{item.quantity}</td>
@@ -4546,19 +4542,21 @@ export default function ProjectDetailView() {
                                     <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
                                       item.partType === 'Extrusion'
                                         ? 'bg-blue-100 text-blue-800'
+                                        : item.partType === 'CutStock'
+                                        ? 'bg-yellow-100 text-yellow-800'
                                         : item.partType === 'Hardware'
                                         ? 'bg-green-100 text-green-800'
                                         : item.partType === 'Glass'
                                         ? 'bg-purple-100 text-purple-800'
                                         : 'bg-orange-100 text-orange-800'
                                     }`}>
-                                      {item.partType}
+                                      {item.partType === 'CutStock' ? 'Cut Stock' : item.partType}
                                     </span>
                                   </td>
                                   <td className="border-b border-gray-100 px-4 py-3 text-sm text-center font-semibold text-gray-900">{item.totalQuantity}</td>
                                   <td className="border-b border-gray-100 px-4 py-3 text-sm text-gray-600">{item.unit}</td>
                                   <td className="border-b border-gray-100 px-4 py-3 text-sm text-gray-600">
-                                    {item.partType === 'Extrusion' && item.cutLengths.length > 0 ? (
+                                    {(item.partType === 'Extrusion' || item.partType === 'CutStock') && item.cutLengths.length > 0 ? (
                                       <div className="max-w-xs">
                                         <div className="text-xs text-gray-500 mb-1">
                                           {item.cutLengths.length} cut{item.cutLengths.length !== 1 ? 's' : ''}

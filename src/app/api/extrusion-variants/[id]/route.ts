@@ -70,7 +70,7 @@ export async function PATCH(
     // Build update data (only include provided fields)
     const updateData: Record<string, unknown> = {}
     if (qtyOnHand !== undefined) updateData.qtyOnHand = qtyOnHand
-    if (binLocation !== undefined) updateData.binLocation = binLocation
+    if (binLocation !== undefined) updateData.binLocationLegacy = binLocation
     if (reorderPoint !== undefined) updateData.reorderPoint = reorderPoint
     if (reorderQty !== undefined) updateData.reorderQty = reorderQty
     if (pricePerPiece !== undefined) updateData.pricePerPiece = pricePerPiece

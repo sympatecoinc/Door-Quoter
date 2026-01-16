@@ -315,6 +315,15 @@ export default function DashboardView() {
               onViewCustomer={handleViewCustomer}
             />
 
+            {/* Prospects Section */}
+            <div className="mt-6">
+              <CustomerList
+                key={`prospects-${refreshKey}`}
+                prospectsOnly={true}
+                onViewCustomer={handleViewCustomer}
+              />
+            </div>
+
             {/* Quick Actions */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>

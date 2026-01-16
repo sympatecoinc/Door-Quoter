@@ -483,11 +483,11 @@ export default function MasterPartsView() {
           partNumber,
           baseName,
           description,
-          unit,
+          unit: (partType === 'Extrusion' || partType === 'CutStock') ? 'IN' : unit,
           weightPerUnit: weightPerUnit ? parseFloat(weightPerUnit) : null,
           weightPerFoot: weightPerUnit ? parseFloat(weightPerUnit) : null,
           partType,
-          isOption: (partType === 'Hardware' || partType === 'Extrusion') ? isOption : false,
+          isOption: (partType === 'Hardware' || partType === 'Extrusion' || partType === 'CutStock') ? isOption : false,
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
           addToPackingList: partType === 'Hardware' ? addToPackingList : false,
@@ -527,11 +527,11 @@ export default function MasterPartsView() {
           partNumber,
           baseName,
           description,
-          unit,
+          unit: (partType === 'Extrusion' || partType === 'CutStock') ? 'IN' : unit,
           weightPerUnit: weightPerUnit ? parseFloat(weightPerUnit) : null,
           weightPerFoot: weightPerUnit ? parseFloat(weightPerUnit) : null,
           partType,
-          isOption: (partType === 'Hardware' || partType === 'Extrusion') ? isOption : false,
+          isOption: (partType === 'Hardware' || partType === 'Extrusion' || partType === 'CutStock') ? isOption : false,
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
           addToPackingList: partType === 'Hardware' ? addToPackingList : false,
@@ -1485,9 +1485,11 @@ export default function MasterPartsView() {
                               ? 'bg-orange-100 text-orange-800'
                               : part.partType === 'Packaging'
                               ? 'bg-purple-100 text-purple-800'
+                              : part.partType === 'CutStock'
+                              ? 'bg-yellow-100 text-yellow-800'
                               : 'bg-blue-100 text-blue-800'
                           }`}>
-                            {part.partType}
+                            {part.partType === 'CutStock' ? 'Cut Stock' : part.partType}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900">
@@ -2132,6 +2134,7 @@ export default function MasterPartsView() {
                   <option value="">Select Part Type</option>
                   <option value="Hardware">Hardware</option>
                   <option value="Extrusion">Extrusion</option>
+                  <option value="CutStock">Cut Stock</option>
                   <option value="Fastener">Fastener</option>
                   <option value="Packaging">Packaging</option>
                 </select>
@@ -2458,6 +2461,32 @@ export default function MasterPartsView() {
                     </>
                   )}
 
+                  {/* CutStock specific fields */}
+                  {partType === 'CutStock' && (
+                    <>
+                      <p className="text-sm text-gray-600 bg-yellow-50 p-3 rounded-lg">
+                        Cut Stock items are cut-to-length like extrusions but have fixed pricing per stock piece.
+                        Use Stock Length Rules to define available stock lengths and their prices.
+                      </p>
+                      {/* Is Option checkbox for CutStock */}
+                      <div className="flex items-center mt-2">
+                        <input
+                          type="checkbox"
+                          id="isOptionCutStock"
+                          checked={isOption}
+                          onChange={(e) => setIsOption(e.target.checked)}
+                          className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="isOptionCutStock" className="text-sm font-medium text-gray-700">
+                          Available as Category Option
+                        </label>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (Can be selected when adding options to product categories)
+                        </span>
+                      </div>
+                    </>
+                  )}
+
                 </>
               )}
 
@@ -2655,6 +2684,7 @@ export default function MasterPartsView() {
                 >
                   <option value="Hardware">Hardware</option>
                   <option value="Extrusion">Extrusion</option>
+                  <option value="CutStock">Cut Stock</option>
                   <option value="Other">Other</option>
                 </select>
               </div>

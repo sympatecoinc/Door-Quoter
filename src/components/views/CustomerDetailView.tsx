@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Edit, Mail, Phone, MapPin, Building, Calendar, Tag, FileText, Users, Archive } from 'lucide-react'
+import { X, Edit, Mail, Phone, MapPin, Building, Calendar, Tag, FileText, Users, Pencil } from 'lucide-react'
 import CustomerNotes from '../crm/CustomerNotes'
 import CustomerFiles from '../crm/CustomerFiles'
 import CustomerContacts from '../crm/CustomerContacts'
@@ -53,12 +53,9 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const [showEditForm, setShowEditForm] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [deleting, setDeleting] = useState(false)
 
   // Handle Escape key to close modals one at a time
   useEscapeKey([
-    { isOpen: showDeleteConfirm, isBlocked: deleting, onClose: () => setShowDeleteConfirm(false) },
     { isOpen: selectedProjectId !== null, onClose: () => setSelectedProjectId(null) },
     { isOpen: showEditForm, onClose: () => setShowEditForm(false) },
   ])
@@ -102,28 +99,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
     setRefreshKey(prev => prev + 1)
   }
 
-  const handleArchiveCustomer = async () => {
-    setDeleting(true)
-    try {
-      const response = await fetch(`/api/customers/${customerId}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to archive customer')
-      }
-
-      onBack()
-    } catch (error) {
-      console.error('Error archiving customer:', error)
-      alert(error instanceof Error ? error.message : 'Failed to archive customer')
-    } finally {
-      setDeleting(false)
-      setShowDeleteConfirm(false)
-    }
-  }
-
   const getStatusBadge = (status: string) => {
     const colors: { [key: string]: string } = {
       'Active': 'bg-green-100 text-green-800',
@@ -156,8 +131,10 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       default:
         return (
           <div className="space-y-8">
-            {/* Projects Section (Won projects) */}
-            <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={false} filterType="projects" refreshKey={refreshKey} onStatusChange={() => setRefreshKey(k => k + 1)} />
+            {/* Projects Section (Won projects) - Hidden for prospects */}
+            {customer.status !== 'Prospect' && (
+              <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={false} filterType="projects" refreshKey={refreshKey} onStatusChange={() => setRefreshKey(k => k + 1)} />
+            )}
 
             {/* Leads Section */}
             <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={false} filterType="leads" refreshKey={refreshKey} onStatusChange={() => setRefreshKey(k => k + 1)} />
@@ -324,11 +301,27 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
           <div className="flex justify-between items-start">
             <div className="flex-1">
               {loading ? (
-                <div className="h-8 bg-gray-200 animate-pulse rounded w-48"></div>
+                <div className="animate-pulse">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 bg-gray-200 rounded w-48"></div>
+                    <div className="h-6 bg-gray-200 rounded-full w-20"></div>
+                  </div>
+                  <div className="flex items-center mt-2">
+                    <div className="w-4 h-4 bg-gray-200 rounded mr-2"></div>
+                    <div className="h-4 bg-gray-200 rounded w-32"></div>
+                  </div>
+                </div>
               ) : customer ? (
                 <>
                   <div className="flex items-center gap-3">
                     <h1 className="text-2xl font-bold text-gray-900">{customer.companyName}</h1>
+                    <button
+                      onClick={() => setShowEditForm(true)}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Edit customer"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
                     <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusBadge(customer.status)}`}>
                       {customer.status}
                     </span>
@@ -357,7 +350,18 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         </div>
 
         {/* Tab Navigation */}
-        {customer && (
+        {loading ? (
+          <div className="px-8 border-b border-gray-200 flex-shrink-0">
+            <nav className="-mb-px flex space-x-8 animate-pulse">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex items-center py-2 px-1">
+                  <div className="w-4 h-4 bg-gray-200 rounded mr-2"></div>
+                  <div className="h-4 bg-gray-200 rounded w-16"></div>
+                </div>
+              ))}
+            </nav>
+          </div>
+        ) : customer && (
           <div className="px-8 border-b border-gray-200 flex-shrink-0">
             <nav className="-mb-px flex space-x-8">
               {tabs.map((tab) => {
@@ -385,8 +389,86 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
         <div className="flex-1 overflow-y-auto">
           <div className="p-8">
             {loading ? (
-              <div className="flex justify-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+              <div className="space-y-8 animate-pulse">
+                {/* Skeleton for Projects Section */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="h-6 bg-gray-200 rounded w-32"></div>
+                    <div className="h-8 bg-gray-200 rounded w-24"></div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="h-12 bg-gray-100 rounded"></div>
+                    <div className="h-12 bg-gray-100 rounded"></div>
+                  </div>
+                </div>
+
+                {/* Skeleton for Leads Section */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="h-6 bg-gray-200 rounded w-24"></div>
+                    <div className="h-8 bg-gray-200 rounded w-24"></div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="h-12 bg-gray-100 rounded"></div>
+                  </div>
+                </div>
+
+                {/* Skeleton for Customer Information */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="h-6 bg-gray-200 rounded w-48"></div>
+                    <div className="h-8 bg-gray-200 rounded w-16"></div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Company Information Skeleton */}
+                    <div className="space-y-4 bg-blue-50 p-4 rounded-lg border border-blue-100">
+                      <div className="flex items-center mb-3">
+                        <div className="w-5 h-5 bg-blue-200 rounded mr-2"></div>
+                        <div className="h-5 bg-blue-200 rounded w-40"></div>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="h-4 bg-blue-100 rounded w-24"></div>
+                        <div className="h-5 bg-blue-100 rounded w-48"></div>
+                        <div className="h-4 bg-blue-100 rounded w-32"></div>
+                        <div className="h-4 bg-blue-100 rounded w-40"></div>
+                      </div>
+                    </div>
+                    {/* Primary Contact Skeleton */}
+                    <div className="space-y-4 bg-green-50 p-4 rounded-lg border border-green-100">
+                      <div className="flex items-center mb-3">
+                        <div className="w-5 h-5 bg-green-200 rounded mr-2"></div>
+                        <div className="h-5 bg-green-200 rounded w-32"></div>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="h-4 bg-green-100 rounded w-24"></div>
+                        <div className="h-5 bg-green-100 rounded w-36"></div>
+                        <div className="h-4 bg-green-100 rounded w-44"></div>
+                        <div className="h-4 bg-green-100 rounded w-28"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Skeleton for Recent Activity */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="h-6 bg-gray-200 rounded w-36 mb-4"></div>
+                  <div className="space-y-4">
+                    <div className="flex items-start space-x-3">
+                      <div className="w-2 h-2 bg-gray-300 rounded-full mt-2"></div>
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 bg-gray-100 rounded w-48"></div>
+                        <div className="h-3 bg-gray-100 rounded w-24"></div>
+                      </div>
+                    </div>
+                    <div className="flex items-start space-x-3">
+                      <div className="w-2 h-2 bg-gray-300 rounded-full mt-2"></div>
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 bg-gray-100 rounded w-56"></div>
+                        <div className="h-3 bg-gray-100 rounded w-24"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : !customer ? (
               <div className="text-center py-12 text-gray-500">
@@ -416,57 +498,6 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
             onBack={() => setSelectedProjectId(null)}
             onStatusChange={() => setRefreshKey(k => k + 1)}
           />
-        )}
-
-        {/* Modal Footer with Archive Button */}
-        {customer && (
-          <div className="px-8 py-4 border-t border-gray-200 flex justify-end flex-shrink-0">
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="flex items-center px-4 py-2 text-orange-600 hover:bg-orange-50 rounded-lg border border-orange-200 transition-colors"
-            >
-              <Archive className="w-4 h-4 mr-2" />
-              Archive Customer
-            </button>
-          </div>
-        )}
-
-        {/* Archive Confirmation Modal */}
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Archive Customer</h3>
-              <p className="text-gray-600 mb-4">
-                Are you sure you want to archive <strong>{customer?.companyName}</strong>? This will also archive all associated projects, sales orders, and invoices. The customer can be restored later by changing their status.
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  disabled={deleting}
-                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleArchiveCustomer}
-                  disabled={deleting}
-                  className="px-4 py-2 bg-orange-600 text-white hover:bg-orange-700 rounded-lg transition-colors disabled:opacity-50 flex items-center"
-                >
-                  {deleting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Archiving...
-                    </>
-                  ) : (
-                    <>
-                      <Archive className="w-4 h-4 mr-2" />
-                      Archive
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
         )}
       </div>
     </div>

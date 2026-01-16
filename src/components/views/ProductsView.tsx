@@ -13,6 +13,7 @@ interface Product {
   description?: string
   type: string
   productType: string
+  productCategory: string
   archived: boolean
   installationPrice?: number
   _count: {
@@ -536,6 +537,7 @@ function ProductsTab({
   const [newProductName, setNewProductName] = useState('')
   const [newProductDescription, setNewProductDescription] = useState('')
   const [newProductType, setNewProductType] = useState('SWING_DOOR')
+  const [newProductCategory, setNewProductCategory] = useState('BOTH')
   const [newProductInstallationPrice, setNewProductInstallationPrice] = useState(0)
   const [creating, setCreating] = useState(false)
   const [creatingFrame, setCreatingFrame] = useState(false)
@@ -543,6 +545,36 @@ function ProductsTab({
   // Separate Frame product from other products
   const frameProduct = products.find(p => p.productType === 'FRAME')
   const nonFrameProducts = products.filter(p => p.productType !== 'FRAME')
+
+  // Group products by productType (Swing Door, Sliding Door, etc.)
+  const productsByType = nonFrameProducts.reduce((acc, product) => {
+    const type = product.productType || 'Other'
+    if (!acc[type]) {
+      acc[type] = []
+    }
+    acc[type].push(product)
+    return acc
+  }, {} as Record<string, Product[]>)
+
+  // Define display names for product types
+  const typeDisplayNames: Record<string, string> = {
+    'SWING_DOOR': 'Swing Doors',
+    'SLIDING_DOOR': 'Sliding Doors',
+    'FIXED_PANEL': 'Fixed Panels',
+    'CORNER_90': '90° Corners',
+    'Other': 'Other Products'
+  }
+
+  // Preferred order for product type sections
+  const typeOrder = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL', 'CORNER_90', 'Other']
+  const sortedTypes = Object.keys(productsByType).sort((a, b) => {
+    const indexA = typeOrder.indexOf(a)
+    const indexB = typeOrder.indexOf(b)
+    if (indexA === -1 && indexB === -1) return a.localeCompare(b)
+    if (indexA === -1) return 1
+    if (indexB === -1) return -1
+    return indexA - indexB
+  })
 
   async function handleCreateFrame() {
     setCreatingFrame(true)
@@ -584,6 +616,7 @@ function ProductsTab({
           name: newProductName,
           description: newProductDescription,
           productType: newProductType,
+          productCategory: newProductCategory,
           installationPrice: newProductInstallationPrice
         })
       })
@@ -592,6 +625,7 @@ function ProductsTab({
         setNewProductName('')
         setNewProductDescription('')
         setNewProductType('SWING_DOOR')
+        setNewProductCategory('BOTH')
         setNewProductInstallationPrice(0)
         setShowCreateForm(false)
         onRefresh()
@@ -607,72 +641,17 @@ function ProductsTab({
 
   return (
     <div>
-      {/* Frame Configuration Section */}
-      <div className="mb-8 bg-amber-50 border border-amber-200 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Frame Configuration</h3>
-            <p className="text-sm text-gray-600">
-              Frames are automatically added to openings when set to "Trimmed"
-            </p>
-          </div>
-          {!frameProduct && (
-            <button
-              onClick={handleCreateFrame}
-              disabled={creatingFrame}
-              className="flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
-            >
-              {creatingFrame ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className="w-5 h-5 mr-2" />
-                  Create Frame Product
-                </>
-              )}
-            </button>
-          )}
-        </div>
-        {frameProduct ? (
-          <div
-            onClick={() => onSelectProduct(frameProduct)}
-            className="bg-white border border-amber-300 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h4 className="font-medium text-gray-900">{frameProduct.name}</h4>
-                  {frameProduct.archived && (
-                    <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">
-                      Archived
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-gray-600">{frameProduct.description || 'No description'}</p>
-              </div>
-              <div className="text-sm text-gray-500">
-                {frameProduct._count.productBOMs} BOM items
-              </div>
-            </div>
-            <div className="mt-3 text-xs text-amber-600">
-              Click to configure Frame BOM →
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-4 text-gray-500">
-            <p>No Frame product configured yet. Create one to define the Bill of Materials for frames.</p>
-          </div>
-        )}
-      </div>
-
-      {/* Regular Products */}
-      {nonFrameProducts.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {nonFrameProducts.map((product) => (
-            <div key={product.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+      {/* Products grouped by type */}
+      {sortedTypes.length > 0 ? (
+        <div className="space-y-8">
+          {sortedTypes.map((type) => (
+            <div key={type}>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                {typeDisplayNames[type] || type}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {productsByType[type].map((product) => (
+            <div key={product.id} className="relative border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow overflow-visible">
               {editingProduct === product.id ? (
                 <form onSubmit={onUpdateProduct} className="space-y-3">
                   <div>
@@ -748,7 +727,17 @@ function ProductsTab({
                   </div>
                 </form>
               ) : (
-                <div>
+                <div className="relative">
+                  {/* Product Category Badge */}
+                  {(product.productCategory === 'TRIMMED' || product.productCategory === 'THINWALL') && (
+                    <span className={`absolute -top-2 -right-2 px-2 py-1 text-xs font-medium rounded-full ${
+                      product.productCategory === 'TRIMMED'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-purple-100 text-purple-700'
+                    }`}>
+                      {product.productCategory === 'TRIMMED' ? 'Trimmed' : 'ThinWall'}
+                    </span>
+                  )}
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
@@ -792,6 +781,9 @@ function ProductsTab({
                 </div>
               )}
             </div>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       ) : (
@@ -799,6 +791,67 @@ function ProductsTab({
           No door or panel products created yet. Click "New Product" to create your first product template.
         </div>
       )}
+
+      {/* Frame Configuration Section */}
+      <div className="mt-8 bg-amber-50 border border-amber-200 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Frame Configuration</h3>
+            <p className="text-sm text-gray-600">
+              Frames are automatically added to openings when set to "Trimmed"
+            </p>
+          </div>
+          {!frameProduct && (
+            <button
+              onClick={handleCreateFrame}
+              disabled={creatingFrame}
+              className="flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+            >
+              {creatingFrame ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-5 h-5 mr-2" />
+                  Create Frame Product
+                </>
+              )}
+            </button>
+          )}
+        </div>
+        {frameProduct ? (
+          <div
+            onClick={() => onSelectProduct(frameProduct)}
+            className="bg-white border border-amber-300 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <h4 className="font-medium text-gray-900">{frameProduct.name}</h4>
+                  {frameProduct.archived && (
+                    <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">
+                      Archived
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-600">{frameProduct.description || 'No description'}</p>
+              </div>
+              <div className="text-sm text-gray-500">
+                {frameProduct._count.productBOMs} BOM items
+              </div>
+            </div>
+            <div className="mt-3 text-xs text-amber-600">
+              Click to configure Frame BOM →
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-4 text-gray-500">
+            <p>No Frame product configured yet. Create one to define the Bill of Materials for frames.</p>
+          </div>
+        )}
+      </div>
 
       {/* Show Archived Toggle */}
       <div className="mt-6 pt-6 border-t border-gray-200">
@@ -859,6 +912,22 @@ function ProductsTab({
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Product Category</label>
+                <select
+                  value={newProductCategory}
+                  onChange={(e) => setNewProductCategory(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                >
+                  <option value="TRIMMED">Trimmed</option>
+                  <option value="THINWALL">ThinWall</option>
+                  <option value="BOTH">Both</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Determines which opening types can use this product
+                </p>
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Installation Price</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
@@ -883,6 +952,7 @@ function ProductsTab({
                     setNewProductName('')
                     setNewProductDescription('')
                     setNewProductType('SWING_DOOR')
+                    setNewProductCategory('BOTH')
                     setNewProductInstallationPrice(0)
                     setShowCreateForm(false)
                   }}

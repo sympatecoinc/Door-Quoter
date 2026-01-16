@@ -40,7 +40,7 @@ async function findStockLength(partNumber: string, bom: any, variables: Record<s
 
     const binLocation = masterPart?.binLocationRef?.code || null
 
-    if (masterPart && masterPart.partType === 'Extrusion' && masterPart.stockLengthRules.length > 0) {
+    if (masterPart && (masterPart.partType === 'Extrusion' || masterPart.partType === 'CutStock') && masterPart.stockLengthRules.length > 0) {
       // Calculate the required part length from the ProductBOM formula
       const requiredLength = calculateRequiredPartLength(bom, variables)
 
@@ -181,7 +181,7 @@ export async function GET(
 
           // Calculate cut length if formula exists
           let cutLength: number | null = null
-          if (bom.formula && bom.partType === 'Extrusion') {
+          if (bom.formula && (bom.partType === 'Extrusion' || bom.partType === 'CutStock')) {
             cutLength = evaluateFormula(bom.formula, variables)
           }
 
@@ -204,8 +204,8 @@ export async function GET(
           let isMillFinish = false
           let binLocation: string | null = null
 
-          if (bom.partType === 'Extrusion' && fullPartNumber) {
-            // Find stock length and isMillFinish flag for extrusions from MasterPart
+          if ((bom.partType === 'Extrusion' || bom.partType === 'CutStock') && fullPartNumber) {
+            // Find stock length and isMillFinish flag from MasterPart
             if (bom.partNumber) {
               const stockInfo = await findStockLength(bom.partNumber, bom, variables)
               stockLength = stockInfo.stockLength
@@ -213,8 +213,8 @@ export async function GET(
               binLocation = stockInfo.binLocation
             }
 
-            // Only append finish color code if NOT mill finish (using masterPart.isMillFinish)
-            if (opening.finishColor && !isMillFinish) {
+            // Only append finish color code for Extrusions (not CutStock), and only if NOT mill finish
+            if (bom.partType === 'Extrusion' && opening.finishColor && !isMillFinish) {
               const finishCode = await getFinishCode(opening.finishColor)
               if (finishCode) {
                 fullPartNumber = `${fullPartNumber}${finishCode}`
@@ -237,7 +237,7 @@ export async function GET(
 
           // Calculate % of stock used
           let percentOfStock: number | null = null
-          if (bom.partType === 'Extrusion' && cutLength && stockLength && stockLength > 0) {
+          if ((bom.partType === 'Extrusion' || bom.partType === 'CutStock') && cutLength && stockLength && stockLength > 0) {
             percentOfStock = (cutLength / stockLength) * 100
           }
 
@@ -858,7 +858,7 @@ export async function GET(
     Object.values(groupedBomItems).forEach((opening: any) => {
       Object.values(opening).forEach((component: any) => {
         component.items.sort((a: any, b: any) => {
-          const typeOrder = { 'Extrusion': 1, 'Hardware': 2, 'Glass': 3, 'Option': 4 }
+          const typeOrder = { 'Extrusion': 1, 'CutStock': 2, 'Hardware': 3, 'Glass': 4, 'Option': 5 }
           const aOrder = typeOrder[a.partType as keyof typeof typeOrder] || 5
           const bOrder = typeOrder[b.partType as keyof typeof typeOrder] || 5
 
@@ -875,12 +875,13 @@ export async function GET(
       const totals = {
         totalParts: summaryItems.reduce((sum, item) => sum + item.totalQuantity, 0),
         totalExtrusions: summaryItems.filter(item => item.partType === 'Extrusion').reduce((sum, item) => sum + item.totalQuantity, 0),
+        totalCutStock: summaryItems.filter(item => item.partType === 'CutStock').reduce((sum, item) => sum + item.totalQuantity, 0),
         totalHardware: summaryItems.filter(item => item.partType === 'Hardware').reduce((sum, item) => sum + item.totalQuantity, 0),
         totalGlass: summaryItems.filter(item => item.partType === 'Glass').reduce((sum, item) => sum + item.totalQuantity, 0),
         totalOptions: summaryItems.filter(item => item.partType === 'Option').reduce((sum, item) => sum + item.totalQuantity, 0),
-        // Total optimized stock pieces to order for all extrusions
+        // Total optimized stock pieces to order for all extrusions and CutStock
         totalStockPiecesToOrder: summaryItems
-          .filter(item => item.partType === 'Extrusion' && item.stockPiecesNeeded !== null)
+          .filter(item => (item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockPiecesNeeded !== null)
           .reduce((sum, item) => sum + item.stockPiecesNeeded, 0)
       }
 
@@ -1160,7 +1161,7 @@ export async function GET(
           return a.openingName.localeCompare(b.openingName)
         }
 
-        const typeOrder = { 'Extrusion': 1, 'Hardware': 2, 'Glass': 3, 'Option': 4 }
+        const typeOrder = { 'Extrusion': 1, 'CutStock': 2, 'Hardware': 3, 'Glass': 4, 'Option': 5 }
         const aOrder = typeOrder[a.partType as keyof typeof typeOrder] || 5
         const bOrder = typeOrder[b.partType as keyof typeof typeOrder] || 5
 

@@ -17,6 +17,7 @@ interface InventoryPart {
   partType: string
   unit?: string | null
   cost?: number | null
+  salePrice?: number | null
   qtyOnHand?: number | null
   binLocation?: string | null
   reorderPoint?: number | null
@@ -35,6 +36,7 @@ interface Props {
 
 export default function InventoryEditModal({ part, vendors, onClose, onSave }: Props) {
   const [cost, setCost] = useState(part.cost?.toString() ?? '')
+  const [salePrice, setSalePrice] = useState(part.salePrice?.toString() ?? '')
   const [qtyOnHand, setQtyOnHand] = useState(part.qtyOnHand?.toString() ?? '0')
   const [binLocation, setBinLocation] = useState(part.binLocation ?? '')
   const [reorderPoint, setReorderPoint] = useState(part.reorderPoint?.toString() ?? '')
@@ -54,6 +56,7 @@ export default function InventoryEditModal({ part, vendors, onClose, onSave }: P
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cost: cost ? parseFloat(cost) : null,
+          salePrice: salePrice ? parseFloat(salePrice) : null,
           qtyOnHand: parseFloat(qtyOnHand) || 0,
           binLocation: binLocation.trim() || null,
           reorderPoint: reorderPoint ? parseFloat(reorderPoint) : null,
@@ -116,21 +119,40 @@ export default function InventoryEditModal({ part, vendors, onClose, onSave }: P
             </div>
           )}
 
-          {/* Cost */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Cost (per unit) <span className="text-gray-400 font-normal">(optional)</span>
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-              <input
-                type="number"
-                step="0.01"
-                value={cost}
-                onChange={(e) => setCost(e.target.value)}
-                placeholder="0.00"
-                className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+          {/* Cost & Sale Price (side by side) */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Cost (per unit) <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={cost}
+                  onChange={(e) => setCost(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Sale Price <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={salePrice}
+                  onChange={(e) => setSalePrice(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Fixed price, no markup applied</p>
             </div>
           </div>
 

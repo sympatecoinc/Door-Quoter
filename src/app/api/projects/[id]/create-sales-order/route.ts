@@ -2,15 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionToken } from '@/lib/auth'
 import { getSessionWithUser } from '@/lib/db-session'
-import {
-  generateSONumber,
-  getStoredRealmId,
-  createQBInvoice,
-  pushCustomerToQB,
-  localSOToQBInvoice,
-  localSOLineToQB,
-  QBInvoiceLine
-} from '@/lib/quickbooks'
+import { generateSONumber } from '@/lib/quickbooks'
 
 // POST - Create a sales order from a project quote
 export async function POST(
@@ -81,9 +73,6 @@ export async function POST(
         { status: 400 }
       )
     }
-
-    const body = await request.json().catch(() => ({}))
-    const { pushToQuickBooks = true } = body
 
     // Generate SO number
     const orderNumber = await generateSONumber()
@@ -181,53 +170,6 @@ export async function POST(
       }
     })
 
-    // Push to QuickBooks if requested
-    let qbWarning: string | null = null
-    if (pushToQuickBooks) {
-      try {
-        const realmId = await getStoredRealmId()
-        if (!realmId) {
-          qbWarning = 'QuickBooks not connected. Sales order saved locally only.'
-        } else {
-          // Ensure customer is synced to QB
-          let customerQBId = salesOrder.customer.quickbooksId
-          if (!customerQBId) {
-            try {
-              const syncedCustomer = await pushCustomerToQB(salesOrder.customerId)
-              customerQBId = syncedCustomer.quickbooksId
-            } catch (custError) {
-              console.error('Failed to sync customer:', custError)
-              qbWarning = 'Failed to sync customer to QuickBooks. Sales order saved locally only.'
-            }
-          }
-
-          if (customerQBId) {
-            // Convert lines to QB format
-            const qbLines: QBInvoiceLine[] = salesOrder.lines.map(line => localSOLineToQB(line))
-
-            // Create invoice in QB
-            const qbInvoice = localSOToQBInvoice(salesOrder, customerQBId, qbLines)
-            const createdInvoice = await createQBInvoice(realmId, qbInvoice)
-
-            // Update local SO with QB data
-            await prisma.salesOrder.update({
-              where: { id: salesOrder.id },
-              data: {
-                quickbooksId: createdInvoice.Id,
-                syncToken: createdInvoice.SyncToken,
-                docNumber: createdInvoice.DocNumber,
-                status: 'SENT',
-                lastSyncedAt: new Date()
-              }
-            })
-          }
-        }
-      } catch (qbError) {
-        console.error('QuickBooks sync error:', qbError)
-        qbWarning = `Sales order saved locally but QuickBooks sync failed: ${qbError instanceof Error ? qbError.message : 'Unknown error'}`
-      }
-    }
-
     // Fetch final state
     const finalSO = await prisma.salesOrder.findUnique({
       where: { id: salesOrder.id },
@@ -260,10 +202,7 @@ export async function POST(
       }
     })
 
-    return NextResponse.json({
-      salesOrder: finalSO,
-      warning: qbWarning
-    })
+    return NextResponse.json({ salesOrder: finalSO })
   } catch (error) {
     console.error('Error creating sales order from project:', error)
     return NextResponse.json(

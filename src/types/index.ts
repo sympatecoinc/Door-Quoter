@@ -416,6 +416,7 @@ export interface MasterPart {
   partType: string
   unit: string | null
   cost: number | null
+  salePrice?: number | null
   weightPerFoot?: number | null
   customPricePerLb?: number | null
   isMillFinish?: boolean
@@ -423,7 +424,7 @@ export interface MasterPart {
 
 // Extrusion Variant Group - Groups variants by extrusion profile
 export interface ExtrusionVariantGroup {
-  masterPart: Pick<MasterPart, 'id' | 'partNumber' | 'baseName' | 'description' | 'weightPerFoot' | 'customPricePerLb' | 'isMillFinish'>
+  masterPart: Pick<MasterPart, 'id' | 'partNumber' | 'baseName' | 'description' | 'partType' | 'weightPerFoot' | 'customPricePerLb' | 'isMillFinish'>
   variants: ExtrusionVariantDisplay[]
   lengths: number[]
   finishes: FinishOption[]

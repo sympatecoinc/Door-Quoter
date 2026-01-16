@@ -169,8 +169,8 @@ export function aggregateBomItems(bomItems: BomItem[]): AggregatedBomItem[] {
 
     aggregated[key].totalQuantity += item.quantity || 1
 
-    // For extrusions, collect cut lengths
-    if (item.partType === 'Extrusion' && item.cutLength) {
+    // For extrusions and CutStock, collect cut lengths
+    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.cutLength) {
       for (let i = 0; i < (item.quantity || 1); i++) {
         aggregated[key].cutLengths.push(item.cutLength)
       }
@@ -198,9 +198,9 @@ export function aggregateBomItems(bomItems: BomItem[]): AggregatedBomItem[] {
     }
   }
 
-  // Calculate stock optimization for extrusions
+  // Calculate stock optimization for extrusions and CutStock
   for (const item of Object.values(aggregated)) {
-    if (item.partType === 'Extrusion' && item.stockLength && item.cutLengths.length > 0) {
+    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockLength && item.cutLengths.length > 0) {
       const optimization = calculateOptimizedStockPieces(item.cutLengths, item.stockLength)
       item.stockPiecesNeeded = optimization.stockPiecesNeeded
       item.wastePercent = optimization.wastePercent
@@ -208,7 +208,7 @@ export function aggregateBomItems(bomItems: BomItem[]): AggregatedBomItem[] {
   }
 
   // Sort by part type then part number
-  const typeOrder: Record<string, number> = { 'Extrusion': 1, 'Hardware': 2, 'Glass': 3, 'Option': 4 }
+  const typeOrder: Record<string, number> = { 'Extrusion': 1, 'CutStock': 2, 'Hardware': 3, 'Glass': 4, 'Option': 5 }
   return Object.values(aggregated).sort((a, b) => {
     const aOrder = typeOrder[a.partType] || 5
     const bOrder = typeOrder[b.partType] || 5
@@ -273,8 +273,8 @@ export function calculateRequiredPartLength(
     }
   }
 
-  // For extrusions without formulas, try to use a reasonable default based on component size
-  if (bom.partType === 'Extrusion') {
+  // For extrusions/CutStock without formulas, try to use a reasonable default based on component size
+  if (bom.partType === 'Extrusion' || bom.partType === 'CutStock') {
     return Math.max(variables.width || 0, variables.height || 0)
   }
 
@@ -346,10 +346,10 @@ export interface AggregatedCutListItem {
   binLocation?: string
 }
 
-// Aggregate BOM items for cut list (extrusions only, grouped by product + size + cut length).
+// Aggregate BOM items for cut list (extrusions and CutStock, grouped by product + size + cut length).
 export function aggregateCutListItems(bomItems: BOMItemForCutList[]): AggregatedCutListItem[] {
-  // Filter to extrusions only
-  const extrusions = bomItems.filter(item => item.partType === 'Extrusion')
+  // Filter to extrusions and CutStock
+  const extrusions = bomItems.filter(item => item.partType === 'Extrusion' || item.partType === 'CutStock')
 
   // First, count unique panels per product+size combination
   const panelCounts: Record<string, Set<number>> = {}
@@ -582,7 +582,7 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
 
     // Determine pieces value
     let piecesValue: string | number = item.totalQuantity
-    if (item.partType === 'Extrusion' && item.stockPiecesNeeded !== null) {
+    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockPiecesNeeded !== null) {
       piecesValue = item.stockPiecesNeeded
     } else if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
                (item.unit === 'LF' || item.unit === 'IN') &&
@@ -591,9 +591,9 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
       piecesValue = item.totalCalculatedLength.toFixed(3)
     }
 
-    // Determine unit - extrusions and glass use EA
+    // Determine unit - extrusions, CutStock, and glass use EA
     let unitStr = item.unit
-    if (item.partType === 'Extrusion' || item.partType === 'Glass') {
+    if (item.partType === 'Extrusion' || item.partType === 'CutStock' || item.partType === 'Glass') {
       unitStr = 'EA'
     }
 

@@ -1243,7 +1243,7 @@ export async function fetchAllQBCustomers(realmId: string): Promise<QBCustomer[]
   const maxResults = 1000
 
   while (true) {
-    const query = `SELECT * FROM Customer STARTPOSITION ${startPosition} MAXRESULTS ${maxResults}`
+    const query = `SELECT * FROM Customer WHERE Active IN (true, false) STARTPOSITION ${startPosition} MAXRESULTS ${maxResults}`
     const response = await qbApiRequest(realmId, `query?query=${encodeURIComponent(query)}`)
 
     const customers = response.QueryResponse?.Customer || []
@@ -1548,61 +1548,6 @@ export function qbInvoiceToLocal(qbInvoice: QBInvoice, customerId: number): any 
   }
 }
 
-// Convert local SalesOrder to QuickBooks Invoice format
-export function localSOToQBInvoice(so: any, customerQBId: string, lines: QBInvoiceLine[]): QBInvoice {
-  const qbInvoice: QBInvoice = {
-    CustomerRef: { value: customerQBId },
-    Line: lines
-  }
-
-  if (so.quickbooksId) qbInvoice.Id = so.quickbooksId
-  if (so.syncToken) qbInvoice.SyncToken = so.syncToken
-  if (so.docNumber) qbInvoice.DocNumber = so.docNumber
-  if (so.txnDate) qbInvoice.TxnDate = formatDateForQB(so.txnDate)
-  if (so.dueDate) qbInvoice.DueDate = formatDateForQB(so.dueDate)
-  if (so.shipDate) qbInvoice.ShipDate = formatDateForQB(so.shipDate)
-  if (so.customerMemo) qbInvoice.CustomerMemo = { value: so.customerMemo }
-  if (so.privateNote) qbInvoice.PrivateNote = so.privateNote
-
-  // Billing address
-  if (so.billAddrLine1 || so.billAddrCity) {
-    qbInvoice.BillAddr = {}
-    if (so.billAddrLine1) qbInvoice.BillAddr.Line1 = so.billAddrLine1
-    if (so.billAddrLine2) qbInvoice.BillAddr.Line2 = so.billAddrLine2
-    if (so.billAddrCity) qbInvoice.BillAddr.City = so.billAddrCity
-    if (so.billAddrState) qbInvoice.BillAddr.CountrySubDivisionCode = so.billAddrState
-    if (so.billAddrPostalCode) qbInvoice.BillAddr.PostalCode = so.billAddrPostalCode
-    if (so.billAddrCountry) qbInvoice.BillAddr.Country = so.billAddrCountry
-  }
-
-  // Shipping address
-  if (so.shipAddrLine1 || so.shipAddrCity) {
-    qbInvoice.ShipAddr = {}
-    if (so.shipAddrLine1) qbInvoice.ShipAddr.Line1 = so.shipAddrLine1
-    if (so.shipAddrLine2) qbInvoice.ShipAddr.Line2 = so.shipAddrLine2
-    if (so.shipAddrCity) qbInvoice.ShipAddr.City = so.shipAddrCity
-    if (so.shipAddrState) qbInvoice.ShipAddr.CountrySubDivisionCode = so.shipAddrState
-    if (so.shipAddrPostalCode) qbInvoice.ShipAddr.PostalCode = so.shipAddrPostalCode
-    if (so.shipAddrCountry) qbInvoice.ShipAddr.Country = so.shipAddrCountry
-  }
-
-  return qbInvoice
-}
-
-// Convert local SO line to QuickBooks Invoice line format
-export function localSOLineToQB(line: any): QBInvoiceLine {
-  return {
-    Amount: line.amount || (line.quantity * line.unitPrice),
-    DetailType: 'SalesItemLineDetail',
-    SalesItemLineDetail: {
-      ItemRef: line.itemRefId ? { value: line.itemRefId, name: line.itemRefName } : undefined,
-      UnitPrice: line.unitPrice,
-      Qty: line.quantity
-    },
-    Description: line.description || undefined
-  }
-}
-
 // Generate next SO number (format: SO-YYYY-NNNN)
 export async function generateSONumber(): Promise<string> {
   const year = new Date().getFullYear()
@@ -1706,77 +1651,6 @@ export async function pushPOToQB(poId: number): Promise<any> {
 
   console.log(`[QB Sync] PO ${po.poNumber} synced to QB with ID: ${result.Id}`)
   return updatedPO
-}
-
-// Push local Sales Order to QuickBooks (as Invoice)
-export async function pushSOToQB(soId: number): Promise<any> {
-  const realmId = await getStoredRealmId()
-  if (!realmId) {
-    throw new Error('QuickBooks not connected')
-  }
-
-  const so = await prisma.salesOrder.findUnique({
-    where: { id: soId },
-    include: {
-      customer: true,
-      lines: true
-    }
-  })
-
-  if (!so) {
-    throw new Error('Sales Order not found')
-  }
-
-  if (!so.customer?.quickbooksId) {
-    throw new Error(`Customer "${so.customer?.companyName}" is not synced to QuickBooks. Sync customers first.`)
-  }
-
-  console.log(`[QB Sync] Pushing SO ${so.orderNumber} to QuickBooks`)
-
-  // Build QB Invoice lines
-  const qbLines: QBInvoiceLine[] = so.lines.map(line => localSOLineToQB({
-    itemRefId: line.itemRefId,
-    itemRefName: line.itemRefName,
-    description: line.description,
-    quantity: line.quantity,
-    unitPrice: line.unitPrice,
-    amount: line.amount
-  }))
-
-  let result: QBInvoice
-  if (so.quickbooksId) {
-    // Update existing QB Invoice
-    const currentQBInvoice = await fetchQBInvoice(realmId, so.quickbooksId)
-
-    const updatePayload = localSOToQBInvoice(so, so.customer.quickbooksId, qbLines)
-    updatePayload.Id = currentQBInvoice.Id
-    updatePayload.SyncToken = currentQBInvoice.SyncToken
-    updatePayload.sparse = true
-
-    result = await updateQBInvoice(realmId, updatePayload)
-  } else {
-    // Create new QB Invoice
-    const createPayload = localSOToQBInvoice(so, so.customer.quickbooksId, qbLines)
-    result = await createQBInvoice(realmId, createPayload)
-  }
-
-  // Update local SO with QB response
-  const updatedSO = await prisma.salesOrder.update({
-    where: { id: soId },
-    data: {
-      quickbooksId: result.Id,
-      syncToken: result.SyncToken,
-      docNumber: result.DocNumber || so.docNumber,
-      lastSyncedAt: new Date()
-    },
-    include: {
-      customer: true,
-      lines: true
-    }
-  })
-
-  console.log(`[QB Sync] SO ${so.orderNumber} synced to QB with ID: ${result.Id}`)
-  return updatedSO
 }
 
 // =====================================

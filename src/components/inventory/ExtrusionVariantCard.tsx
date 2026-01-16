@@ -200,7 +200,7 @@ export default function ExtrusionVariantCard({
                       <td key={finish.id ?? 'mill'} className="px-2 py-2 border-b">
                         {variant ? (
                           <button
-                            onClick={() => onEditVariant(variant)}
+                            onClick={() => onEditVariant({ ...variant, masterPart })}
                             className={`w-full px-2 py-1.5 rounded text-sm font-medium transition-colors cursor-pointer ${getStockStatusColor(variant.stockStatus)}`}
                             title={`${variant.qtyOnHand} pcs${variant.binLocation ? ` - Bin: ${variant.binLocation}` : ''}`}
                           >

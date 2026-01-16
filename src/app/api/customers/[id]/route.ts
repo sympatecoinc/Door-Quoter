@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { SOStatus, InvoiceStatus, ProjectStatus } from '@prisma/client'
+import { pushCustomerToQB, getStoredRealmId } from '@/lib/quickbooks'
 
 export async function GET(
   request: NextRequest,
@@ -93,6 +94,13 @@ export async function PUT(
       notes
     } = body
 
+    // Fetch existing customer to detect status change from Prospect to Active
+    const existingCustomer = await prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { status: true, quickbooksId: true }
+    })
+    const previousStatus = existingCustomer?.status
+
     const customer = await prisma.customer.update({
       where: { id: customerId },
       data: {
@@ -115,6 +123,34 @@ export async function PUT(
         projects: true
       }
     })
+
+    // Sync changes to QuickBooks
+    // Case 1: Transitioning from Prospect to Active - create customer in QB
+    if (previousStatus === 'Prospect' && status === 'Active' && !existingCustomer?.quickbooksId) {
+      try {
+        const realmId = await getStoredRealmId()
+        if (realmId) {
+          await pushCustomerToQB(customer.id)
+          console.log(`[QB Auto-Push] Pushed newly activated customer "${customer.companyName}" to QuickBooks`)
+        }
+      } catch (error) {
+        console.error(`[QB Auto-Push] Failed to push customer "${customer.companyName}" to QB:`, error)
+        // Don't fail the request - customer update was successful
+      }
+    }
+    // Case 2: Customer already exists in QB - push all changes (name, contact, address, etc.)
+    else if (existingCustomer?.quickbooksId) {
+      try {
+        const realmId = await getStoredRealmId()
+        if (realmId) {
+          await pushCustomerToQB(customer.id)
+          console.log(`[QB Auto-Push] Synced customer "${customer.companyName}" changes to QuickBooks`)
+        }
+      } catch (error) {
+        console.error(`[QB Auto-Push] Failed to sync customer "${customer.companyName}" to QB:`, error)
+        // Don't fail the request - customer update was successful
+      }
+    }
 
     return NextResponse.json(customer)
   } catch (error) {

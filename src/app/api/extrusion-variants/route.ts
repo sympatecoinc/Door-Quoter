@@ -21,10 +21,10 @@ export async function GET(request: Request) {
     const search = searchParams.get('search') || ''
     const stockStatus = searchParams.get('stockStatus') || 'all'
 
-    // Get all extrusion MasterParts with their variants and stock length rules
+    // Get all extrusion and CutStock MasterParts with their variants and stock length rules
     const extrusions = await prisma.masterPart.findMany({
       where: {
-        partType: 'Extrusion',
+        partType: { in: ['Extrusion', 'CutStock'] },
         ...(search && {
           OR: [
             { partNumber: { contains: search, mode: 'insensitive' } },
@@ -71,8 +71,8 @@ export async function GET(request: Request) {
       const finishOptions: Array<{ id: number | null; name: string; code: string | null }> = []
 
       if (lengths.length > 0) {
-        if (ext.isMillFinish) {
-          // Mill-finish-only extrusions: show only Mill option
+        if (ext.partType === 'CutStock' || ext.isMillFinish) {
+          // CutStock and Mill-finish-only extrusions: show only Mill option (no finish codes)
           finishOptions.push({ id: null, name: 'Mill', code: null })
         } else {
           // Non-mill extrusions: show only the other finishes (no Mill option)
@@ -107,6 +107,7 @@ export async function GET(request: Request) {
           partNumber: ext.partNumber,
           baseName: ext.baseName,
           description: ext.description,
+          partType: ext.partType,
           weightPerFoot: ext.weightPerFoot,
           customPricePerLb: ext.customPricePerLb,
           isMillFinish: ext.isMillFinish

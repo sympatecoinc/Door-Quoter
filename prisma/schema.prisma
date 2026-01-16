@@ -285,6 +285,7 @@ model MasterPart {
   description             String?
   unit                    String?
   cost                    Float?
+  salePrice               Float?             // Fixed sale price - bypasses all markup calculations when set
   weightPerUnit           Float?             // Weight in ounces for Hardware parts
   weightPerFoot           Float?             // Weight in ounces per linear foot for Extrusion parts
   customPricePerLb        Float?             // Per-extrusion override for material price per pound (null = use global)

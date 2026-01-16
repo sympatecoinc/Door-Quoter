@@ -1258,13 +1258,13 @@ export default function ProductDetailView({
       return
     }
 
-    // For extrusions, validate formula and quantity
-    if (masterPartFound.partType === 'Extrusion' && !newPartFormula.trim()) {
-      alert('Please enter a length formula for the extrusion')
+    // For extrusions and CutStock, validate formula and quantity
+    if ((masterPartFound.partType === 'Extrusion' || masterPartFound.partType === 'CutStock') && !newPartFormula.trim()) {
+      alert('Please enter a length formula for the extrusion/cut stock')
       return
     }
-    if (masterPartFound.partType === 'Extrusion' && !newPartQuantity.trim()) {
-      alert('Please enter a quantity for the extrusion')
+    if ((masterPartFound.partType === 'Extrusion' || masterPartFound.partType === 'CutStock') && !newPartQuantity.trim()) {
+      alert('Please enter a quantity for the extrusion/cut stock')
       return
     }
     
@@ -1282,7 +1282,7 @@ export default function ProductDetailView({
         partType: masterPartFound.partType,
         partName: masterPartFound.baseName,
         description: masterPartFound.description || null,
-        formula: masterPartFound.partType === 'Extrusion' ? newPartFormula :
+        formula: (masterPartFound.partType === 'Extrusion' || masterPartFound.partType === 'CutStock') ? newPartFormula :
                  ((masterPartFound.unit === 'LF' || masterPartFound.unit === 'IN') && newPartFormula ? newPartFormula : null),
         variable: null,
         unit: masterPartFound.unit || 'EA',
@@ -1290,7 +1290,7 @@ export default function ProductDetailView({
         stockLength: null,
         partNumber: masterPartFound.partNumber,
         cost: masterPartFound.cost || null,
-        isMilled: masterPartFound.partType === 'Extrusion' ? newPartIsMilled : true,
+        isMilled: (masterPartFound.partType === 'Extrusion' || masterPartFound.partType === 'CutStock') ? newPartIsMilled : true,
         addFinishToPartNumber: masterPartFound.partType === 'Hardware' ? (masterPartFound.addFinishToPartNumber || false) : false,
         addToPackingList: masterPartFound.partType === 'Hardware' ? (masterPartFound.addToPackingList || false) : false
       }
@@ -1549,7 +1549,7 @@ export default function ProductDetailView({
             const filteredBOMs = productDetails?.productBOMs?.filter((b: any) => !b.optionId) || []
 
             // Sort BOMs based on selected sort option
-            const typeOrder: Record<string, number> = { 'Extrusion': 1, 'Hardware': 2, 'Fastener': 3, 'Glass': 4, 'Option': 5 }
+            const typeOrder: Record<string, number> = { 'Extrusion': 1, 'CutStock': 2, 'Hardware': 3, 'Fastener': 4, 'Glass': 5, 'Option': 6 }
             const regularBOMs = [...filteredBOMs].sort((a: any, b: any) => {
               if (bomSortOption === 'partType') {
                 // Sort by part type, then alphabetically by part name within groups
@@ -1644,7 +1644,7 @@ export default function ProductDetailView({
                               ? 'bg-purple-100 text-purple-700'
                               : 'bg-blue-100 text-blue-700'
                           }`}>
-                            {part.partType}
+                            {part.partType === 'CutStock' ? 'Cut Stock' : part.partType}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900">
@@ -1736,7 +1736,7 @@ export default function ProductDetailView({
                 {masterPartFound && (
                   <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
                     <p className="text-sm text-green-800">
-                      ✅ <strong>Found:</strong> {masterPartFound.baseName} ({masterPartFound.partType})
+                      ✅ <strong>Found:</strong> {masterPartFound.baseName} ({masterPartFound.partType === 'CutStock' ? 'Cut Stock' : masterPartFound.partType})
                     </p>
                   </div>
                 )}
@@ -1750,7 +1750,7 @@ export default function ProductDetailView({
                         className="w-full px-3 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                       >
                         <div className="text-sm font-medium text-gray-900">{suggestion.partNumber}</div>
-                        <div className="text-xs text-gray-500">{suggestion.baseName} ({suggestion.partType})</div>
+                        <div className="text-xs text-gray-500">{suggestion.baseName} ({suggestion.partType === 'CutStock' ? 'Cut Stock' : suggestion.partType})</div>
                         {suggestion.description && (
                           <div className="text-xs text-gray-400 truncate">{suggestion.description}</div>
                         )}
@@ -1760,7 +1760,7 @@ export default function ProductDetailView({
                 )}
               </div>
               
-              {masterPartFound && masterPartFound.partType === 'Extrusion' && (
+              {masterPartFound && (masterPartFound.partType === 'Extrusion' || masterPartFound.partType === 'CutStock') && (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Length Formula *</label>
@@ -1886,7 +1886,7 @@ export default function ProductDetailView({
                   </button>
                   <button
                     type="submit"
-                    disabled={creating || !masterPartFound || (masterPartFound.partType === 'Extrusion' && (!newPartFormula || !newPartQuantity)) || ((masterPartFound.partType === 'Hardware' || masterPartFound.partType === 'Fastener') && !newPartQuantity)}
+                    disabled={creating || !masterPartFound || ((masterPartFound.partType === 'Extrusion' || masterPartFound.partType === 'CutStock') && (!newPartFormula || !newPartQuantity)) || ((masterPartFound.partType === 'Hardware' || masterPartFound.partType === 'Fastener') && !newPartQuantity)}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {creating ? 'Adding...' : 'Add Part'}
