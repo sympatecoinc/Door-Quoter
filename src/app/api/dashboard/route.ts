@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ProjectStatus } from '@prisma/client'
-import { calculateTotalMarkedUpPrice, estimateCostBreakdown, type PricingMode } from '@/lib/pricing'
+import { getDefaultPricingMode } from '@/lib/pricing-mode'
 
 // Lead phase statuses (pre-acceptance)
 const LEAD_STATUSES = [
@@ -18,65 +18,83 @@ const PROJECT_STATUSES = [
   ProjectStatus.COMPLETE
 ]
 
-// Helper function to calculate sale price with category-specific markup/discount
-async function calculateProjectSalePrice(projectId: number, costPrice: number, pricingMode: PricingMode | null): Promise<number> {
-  if (!pricingMode || costPrice === 0) return costPrice
+// Helper function to calculate quote total using project's pricing fields and cost breakdowns
+interface OpeningCosts {
+  extrusionCost: number
+  hardwareCost: number
+  glassCost: number
+  packagingCost: number
+  otherCost: number
+  standardOptionCost: number
+  hybridRemainingCost: number
+}
 
-  // Fetch project with BOM data to estimate cost breakdown by part type
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    include: {
-      openings: {
-        orderBy: { id: 'asc' },
-        include: {
-          panels: {
-            include: {
-              componentInstance: {
-                include: {
-                  product: {
-                    include: {
-                      productBOMs: true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  })
+interface PricingMode {
+  markup: number
+  extrusionMarkup: number
+  hardwareMarkup: number
+  glassMarkup: number
+  packagingMarkup: number
+  discount: number
+}
 
-  if (!project) return costPrice
+interface ProjectForQuoteCalc {
+  taxRate: number
+  manualInstallationCost: number
+  pricingMode: PricingMode | null
+  openings: OpeningCosts[]
+}
 
-  // Count BOMs by type across all openings
-  const bomCounts = { Extrusion: 0, Hardware: 0, Glass: 0, Other: 0 }
+function applyMarkup(baseCost: number, categoryMarkup: number, globalMarkup: number, discount: number): number {
+  // Use category-specific markup if set, otherwise fall back to global
+  const markupPercent = categoryMarkup > 0 ? categoryMarkup : globalMarkup
+  let price = baseCost * (1 + markupPercent / 100)
 
-  for (const opening of project.openings) {
-    for (const panel of opening.panels) {
-      if (!panel.componentInstance) continue
-
-      for (const bom of panel.componentInstance.product.productBOMs || []) {
-        if (bom.partType === 'Extrusion') {
-          bomCounts.Extrusion++
-        } else if (bom.partType === 'Hardware') {
-          bomCounts.Hardware++
-        } else if (bom.partType === 'Glass') {
-          bomCounts.Glass++
-        } else {
-          bomCounts.Other++
-        }
-      }
-    }
+  // Apply discount if set
+  if (discount > 0) {
+    price *= (1 - discount / 100)
   }
 
-  // Estimate cost breakdown and apply category-specific markups
-  const costBreakdown = estimateCostBreakdown(costPrice, bomCounts)
-  return calculateTotalMarkedUpPrice(costBreakdown, pricingMode)
+  return price
+}
+
+function calculateQuoteTotal(project: ProjectForQuoteCalc, defaultPricingMode?: PricingMode | null): number {
+  const pm = project.pricingMode || defaultPricingMode
+  const globalMarkup = pm?.markup || 0
+  const discount = pm?.discount || 0
+
+  let adjustedSubtotal = 0
+
+  for (const opening of project.openings) {
+    // Apply category-specific markups to each cost component
+    const markedUpExtrusion = applyMarkup(opening.extrusionCost, pm?.extrusionMarkup || 0, globalMarkup, discount)
+    const markedUpHardware = applyMarkup(opening.hardwareCost, pm?.hardwareMarkup || 0, globalMarkup, discount)
+    const markedUpGlass = applyMarkup(opening.glassCost, pm?.glassMarkup || 0, globalMarkup, discount)
+    const markedUpPackaging = applyMarkup(opening.packagingCost, pm?.packagingMarkup || 0, globalMarkup, discount)
+    const markedUpOther = applyMarkup(opening.otherCost, globalMarkup, globalMarkup, discount)
+
+    // Standard options and hybrid remaining are not marked up
+    const standardOptions = opening.standardOptionCost
+    const hybridRemaining = opening.hybridRemainingCost
+
+    adjustedSubtotal += markedUpExtrusion + markedUpHardware + markedUpGlass + markedUpPackaging + markedUpOther + standardOptions + hybridRemaining
+  }
+
+  // Add installation cost
+  const subtotalWithInstallation = adjustedSubtotal + project.manualInstallationCost
+
+  // Apply tax
+  const taxAmount = subtotalWithInstallation * project.taxRate
+  const total = subtotalWithInstallation + taxAmount
+
+  return Math.round(total * 100) / 100
 }
 
 export async function GET() {
   try {
+    // Get the default pricing mode to use for projects without one
+    const defaultPricingMode = await getDefaultPricingMode(prisma)
+
     // Get total projects (only "Won" projects - QUOTE_ACCEPTED, ACTIVE, COMPLETE)
     const totalProjects = await prisma.project.count({
       where: {
@@ -94,14 +112,35 @@ export async function GET() {
     // Get total openings
     const totalOpenings = await prisma.opening.count()
 
-    // Get all projects with pricing modes to calculate total portfolio value (only won projects)
+    // Get all projects to calculate total portfolio value (only won projects)
     const allProjects = await prisma.project.findMany({
       where: {
         status: { in: PROJECT_STATUSES }
       },
-      include: {
-        openings: true,
-        pricingMode: true
+      select: {
+        taxRate: true,
+        manualInstallationCost: true,
+        pricingMode: {
+          select: {
+            markup: true,
+            extrusionMarkup: true,
+            hardwareMarkup: true,
+            glassMarkup: true,
+            packagingMarkup: true,
+            discount: true
+          }
+        },
+        openings: {
+          select: {
+            extrusionCost: true,
+            hardwareCost: true,
+            glassCost: true,
+            packagingCost: true,
+            otherCost: true,
+            standardOptionCost: true,
+            hybridRemainingCost: true
+          }
+        }
       }
     })
 
@@ -110,27 +149,38 @@ export async function GET() {
       where: {
         status: { in: LEAD_STATUSES }
       },
-      include: {
-        openings: true,
-        pricingMode: true
+      select: {
+        taxRate: true,
+        manualInstallationCost: true,
+        pricingMode: {
+          select: {
+            markup: true,
+            extrusionMarkup: true,
+            hardwareMarkup: true,
+            glassMarkup: true,
+            packagingMarkup: true,
+            discount: true
+          }
+        },
+        openings: {
+          select: {
+            extrusionCost: true,
+            hardwareCost: true,
+            glassCost: true,
+            packagingCost: true,
+            otherCost: true,
+            standardOptionCost: true,
+            hybridRemainingCost: true
+          }
+        }
       }
     })
 
     // Calculate total portfolio value (won projects only)
-    let totalValue = 0
-    for (const project of allProjects) {
-      const costValue = project.openings.reduce((openingSum, opening) => openingSum + opening.price, 0)
-      const saleValue = await calculateProjectSalePrice(project.id, costValue, project.pricingMode)
-      totalValue += saleValue
-    }
+    const totalValue = allProjects.reduce((sum, project) => sum + calculateQuoteTotal(project, defaultPricingMode), 0)
 
     // Calculate total lead pipeline value
-    let leadPipelineValue = 0
-    for (const lead of allLeadProjects) {
-      const costValue = lead.openings.reduce((openingSum, opening) => openingSum + opening.price, 0)
-      const saleValue = await calculateProjectSalePrice(lead.id, costValue, lead.pricingMode)
-      leadPipelineValue += saleValue
-    }
+    const leadPipelineValue = allLeadProjects.reduce((sum, lead) => sum + calculateQuoteTotal(lead, defaultPricingMode), 0)
 
     // Get recent projects (won projects only)
     const recentProjects = await prisma.project.findMany({
@@ -141,9 +191,34 @@ export async function GET() {
       orderBy: {
         updatedAt: 'desc'
       },
-      include: {
-        openings: true,
-        pricingMode: true,
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        updatedAt: true,
+        taxRate: true,
+        manualInstallationCost: true,
+        pricingMode: {
+          select: {
+            markup: true,
+            extrusionMarkup: true,
+            hardwareMarkup: true,
+            glassMarkup: true,
+            packagingMarkup: true,
+            discount: true
+          }
+        },
+        openings: {
+          select: {
+            extrusionCost: true,
+            hardwareCost: true,
+            glassCost: true,
+            packagingCost: true,
+            otherCost: true,
+            standardOptionCost: true,
+            hybridRemainingCost: true
+          }
+        },
         _count: {
           select: {
             openings: true
@@ -152,18 +227,49 @@ export async function GET() {
       }
     })
 
-    // Get recent leads
+    // Get all leads
     const recentLeads = await prisma.project.findMany({
       where: {
         status: { in: LEAD_STATUSES }
       },
-      take: 5,
       orderBy: {
         updatedAt: 'desc'
       },
-      include: {
-        openings: true,
-        pricingMode: true,
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        updatedAt: true,
+        taxRate: true,
+        manualInstallationCost: true,
+        pricingMode: {
+          select: {
+            markup: true,
+            extrusionMarkup: true,
+            hardwareMarkup: true,
+            glassMarkup: true,
+            packagingMarkup: true,
+            discount: true
+          }
+        },
+        openings: {
+          select: {
+            extrusionCost: true,
+            hardwareCost: true,
+            glassCost: true,
+            packagingCost: true,
+            otherCost: true,
+            standardOptionCost: true,
+            hybridRemainingCost: true
+          }
+        },
+        customer: {
+          select: {
+            id: true,
+            companyName: true,
+            status: true
+          }
+        },
         _count: {
           select: {
             openings: true
@@ -172,39 +278,30 @@ export async function GET() {
       }
     })
 
-    // Calculate project values with pricing modes
-    const projectsWithValues = await Promise.all(
-      recentProjects.map(async (project) => {
-        const costValue = project.openings.reduce((sum, opening) => sum + opening.price, 0)
-        const saleValue = await calculateProjectSalePrice(project.id, costValue, project.pricingMode)
+    // Calculate project values
+    const projectsWithValues = recentProjects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      status: project.status,
+      openingsCount: project._count.openings,
+      value: calculateQuoteTotal(project, defaultPricingMode),
+      updatedAt: project.updatedAt.toISOString()
+    }))
 
-        return {
-          id: project.id,
-          name: project.name,
-          status: project.status,
-          openingsCount: project._count.openings,
-          value: saleValue,
-          updatedAt: project.updatedAt.toISOString()
-        }
-      })
-    )
-
-    // Calculate lead values with pricing modes
-    const leadsWithValues = await Promise.all(
-      recentLeads.map(async (lead) => {
-        const costValue = lead.openings.reduce((sum, opening) => sum + opening.price, 0)
-        const saleValue = await calculateProjectSalePrice(lead.id, costValue, lead.pricingMode)
-
-        return {
-          id: lead.id,
-          name: lead.name,
-          status: lead.status,
-          openingsCount: lead._count.openings,
-          value: saleValue,
-          updatedAt: lead.updatedAt.toISOString()
-        }
-      })
-    )
+    // Calculate lead values
+    const leadsWithValues = recentLeads.map((lead) => ({
+      id: lead.id,
+      name: lead.name,
+      status: lead.status,
+      openingsCount: lead._count.openings,
+      value: calculateQuoteTotal(lead, defaultPricingMode),
+      updatedAt: lead.updatedAt.toISOString(),
+      customer: lead.customer ? {
+        id: lead.customer.id,
+        companyName: lead.customer.companyName,
+        isProspect: lead.customer.status === 'Prospect'
+      } : null
+    }))
 
     return NextResponse.json({
       stats: {
@@ -219,6 +316,9 @@ export async function GET() {
     })
   } catch (error: unknown) {
     console.error('Dashboard API Error:', error)
+    if (error instanceof Error) {
+      console.error('Error stack:', error.stack)
+    }
     const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
       { error: 'Failed to fetch dashboard data', details: errorMessage },

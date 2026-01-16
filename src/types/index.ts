@@ -42,8 +42,8 @@ export const STATUS_CONFIG: Record<ProjectStatus, {
   },
   [ProjectStatus.APPROVED]: {
     label: 'Approved',
-    color: 'green',
-    bgColor: 'bg-green-100',
+    color: 'emerald',
+    bgColor: 'bg-emerald-100',
     textColor: 'text-green-800'
   },
   [ProjectStatus.REVISE]: {
@@ -62,7 +62,7 @@ export const STATUS_CONFIG: Record<ProjectStatus, {
     label: 'Quote Accepted',
     color: 'emerald',
     bgColor: 'bg-emerald-100',
-    textColor: 'text-emerald-800'
+    textColor: 'text-green-800'
   },
   [ProjectStatus.ACTIVE]: {
     label: 'Active',
@@ -257,7 +257,7 @@ export interface ComponentInstance {
   updatedAt: Date
 }
 
-export type MenuOption = 'dashboard' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'salesOrders' | 'invoices' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments'
+export type MenuOption = 'dashboard' | 'crm' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'salesOrders' | 'invoices' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments'
 
 // Vendor Management Types
 export interface Vendor {
@@ -457,3 +457,94 @@ export interface GlobalSetting {
 
 // Bin Location exports
 export * from './bin-location'
+
+// Quote Version Types
+export interface QuoteSnapshotOpening {
+  id: number
+  name: string
+  dimensions: string
+  panels: Array<{
+    type: string
+    direction?: string
+    width: number
+    height: number
+    glassType: string
+  }>
+  price: number
+  costBreakdown: {
+    extrusion: number
+    hardware: number
+    glass: number
+    packaging: number
+    other: number
+  }
+}
+
+export interface QuoteSnapshot {
+  openings: QuoteSnapshotOpening[]
+  pricingMode: {
+    name: string
+    markup: number
+    discount: number
+    extrusionMarkup?: number
+    hardwareMarkup?: number
+    glassMarkup?: number
+    packagingMarkup?: number
+  } | null
+  installationMethod: string
+  installationComplexity?: string
+  manualInstallationCost?: number
+  quoteItems: any[] // Full quote items from the quote API
+}
+
+export interface QuoteVersion {
+  id: number
+  projectId: number
+  version: number
+  subtotal: number
+  markupAmount: number
+  discountAmount: number
+  taxAmount: number
+  installationCost: number
+  totalPrice: number
+  pricingModeId: number | null
+  pricingModeName: string | null
+  taxRate: number
+  snapshot: QuoteSnapshot
+  changeNotes: string | null
+  sentAt: Date | null
+  sentTo: string | null
+  createdAt: Date
+  createdBy: string | null
+}
+
+// Lead Detail Types for Sales View
+export interface LeadDetail {
+  id: number
+  name: string
+  status: ProjectStatus
+  createdAt: Date
+  updatedAt: Date
+  dueDate?: Date | null
+  customer: {
+    id: number
+    companyName: string
+    contactName?: string | null
+    email?: string | null
+    phone?: string | null
+    status: string
+  } | null
+  openings: Array<{
+    id: number
+    name: string
+    finishedWidth: number | null
+    finishedHeight: number | null
+    price: number
+    panelCount: number
+  }>
+  totalValue: number
+  pricingMode?: {
+    id: number
+    name: string
+  } | null
+}

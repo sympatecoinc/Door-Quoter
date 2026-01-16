@@ -38,6 +38,7 @@ model Project {
   statusHistory          ProjectStatusHistory[]
   projectContacts        ProjectContact[]   // Project-specific contacts (architect, GC, etc.)
   projectNotes           ProjectNote[]      // Project notes
+  quoteVersions          QuoteVersion[]     // Historical quote snapshots
   customer               Customer           @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: Restrict)
   pricingMode            PricingMode?       @relation(fields: [pricingModeId], references: [id], onDelete: SetNull)
   primaryContact         Contact?           @relation("ProjectPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
@@ -45,6 +46,45 @@ model Project {
   salesOrders            SalesOrder[]
 
   @@map("Projects")
+}
+
+// Quote Version - Historical snapshots of quotes for tracking changes
+model QuoteVersion {
+  id               Int         @id @default(autoincrement())
+  projectId        Int
+  project          Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  version          Int         // Auto-increment per project (1, 2, 3...)
+
+  // Price summary (for quick display without parsing snapshot)
+  subtotal         Float
+  markupAmount     Float
+  discountAmount   Float
+  taxAmount        Float
+  installationCost Float
+  totalPrice       Float
+
+  // Settings at time of quote
+  pricingModeId    Int?
+  pricingModeName  String?     // Denormalized for history (mode might be deleted later)
+  taxRate          Float
+
+  // Full data snapshot (openings, items, calculations)
+  snapshot         Json
+
+  // Version tracking
+  changeNotes      String?     // Auto-generated or manual summary of changes
+
+  // Send tracking
+  sentAt           DateTime?
+  sentTo           String?     // Email address
+
+  // Metadata
+  createdAt        DateTime    @default(now())
+  createdBy        String?     // User email/name
+
+  @@unique([projectId, version])
+  @@index([projectId])
+  @@map("QuoteVersions")
 }
 
 model ProjectStatusHistory {

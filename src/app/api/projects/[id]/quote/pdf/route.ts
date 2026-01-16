@@ -32,10 +32,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const quoteApiData = await quoteResponse.json()
 
-    // Fetch project for attachments and product IDs (minimal query)
+    // Fetch project for attachments, product IDs, and customer info
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
+        customer: {
+          select: {
+            companyName: true,
+            contactName: true,
+            email: true,
+            phone: true,
+            address: true,
+            city: true,
+            state: true,
+            zipCode: true
+          }
+        },
         quoteAttachments: {
           orderBy: { displayOrder: 'asc' }
         },
@@ -52,6 +64,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
     })
+
+    // Fetch company logo from branding settings
+    const logoSetting = await prisma.globalSetting.findUnique({
+      where: { key: 'company_logo' }
+    })
+    const companyLogo = logoSetting?.value || null
 
     if (!project) {
       return NextResponse.json(
@@ -74,6 +92,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           discount: quoteApiData.project.pricingMode.discount
         } : null
       },
+      customer: project.customer ? {
+        companyName: project.customer.companyName,
+        contactName: project.customer.contactName,
+        email: project.customer.email,
+        phone: project.customer.phone,
+        address: project.customer.address,
+        city: project.customer.city,
+        state: project.customer.state,
+        zip: project.customer.zipCode
+      } : null,
+      companyLogo: companyLogo,
       quoteItems: quoteApiData.quoteItems,
       subtotal: quoteApiData.subtotal,
       markupAmount: quoteApiData.markupAmount,

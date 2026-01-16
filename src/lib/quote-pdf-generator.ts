@@ -6,7 +6,6 @@ import { jsPDF } from 'jspdf'
 import { PDFDocument } from 'pdf-lib'
 import fs from 'fs'
 import path from 'path'
-import { ensurePngDataUrl, isSvgDataUrl } from './svg-to-png'
 
 export interface QuoteItem {
   openingId: number
@@ -36,6 +35,17 @@ export interface QuoteData {
       discount: number
     } | null
   }
+  customer?: {
+    companyName: string
+    contactName?: string | null
+    email?: string | null
+    phone?: string | null
+    address?: string | null
+    city?: string | null
+    state?: string | null
+    zip?: string | null
+  } | null
+  companyLogo?: string | null // Path to company logo from branding settings
   quoteItems: QuoteItem[]
   subtotal: number
   markupAmount: number
@@ -317,47 +327,101 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
   const pageWidth = pdf.internal.pageSize.getWidth() // 215.9mm for letter
   const pageHeight = pdf.internal.pageSize.getHeight() // 279.4mm for letter
 
-  // Header section
-  pdf.setFontSize(24)
+  // Header section - Project name on left, logo and date on right
+  let headerY = 15
+  const logoMaxWidth = 40 // Maximum logo width in mm
+  const logoMaxHeight = 15 // Maximum logo height in mm
+  let logoActualHeight = 0
+
+  // Right side: Company logo above the date
+  if (quoteData.companyLogo) {
+    try {
+      const logoPath = path.join(process.cwd(), 'public', quoteData.companyLogo)
+      if (fs.existsSync(logoPath)) {
+        const logoBuffer = fs.readFileSync(logoPath)
+        const logoBase64 = logoBuffer.toString('base64')
+        const logoExt = path.extname(quoteData.companyLogo).toLowerCase().replace('.', '')
+        const mimeType = logoExt === 'svg' ? 'image/svg+xml' :
+                         logoExt === 'jpg' ? 'image/jpeg' : `image/${logoExt}`
+        const logoData = `data:${mimeType};base64,${logoBase64}`
+
+        // Position logo in top right, above where date will be
+        const logoX = pageWidth - 20 - logoMaxWidth
+        pdf.addImage(logoData, logoExt.toUpperCase() === 'JPG' ? 'JPEG' : logoExt.toUpperCase(),
+          logoX, headerY, logoMaxWidth, logoMaxHeight)
+        logoActualHeight = logoMaxHeight
+      }
+    } catch (error) {
+      console.error('Error adding company logo to PDF:', error)
+    }
+  }
+
+  // Left: Project name (bold, larger) - 15mm margin to match cards
+  const projectNameY = logoActualHeight > 0 ? headerY + 5 : headerY + 5
+  pdf.setFontSize(16)
   pdf.setFont('helvetica', 'bold')
-  pdf.text('JOB ESTIMATE', pageWidth / 2, 20, { align: 'center' })
+  pdf.text(quoteData.project.name, 15, projectNameY)
 
-  // Project information
-  pdf.setFontSize(12)
-  pdf.setFont('helvetica', 'normal')
-  const projectInfoY = 35
+  // Customer info below project name
+  let customerY = projectNameY + 6
+  if (quoteData.customer) {
+    pdf.setFontSize(10)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(60, 60, 60)
 
-  // Left column
-  pdf.setFont('helvetica', 'bold')
-  pdf.text('Project:', 20, projectInfoY)
-  pdf.setFont('helvetica', 'normal')
-  pdf.text(quoteData.project.name, 45, projectInfoY)
+    // Company name
+    pdf.text(quoteData.customer.companyName, 15, customerY)
+    customerY += 4.5
 
-  pdf.setFont('helvetica', 'bold')
-  pdf.text('Status:', 20, projectInfoY + 7)
-  pdf.setFont('helvetica', 'normal')
-  pdf.text(quoteData.project.status, 45, projectInfoY + 7)
+    // Contact name (if present)
+    if (quoteData.customer.contactName) {
+      pdf.text(quoteData.customer.contactName, 15, customerY)
+      customerY += 4.5
+    }
 
-  // Right column
-  pdf.setFont('helvetica', 'bold')
-  pdf.text('Date:', pageWidth - 70, projectInfoY)
-  pdf.setFont('helvetica', 'normal')
-  pdf.text(new Date().toLocaleDateString(), pageWidth - 45, projectInfoY)
+    // Address line (if present)
+    if (quoteData.customer.address) {
+      pdf.text(quoteData.customer.address, 15, customerY)
+      customerY += 4.5
+    }
 
-  pdf.setFont('helvetica', 'bold')
-  pdf.text('Valid Until:', pageWidth - 70, projectInfoY + 7)
-  pdf.setFont('helvetica', 'normal')
-  const validUntil = new Date()
-  validUntil.setDate(validUntil.getDate() + 30)
-  pdf.text(validUntil.toLocaleDateString(), pageWidth - 45, projectInfoY + 7)
+    // City, State ZIP (if present)
+    const cityStateZip = [
+      quoteData.customer.city,
+      quoteData.customer.state,
+      quoteData.customer.zip
+    ].filter(Boolean).join(', ')
+    if (cityStateZip) {
+      pdf.text(cityStateZip, 15, customerY)
+      customerY += 4.5
+    }
 
-  // Divider line
-  pdf.setLineWidth(0.5)
+    // Phone (if present)
+    if (quoteData.customer.phone) {
+      pdf.text(quoteData.customer.phone, 15, customerY)
+      customerY += 4.5
+    }
+
+    // Email (if present)
+    if (quoteData.customer.email) {
+      pdf.text(quoteData.customer.email, 15, customerY)
+      customerY += 4.5
+    }
+
+    pdf.setTextColor(0, 0, 0)
+  }
+
+  // Calculate divider position - below left content and logo
+  const rightContentBottom = logoActualHeight > 0 ? headerY + logoActualHeight + 4 : headerY
+  const dividerY = Math.max(customerY, rightContentBottom) + 2
+
+  // Divider line - matches card width (15mm margins)
+  pdf.setLineWidth(0.33)
   pdf.setDrawColor(200, 200, 200)
-  pdf.line(20, projectInfoY + 13, pageWidth - 20, projectInfoY + 13)
+  pdf.line(15, dividerY, pageWidth - 15, dividerY)
 
   // Quote items table - now returns the page number where it ended
-  const tableStartY = projectInfoY + 20
+  const tableStartY = dividerY + 10
   await addQuoteItemsTable(pdf, quoteData, tableStartY)
 
   // Footer with totals - will be added on the last page by addQuoteItemsTable
@@ -375,15 +439,13 @@ async function addQuoteItemsTable(
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
   const marginX = 15 // Reduced from 20mm to maximize width for portrait layout
-  const cellPadding = 3
-  const rowHeight = 45 // Height for rows with images (increased for better door proportions)
+  const cellPadding = 5
+  const cardHeight = 42 // Height for each opening card
+  const cardSpacing = 6 // Space between cards
   const footerHeight = 60 // Space needed for footer with pricing
-  const ITEMS_PER_PAGE = 4 // Maximum items per page
-
-  // Column widths - optimized for portrait layout
-  const colElevation = 53 // 33% wider than previous 40mm for better elevation visibility
-  const colOpening = 105 // Combined Opening + Specifications column
-  const colPrice = 28 // Narrower price column as requested
+  const ITEMS_PER_PAGE = 5 // Maximum items per page (cards are more compact)
+  const cardWidth = pageWidth - 2 * marginX
+  const cornerRadius = 3 // Rounded corner radius
 
   const totalItems = quoteData.quoteItems.length
   let currentY = startY
@@ -411,28 +473,7 @@ async function addQuoteItemsTable(
     }
   }
 
-  // Helper function to add table header
-  const addTableHeader = (yPos: number) => {
-    pdf.setFillColor(0, 0, 0)
-    pdf.rect(marginX, yPos, pageWidth - 2 * marginX, 8, 'F')
-
-    pdf.setFontSize(9)
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(255, 255, 255)
-
-    let currentX = marginX
-    pdf.text('Elevation', currentX + colElevation / 2, yPos + 5.5, { align: 'center' })
-    currentX += colElevation
-    pdf.text('Opening', currentX + colOpening / 2, yPos + 5.5, { align: 'center' })
-    currentX += colOpening
-    pdf.text('Price', currentX + colPrice / 2, yPos + 5.5, { align: 'center' })
-
-    pdf.setTextColor(0, 0, 0)
-    return yPos + 8
-  }
-
-  // Add initial table header
-  currentY = addTableHeader(currentY)
+  // No section header - cards start directly
 
   // Process each item
   for (let itemIndex = 0; itemIndex < totalItems; itemIndex++) {
@@ -444,24 +485,22 @@ async function addQuoteItemsTable(
     // Check if we need a new page BEFORE drawing anything
     let needsNewPage = false
 
+    const totalCardHeight = cardHeight + cardSpacing
+
     if (itemsOnCurrentPage >= maxItemsThisPage) {
       // Already at max items for this page
       needsNewPage = true
-    } else if (!isLastItem && currentY + rowHeight > pageHeight - 10) {
-      // Not last item and row won't fit
+    } else if (!isLastItem && currentY + totalCardHeight > pageHeight - 10) {
+      // Not last item and card won't fit
       needsNewPage = true
     } else if (isLastItem) {
       // For last item, check if it + footer will fit
-      // Special case: If we have 2-4 items total, be more lenient to keep them together
-      if (totalItems <= 4 && currentPageIsFirst) {
-        // For 2-4 items on first page, try to fit them all even if tight
-        // Use minimal margin to maximize space (landscape letter is only 215.9mm tall)
-        if (currentY + rowHeight + footerHeight > pageHeight) {
+      if (totalItems <= 5 && currentPageIsFirst) {
+        if (currentY + totalCardHeight + footerHeight > pageHeight) {
           needsNewPage = true
         }
       } else {
-        // Normal case: check with standard margin
-        if (currentY + rowHeight + footerHeight > pageHeight - 10) {
+        if (currentY + totalCardHeight + footerHeight > pageHeight - 10) {
           needsNewPage = true
         }
       }
@@ -471,199 +510,86 @@ async function addQuoteItemsTable(
       // Add new page and reset
       pdf.addPage()
       currentY = 20
-      currentY = addTableHeader(currentY)
       itemsOnCurrentPage = 0
       currentPageIsFirst = false
     }
 
-    // Draw row border
-    pdf.setDrawColor(200, 200, 200)
-    pdf.setLineWidth(0.3)
-    pdf.rect(marginX, currentY, pageWidth - 2 * marginX, rowHeight)
+    // Draw card with rounded corners and grey background (no outline)
+    pdf.setFillColor(243, 244, 246) // bg-gray-100
+    pdf.roundedRect(marginX, currentY, cardWidth, cardHeight, cornerRadius, cornerRadius, 'F')
 
-    let currentX = marginX
+    // Price badge in top right - hanging off the card edge
+    const priceText = `$${item.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
+    pdf.setFontSize(10)
+    pdf.setFont('helvetica', 'bold')
+    const priceWidth = pdf.getTextWidth(priceText) + 6 // Reduced padding for narrower badge
+    const badgeHeight = 8 // Slightly taller for better vertical centering
+    const badgeX = marginX + cardWidth - priceWidth + 2 // Hang off right edge by 2mm
+    const badgeY = currentY - 3 // Hang off top edge by 3mm
 
-    // Column 1: Elevation thumbnails with aspect-ratio-aware rendering
-    if (item.elevationImages && item.elevationImages.length > 0) {
-      const availableWidth = colElevation - 2 * cellPadding
-      const availableHeight = rowHeight - 2 * cellPadding
-      const numPanels = Math.min(item.elevationImages.length, 3)
+    // Draw price badge background - dark gray
+    pdf.setFillColor(51, 51, 51) // #333
+    pdf.roundedRect(badgeX, badgeY, priceWidth, badgeHeight, 2, 2, 'F')
 
-      // Typical door aspect ratio is tall/narrow (e.g., 80" H x 36" W = 2.22:1)
-      // We'll assume a 2.2:1 aspect ratio for doors if we can't detect it
-      const assumedAspectRatio = 2.2 // height / width
+    // Draw price text - centered vertically and horizontally
+    pdf.setTextColor(255, 255, 255)
+    pdf.text(priceText, badgeX + priceWidth / 2, badgeY + badgeHeight / 2 + 1.5, { align: 'center' })
+    pdf.setTextColor(0, 0, 0)
 
-      // Calculate width per panel based on aspect ratio
-      // Each panel should maintain proper proportions
-      const panelWidth = Math.min(
-        availableWidth / numPanels, // Equal division
-        availableHeight / assumedAspectRatio // Width based on available height and aspect ratio
-      )
-      const panelHeight = Math.min(availableHeight, panelWidth * assumedAspectRatio)
-
-      // Position panels side-by-side, centered within the available width
-      const totalPanelsWidth = panelWidth * numPanels
-      const startX = currentX + cellPadding + (availableWidth - totalPanelsWidth) / 2
-
-      for (let i = 0; i < numPanels; i++) {
-        try {
-          let imgData = item.elevationImages[i]
-
-          // Check if the image data already has a data URI prefix
-          if (!imgData.startsWith('data:')) {
-            imgData = `data:image/png;base64,${imgData}`
-          }
-
-          const imgX = startX + (i * panelWidth)
-          const imgY = currentY + cellPadding + (availableHeight - panelHeight) / 2 // Center vertically
-
-          // Convert SVG to PNG at high resolution to preserve details
-          // Render at high resolution to ensure SVG details (rails, stiles, glass) remain visible
-          const highResWidth = 500 // High resolution for clear detail preservation
-          const highResHeight = Math.floor(highResWidth * assumedAspectRatio)
-          imgData = await ensurePngDataUrl(imgData, highResWidth, highResHeight)
-
-          // Detect image format from data URI
-          let format: 'PNG' | 'JPEG' = 'PNG'
-          if (imgData.includes('data:image/jpeg') || imgData.includes('data:image/jpg')) {
-            format = 'JPEG'
-          }
-
-          pdf.addImage(imgData, format, imgX, imgY, panelWidth, panelHeight)
-        } catch (error) {
-          console.error('Error adding elevation image:', error)
-          // Draw a placeholder box instead
-          const imgX = startX + (i * panelWidth)
-          const imgY = currentY + cellPadding + (availableHeight - panelHeight) / 2
-          pdf.setDrawColor(200, 200, 200)
-          pdf.rect(imgX, imgY, panelWidth, panelHeight)
-        }
-      }
-    }
-    currentX += colElevation
-
-    // Vertical separator
-    pdf.line(currentX, currentY, currentX, currentY + rowHeight)
-
-    // Column 2: Combined Opening and Specifications
     let contentY = currentY + cellPadding + 4
 
-    // Opening name with direction
-    pdf.setFontSize(10)
+    // Opening name as header (bold, larger font)
+    pdf.setFontSize(11)
     pdf.setFont('helvetica', 'bold')
     let openingNameText = item.name
     if (item.openingDirections && item.openingDirections.length > 0) {
       openingNameText += ` (${item.openingDirections.join(', ')})`
     }
-    const openingNameLines = pdf.splitTextToSize(openingNameText, colOpening - 2 * cellPadding)
-    pdf.text(openingNameLines, currentX + cellPadding, contentY)
-    contentY += 5 * openingNameLines.length
+    pdf.text(openingNameText, marginX + cellPadding, contentY)
+    contentY += 5
 
-    // Opening type (description - e.g., "1 Sliding Door")
+    // Opening type (description - e.g., "1 Sliding Door") - smaller, normal weight
+    pdf.setFontSize(9)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(100, 100, 100)
+    pdf.text(item.description, marginX + cellPadding, contentY)
+    pdf.setTextColor(0, 0, 0)
+    contentY += 5
+
+    // Specifications in a compact single line
     pdf.setFontSize(8)
-    pdf.setFont('helvetica', 'normal')
-    const descLines = pdf.splitTextToSize(item.description, colOpening - 2 * cellPadding)
-    pdf.text(descLines, currentX + cellPadding, contentY)
-    contentY += 4 * descLines.length + 2
+    const specLine = `${item.dimensions}  •  ${item.color}  •  ${item.glassType}`
+    pdf.text(specLine, marginX + cellPadding, contentY)
+    contentY += 5
 
-    // Door specifications
-    pdf.setFontSize(8)
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('DIMENSIONS: ', currentX + cellPadding, contentY)
-    pdf.setFont('helvetica', 'normal')
-    const dimWidth = pdf.getTextWidth('DIMENSIONS: ')
-    pdf.text(item.dimensions, currentX + cellPadding + dimWidth, contentY)
-    contentY += 4
+    // Hardware section
+    if (item.hardware && item.hardware !== 'Standard' && item.hardware.trim() !== '') {
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setTextColor(70, 70, 70)
+      pdf.text('Options: ', marginX + cellPadding, contentY)
+      const optionsWidth = pdf.getTextWidth('Options: ')
 
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('COLOR: ', currentX + cellPadding, contentY)
-    pdf.setFont('helvetica', 'normal')
-    const colorWidth = pdf.getTextWidth('COLOR: ')
-    pdf.text(item.color.toUpperCase(), currentX + cellPadding + colorWidth, contentY)
-    contentY += 4
-
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('GLASS: ', currentX + cellPadding, contentY)
-    pdf.setFont('helvetica', 'normal')
-    const glassWidth = pdf.getTextWidth('GLASS: ')
-    pdf.text(item.glassType.toUpperCase(), currentX + cellPadding + glassWidth, contentY)
-    contentY += 4
-
-    // Add hardware options if they exist
-    if (item.hardware && item.hardware !== 'Standard') {
-      // Add space before hardware section
-      contentY += 1
-      // Draw a subtle separator line
-      pdf.setDrawColor(200, 200, 200)
-      pdf.setLineWidth(0.2)
-      pdf.line(currentX + cellPadding, contentY, currentX + colOpening - cellPadding, contentY)
-      contentY += 5
-
-      // Split hardware items and format them
+      // Format hardware items inline
+      pdf.setFont('helvetica', 'normal')
       const hardwareItems = item.hardware.split(' • ')
-      for (const hardwareItem of hardwareItems) {
-        // Check if item has STANDARD badge
-        const hasStandardBadge = hardwareItem.includes(' | STANDARD')
-        // Replace | + with - for formatting, and remove | STANDARD temporarily
-        let formattedItem = hardwareItem.replace(' | +', ' - ').replace(' | STANDARD', '')
-
-        // Capitalize and bold the category name (everything before the colon)
-        if (formattedItem.includes(':')) {
-          const colonIndex = formattedItem.indexOf(':')
-          const categoryName = formattedItem.substring(0, colonIndex).toUpperCase()
-          const remainder = formattedItem.substring(colonIndex)
-
-          // Draw category name in bold
-          pdf.setFont('helvetica', 'bold')
-          pdf.text(categoryName, currentX + cellPadding, contentY)
-
-          // Draw remainder in normal font
-          pdf.setFont('helvetica', 'normal')
-          let categoryWidth = pdf.getTextWidth(categoryName)
-          const remainderLines = pdf.splitTextToSize(remainder, colOpening - 2 * cellPadding - categoryWidth)
-          pdf.text(remainderLines, currentX + cellPadding + categoryWidth, contentY)
-
-          // Add STANDARD badge if applicable
-          if (hasStandardBadge) {
-            // Calculate position after the price
-            const fullTextWidth = categoryWidth + pdf.getTextWidth(remainder)
-            const badgeX = currentX + cellPadding + fullTextWidth + 2 // 2mm spacing
-
-            // Draw badge background
-            pdf.setFillColor(220, 220, 220) // Light gray
-            const badgeWidth = pdf.getTextWidth(' STANDARD ') + 1
-            const badgeHeight = 3.5
-            pdf.roundedRect(badgeX, contentY - 2.5, badgeWidth, badgeHeight, 0.5, 0.5, 'F')
-
-            // Draw badge text
-            pdf.setFont('helvetica', 'bold')
-            pdf.setFontSize(7)
-            pdf.text('STANDARD', badgeX + 0.5, contentY, { baseline: 'middle' })
-            pdf.setFontSize(8)
-          }
-
-          contentY += 4 * remainderLines.length
-        } else {
-          // No category, just display as normal
-          pdf.setFont('helvetica', 'normal')
-          const hardwareLines = pdf.splitTextToSize(formattedItem, colOpening - 2 * cellPadding)
-          pdf.text(hardwareLines, currentX + cellPadding, contentY)
-          contentY += 4 * hardwareLines.length
-        }
-      }
+      const formattedHardware = hardwareItems
+        .map(h => h.replace(' | +', ' +').replace(' | STANDARD', ''))
+        .join('  •  ')
+      const hardwareLines = pdf.splitTextToSize(formattedHardware, cardWidth - 2 * cellPadding - optionsWidth - 10)
+      pdf.text(hardwareLines, marginX + cellPadding + optionsWidth, contentY)
+      pdf.setTextColor(0, 0, 0)
+    } else {
+      // No hardware options
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'italic')
+      pdf.setTextColor(140, 140, 140)
+      pdf.text('No additional options', marginX + cellPadding, contentY)
+      pdf.setTextColor(0, 0, 0)
+      pdf.setFont('helvetica', 'normal')
     }
-    currentX += colOpening
 
-    // Vertical separator
-    pdf.line(currentX, currentY, currentX, currentY + rowHeight)
-
-    // Column 4: Price
-    pdf.setFontSize(14)
-    pdf.setFont('helvetica', 'bold')
-    pdf.text(`$${item.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
-      currentX + colPrice / 2, currentY + rowHeight / 2 + 2, { align: 'center' })
-
-    currentY += rowHeight
+    currentY += cardHeight + cardSpacing
     itemsOnCurrentPage++
 
     // If this is the last item, add the footer on the current page
@@ -674,62 +600,90 @@ async function addQuoteItemsTable(
 }
 
 /**
- * Adds the footer with pricing totals
+ * Adds the footer with pricing totals, valid until, and terms
  */
 function addQuoteFooter(pdf: jsPDF, quoteData: QuoteData): void {
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
-  const marginX = 20
-  const footerY = pageHeight - 60
+  const contentPadding = 20 // Padding for content inside the footer
+  const footerHeight = 63 // Height of the footer area (~2.5 inches)
+  const footerY = pageHeight - footerHeight // Footer starts here and goes to bottom
 
-  // Background for footer
+  // Background for footer - full width, touches bottom
   pdf.setFillColor(248, 248, 248)
-  pdf.rect(marginX, footerY, pageWidth - 2 * marginX, 50, 'F')
+  pdf.rect(0, footerY, pageWidth, footerHeight, 'F')
 
   // Pricing breakdown on the right side
   const priceX = pageWidth - 80
-  let priceY = footerY + 10
+  let priceY = footerY + 14
 
   pdf.setFontSize(10)
   pdf.setFont('helvetica', 'normal')
 
-  // Subtotal (Openings)
-  pdf.text('Subtotal (Openings):', priceX, priceY)
+  // Subtotal
+  pdf.text('Subtotal:', priceX, priceY)
   pdf.text(`$${quoteData.adjustedSubtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
-    pageWidth - marginX - 5, priceY, { align: 'right' })
+    pageWidth - contentPadding, priceY, { align: 'right' })
   priceY += 7
 
-  // Installation (always show)
+  // Installation (always show, TBD if 0)
   pdf.text('Installation:', priceX, priceY)
-  pdf.text(`$${quoteData.installationCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
-    pageWidth - marginX - 5, priceY, { align: 'right' })
+  const installationText = quoteData.installationCost > 0
+    ? `$${quoteData.installationCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
+    : 'TBD'
+  pdf.text(installationText, pageWidth - contentPadding, priceY, { align: 'right' })
   priceY += 7
 
-  // Tax (if applicable)
-  if (quoteData.taxRate > 0) {
-    pdf.text(`Tax (${(quoteData.taxRate * 100).toFixed(1)}%):`, priceX, priceY)
-    pdf.text(`$${quoteData.taxAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
-      pageWidth - marginX - 5, priceY, { align: 'right' })
-    priceY += 7
-  }
+  // Tax (always show, TBD if 0)
+  pdf.text('Tax:', priceX, priceY)
+  const taxText = quoteData.taxRate > 0
+    ? `$${quoteData.taxAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
+    : 'TBD'
+  pdf.text(taxText, pageWidth - contentPadding, priceY, { align: 'right' })
+  priceY += 7
 
-  // Total
-  pdf.setLineWidth(0.5)
-  pdf.setDrawColor(100, 100, 100)
-  pdf.line(priceX, priceY - 2, pageWidth - marginX - 5, priceY - 2)
+  // Separator line before total
+  priceY += 2
+  pdf.setLineWidth(0.3)
+  pdf.setDrawColor(180, 180, 180)
+  pdf.line(priceX - 5, priceY, pageWidth - contentPadding, priceY)
+  priceY += 6
 
-  pdf.setFontSize(14)
+  // Total as normal text
+  const totalText = `$${quoteData.totalPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
+  pdf.setFontSize(11)
   pdf.setFont('helvetica', 'bold')
-  pdf.text('TOTAL:', priceX, priceY + 5)
-  pdf.text(`$${quoteData.totalPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`,
-    pageWidth - marginX - 5, priceY + 5, { align: 'right' })
+  pdf.setTextColor(0, 0, 0)
+  pdf.text('Total:', priceX, priceY)
+  pdf.text(totalText, pageWidth - contentPadding, priceY, { align: 'right' })
 
-  // Left side - project info
+  // Left side - Valid Until and Terms
+  let leftY = footerY + 14
+
+  // Valid Until
   pdf.setFontSize(9)
-  pdf.setFont('helvetica', 'italic')
+  pdf.setFont('helvetica', 'bold')
+  pdf.setTextColor(60, 60, 60)
+  const validUntil = new Date()
+  validUntil.setDate(validUntil.getDate() + 30)
+  pdf.text(`Valid Until: ${validUntil.toLocaleDateString()}`, contentPadding, leftY)
+  leftY += 8
+
+  // Terms placeholder
+  pdf.setFontSize(8)
+  pdf.setFont('helvetica', 'normal')
   pdf.setTextColor(100, 100, 100)
-  pdf.text(`This quote includes ${quoteData.quoteItems.length} opening${quoteData.quoteItems.length !== 1 ? 's' : ''}`,
-    marginX + 5, footerY + 15)
+  const termsText = 'Terms & Conditions: This quote is subject to final measurements and site verification. ' +
+    'Prices may vary based on actual conditions. Payment terms and delivery schedule to be confirmed upon order. ' +
+    'Please contact us with any questions.'
+  const termsLines = pdf.splitTextToSize(termsText, pageWidth - 2 * contentPadding - 90) // Leave room for pricing on right
+  pdf.text(termsLines, contentPadding, leftY)
+
+  // Date at the bottom left
+  pdf.setFontSize(9)
+  pdf.setFont('helvetica', 'normal')
+  pdf.setTextColor(100, 100, 100)
+  pdf.text(new Date().toLocaleDateString(), contentPadding, pageHeight - 5)
 
   pdf.setTextColor(0, 0, 0)
 }

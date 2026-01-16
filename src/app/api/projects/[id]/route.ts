@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ProjectStatus } from '@prisma/client'
-import { ensureProjectPricingMode } from '@/lib/pricing-mode'
+import { ensureProjectPricingMode, getDefaultPricingMode } from '@/lib/pricing-mode'
 
 export async function GET(
   request: NextRequest,
@@ -21,6 +21,18 @@ export async function GET(
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
+        pricingMode: {
+          select: {
+            id: true,
+            name: true,
+            markup: true,
+            extrusionMarkup: true,
+            hardwareMarkup: true,
+            glassMarkup: true,
+            packagingMarkup: true,
+            discount: true
+          }
+        },
         openings: {
           orderBy: { id: 'asc' },
           include: {
@@ -150,9 +162,26 @@ export async function GET(
         }
       })
 
+      // If project doesn't have a pricing mode, get the default
+      let effectivePricingMode = project.pricingMode
+      if (!effectivePricingMode) {
+        const defaultMode = await getDefaultPricingMode(prisma)
+        effectivePricingMode = {
+          id: defaultMode.id,
+          name: defaultMode.name,
+          markup: defaultMode.markup,
+          extrusionMarkup: defaultMode.extrusionMarkup,
+          hardwareMarkup: defaultMode.hardwareMarkup,
+          glassMarkup: defaultMode.glassMarkup,
+          packagingMarkup: defaultMode.packagingMarkup,
+          discount: defaultMode.discount
+        }
+      }
+
       // Attach master parts info to response
       const projectWithSync = {
         ...project,
+        pricingMode: effectivePricingMode,
         _syncInfo: {
           masterParts: masterParts.map(mp => ({
             partNumber: mp.partNumber,
@@ -167,7 +196,23 @@ export async function GET(
       return NextResponse.json(projectWithSync)
     }
 
-    return NextResponse.json(project)
+    // If project doesn't have a pricing mode, get the default
+    let effectivePricingMode = project.pricingMode
+    if (!effectivePricingMode) {
+      const defaultMode = await getDefaultPricingMode(prisma)
+      effectivePricingMode = {
+        id: defaultMode.id,
+        name: defaultMode.name,
+        markup: defaultMode.markup,
+        extrusionMarkup: defaultMode.extrusionMarkup,
+        hardwareMarkup: defaultMode.hardwareMarkup,
+        glassMarkup: defaultMode.glassMarkup,
+        packagingMarkup: defaultMode.packagingMarkup,
+        discount: defaultMode.discount
+      }
+    }
+
+    return NextResponse.json({ ...project, pricingMode: effectivePricingMode })
   } catch (error) {
     console.error('Error fetching project:', error)
     return NextResponse.json(

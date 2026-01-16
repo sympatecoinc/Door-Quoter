@@ -2532,6 +2532,13 @@ export default function ProjectDetailView() {
               >
                 <Edit className="w-4 h-4" />
               </button>
+              <button
+                onClick={handleShowBOM}
+                className="ml-1 p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                title="View BOM"
+              >
+                <FileText className="w-4 h-4" />
+              </button>
               {needsSync && !calculatingPrices && (
                 <button
                   onClick={() => setShowSyncConfirmation(true)}
@@ -2574,13 +2581,6 @@ export default function ProjectDetailView() {
           </div>
         </div>
         <div className="flex items-center space-x-3">
-          <button
-            onClick={handleShowBOM}
-            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-          >
-            <FileText className="w-5 h-5 mr-2" />
-            View BOM
-          </button>
           {/* Create Sales Order button - only for QUOTE_ACCEPTED or ACTIVE projects */}
           {(project.status === 'QUOTE_ACCEPTED' || project.status === 'ACTIVE') && !existingSalesOrderNumber && (
             <button
@@ -3072,7 +3072,7 @@ export default function ProjectDetailView() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 >
                   <option value="">Select a product...</option>
-                  {products.map((product) => (
+                  {products.filter(p => p.productType !== 'FRAME').map((product) => (
                     <option key={product.id} value={product.id}>
                       {product.productType === 'CORNER_90' ? '90° Corner' : product.name}
                     </option>
@@ -4440,11 +4440,11 @@ export default function ProjectDetailView() {
                                             <td className="border border-gray-200 px-3 py-2 text-sm text-gray-900">
                                               {item.partType === 'Glass' ? (
                                                 <div>
-                                                  <div className="font-medium">{item.glassWidth?.toFixed(3)}" × {item.glassHeight?.toFixed(3)}"</div>
+                                                  <div className="font-medium">{item.glassWidth?.toFixed(2)}" × {item.glassHeight?.toFixed(2)}"</div>
                                                   <div className="text-xs text-gray-500">({item.glassArea} SQ FT)</div>
                                                 </div>
                                               ) : item.cutLength ? (
-                                                `${item.cutLength.toFixed(3)}${item.unit === 'LF' ? "'" : '"'}`
+                                                `${item.cutLength.toFixed(2)}${item.unit === 'LF' ? "'" : '"'}`
                                               ) : (
                                                 '-'
                                               )}
@@ -4503,8 +4503,8 @@ export default function ProjectDetailView() {
                             <div className="text-sm text-gray-600">Total Parts</div>
                           </div>
                           <div className="bg-blue-50 rounded-lg p-3 text-center">
-                            <div className="text-2xl font-bold text-blue-600">{summaryData.totalExtrusions}</div>
-                            <div className="text-sm text-blue-600">Extrusions</div>
+                            <div className="text-2xl font-bold text-blue-600">{summaryData.totalStockPiecesToOrder || 0}</div>
+                            <div className="text-sm text-blue-600">Extrusion Sticks</div>
                           </div>
                           <div className="bg-green-50 rounded-lg p-3 text-center">
                             <div className="text-2xl font-bold text-green-600">{summaryData.totalHardware}</div>
@@ -4528,7 +4528,7 @@ export default function ProjectDetailView() {
                                 <th className="border-b border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-900">Part Number</th>
                                 <th className="border-b border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-900">Part Name</th>
                                 <th className="border-b border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-900">Type</th>
-                                <th className="border-b border-gray-200 px-4 py-3 text-center text-sm font-semibold text-gray-900">Total Qty</th>
+                                <th className="border-b border-gray-200 px-4 py-3 text-center text-sm font-semibold text-gray-900">Qty to Order</th>
                                 <th className="border-b border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-900">Unit</th>
                                 <th className="border-b border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-900">Cut Lengths / Dimensions</th>
                               </tr>
@@ -4553,7 +4553,11 @@ export default function ProjectDetailView() {
                                       {item.partType === 'CutStock' ? 'Cut Stock' : item.partType}
                                     </span>
                                   </td>
-                                  <td className="border-b border-gray-100 px-4 py-3 text-sm text-center font-semibold text-gray-900">{item.totalQuantity}</td>
+                                  <td className="border-b border-gray-100 px-4 py-3 text-sm text-center font-semibold text-gray-900">
+                                    {(item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockPiecesNeeded !== null
+                                      ? item.stockPiecesNeeded
+                                      : item.totalQuantity}
+                                  </td>
                                   <td className="border-b border-gray-100 px-4 py-3 text-sm text-gray-600">{item.unit}</td>
                                   <td className="border-b border-gray-100 px-4 py-3 text-sm text-gray-600">
                                     {(item.partType === 'Extrusion' || item.partType === 'CutStock') && item.cutLengths.length > 0 ? (
@@ -4565,7 +4569,7 @@ export default function ProjectDetailView() {
                                         <div className="flex flex-wrap gap-1">
                                           {item.cutLengths.slice(0, 6).map((len: number, i: number) => (
                                             <span key={i} className="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
-                                              {len.toFixed(3)}"
+                                              {len.toFixed(2)}"
                                             </span>
                                           ))}
                                           {item.cutLengths.length > 6 && (
@@ -4580,7 +4584,7 @@ export default function ProjectDetailView() {
                                         <div className="flex flex-wrap gap-1">
                                           {item.glassDimensions.slice(0, 4).map((dim: any, i: number) => (
                                             <span key={i} className="inline-block px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-xs">
-                                              {dim.width?.toFixed(3)}" × {dim.height?.toFixed(3)}"
+                                              {dim.width?.toFixed(2)}" × {dim.height?.toFixed(2)}"
                                             </span>
                                           ))}
                                           {item.glassDimensions.length > 4 && (
@@ -4593,12 +4597,12 @@ export default function ProjectDetailView() {
                                     ) : (item.partType === 'Hardware' || item.partType === 'Fastener') && item.calculatedLengths?.length > 0 ? (
                                       <div className="max-w-xs">
                                         <div className="text-xs text-gray-500 mb-1">
-                                          {item.calculatedLengths.length} length{item.calculatedLengths.length !== 1 ? 's' : ''} ({item.totalCalculatedLength?.toFixed(3)} {item.unit} total)
+                                          {item.calculatedLengths.length} length{item.calculatedLengths.length !== 1 ? 's' : ''} ({item.totalCalculatedLength?.toFixed(2)} {item.unit} total)
                                         </div>
                                         <div className="flex flex-wrap gap-1">
                                           {item.calculatedLengths.slice(0, 6).map((len: number, i: number) => (
                                             <span key={i} className="inline-block px-1.5 py-0.5 bg-green-50 text-green-700 rounded text-xs">
-                                              {len.toFixed(3)} {item.unit}
+                                              {len.toFixed(2)} {item.unit}
                                             </span>
                                           ))}
                                           {item.calculatedLengths.length > 6 && (

@@ -2659,18 +2659,21 @@ export default function ProductDetailView({
                   rows={3}
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Product Type</label>
-                <select
-                  value={editProductType}
-                  onChange={(e) => setEditProductType(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                >
-                  <option value="SWING_DOOR">Swing Door</option>
-                  <option value="SLIDING_DOOR">Sliding Door</option>
-                  <option value="FIXED_PANEL">Fixed Panel</option>
-                </select>
-              </div>
+              {/* Hide Product Type dropdown for FRAME products - it's a dedicated unique type */}
+              {!isFrameProduct && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Product Type</label>
+                  <select
+                    value={editProductType}
+                    onChange={(e) => setEditProductType(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  >
+                    <option value="SWING_DOOR">Swing Door</option>
+                    <option value="SLIDING_DOOR">Sliding Door</option>
+                    <option value="FIXED_PANEL">Fixed Panel</option>
+                  </select>
+                </div>
+              )}
               <div className="border-t pt-4">
                 <h3 className="text-md font-medium text-gray-900 mb-3">Quick Actions</h3>
                 <div className="flex flex-wrap gap-2">

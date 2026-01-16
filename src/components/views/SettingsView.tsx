@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Download, Save, Upload, FileUp, Plus, Trash2, Edit, RefreshCw, Link as LinkIcon, CheckCircle, AlertCircle, X } from 'lucide-react'
+import { Download, Save, Upload, FileUp, Plus, Trash2, Edit, RefreshCw, Link as LinkIcon, CheckCircle, AlertCircle, X, Image as ImageIcon } from 'lucide-react'
 import UserManagement from '../UserManagement'
 import ProfileManagement from '../ProfileManagement'
 
@@ -39,6 +39,15 @@ export default function SettingsView() {
   const [savingTolerances, setSavingTolerances] = useState(false)
   const [toleranceNotification, setToleranceNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
 
+  // Branding state
+  const [brandingLogo, setBrandingLogo] = useState<string | null>(null)
+  const [primaryColor, setPrimaryColor] = useState('#2563eb')
+  const [secondaryColor, setSecondaryColor] = useState('#1e40af')
+  const [loadingBranding, setLoadingBranding] = useState(true)
+  const [savingBranding, setSavingBranding] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [brandingNotification, setBrandingNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+
   // Load saved settings and current user on component mount
   useEffect(() => {
     try {
@@ -63,6 +72,9 @@ export default function SettingsView() {
 
     // Fetch tolerance settings
     fetchToleranceSettings()
+
+    // Fetch branding settings
+    fetchBrandingSettings()
   }, [])
 
   const fetchToleranceSettings = async () => {
@@ -106,6 +118,102 @@ export default function SettingsView() {
       setToleranceNotification({ type: 'error', message: 'Failed to save tolerance settings' })
     } finally {
       setSavingTolerances(false)
+    }
+  }
+
+  const fetchBrandingSettings = async () => {
+    try {
+      setLoadingBranding(true)
+      const response = await fetch('/api/settings/branding')
+      if (response.ok) {
+        const data = await response.json()
+        setBrandingLogo(data.logo || null)
+        setPrimaryColor(data.primaryColor || '#2563eb')
+        setSecondaryColor(data.secondaryColor || '#1e40af')
+      }
+    } catch (error) {
+      console.error('Error fetching branding settings:', error)
+    } finally {
+      setLoadingBranding(false)
+    }
+  }
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingLogo(true)
+    setBrandingNotification(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('logo', file)
+
+      const response = await fetch('/api/settings/branding', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setBrandingLogo(data.logo)
+        setBrandingNotification({ type: 'success', message: 'Logo uploaded successfully!' })
+      } else {
+        const error = await response.json()
+        setBrandingNotification({ type: 'error', message: error.error || 'Failed to upload logo' })
+      }
+    } catch (error) {
+      console.error('Error uploading logo:', error)
+      setBrandingNotification({ type: 'error', message: 'Failed to upload logo' })
+    } finally {
+      setUploadingLogo(false)
+      // Reset file input
+      e.target.value = ''
+    }
+  }
+
+  const handleDeleteLogo = async () => {
+    if (!confirm('Are you sure you want to remove the company logo?')) return
+
+    try {
+      const response = await fetch('/api/settings/branding', {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        setBrandingLogo(null)
+        setBrandingNotification({ type: 'success', message: 'Logo removed successfully!' })
+      } else {
+        setBrandingNotification({ type: 'error', message: 'Failed to remove logo' })
+      }
+    } catch (error) {
+      console.error('Error deleting logo:', error)
+      setBrandingNotification({ type: 'error', message: 'Failed to remove logo' })
+    }
+  }
+
+  const handleSaveBrandingColors = async () => {
+    setSavingBranding(true)
+    setBrandingNotification(null)
+
+    try {
+      const response = await fetch('/api/settings/branding', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ primaryColor, secondaryColor })
+      })
+
+      if (response.ok) {
+        setBrandingNotification({ type: 'success', message: 'Brand colors saved successfully!' })
+      } else {
+        const error = await response.json()
+        setBrandingNotification({ type: 'error', message: error.error || 'Failed to save brand colors' })
+      }
+    } catch (error) {
+      console.error('Error saving brand colors:', error)
+      setBrandingNotification({ type: 'error', message: 'Failed to save brand colors' })
+    } finally {
+      setSavingBranding(false)
     }
   }
 
@@ -438,6 +546,204 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,,3.2,TRUE,
               </select>
             </div>
           </div>
+        </div>
+
+        {/* Company Branding */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Company Branding</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Configure your company logo and brand colors for quotes and documents.
+          </p>
+
+          {/* Branding Notification */}
+          {brandingNotification && (
+            <div className={`mb-4 p-3 rounded-lg flex items-center justify-between ${
+              brandingNotification.type === 'success'
+                ? 'bg-green-50 text-green-800 border border-green-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                {brandingNotification.type === 'success'
+                  ? <CheckCircle className="w-4 h-4" />
+                  : <AlertCircle className="w-4 h-4" />
+                }
+                <span className="text-sm">{brandingNotification.message}</span>
+              </div>
+              <button
+                onClick={() => setBrandingNotification(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {loadingBranding ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <span className="ml-2 text-gray-600">Loading branding settings...</span>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Logo Upload */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Company Logo</h3>
+                <p className="text-xs text-gray-500 mb-3">
+                  Upload your company logo (PNG, JPG, SVG, or WebP, max 5MB). This will appear on quotes and documents.
+                </p>
+                <div className="flex items-start gap-4">
+                  {/* Logo Preview */}
+                  <div className="w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
+                    {brandingLogo ? (
+                      <img
+                        src={brandingLogo}
+                        alt="Company Logo"
+                        className="max-w-full max-h-full object-contain"
+                      />
+                    ) : (
+                      <div className="text-center">
+                        <ImageIcon className="w-8 h-8 text-gray-400 mx-auto" />
+                        <span className="text-xs text-gray-400 mt-1 block">No logo</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload Controls */}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <label className="cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
+                          onChange={handleLogoUpload}
+                          className="hidden"
+                          disabled={uploadingLogo}
+                        />
+                        <span className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          uploadingLogo
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
+                        }`}>
+                          {uploadingLogo ? (
+                            <>
+                              <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-4 h-4 mr-2" />
+                              Upload Logo
+                            </>
+                          )}
+                        </span>
+                      </label>
+                      {brandingLogo && (
+                        <button
+                          onClick={handleDeleteLogo}
+                          className="inline-flex items-center px-3 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Recommended: Square or horizontal logo, at least 200x200 pixels
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Brand Colors */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Brand Colors</h3>
+                <p className="text-xs text-gray-500 mb-3">
+                  Set your primary and secondary brand colors for use in quotes and documents.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Primary Color
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={primaryColor}
+                        onChange={(e) => setPrimaryColor(e.target.value)}
+                        className="w-12 h-10 rounded border border-gray-300 cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={primaryColor}
+                        onChange={(e) => setPrimaryColor(e.target.value)}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 font-mono text-sm"
+                        placeholder="#2563eb"
+                        pattern="^#[0-9A-Fa-f]{6}$"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Secondary Color
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={secondaryColor}
+                        onChange={(e) => setSecondaryColor(e.target.value)}
+                        className="w-12 h-10 rounded border border-gray-300 cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={secondaryColor}
+                        onChange={(e) => setSecondaryColor(e.target.value)}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 font-mono text-sm"
+                        placeholder="#1e40af"
+                        pattern="^#[0-9A-Fa-f]{6}$"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Color Preview */}
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-600 mb-2">Preview:</p>
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-16 h-8 rounded shadow-sm"
+                      style={{ backgroundColor: primaryColor }}
+                    />
+                    <div
+                      className="w-16 h-8 rounded shadow-sm"
+                      style={{ backgroundColor: secondaryColor }}
+                    />
+                    <span className="text-xs text-gray-500">Primary & Secondary</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex justify-end">
+                <button
+                  onClick={handleSaveBrandingColors}
+                  disabled={savingBranding}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {savingBranding ? (
+                    <>
+                      <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Brand Colors
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Units & Measurements */}

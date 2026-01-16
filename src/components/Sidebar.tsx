@@ -27,6 +27,7 @@ import {
 
 const menuItems = [
   { id: 'dashboard' as MenuOption, label: 'Dashboard (Sales)', icon: Home },
+  { id: 'crm' as MenuOption, label: 'CRM', icon: Users },
   { id: 'projects' as MenuOption, label: 'Projects', icon: Folder },
   { id: 'products' as MenuOption, label: 'Products', icon: Package },
   { id: 'masterParts' as MenuOption, label: 'Master Parts', icon: Database },

@@ -79,14 +79,14 @@ export default function CustomerList({ onAddCustomer, onViewCustomer, prospectsO
 
       // Add multiple status filters if any are selected
       // If prospectsOnly mode, always show only Prospects
-      // If no filters selected, show only Active by default
+      // If no filters selected, show Active and Prospect by default
       if (prospectsOnly) {
         params.append('status', 'Prospect')
       } else if (statusFilters.length > 0) {
         params.append('status', statusFilters.join(','))
       } else {
-        // Default: show only Active customers
-        params.append('status', 'Active')
+        // Default: show Active customers and Prospects
+        params.append('status', 'Active,Prospect')
       }
 
       const response = await fetch(`/api/customers?${params}`)
