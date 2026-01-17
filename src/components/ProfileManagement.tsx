@@ -21,6 +21,7 @@ const TAB_LABELS: Record<string, string> = {
   crm: 'CRM',
   projects: 'Projects',
   production: 'Production',
+  logistics: 'Logistics',
   products: 'Products',
   masterParts: 'Master Parts',
   inventory: 'Inventory',

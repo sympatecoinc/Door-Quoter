@@ -27,6 +27,8 @@ const AVAILABLE_TABS = [
   { id: 'dashboard', label: 'Dashboard (Sales)' },
   { id: 'projects', label: 'Projects' },
   { id: 'crm', label: 'CRM' },
+  { id: 'production', label: 'Production' },
+  { id: 'logistics', label: 'Logistics' },
   { id: 'products', label: 'Products' },
   { id: 'masterParts', label: 'Master Parts' },
   { id: 'inventory', label: 'Inventory' },

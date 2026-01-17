@@ -4,6 +4,7 @@ export const ALL_TABS = [
   'crm',
   'projects',
   'production',
+  'logistics',
   'products',
   'masterParts',
   'inventory',

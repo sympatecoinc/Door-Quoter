@@ -2,21 +2,19 @@
 
 import { useState, useEffect } from 'react'
 import {
-  Scissors,
   ClipboardList,
-  Package2,
+  Tag,
   Download,
   Loader2,
   RefreshCw,
-  FileSpreadsheet
+  Package2
 } from 'lucide-react'
-import { ProjectStatus, STATUS_CONFIG } from '@/types'
+import { ProjectStatus } from '@/types'
 import StatusBadge from '@/components/projects/StatusBadge'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
-import BomDownloadModal from '../production/BomDownloadModal'
 
-interface ProductionProject {
+interface LogisticsProject {
   id: number
   name: string
   status: ProjectStatus
@@ -29,7 +27,7 @@ interface ProductionProject {
   updatedAt: string
 }
 
-type DownloadType = 'cutlist' | 'picklist' | 'jambkit' | 'all'
+type DownloadType = 'packinglist' | 'labels' | 'all'
 
 interface DownloadingState {
   [projectId: number]: {
@@ -66,21 +64,18 @@ function ProjectRowSkeleton() {
           <div className="w-7 h-7 bg-gray-200 rounded" />
           <div className="w-7 h-7 bg-gray-200 rounded" />
           <div className="w-7 h-7 bg-gray-200 rounded" />
-          <div className="w-7 h-7 bg-gray-200 rounded" />
-          <div className="w-7 h-7 bg-gray-200 rounded" />
         </div>
       </td>
     </tr>
   )
 }
 
-export default function ProductionView() {
-  const [projects, setProjects] = useState<ProductionProject[]>([])
+export default function LogisticsView() {
+  const [projects, setProjects] = useState<LogisticsProject[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [downloading, setDownloading] = useState<DownloadingState>({})
   const [bulkDownloading, setBulkDownloading] = useState(false)
-  const [bomModalProject, setBomModalProject] = useState<{ id: number; name: string } | null>(null)
   const { toasts, removeToast, showSuccess, showError } = useToast()
 
   useEffect(() => {
@@ -90,16 +85,17 @@ export default function ProductionView() {
   async function fetchProjects() {
     try {
       setLoading(true)
+      // Reuse the production API - same project filtering
       const response = await fetch('/api/production')
       if (response.ok) {
         const data = await response.json()
         setProjects(data)
       } else {
-        showError('Failed to load production projects')
+        showError('Failed to load logistics projects')
       }
     } catch (error) {
-      console.error('Error fetching production projects:', error)
-      showError('Failed to load production projects')
+      console.error('Error fetching logistics projects:', error)
+      showError('Failed to load logistics projects')
     } finally {
       setLoading(false)
     }
@@ -135,21 +131,17 @@ export default function ProductionView() {
       const safeProjectName = projectName.replace(/[^a-zA-Z0-9]/g, '-')
 
       switch (type) {
-        case 'cutlist':
-          url = `/api/projects/${projectId}/bom?cutlist=true&format=csv`
-          filename = `${safeProjectName}-cutlist.csv`
+        case 'packinglist':
+          url = `/api/projects/${projectId}/packing-list/pdf`
+          filename = `${safeProjectName}-packing-list.pdf`
           break
-        case 'picklist':
-          url = `/api/projects/${projectId}/bom?picklist=true&format=pdf`
-          filename = `${safeProjectName}-pick-list.pdf`
-          break
-        case 'jambkit':
-          url = `/api/projects/${projectId}/bom?jambkit=true&format=pdf`
-          filename = `${safeProjectName}-jamb-kit-list.pdf`
+        case 'labels':
+          url = `/api/projects/${projectId}/packing-list/stickers`
+          filename = `${safeProjectName}-packing-stickers.pdf`
           break
         case 'all':
-          url = `/api/projects/${projectId}/print-all`
-          filename = `${safeProjectName}-all-documents.zip`
+          url = `/api/projects/${projectId}/logistics-all`
+          filename = `${safeProjectName}-logistics-documents.zip`
           break
         default:
           throw new Error('Invalid download type')
@@ -259,9 +251,9 @@ export default function ProductionView() {
     <div className="p-8">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Production</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Logistics</h1>
           <p className="text-gray-600 mt-2">
-            Projects ready for production (Approved, Quote Accepted, or Active)
+            Projects ready for shipping (Approved, Quote Accepted, or Active)
           </p>
         </div>
         <div className="flex items-center space-x-3">
@@ -392,33 +384,19 @@ export default function ProductionView() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center space-x-1">
-                        <button
-                          onClick={() => setBomModalProject({ id: project.id, name: project.name })}
-                          className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                          title="Download BOM (CSV)"
-                        >
-                          <FileSpreadsheet className="w-4 h-4" />
-                        </button>
                         <DownloadButton
                           projectId={project.id}
-                          type="cutlist"
-                          projectName={project.name}
-                          icon={Scissors}
-                          title="Download Cut List (CSV)"
-                        />
-                        <DownloadButton
-                          projectId={project.id}
-                          type="picklist"
+                          type="packinglist"
                           projectName={project.name}
                           icon={ClipboardList}
-                          title="Download Pick List (PDF)"
+                          title="Download Packing List (PDF)"
                         />
                         <DownloadButton
                           projectId={project.id}
-                          type="jambkit"
+                          type="labels"
                           projectName={project.name}
-                          icon={Package2}
-                          title="Download Jamb Kit List (PDF)"
+                          icon={Tag}
+                          title="Download Labels/Stickers (PDF)"
                         />
                         <DownloadButton
                           projectId={project.id}
@@ -439,7 +417,7 @@ export default function ProductionView() {
             <div className="text-gray-400 mb-2">
               <Package2 className="w-12 h-12 mx-auto" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-1">No Production Projects</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-1">No Logistics Projects</h3>
             <p className="text-gray-500">
               Projects with Approved, Quote Accepted, or Active status will appear here.
             </p>
@@ -451,7 +429,7 @@ export default function ProductionView() {
       {!loading && projects.length > 0 && (
         <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
           <div>
-            Showing {projects.length} project{projects.length !== 1 ? 's' : ''} ready for production
+            Showing {projects.length} project{projects.length !== 1 ? 's' : ''} ready for shipping
           </div>
           {selectedIds.size > 0 && (
             <div>
@@ -459,17 +437,6 @@ export default function ProductionView() {
             </div>
           )}
         </div>
-      )}
-
-      {/* BOM Download Modal */}
-      {bomModalProject && (
-        <BomDownloadModal
-          projectId={bomModalProject.id}
-          projectName={bomModalProject.name}
-          onClose={() => setBomModalProject(null)}
-          showError={showError}
-          showSuccess={showSuccess}
-        />
       )}
 
       <ToastContainer toasts={toasts} removeToast={removeToast} />

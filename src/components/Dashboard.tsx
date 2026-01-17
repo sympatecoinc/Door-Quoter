@@ -6,6 +6,7 @@ import CRMView from './views/CRMView'
 import ProjectsView from './views/ProjectsView'
 import ProjectDetailView from './views/ProjectDetailView'
 import ProductionView from './views/ProductionView'
+import LogisticsView from './views/LogisticsView'
 import ProductsView from './views/ProductsView'
 import MasterPartsView from './views/MasterPartsView'
 import InventoryView from './views/InventoryView'
@@ -31,6 +32,8 @@ export default function Dashboard() {
         return selectedProjectId ? <ProjectDetailView /> : <ProjectsView />
       case 'production':
         return <ProductionView />
+      case 'logistics':
+        return <LogisticsView />
       case 'products':
         return <ProductsView />
       case 'masterParts':

@@ -23,7 +23,8 @@ import {
   ShoppingCart,
   ClipboardList,
   Receipt,
-  Factory
+  Factory,
+  PackageCheck
 } from 'lucide-react'
 
 const menuItems = [
@@ -31,6 +32,7 @@ const menuItems = [
   { id: 'crm' as MenuOption, label: 'CRM', icon: Users },
   { id: 'projects' as MenuOption, label: 'Projects', icon: Folder },
   { id: 'production' as MenuOption, label: 'Production', icon: Factory },
+  { id: 'logistics' as MenuOption, label: 'Logistics', icon: PackageCheck },
   { id: 'products' as MenuOption, label: 'Products', icon: Package },
   { id: 'masterParts' as MenuOption, label: 'Master Parts', icon: Database },
   { id: 'inventory' as MenuOption, label: 'Inventory', icon: Warehouse },

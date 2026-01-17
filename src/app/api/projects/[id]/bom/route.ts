@@ -80,6 +80,7 @@ export async function GET(
     const productFilter = searchParams.get('product')
     const sizeFilter = searchParams.get('size')  // e.g., "42x108"
     const batchSize = parseInt(searchParams.get('batch') || '1') || 1
+    const openingsFilter = searchParams.get('openings')  // comma-separated list of opening names
 
     if (isNaN(projectId)) {
       return NextResponse.json(
@@ -868,9 +869,16 @@ export async function GET(
       })
     })
 
+    // Filter by openings if specified
+    let filteredBomItems = bomItems
+    if (openingsFilter) {
+      const selectedOpenings = new Set(openingsFilter.split(',').map(o => o.trim()))
+      filteredBomItems = bomItems.filter(item => selectedOpenings.has(item.openingName))
+    }
+
     // If summary mode is requested, return aggregated data
     if (summary) {
-      const summaryItems = aggregateBomItems(bomItems)
+      const summaryItems = aggregateBomItems(filteredBomItems)
 
       // Calculate totals by type
       const totals = {
@@ -911,8 +919,8 @@ export async function GET(
     // If cutlist mode is requested, return cut list data (extrusions only, grouped by product + size)
     if (cutlist) {
       // Separate miscellaneous items from regular BOM items
-      const regularBomItems = bomItems.filter(item => !item.isMiscellaneous)
-      const miscBomItems = bomItems.filter(item => item.isMiscellaneous)
+      const regularBomItems = filteredBomItems.filter(item => !item.isMiscellaneous)
+      const miscBomItems = filteredBomItems.filter(item => item.isMiscellaneous)
 
       let cutListItems = aggregateCutListItems(regularBomItems)
 
@@ -1063,7 +1071,7 @@ export async function GET(
     // If picklist mode is requested, return pick list data (hardware items with includeOnPickList=true)
     if (picklist) {
       // Filter to only hardware items with includeOnPickList flag
-      const pickListItems = bomItems.filter(item =>
+      const pickListItems = filteredBomItems.filter(item =>
         item.partType === 'Hardware' && item.includeOnPickList === true
       )
 
@@ -1156,7 +1164,7 @@ export async function GET(
     // If jambkit mode is requested, return jamb kit items grouped by opening
     if (jambkit) {
       // Filter to items with includeInJambKit flag (Hardware, Extrusion, or Fastener)
-      const jambKitItems = bomItems.filter(item =>
+      const jambKitItems = filteredBomItems.filter(item =>
         (item.partType === 'Hardware' || item.partType === 'Extrusion' || item.partType === 'Fastener') &&
         item.includeInJambKit === true
       )
@@ -1235,7 +1243,7 @@ export async function GET(
     return NextResponse.json({
       projectId,
       projectName: project.name,
-      bomItems: bomItems.sort((a, b) => {
+      bomItems: filteredBomItems.sort((a, b) => {
         // Sort by opening name, then by part type (Extrusion, Hardware, Glass, Option)
         if (a.openingName !== b.openingName) {
           return a.openingName.localeCompare(b.openingName)
