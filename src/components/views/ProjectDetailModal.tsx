@@ -171,6 +171,11 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
   const [loadingPickList, setLoadingPickList] = useState(false)
   const [downloadingPickList, setDownloadingPickList] = useState(false)
 
+  // Jamb Kit List state
+  const [jambKitData, setJambKitData] = useState<any | null>(null)
+  const [loadingJambKit, setLoadingJambKit] = useState(false)
+  const [downloadingJambKit, setDownloadingJambKit] = useState(false)
+
   // Edit Project modal state
   const [showEditModal, setShowEditModal] = useState(false)
   const [editName, setEditName] = useState('')
@@ -205,6 +210,7 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
     if (activeTab === 'production' && projectId) {
       fetchCutList()
       fetchPickList()
+      fetchJambKit()
     }
   }, [activeTab, projectId])
 
@@ -336,6 +342,47 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
       alert('Failed to generate pick list PDF')
     } finally {
       setDownloadingPickList(false)
+    }
+  }
+
+  const fetchJambKit = async () => {
+    try {
+      setLoadingJambKit(true)
+      const response = await fetch(`/api/projects/${projectId}/bom?jambkit=true`)
+      if (response.ok) {
+        const data = await response.json()
+        setJambKitData(data)
+      }
+    } catch (err) {
+      console.error('Error fetching jamb kit list:', err)
+    } finally {
+      setLoadingJambKit(false)
+    }
+  }
+
+  const handleDownloadJambKitPDF = async () => {
+    try {
+      setDownloadingJambKit(true)
+      const response = await fetch(`/api/projects/${projectId}/bom?jambkit=true&format=pdf`)
+
+      if (!response.ok) {
+        throw new Error('Failed to generate jamb kit list')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${project?.name || 'project'}-jamb-kit-list.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error('Error generating jamb kit list:', error)
+      alert('Failed to generate jamb kit list PDF')
+    } finally {
+      setDownloadingJambKit(false)
     }
   }
 
@@ -728,7 +775,7 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
                 onClick={handleDownloadPrintAll}
                 disabled={downloadingPrintAll}
                 className="text-orange-500 hover:text-orange-600 transition-colors disabled:opacity-50"
-                title="Download all project files (Purchasing Summary, Cut List, Pick List, Assembly List)"
+                title="Download all project files (Cut List, Pick List, Jamb Kit List, BOMs)"
               >
                 {downloadingPrintAll ? (
                   <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
@@ -1562,7 +1609,7 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
                   <div>
                     <h4 className="font-medium text-purple-900">Pick List</h4>
                     <p className="text-sm text-purple-700">
-                      Hardware items marked for pick list, grouped by product. Items in the Jamb Kit are indicated.
+                      Hardware items marked for pick list, grouped by product.
                     </p>
                   </div>
                   <button
@@ -1609,7 +1656,6 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
                                 <th className="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">Part Name</th>
                                 <th className="px-3 py-2 text-center text-xs font-medium text-purple-700 uppercase">Qty</th>
                                 <th className="px-3 py-2 text-center text-xs font-medium text-purple-700 uppercase">Unit</th>
-                                <th className="px-3 py-2 text-center text-xs font-medium text-purple-700 uppercase">Jamb Kit</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-purple-100">
@@ -1619,15 +1665,6 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
                                   <td className="px-3 py-2">{item.partName}</td>
                                   <td className="px-3 py-2 text-center font-medium">{item.totalQuantity}</td>
                                   <td className="px-3 py-2 text-center">{item.unit || 'EA'}</td>
-                                  <td className="px-3 py-2 text-center">
-                                    {item.includeInJambKit ? (
-                                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                        Yes
-                                      </span>
-                                    ) : (
-                                      <span className="text-gray-400 text-xs">No</span>
-                                    )}
-                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1645,6 +1682,82 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
                 ) : (
                   <div className="text-center py-4 text-purple-600 text-sm">
                     No pick list items. Mark hardware parts with &quot;Include on Pick List&quot; in Master Parts.
+                  </div>
+                )}
+              </div>
+
+              {/* Jamb Kit List Section */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h4 className="font-medium text-green-900">Jamb Kit List</h4>
+                    <p className="text-sm text-green-700">
+                      Jamb kit items grouped by opening for field installation.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleDownloadJambKitPDF}
+                    disabled={downloadingJambKit || loadingJambKit || !jambKitData?.jambKitList?.length}
+                    className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50"
+                  >
+                    {downloadingJambKit ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Download PDF
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {loadingJambKit ? (
+                  <div className="flex justify-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+                  </div>
+                ) : jambKitData?.jambKitList?.length > 0 ? (
+                  <div className="space-y-4">
+                    {/* Group by opening */}
+                    {jambKitData.jambKitList.map((opening: any) => (
+                      <div key={opening.openingName} className="bg-white rounded-lg border border-green-200 overflow-hidden">
+                        <div className="bg-green-100 px-3 py-2">
+                          <h5 className="font-medium text-green-900">{opening.openingName}</h5>
+                        </div>
+                        <table className="w-full text-sm">
+                          <thead className="bg-green-50">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-green-700 uppercase">Part Number</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-green-700 uppercase">Part Name</th>
+                              <th className="px-3 py-2 text-center text-xs font-medium text-green-700 uppercase">Qty</th>
+                              <th className="px-3 py-2 text-center text-xs font-medium text-green-700 uppercase">Unit</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-green-100">
+                            {opening.items.map((item: any, index: number) => (
+                              <tr key={index} className="hover:bg-green-50">
+                                <td className="px-3 py-2 font-mono text-xs">{item.partNumber}</td>
+                                <td className="px-3 py-2">{item.partName}</td>
+                                <td className="px-3 py-2 text-center font-medium">{item.totalQuantity}</td>
+                                <td className="px-3 py-2 text-center">{item.unit || 'EA'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
+
+                    {/* Summary */}
+                    <div className="flex justify-between text-sm text-green-700 pt-2 border-t border-green-200">
+                      <span>Total Items: <strong>{jambKitData.totalItems}</strong></span>
+                      <span>Openings: <strong>{jambKitData.totalOpenings || 0}</strong></span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-green-600 text-sm">
+                    No jamb kit items. Mark hardware parts with &quot;Include in Jamb Kit&quot; in Master Parts.
                   </div>
                 )}
               </div>

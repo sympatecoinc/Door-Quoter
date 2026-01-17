@@ -58,6 +58,7 @@ interface Panel {
   slidingDirection: string
   isCorner: boolean
   cornerDirection: string
+  parentPanelId?: number | null  // If set, this is a paired panel (hidden in UI)
   componentInstance?: {
     id: number
     product: {
@@ -133,7 +134,7 @@ function smartIncrementName(baseName: string, index: number): string {
 }
 
 export default function ProjectDetailView() {
-  const { selectedProjectId, setSelectedProjectId, selectedCustomerId, customerDetailView, setCurrentMenu, autoOpenAddOpening, setAutoOpenAddOpening } = useAppStore()
+  const { selectedProjectId, setSelectedProjectId, selectedCustomerId, customerDetailView, setCurrentMenu, autoOpenAddOpening, setAutoOpenAddOpening, cameFromSalesDashboard, setCameFromSalesDashboard } = useAppStore()
   const { toasts, removeToast, showSuccess, showError } = useToast()
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
@@ -273,8 +274,13 @@ export default function ProjectDetailView() {
   // Handle back navigation
   const handleBack = () => {
     setSelectedProjectId(null)
+    // If we came from sales dashboard, go back to dashboard
+    if (cameFromSalesDashboard) {
+      setCameFromSalesDashboard(false)
+      setCurrentMenu('dashboard')
+    }
     // If we came from customer detail view, go back to dashboard (which shows customer detail)
-    if (selectedCustomerId && customerDetailView) {
+    else if (selectedCustomerId && customerDetailView) {
       setCurrentMenu('dashboard')
     }
     // Otherwise stay on projects menu (will show projects list)
@@ -1996,6 +2002,14 @@ export default function ProjectDetailView() {
       }
 
       for (const panelData of panelsData) {
+        // Use paired product ID for paired panels, otherwise use selected product
+        const productIdForInstance = panelData._isPairedPanel
+          ? panelData._pairedProductId
+          : selectedProductId
+
+        // For paired panels (frames), don't pass sub-options - they get defaults
+        const selectionsForInstance = panelData._isPairedPanel ? {} : mergedSelections
+
         const componentResponse = await fetch('/api/component-instances', {
           method: 'POST',
           headers: {
@@ -2003,8 +2017,8 @@ export default function ProjectDetailView() {
           },
           body: JSON.stringify({
             panelId: panelData.id,
-            productId: selectedProductId,
-            subOptionSelections: mergedSelections
+            productId: productIdForInstance,
+            subOptionSelections: selectionsForInstance
           })
         })
 
@@ -2690,9 +2704,9 @@ export default function ProjectDetailView() {
                 {/* Components */}
                 <div className="mt-4">
                   <div className="mb-2">
-                    <h4 className="text-sm font-medium text-gray-700">Components ({opening.panels.filter(p => p.componentInstance).length})</h4>
+                    <h4 className="text-sm font-medium text-gray-700">Components ({opening.panels.filter(p => p.componentInstance && !p.parentPanelId).length})</h4>
                   </div>
-                  {opening.panels.filter(p => p.componentInstance).length > 0 ? (
+                  {opening.panels.filter(p => p.componentInstance && !p.parentPanelId).length > 0 ? (
                     <DragDropContext onDragEnd={(result) => handleDragEnd(result, opening.id)}>
                       <Droppable droppableId={`opening-${opening.id}`}>
                         {(provided) => (
@@ -2702,7 +2716,7 @@ export default function ProjectDetailView() {
                             className="space-y-2"
                           >
                             {opening.panels
-                              .filter(p => p.componentInstance)
+                              .filter(p => p.componentInstance && !p.parentPanelId)
                               .sort((a, b) => a.displayOrder - b.displayOrder)
                               .map((panel, index) => (
                               <Draggable key={panel.id} draggableId={`panel-${panel.id}`} index={index}>
@@ -4126,7 +4140,7 @@ export default function ProjectDetailView() {
                           <div>
                             <span className="text-sm font-medium text-gray-900">{opening.name}</span>
                             <div className="text-xs text-gray-500">
-                              {opening.panels.filter(p => p.componentInstance).length} components • ${opening.price.toLocaleString()}
+                              {opening.panels.filter(p => p.componentInstance && !p.parentPanelId).length} components • ${opening.price.toLocaleString()}
                             </div>
                           </div>
                         </div>
@@ -5191,7 +5205,7 @@ export default function ProjectDetailView() {
                   <div key={opening.id} className="px-3 py-2 border-b border-gray-100 last:border-b-0">
                     <span className="text-sm font-medium text-gray-900">{opening.name}</span>
                     <span className="text-xs text-gray-500 ml-2">
-                      ({opening.panels.filter(p => p.componentInstance).length} components)
+                      ({opening.panels.filter(p => p.componentInstance && !p.parentPanelId).length} components)
                     </span>
                   </div>
                 ))}

@@ -1,8 +1,9 @@
 // All available tab IDs in the application
 export const ALL_TABS = [
   'dashboard',
-  'projects',
   'crm',
+  'projects',
+  'production',
   'products',
   'masterParts',
   'inventory',

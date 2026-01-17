@@ -408,6 +408,12 @@ interface Product {
   maxWidth?: number | null
   minHeight?: number | null
   maxHeight?: number | null
+  pairedProductId?: number | null
+  pairedProduct?: {
+    id: number
+    name: string
+    productType: string
+  } | null
   _count: {
     productBOMs: number
     productSubOptions: number
@@ -508,6 +514,8 @@ export default function ProductDetailView({
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [editProductType, setEditProductType] = useState('SWING_DOOR')
+  const [editPairedProductId, setEditPairedProductId] = useState<string>('')
+  const [frameProducts, setFrameProducts] = useState<{id: number, name: string, productType: string}[]>([])
   const [saving, setSaving] = useState(false)
   const [showCSVUpload, setShowCSVUpload] = useState(false)
   const [csvFile, setCsvFile] = useState<File | null>(null)
@@ -547,6 +555,10 @@ export default function ProductDetailView({
   const [productCategoryValue, setProductCategoryValue] = useState('')
   const [defaultWidthValue, setDefaultWidthValue] = useState('')
   const [savingProductSettings, setSavingProductSettings] = useState(false)
+  // Paired Product inline editing
+  const [editingPairedProduct, setEditingPairedProduct] = useState(false)
+  const [pairedProductValue, setPairedProductValue] = useState<string>('')
+  const [savingPairedProduct, setSavingPairedProduct] = useState(false)
   const [expandedCategory, setExpandedCategory] = useState<number | null>(null)
   const [settingStandard, setSettingStandard] = useState(false)
   const [optionBomModalOpen, setOptionBomModalOpen] = useState(false)
@@ -557,6 +569,7 @@ export default function ProductDetailView({
   const [optionBomMinQuantity, setOptionBomMinQuantity] = useState('')
   const [optionBomMaxQuantity, setOptionBomMaxQuantity] = useState('')
   const [optionBomDefaultQuantity, setOptionBomDefaultQuantity] = useState('')
+  const [optionBomIsMachined, setOptionBomIsMachined] = useState(false)
   const [savingOptionBom, setSavingOptionBom] = useState(false)
 
   // Determine if this is a Frame product (hide certain sections)
@@ -601,8 +614,24 @@ export default function ProductDetailView({
       }
     }
 
+    async function fetchFrameProducts() {
+      try {
+        // Fetch all products that can be paired (typically FRAME products)
+        const response = await fetch('/api/products')
+        if (response.ok) {
+          const data = await response.json()
+          // Filter to FRAME products only (products that are typically auto-added)
+          const frames = data.filter((p: any) => p.productType === 'FRAME' && p.id !== product.id)
+          setFrameProducts(frames)
+        }
+      } catch (error) {
+        console.error('Error fetching frame products:', error)
+      }
+    }
+
     fetchProductDetails()
     fetchPlanViews()
+    fetchFrameProducts()
   }, [product.id])
 
   // Handle Escape key to close modals one at a time
@@ -630,7 +659,8 @@ export default function ProductDetailView({
         body: JSON.stringify({
           name: editName,
           description: editDescription,
-          productType: editProductType
+          productType: editProductType,
+          pairedProductId: editPairedProductId ? parseInt(editPairedProductId) : null
         })
       })
 
@@ -1055,6 +1085,46 @@ export default function ProductDetailView({
     }
   }
 
+  function startEditPairedProduct() {
+    setPairedProductValue(productDetails?.pairedProductId?.toString() || '')
+    setEditingPairedProduct(true)
+  }
+
+  function cancelEditPairedProduct() {
+    setPairedProductValue('')
+    setEditingPairedProduct(false)
+  }
+
+  async function handleSavePairedProduct() {
+    setSavingPairedProduct(true)
+    try {
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pairedProductId: pairedProductValue ? parseInt(pairedProductValue) : null
+        })
+      })
+      if (response.ok) {
+        const detailsResponse = await fetch(`/api/products/${product.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setProductDetails(data)
+        }
+        setEditingPairedProduct(false)
+        onRefresh()
+        showSuccess('Paired product updated successfully!')
+      } else {
+        showError('Failed to update paired product')
+      }
+    } catch (error) {
+      console.error('Error updating paired product:', error)
+      showError('Error updating paired product')
+    } finally {
+      setSavingPairedProduct(false)
+    }
+  }
+
   async function handleLinkCategory(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedCategoryId) return
@@ -1179,6 +1249,7 @@ export default function ProductDetailView({
     setOptionBomMinQuantity(existingBom?.minQuantity?.toString() || '')
     setOptionBomMaxQuantity(existingBom?.maxQuantity?.toString() || '')
     setOptionBomDefaultQuantity(existingBom?.defaultQuantity?.toString() || '')
+    setOptionBomIsMachined(existingBom?.isMilled ?? false)
     setOptionBomModalOpen(true)
   }
 
@@ -1219,7 +1290,8 @@ export default function ProductDetailView({
           quantityMode: optionBomQuantityMode,
           minQuantity: optionBomQuantityMode === 'RANGE' ? parseFloat(optionBomMinQuantity) : null,
           maxQuantity: optionBomQuantityMode === 'RANGE' ? parseFloat(optionBomMaxQuantity) : null,
-          defaultQuantity: optionBomQuantityMode === 'RANGE' && optionBomDefaultQuantity ? parseFloat(optionBomDefaultQuantity) : null
+          defaultQuantity: optionBomQuantityMode === 'RANGE' && optionBomDefaultQuantity ? parseFloat(optionBomDefaultQuantity) : null,
+          isMilled: optionBomIsMachined
         })
       })
 
@@ -1530,6 +1602,7 @@ export default function ProductDetailView({
               setEditName(product.name)
               setEditDescription(product.description || '')
               setEditProductType(product.productType || 'SWING_DOOR')
+              setEditPairedProductId(productDetails?.pairedProductId?.toString() || '')
               setShowEditModal(true)
             }}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
@@ -2177,6 +2250,9 @@ export default function ProductDetailView({
                                                     ) : (
                                                       optionBom.quantity && ` × ${optionBom.quantity}`
                                                     )}
+                                                    <span className="ml-2 font-medium">
+                                                      • {optionBom.isMilled ? 'Machined' : 'Cut'}
+                                                    </span>
                                                   </div>
                                                 )}
                                               </div>
@@ -2330,6 +2406,87 @@ export default function ProductDetailView({
             )}
           </div>
         </div>
+        )}
+
+        {/* Paired Product Section - Hidden for Frame products */}
+        {!isFrameProduct && frameProducts.length > 0 && (
+          <div className="col-span-full mt-6">
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Paired Product</h3>
+                  <p className="text-sm text-gray-500">
+                    Auto-add another product when this product is added to an opening
+                  </p>
+                </div>
+                {!editingPairedProduct && (
+                  <button
+                    onClick={startEditPairedProduct}
+                    className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                  >
+                    <Edit2 className="w-4 h-4 mr-1" />
+                    Edit
+                  </button>
+                )}
+              </div>
+
+              {editingPairedProduct ? (
+                <div className="bg-white rounded-lg p-4 border border-gray-200">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Paired Product</label>
+                      <select
+                        value={pairedProductValue}
+                        onChange={(e) => setPairedProductValue(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">None (no paired product)</option>
+                        {frameProducts.map((fp) => (
+                          <option key={fp.id} value={fp.id}>
+                            {fp.name}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        When this product is added to an opening, the paired product will be automatically added as well using the opening dimensions.
+                      </p>
+                    </div>
+                    <div className="flex justify-end space-x-2 pt-2">
+                      <button
+                        onClick={cancelEditPairedProduct}
+                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm"
+                        disabled={savingPairedProduct}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSavePairedProduct}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50"
+                        disabled={savingPairedProduct}
+                      >
+                        {savingPairedProduct ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-gray-900">
+                  {productDetails?.pairedProduct ? (
+                    <div className="flex items-center space-x-2">
+                      <span className="text-lg font-medium text-blue-600">
+                        {productDetails.pairedProduct.name}
+                      </span>
+                      <span className="text-sm text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
+                        {productDetails.pairedProduct.productType.replace('_', ' ')}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-gray-500">No paired product configured</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Product Settings Section - Hidden for Frame products */}
@@ -2674,6 +2831,27 @@ export default function ProductDetailView({
                   </select>
                 </div>
               )}
+              {/* Paired Product - auto-add another product when this one is added (e.g., door adds frame) */}
+              {!isFrameProduct && frameProducts.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Paired Product</label>
+                  <select
+                    value={editPairedProductId}
+                    onChange={(e) => setEditPairedProductId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  >
+                    <option value="">None (no paired product)</option>
+                    {frameProducts.map((fp) => (
+                      <option key={fp.id} value={fp.id}>
+                        {fp.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    When this product is added to an opening, the paired product will be automatically added as well.
+                  </p>
+                </div>
+              )}
               <div className="border-t pt-4">
                 <h3 className="text-md font-medium text-gray-900 mb-3">Quick Actions</h3>
                 <div className="flex flex-wrap gap-2">
@@ -2990,6 +3168,22 @@ export default function ProductDetailView({
                   </p>
                 </div>
               )}
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="optionBomIsMachined"
+                  checked={optionBomIsMachined}
+                  onChange={(e) => setOptionBomIsMachined(e.target.checked)}
+                  className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="optionBomIsMachined" className="text-sm font-medium text-gray-700">
+                  Machined
+                </label>
+                <span className="ml-2 text-xs text-gray-500">
+                  (This extrusion requires machining)
+                </span>
+              </div>
 
               <div className="flex justify-end space-x-3 pt-4">
                 <button

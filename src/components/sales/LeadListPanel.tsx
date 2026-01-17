@@ -98,16 +98,10 @@ export default function LeadListPanel({
                 {lead.customer ? (
                   <div className="text-sm text-gray-500 truncate mt-0.5">
                     {lead.customer.companyName}
-                    {lead.customer.isProspect ? (
-                      <span className="ml-1.5 px-1 py-px text-[10px] bg-amber-100 text-amber-700 rounded font-medium">P</span>
-                    ) : (
-                      <span className="ml-1.5 px-1 py-px text-[10px] bg-blue-100 text-blue-700 rounded font-medium">C</span>
-                    )}
                   </div>
                 ) : lead.prospectCompanyName ? (
                   <div className="text-sm text-gray-500 truncate mt-0.5">
                     {lead.prospectCompanyName}
-                    <span className="ml-1.5 px-1 py-px text-[10px] bg-orange-100 text-orange-700 rounded font-medium">Lead</span>
                   </div>
                 ) : null}
                 <div className="flex items-center justify-between mt-2">

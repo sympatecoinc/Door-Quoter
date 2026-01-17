@@ -1,21 +1,24 @@
-// Pick List PDF Generation Utility
-// Generates a professional pick list PDF showing hardware items grouped by product
+// Jamb Kit List PDF Generation Utility
+// Generates a professional jamb kit list PDF showing items grouped by opening
 
 import { jsPDF } from 'jspdf'
 
-export interface PickListItem {
-  productName: string
+export interface JambKitItem {
   partNumber: string
   partName: string
   unit: string
   totalQuantity: number
-  openings: string[]
 }
 
-export interface PickListData {
+export interface JambKitOpening {
+  openingName: string
+  items: JambKitItem[]
+}
+
+export interface JambKitData {
   projectName: string
   customerName?: string
-  items: PickListItem[]
+  openings: JambKitOpening[]
   generatedDate: string
 }
 
@@ -26,9 +29,9 @@ const MARGIN = 15
 const CONTENT_WIDTH = PAGE_WIDTH - 2 * MARGIN
 
 /**
- * Creates a Pick List PDF
+ * Creates a Jamb Kit List PDF
  */
-export async function createPickListPDF(data: PickListData): Promise<Buffer> {
+export async function createJambKitPDF(data: JambKitData): Promise<Buffer> {
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -40,7 +43,7 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
   // Title
   pdf.setFontSize(18)
   pdf.setFont('helvetica', 'bold')
-  pdf.text('Pick List', PAGE_WIDTH / 2, yPos, { align: 'center' })
+  pdf.text('Jamb Kit List', PAGE_WIDTH / 2, yPos, { align: 'center' })
   yPos += 8
 
   // Customer name (if available)
@@ -64,21 +67,12 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
   pdf.setTextColor(0, 0, 0)
   yPos += 10
 
-  if (data.items.length === 0) {
+  if (data.openings.length === 0) {
     pdf.setFontSize(12)
     pdf.setFont('helvetica', 'italic')
     pdf.setTextColor(100, 100, 100)
-    pdf.text('No pick list items found for this project.', PAGE_WIDTH / 2, yPos + 20, { align: 'center' })
+    pdf.text('No jamb kit items found for this project.', PAGE_WIDTH / 2, yPos + 20, { align: 'center' })
     return Buffer.from(pdf.output('arraybuffer'))
-  }
-
-  // Group items by product
-  const groupedByProduct: Record<string, PickListItem[]> = {}
-  for (const item of data.items) {
-    if (!groupedByProduct[item.productName]) {
-      groupedByProduct[item.productName] = []
-    }
-    groupedByProduct[item.productName].push(item)
   }
 
   // Column widths - must fit within CONTENT_WIDTH (~186mm)
@@ -93,21 +87,21 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
   const rowHeight = 7
   const headerHeight = 8
 
-  // Render each product group
-  for (const [productName, items] of Object.entries(groupedByProduct)) {
+  // Render each opening group
+  for (const opening of data.openings) {
     // Check if we need a new page (header + at least 3 rows should fit)
     if (yPos + headerHeight + rowHeight * 3 + 15 > PAGE_HEIGHT - MARGIN) {
       pdf.addPage()
       yPos = MARGIN
     }
 
-    // Product group header
-    pdf.setFillColor(79, 70, 229) // Indigo color
+    // Opening group header
+    pdf.setFillColor(16, 185, 129) // Green color for jamb kit
     pdf.rect(MARGIN, yPos, CONTENT_WIDTH, 8, 'F')
     pdf.setFontSize(11)
     pdf.setFont('helvetica', 'bold')
     pdf.setTextColor(255, 255, 255)
-    pdf.text(productName, MARGIN + 3, yPos + 5.5)
+    pdf.text(opening.openingName, MARGIN + 3, yPos + 5.5)
     pdf.setTextColor(0, 0, 0)
     yPos += 10
 
@@ -134,21 +128,21 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
     pdf.setFont('helvetica', 'normal')
     pdf.setTextColor(0, 0, 0)
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]
+    for (let i = 0; i < opening.items.length; i++) {
+      const item = opening.items[i]
 
       // Check if we need a new page
       if (yPos + rowHeight > PAGE_HEIGHT - MARGIN) {
         pdf.addPage()
         yPos = MARGIN
 
-        // Re-draw product header on new page
-        pdf.setFillColor(79, 70, 229)
+        // Re-draw opening header on new page
+        pdf.setFillColor(16, 185, 129)
         pdf.rect(MARGIN, yPos, CONTENT_WIDTH, 8, 'F')
         pdf.setFontSize(11)
         pdf.setFont('helvetica', 'bold')
         pdf.setTextColor(255, 255, 255)
-        pdf.text(`${productName} (continued)`, MARGIN + 3, yPos + 5.5)
+        pdf.text(`${opening.openingName} (continued)`, MARGIN + 3, yPos + 5.5)
         pdf.setTextColor(0, 0, 0)
         yPos += 10
 
@@ -206,7 +200,7 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
       yPos += rowHeight
     }
 
-    // Add space between product groups
+    // Add space between opening groups
     yPos += 5
   }
 
@@ -229,12 +223,13 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
   pdf.setFontSize(9)
   pdf.setFont('helvetica', 'normal')
 
-  const totalItems = data.items.reduce((sum, item) => sum + item.totalQuantity, 0)
-  const productCount = Object.keys(groupedByProduct).length
+  const totalItems = data.openings.reduce((sum, opening) =>
+    sum + opening.items.reduce((itemSum, item) => itemSum + item.totalQuantity, 0), 0)
+  const openingCount = data.openings.length
 
-  pdf.text(`Total Items: ${totalItems}`, MARGIN, yPos)
+  pdf.text(`Total Openings: ${openingCount}`, MARGIN, yPos)
   yPos += 5
-  pdf.text(`Product Types: ${productCount}`, MARGIN, yPos)
+  pdf.text(`Total Jamb Kit Items: ${totalItems}`, MARGIN, yPos)
 
   return Buffer.from(pdf.output('arraybuffer'))
 }

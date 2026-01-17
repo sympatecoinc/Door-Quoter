@@ -491,8 +491,8 @@ export default function MasterPartsView() {
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
           addToPackingList: partType === 'Hardware' ? addToPackingList : false,
-          includeOnPickList: (partType === 'Hardware' || partType === 'Fastener') ? includeOnPickList : false,
-          includeInJambKit: (partType === 'Hardware' || partType === 'Fastener') ? includeInJambKit : false
+          includeOnPickList: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? includeOnPickList : false,
+          includeInJambKit: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? includeInJambKit : false
         })
       })
 
@@ -535,8 +535,8 @@ export default function MasterPartsView() {
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
           addToPackingList: partType === 'Hardware' ? addToPackingList : false,
-          includeOnPickList: (partType === 'Hardware' || partType === 'Fastener') ? includeOnPickList : false,
-          includeInJambKit: (partType === 'Hardware' || partType === 'Fastener') ? includeInJambKit : false
+          includeOnPickList: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? includeOnPickList : false,
+          includeInJambKit: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? includeInJambKit : false
         })
       })
 
@@ -2280,14 +2280,13 @@ export default function MasterPartsView() {
                           id="includeInJambKit"
                           checked={includeInJambKit}
                           onChange={(e) => setIncludeInJambKit(e.target.checked)}
-                          disabled={!includeOnPickList}
-                          className="mr-2 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded disabled:opacity-50"
+                          className="mr-2 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
                         />
-                        <label htmlFor="includeInJambKit" className={`text-sm font-medium ${includeOnPickList ? 'text-gray-700' : 'text-gray-400'}`}>
+                        <label htmlFor="includeInJambKit" className="text-sm font-medium text-gray-700">
                           Include in Jamb Kit
                         </label>
-                        <span className={`ml-2 text-xs ${includeOnPickList ? 'text-gray-500' : 'text-gray-400'}`}>
-                          (Mark as part of Jamb Kit on pick list)
+                        <span className="ml-2 text-xs text-gray-500">
+                          (This item will appear on jamb kit lists)
                         </span>
                       </div>
                     </>
@@ -2355,14 +2354,13 @@ export default function MasterPartsView() {
                         id="fastenerIncludeInJambKit"
                         checked={includeInJambKit}
                         onChange={(e) => setIncludeInJambKit(e.target.checked)}
-                        disabled={!includeOnPickList}
-                        className="mr-2 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded disabled:opacity-50"
+                        className="mr-2 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
                       />
-                      <label htmlFor="fastenerIncludeInJambKit" className={`text-sm font-medium ${includeOnPickList ? 'text-gray-700' : 'text-gray-400'}`}>
+                      <label htmlFor="fastenerIncludeInJambKit" className="text-sm font-medium text-gray-700">
                         Include in Jamb Kit
                       </label>
-                      <span className={`ml-2 text-xs ${includeOnPickList ? 'text-gray-500' : 'text-gray-400'}`}>
-                        (Mark as part of Jamb Kit on pick list)
+                      <span className="ml-2 text-xs text-gray-500">
+                        (This item will appear on jamb kit lists)
                       </span>
                     </div>
                     </>
@@ -2456,6 +2454,40 @@ export default function MasterPartsView() {
                         </label>
                         <span className="ml-2 text-xs text-gray-500">
                           (Can be selected when adding options to product categories)
+                        </span>
+                      </div>
+
+                      {/* Include on pick list checkbox for extrusions */}
+                      <div className="flex items-center mt-3">
+                        <input
+                          type="checkbox"
+                          id="extrusionIncludeOnPickList"
+                          checked={includeOnPickList}
+                          onChange={(e) => setIncludeOnPickList(e.target.checked)}
+                          className="mr-2 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="extrusionIncludeOnPickList" className="text-sm font-medium text-gray-700">
+                          Include on pick list
+                        </label>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (This item will appear on production pick lists)
+                        </span>
+                      </div>
+
+                      {/* Include in Jamb Kit checkbox for extrusions */}
+                      <div className="flex items-center mt-2">
+                        <input
+                          type="checkbox"
+                          id="extrusionIncludeInJambKit"
+                          checked={includeInJambKit}
+                          onChange={(e) => setIncludeInJambKit(e.target.checked)}
+                          className="mr-2 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="extrusionIncludeInJambKit" className="text-sm font-medium text-gray-700">
+                          Include in Jamb Kit
+                        </label>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (This item will appear on jamb kit lists)
                         </span>
                       </div>
                     </>

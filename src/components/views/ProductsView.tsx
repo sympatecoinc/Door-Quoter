@@ -542,8 +542,8 @@ function ProductsTab({
   const [creating, setCreating] = useState(false)
   const [creatingFrame, setCreatingFrame] = useState(false)
 
-  // Separate Frame product from other products
-  const frameProduct = products.find(p => p.productType === 'FRAME')
+  // Separate Frame products from other products
+  const frameProducts = products.filter(p => p.productType === 'FRAME')
   const nonFrameProducts = products.filter(p => p.productType !== 'FRAME')
 
   // Group products by productType (Swing Door, Sliding Door, etc.)
@@ -801,50 +801,53 @@ function ProductsTab({
               Frames are automatically added to openings when set to "Trimmed"
             </p>
           </div>
-          {!frameProduct && (
-            <button
-              onClick={handleCreateFrame}
-              disabled={creatingFrame}
-              className="flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
-            >
-              {creatingFrame ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className="w-5 h-5 mr-2" />
-                  Create Frame Product
-                </>
-              )}
-            </button>
-          )}
-        </div>
-        {frameProduct ? (
-          <div
-            onClick={() => onSelectProduct(frameProduct)}
-            className="bg-white border border-amber-300 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
+          <button
+            onClick={handleCreateFrame}
+            disabled={creatingFrame}
+            className="flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
           >
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h4 className="font-medium text-gray-900">{frameProduct.name}</h4>
-                  {frameProduct.archived && (
-                    <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">
-                      Archived
-                    </span>
-                  )}
+            {creatingFrame ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Creating...
+              </>
+            ) : (
+              <>
+                <Plus className="w-5 h-5 mr-2" />
+                Create Frame Product
+              </>
+            )}
+          </button>
+        </div>
+        {frameProducts.length > 0 ? (
+          <div className="space-y-3">
+            {frameProducts.map((frameProduct) => (
+              <div
+                key={frameProduct.id}
+                onClick={() => onSelectProduct(frameProduct)}
+                className="bg-white border border-amber-300 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="font-medium text-gray-900">{frameProduct.name}</h4>
+                      {frameProduct.archived && (
+                        <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">
+                          Archived
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-600">{frameProduct.description || 'No description'}</p>
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {frameProduct._count.productBOMs} BOM items
+                  </div>
                 </div>
-                <p className="text-sm text-gray-600">{frameProduct.description || 'No description'}</p>
+                <div className="mt-3 text-xs text-amber-600">
+                  Click to configure Frame BOM →
+                </div>
               </div>
-              <div className="text-sm text-gray-500">
-                {frameProduct._count.productBOMs} BOM items
-              </div>
-            </div>
-            <div className="mt-3 text-xs text-amber-600">
-              Click to configure Frame BOM →
-            </div>
+            ))}
           </div>
         ) : (
           <div className="text-center py-4 text-gray-500">

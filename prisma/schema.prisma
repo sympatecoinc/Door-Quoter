@@ -157,6 +157,10 @@ model Panel {
   componentInstance   ComponentInstance?
   componentLibrary    ComponentLibrary?  @relation(fields: [componentLibraryId], references: [id], onDelete: SetNull)
   opening             Opening            @relation(fields: [openingId], references: [id], onDelete: Cascade)
+  // Paired panel support - for auto-added components like frames
+  parentPanelId       Int?               // If set, this is a paired panel (hidden in UI)
+  parentPanel         Panel?             @relation("PairedPanels", fields: [parentPanelId], references: [id], onDelete: Cascade)
+  pairedPanels        Panel[]            @relation("PairedPanels")
 
   @@map("Panels")
 }
@@ -212,6 +216,10 @@ model Product {
   productSubOptions    ProductSubOption[]
   planViews            ProductPlanView[]
   productDocuments     ProductQuoteDocument[] // Documents associated with this product
+  // Paired product support - auto-add another product when this one is added (e.g., door adds frame)
+  pairedProductId      Int?                   // ID of product to auto-add as paired (e.g., Frame)
+  pairedProduct        Product?               @relation("ProductPairing", fields: [pairedProductId], references: [id])
+  pairedByProducts     Product[]              @relation("ProductPairing")
 
   @@map("Products")
 }

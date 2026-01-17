@@ -43,6 +43,13 @@ export async function GET(request: NextRequest) {
             displayOrder: 'asc'
           }
         },
+        pairedProduct: {
+          select: {
+            id: true,
+            name: true,
+            productType: true
+          }
+        },
         _count: {
           select: {
             productBOMs: true,
@@ -93,19 +100,6 @@ export async function POST(request: NextRequest) {
         { error: 'Invalid product type. Must be one of: Swing Door, Sliding Door, Fixed Panel, 90 Degree Corner, Frame' },
         { status: 400 }
       )
-    }
-
-    // Check singleton constraint for FRAME products
-    if (productType === 'FRAME') {
-      const existingFrame = await prisma.product.findFirst({
-        where: { productType: 'FRAME' }
-      })
-      if (existingFrame) {
-        return NextResponse.json(
-          { error: 'A Frame product already exists. Only one Frame product is allowed.' },
-          { status: 400 }
-        )
-      }
     }
 
     // Validate productCategory

@@ -29,6 +29,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             displayOrder: 'asc'
           }
         },
+        pairedProduct: {
+          select: {
+            id: true,
+            name: true,
+            productType: true
+          }
+        },
         _count: {
           select: {
             productBOMs: true,
@@ -72,7 +79,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       minWidth,
       maxWidth,
       minHeight,
-      maxHeight
+      maxHeight,
+      pairedProductId
     } = await request.json()
 
     // Prepare update data
@@ -99,21 +107,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           { status: 400 }
         )
       }
-      // Check singleton constraint when changing TO FRAME
-      if (productType === 'FRAME') {
-        const existingFrame = await prisma.product.findFirst({
-          where: {
-            productType: 'FRAME',
-            id: { not: productId }
-          }
-        })
-        if (existingFrame) {
-          return NextResponse.json(
-            { error: 'A Frame product already exists. Only one Frame product is allowed.' },
-            { status: 400 }
-          )
-        }
-      }
       updateData.productType = productType
     }
     if (glassWidthFormula !== undefined) updateData.glassWidthFormula = glassWidthFormula
@@ -128,6 +121,32 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (maxWidth !== undefined) updateData.maxWidth = maxWidth !== null && maxWidth !== '' ? parseFloat(maxWidth) : null
     if (minHeight !== undefined) updateData.minHeight = minHeight !== null && minHeight !== '' ? parseFloat(minHeight) : null
     if (maxHeight !== undefined) updateData.maxHeight = maxHeight !== null && maxHeight !== '' ? parseFloat(maxHeight) : null
+
+    // Paired product - auto-add another product when this one is added (e.g., door adds frame)
+    if (pairedProductId !== undefined) {
+      // Validate paired product exists if setting (allow null to clear)
+      if (pairedProductId !== null) {
+        const pairedProduct = await prisma.product.findUnique({
+          where: { id: parseInt(pairedProductId) }
+        })
+        if (!pairedProduct) {
+          return NextResponse.json(
+            { error: 'Paired product not found' },
+            { status: 400 }
+          )
+        }
+        // Prevent self-referencing
+        if (parseInt(pairedProductId) === productId) {
+          return NextResponse.json(
+            { error: 'A product cannot be paired with itself' },
+            { status: 400 }
+          )
+        }
+        updateData.pairedProductId = parseInt(pairedProductId)
+      } else {
+        updateData.pairedProductId = null
+      }
+    }
 
     // Product category for streamlined opening flow
     if (productCategory !== undefined) {
@@ -159,6 +178,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
               }
             },
             standardOption: true
+          }
+        },
+        pairedProduct: {
+          select: {
+            id: true,
+            name: true,
+            productType: true
           }
         },
         _count: {

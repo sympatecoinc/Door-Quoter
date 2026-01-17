@@ -59,12 +59,10 @@ interface LeadOpeningsTabProps {
 }
 
 export default function LeadOpeningsTab({ lead, onOpeningsUpdated }: LeadOpeningsTabProps) {
-  const { setSelectedProjectId, setCurrentMenu, closeSalesLeadView } = useAppStore()
+  const { openProjectFromSalesDashboard } = useAppStore()
 
   const handleOpenInEditor = () => {
-    setSelectedProjectId(lead.id)
-    setCurrentMenu('projects')
-    closeSalesLeadView()
+    openProjectFromSalesDashboard(lead.id)
   }
 
   const formatDimensions = (opening: OpeningData) => {

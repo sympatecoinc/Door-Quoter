@@ -15,6 +15,7 @@ interface AppState {
   salesLeadId: number | null
   showSalesLeadView: boolean
   salesViewMode: SalesViewMode
+  cameFromSalesDashboard: boolean
   setCurrentMenu: (menu: MenuOption) => void
   setSelectedProjectId: (id: number | null) => void
   setSelectedCustomerId: (id: number | null) => void
@@ -27,6 +28,8 @@ interface AppState {
   setShowSalesLeadView: (show: boolean) => void
   openSalesLead: (id: number, mode: SalesViewMode) => void
   closeSalesLeadView: () => void
+  setCameFromSalesDashboard: (value: boolean) => void
+  openProjectFromSalesDashboard: (projectId: number) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -41,6 +44,7 @@ export const useAppStore = create<AppState>((set) => ({
   salesLeadId: null,
   showSalesLeadView: false,
   salesViewMode: 'leads',
+  cameFromSalesDashboard: false,
   setCurrentMenu: (menu) => set({ currentMenu: menu }),
   setSelectedProjectId: (id) => set({ selectedProjectId: id }),
   setSelectedCustomerId: (id) => set({ selectedCustomerId: id }),
@@ -53,4 +57,11 @@ export const useAppStore = create<AppState>((set) => ({
   setShowSalesLeadView: (show) => set({ showSalesLeadView: show }),
   openSalesLead: (id, mode) => set({ salesLeadId: id, showSalesLeadView: true, salesViewMode: mode }),
   closeSalesLeadView: () => set({ showSalesLeadView: false }),
+  setCameFromSalesDashboard: (value) => set({ cameFromSalesDashboard: value }),
+  openProjectFromSalesDashboard: (projectId) => set({
+    selectedProjectId: projectId,
+    currentMenu: 'projects',
+    showSalesLeadView: false,
+    cameFromSalesDashboard: true,
+  }),
 }))

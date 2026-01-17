@@ -18,15 +18,18 @@ interface Profile {
 
 const TAB_LABELS: Record<string, string> = {
   dashboard: 'Dashboard (Sales)',
-  projects: 'Projects',
   crm: 'CRM',
+  projects: 'Projects',
+  production: 'Production',
   products: 'Products',
   masterParts: 'Master Parts',
   inventory: 'Inventory',
   vendors: 'Vendors',
   purchaseOrders: 'Purchase Orders',
+  salesOrders: 'Sales Orders',
+  invoices: 'Invoices',
   quoteDocuments: 'Quote Settings',
-  accounting: 'Accounting',
+  accounting: 'Pricing',
   settings: 'Settings'
 }
 

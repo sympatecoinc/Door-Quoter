@@ -41,25 +41,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    // Fetch all three document types in parallel
-    const [summaryResponse, cutlistResponse, bomsResponse] = await Promise.all([
-      // Purchasing Summary CSV
-      fetch(`${baseUrl}/api/projects/${projectId}/bom?summary=true&format=csv`, fetchOptions),
+    // Fetch all documents in parallel
+    const [cutlistResponse, bomsResponse, picklistResponse, jambkitResponse] = await Promise.all([
       // Cutlist CSV (batch=1 is default)
       fetch(`${baseUrl}/api/projects/${projectId}/bom?cutlist=true&format=csv`, fetchOptions),
       // Unique BOMs ZIP
-      fetch(`${baseUrl}/api/projects/${projectId}/bom/csv?zip=true&unique=true`, fetchOptions)
+      fetch(`${baseUrl}/api/projects/${projectId}/bom/csv?zip=true&unique=true`, fetchOptions),
+      // Pick List PDF
+      fetch(`${baseUrl}/api/projects/${projectId}/bom?picklist=true&format=pdf`, fetchOptions),
+      // Jamb Kit List PDF
+      fetch(`${baseUrl}/api/projects/${projectId}/bom?jambkit=true&format=pdf`, fetchOptions)
     ])
 
-    // Check for errors
-    if (!summaryResponse.ok) {
-      console.error('Failed to fetch purchasing summary:', await summaryResponse.text())
-      return NextResponse.json(
-        { error: 'Failed to fetch purchasing summary' },
-        { status: 500 }
-      )
-    }
-
+    // Check for errors (only fail on critical documents)
     if (!cutlistResponse.ok) {
       console.error('Failed to fetch cutlist:', await cutlistResponse.text())
       return NextResponse.json(
@@ -77,16 +71,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Get response data
-    const summaryCSV = await summaryResponse.text()
     const cutlistCSV = await cutlistResponse.text()
     const bomsBuffer = await bomsResponse.arrayBuffer()
+
+    // Get optional PDFs (may be empty if no items)
+    const picklistBuffer = picklistResponse.ok ? await picklistResponse.arrayBuffer() : null
+    const jambkitBuffer = jambkitResponse.ok ? await jambkitResponse.arrayBuffer() : null
 
     // Create the main ZIP
     const zip = new JSZip()
 
-    // Add purchasing summary and cutlist
-    zip.file('purchasing-summary.csv', summaryCSV)
+    // Add cutlist
     zip.file('cutlist.csv', cutlistCSV)
+
+    // Add Pick List PDF if available
+    if (picklistBuffer && picklistBuffer.byteLength > 0) {
+      zip.file('pick-list.pdf', picklistBuffer)
+    }
+
+    // Add Jamb Kit List PDF if available
+    if (jambkitBuffer && jambkitBuffer.byteLength > 0) {
+      zip.file('jamb-kit-list.pdf', jambkitBuffer)
+    }
 
     // Check if BOMs response is a ZIP or single CSV
     const bomsContentType = bomsResponse.headers.get('Content-Type') || ''

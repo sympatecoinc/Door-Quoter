@@ -75,6 +75,7 @@ export async function GET(
     const cutlist = searchParams.get('cutlist') === 'true'
     const assembly = searchParams.get('assembly') === 'true'
     const picklist = searchParams.get('picklist') === 'true'
+    const jambkit = searchParams.get('jambkit') === 'true'
     const format = searchParams.get('format')
     const productFilter = searchParams.get('product')
     const sizeFilter = searchParams.get('size')  // e.g., "42x108"
@@ -241,10 +242,10 @@ export async function GET(
             percentOfStock = (cutLength / stockLength) * 100
           }
 
-          // Lookup MasterPart for Hardware to get pick list flags
+          // Lookup MasterPart for Hardware/Extrusion/Fastener to get pick list and jamb kit flags
           let includeOnPickList = false
           let includeInJambKit = false
-          if (bom.partType === 'Hardware' && bom.partNumber) {
+          if ((bom.partType === 'Hardware' || bom.partType === 'Extrusion' || bom.partType === 'Fastener') && bom.partNumber) {
             const masterPart = await prisma.masterPart.findUnique({
               where: { partNumber: bom.partNumber },
               select: { includeOnPickList: true, includeInJambKit: true }
@@ -1149,6 +1150,85 @@ export async function GET(
         pickListItems: aggregatedPickList,
         productGroups,
         totalItems: aggregatedPickList.reduce((sum, item) => sum + item.totalQuantity, 0)
+      })
+    }
+
+    // If jambkit mode is requested, return jamb kit items grouped by opening
+    if (jambkit) {
+      // Filter to items with includeInJambKit flag (Hardware, Extrusion, or Fastener)
+      const jambKitItems = bomItems.filter(item =>
+        (item.partType === 'Hardware' || item.partType === 'Extrusion' || item.partType === 'Fastener') &&
+        item.includeInJambKit === true
+      )
+
+      // Group by opening name
+      const groupedByOpening: Record<string, any[]> = {}
+      for (const item of jambKitItems) {
+        const openingKey = item.openingName
+        if (!groupedByOpening[openingKey]) {
+          groupedByOpening[openingKey] = []
+        }
+        groupedByOpening[openingKey].push(item)
+      }
+
+      // Build the jamb kit list grouped by opening
+      const jambKitList: any[] = []
+      for (const [openingName, items] of Object.entries(groupedByOpening)) {
+        // Aggregate items within each opening by part number
+        const aggregatedByPart: Record<string, any> = {}
+        for (const item of items) {
+          const key = item.partNumber
+          if (!aggregatedByPart[key]) {
+            aggregatedByPart[key] = {
+              partNumber: item.partNumber,
+              partName: item.partName,
+              unit: item.unit,
+              totalQuantity: 0
+            }
+          }
+          aggregatedByPart[key].totalQuantity += (item.quantity || 1)
+        }
+
+        jambKitList.push({
+          openingName: openingName,
+          items: Object.values(aggregatedByPart)
+        })
+      }
+
+      // Sort openings alphabetically
+      jambKitList.sort((a, b) => a.openingName.localeCompare(b.openingName))
+
+      if (format === 'pdf') {
+        const { createJambKitPDF } = await import('@/lib/jamb-kit-pdf-generator')
+        const pdfBuffer = await createJambKitPDF({
+          projectName: project.name,
+          customerName: project.customer?.companyName,
+          openings: jambKitList,
+          generatedDate: new Date().toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        })
+        const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '-')}-jamb-kit-list.pdf`
+
+        return new NextResponse(pdfBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${filename}"`
+          }
+        })
+      }
+
+      return NextResponse.json({
+        projectId,
+        projectName: project.name,
+        jambKitList,
+        totalOpenings: jambKitList.length,
+        totalItems: jambKitItems.reduce((sum, item) => sum + (item.quantity || 1), 0)
       })
     }
 

@@ -175,16 +175,10 @@ export default function DashboardView() {
                     {lead.customer ? (
                       <p className="text-sm text-gray-500">
                         {lead.customer.companyName}
-                        {lead.customer.isProspect ? (
-                          <span className="ml-1.5 px-1 py-px text-[10px] bg-amber-100 text-amber-700 rounded font-medium">P</span>
-                        ) : (
-                          <span className="ml-1.5 px-1 py-px text-[10px] bg-blue-100 text-blue-700 rounded font-medium">C</span>
-                        )}
                       </p>
                     ) : lead.prospectCompanyName ? (
                       <p className="text-sm text-gray-500">
                         {lead.prospectCompanyName}
-                        <span className="ml-1.5 px-1 py-px text-[10px] bg-orange-100 text-orange-700 rounded font-medium">Lead</span>
                       </p>
                     ) : null}
                     <div className="flex items-center space-x-2 mt-1">

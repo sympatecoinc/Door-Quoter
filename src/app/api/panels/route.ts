@@ -48,7 +48,8 @@ export async function POST(request: NextRequest) {
       cornerDirection = 'Up',
       quantity = 1,
       productId,
-      skipValidation = false
+      skipValidation = false,
+      parentPanelId = null  // For explicitly creating paired panels
     } = await request.json()
 
     if (!openingId || !type) {
@@ -162,7 +163,8 @@ export async function POST(request: NextRequest) {
           slidingDirection,
           isCorner,
           cornerDirection,
-          displayOrder: nextDisplayOrder + i
+          displayOrder: nextDisplayOrder + i,
+          parentPanelId: parentPanelId ? parseInt(parentPanelId) : null
         },
         include: {
           componentInstance: {
@@ -173,6 +175,78 @@ export async function POST(request: NextRequest) {
         }
       })
       panels.push(panel)
+    }
+
+    // Check if the product has a paired product and create paired panels automatically
+    // Only for primary panels (not when parentPanelId is set, which means this IS a paired panel)
+    if (productId && !parentPanelId) {
+      const productWithPaired = await prisma.product.findUnique({
+        where: { id: parseInt(productId) },
+        include: { pairedProduct: true }
+      })
+
+      // Only create paired panels if:
+      // 1. The product has a paired product configured
+      // 2. The paired product is NOT the same as the current product (prevent infinite recursion)
+      if (productWithPaired?.pairedProduct &&
+          productWithPaired.pairedProduct.id !== productWithPaired.id) {
+        // Fetch the opening to get OPENING dimensions for paired panels
+        const opening = await prisma.opening.findUnique({
+          where: { id: parseInt(openingId) },
+          select: {
+            finishedWidth: true,
+            finishedHeight: true,
+            roughWidth: true,
+            roughHeight: true,
+            isFinishedOpening: true
+          }
+        })
+
+        if (opening) {
+          // Use finished dimensions if available, otherwise rough dimensions
+          const pairedWidth = opening.finishedWidth ?? opening.roughWidth ?? 0
+          const pairedHeight = opening.finishedHeight ?? opening.roughHeight ?? 0
+
+          // Store the primary panels count BEFORE adding paired panels
+          const primaryPanelCount = panels.length
+
+          // Create a paired panel for each primary panel created
+          // Use index-based loop to avoid issues with array mutation
+          for (let i = 0; i < primaryPanelCount; i++) {
+            const primaryPanel = panels[i]
+            const pairedPanel = await prisma.panel.create({
+              data: {
+                openingId: parseInt(openingId),
+                type: 'Component',
+                width: pairedWidth,
+                height: pairedHeight,
+                glassType: 'N/A',  // Frames don't have glass
+                locking: 'N/A',
+                swingDirection: 'None',
+                slidingDirection: 'Left',
+                isCorner: false,
+                cornerDirection: 'Up',
+                displayOrder: nextDisplayOrder + primaryPanelCount + i,  // Place after primary panels
+                parentPanelId: primaryPanel.id  // Link to parent panel
+              },
+              include: {
+                componentInstance: {
+                  include: {
+                    product: true
+                  }
+                }
+              }
+            })
+
+            // Add pairedProductId to the panel response for the frontend to create component instance
+            panels.push({
+              ...pairedPanel,
+              _pairedProductId: productWithPaired.pairedProduct.id,
+              _isPairedPanel: true
+            })
+          }
+        }
+      }
     }
 
     // Return array of panels (consistent whether quantity is 1 or more)

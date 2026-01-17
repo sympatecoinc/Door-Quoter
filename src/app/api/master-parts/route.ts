@@ -149,8 +149,8 @@ export async function POST(request: NextRequest) {
         isOption: (partType === 'Hardware' || partType === 'Extrusion') ? (isOption || false) : false,
         addFinishToPartNumber: (partType === 'Hardware') ? (addFinishToPartNumber || false) : false,
         addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false,
-        includeOnPickList: (partType === 'Hardware' || partType === 'Fastener') ? (includeOnPickList || false) : false,
-        includeInJambKit: (partType === 'Hardware' || partType === 'Fastener') ? (includeInJambKit || false) : false
+        includeOnPickList: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? (includeOnPickList || false) : false,
+        includeInJambKit: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? (includeInJambKit || false) : false
       }
     })
 
