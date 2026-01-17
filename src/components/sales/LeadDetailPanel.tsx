@@ -73,6 +73,13 @@ interface LeadDetailData {
     zipCode: string | null
     status: string
   } | null
+  // Prospect fields for leads without customer
+  prospectCompanyName: string | null
+  prospectPhone: string | null
+  prospectAddress: string | null
+  prospectCity: string | null
+  prospectState: string | null
+  prospectZipCode: string | null
   openings: OpeningData[]
   projectNotes: Array<{
     id: number
@@ -81,39 +88,6 @@ interface LeadDetailData {
     updatedAt: string
     createdBy: string | null
   }>
-}
-
-// Helper to apply markup to a cost
-function applyMarkup(baseCost: number, categoryMarkup: number, globalMarkup: number, discount: number): number {
-  const markupPercent = categoryMarkup > 0 ? categoryMarkup : globalMarkup
-  let price = baseCost * (1 + markupPercent / 100)
-  if (discount > 0) {
-    price *= (1 - discount / 100)
-  }
-  return price
-}
-
-// Calculate sale price for an opening using pricing mode
-function calculateOpeningSalePrice(opening: OpeningData, pricingMode: PricingMode | null): number {
-  if (!pricingMode) {
-    // No pricing mode = return raw cost
-    return opening.price || 0
-  }
-
-  const globalMarkup = pricingMode.markup || 0
-  const discount = pricingMode.discount || 0
-
-  const markedUpExtrusion = applyMarkup(opening.extrusionCost || 0, pricingMode.extrusionMarkup || 0, globalMarkup, discount)
-  const markedUpHardware = applyMarkup(opening.hardwareCost || 0, pricingMode.hardwareMarkup || 0, globalMarkup, discount)
-  const markedUpGlass = applyMarkup(opening.glassCost || 0, pricingMode.glassMarkup || 0, globalMarkup, discount)
-  const markedUpPackaging = applyMarkup(opening.packagingCost || 0, pricingMode.packagingMarkup || 0, globalMarkup, discount)
-  const markedUpOther = applyMarkup(opening.otherCost || 0, globalMarkup, globalMarkup, discount)
-
-  // Standard options and hybrid remaining are not marked up
-  const standardOptions = opening.standardOptionCost || 0
-  const hybridRemaining = opening.hybridRemainingCost || 0
-
-  return markedUpExtrusion + markedUpHardware + markedUpGlass + markedUpPackaging + markedUpOther + standardOptions + hybridRemaining
 }
 
 interface LeadDetailPanelProps {
@@ -195,9 +169,6 @@ export default function LeadDetailPanel({
   // Check if status change is moving from lead to project
   const isMovingToProject = pendingStatus && PROJECT_STATUSES.includes(pendingStatus) && lead && LEAD_STATUSES.includes(lead.status)
 
-  // Calculate total value using sale price (with markup)
-  const totalValue = lead?.openings.reduce((sum, opening) => sum + calculateOpeningSalePrice(opening, lead.pricingMode), 0) || 0
-
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -270,15 +241,18 @@ export default function LeadDetailPanel({
                 )}
               </div>
             </div>
-            {lead.customer && (
+            {lead.customer ? (
               <p className="text-sm text-gray-500 mt-1">
                 {lead.customer.companyName}
+                <span className="ml-1.5 px-1 py-px text-[10px] bg-blue-100 text-blue-700 rounded font-medium">Customer</span>
               </p>
-            )}
+            ) : lead.prospectCompanyName ? (
+              <p className="text-sm text-gray-500 mt-1">
+                {lead.prospectCompanyName}
+                <span className="ml-1.5 px-1 py-px text-[10px] bg-orange-100 text-orange-700 rounded font-medium">Lead</span>
+              </p>
+            ) : null}
             <div className="flex items-center gap-4 mt-2 text-sm">
-              <span className="font-semibold text-gray-900">
-                ${totalValue.toLocaleString()}
-              </span>
               <span className="text-gray-500">
                 {lead.openings.length} Opening{lead.openings.length !== 1 ? 's' : ''}
               </span>

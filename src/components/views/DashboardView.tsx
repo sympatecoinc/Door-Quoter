@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Folder, DollarSign, LayoutGrid } from 'lucide-react'
+import { Folder, DollarSign, LayoutGrid, Plus } from 'lucide-react'
 import { ProjectStatus } from '@/types'
 import StatusBadge from '@/components/projects/StatusBadge'
 import { useAppStore } from '@/stores/appStore'
 import SalesLeadView from '@/components/sales/SalesLeadView'
+import AddLeadModal from '@/components/sales/AddLeadModal'
 
 interface DashboardStats {
   totalProjects: number
@@ -15,6 +16,11 @@ interface DashboardStats {
   totalOpenings: number
 }
 
+interface LatestQuote {
+  version: number
+  totalPrice: number
+}
+
 interface RecentProject {
   id: number
   name: string
@@ -22,6 +28,9 @@ interface RecentProject {
   openingsCount: number
   value: number
   updatedAt: string
+  hasThinWall?: boolean
+  hasTrimmed?: boolean
+  latestQuote?: LatestQuote | null
 }
 
 interface RecentLead extends RecentProject {
@@ -30,6 +39,7 @@ interface RecentLead extends RecentProject {
     companyName: string
     isProspect: boolean
   } | null
+  prospectCompanyName?: string | null
 }
 
 interface DashboardData {
@@ -52,31 +62,41 @@ export default function DashboardView() {
     recentLeads: []
   })
   const [loading, setLoading] = useState(true)
+  const [showAddLeadModal, setShowAddLeadModal] = useState(false)
+
+  const fetchDashboardData = async () => {
+    try {
+      const response = await fetch('/api/dashboard')
+      if (response.ok) {
+        const dashboardData = await response.json()
+        setData(dashboardData)
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function fetchDashboardData() {
-      try {
-        const response = await fetch('/api/dashboard')
-        if (response.ok) {
-          const dashboardData = await response.json()
-          setData(dashboardData)
-        }
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchDashboardData()
   }, [])
 
   return (
     <div className="p-8">
       {/* Leads Section */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Leads</h1>
-        <p className="text-gray-600 mt-2">Projects in quoting phase (Staging through Quote Sent)</p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Leads</h1>
+          <p className="text-gray-600 mt-2">Projects in quoting phase (Staging through Quote Sent)</p>
+        </div>
+        <button
+          onClick={() => setShowAddLeadModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Add Lead
+        </button>
       </div>
 
       {/* Leads Stats Grid */}
@@ -139,8 +159,20 @@ export default function DashboardView() {
                   className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left"
                 >
                   <div>
-                    <h3 className="font-medium text-gray-900">{lead.name}</h3>
-                    {lead.customer && (
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="font-medium text-gray-900">{lead.name}</h3>
+                      {lead.hasThinWall && (
+                        <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
+                          ThinWall
+                        </span>
+                      )}
+                      {lead.hasTrimmed && (
+                        <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">
+                          Trimmed
+                        </span>
+                      )}
+                    </div>
+                    {lead.customer ? (
                       <p className="text-sm text-gray-500">
                         {lead.customer.companyName}
                         {lead.customer.isProspect ? (
@@ -149,7 +181,12 @@ export default function DashboardView() {
                           <span className="ml-1.5 px-1 py-px text-[10px] bg-blue-100 text-blue-700 rounded font-medium">C</span>
                         )}
                       </p>
-                    )}
+                    ) : lead.prospectCompanyName ? (
+                      <p className="text-sm text-gray-500">
+                        {lead.prospectCompanyName}
+                        <span className="ml-1.5 px-1 py-px text-[10px] bg-orange-100 text-orange-700 rounded font-medium">Lead</span>
+                      </p>
+                    ) : null}
                     <div className="flex items-center space-x-2 mt-1">
                       <StatusBadge status={lead.status} />
                       <span className="text-sm text-gray-600">
@@ -158,7 +195,18 @@ export default function DashboardView() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold text-gray-900">${lead.value.toLocaleString()}</p>
+                    <p className="font-semibold text-gray-900">
+                      {lead.latestQuote ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 rounded">
+                            v{lead.latestQuote.version}
+                          </span>
+                          ${lead.latestQuote.totalPrice.toLocaleString()}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">--</span>
+                      )}
+                    </p>
                     <p className="text-sm text-gray-600">
                       Updated {new Date(lead.updatedAt).toLocaleDateString()}
                     </p>
@@ -251,7 +299,19 @@ export default function DashboardView() {
                   className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left"
                 >
                   <div>
-                    <h3 className="font-medium text-gray-900">{project.name}</h3>
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="font-medium text-gray-900">{project.name}</h3>
+                      {project.hasThinWall && (
+                        <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
+                          ThinWall
+                        </span>
+                      )}
+                      {project.hasTrimmed && (
+                        <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">
+                          Trimmed
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center space-x-2 mt-1">
                       <StatusBadge status={project.status} />
                       <span className="text-sm text-gray-600">
@@ -260,7 +320,18 @@ export default function DashboardView() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold text-gray-900">${project.value.toLocaleString()}</p>
+                    <p className="font-semibold text-gray-900">
+                      {project.latestQuote ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 rounded">
+                            v{project.latestQuote.version}
+                          </span>
+                          ${project.latestQuote.totalPrice.toLocaleString()}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">--</span>
+                      )}
+                    </p>
                     <p className="text-sm text-gray-600">
                       Updated {new Date(project.updatedAt).toLocaleDateString()}
                     </p>
@@ -278,6 +349,13 @@ export default function DashboardView() {
 
       {/* Sales Lead View Modal */}
       <SalesLeadView />
+
+      {/* Add Lead Modal */}
+      <AddLeadModal
+        isOpen={showAddLeadModal}
+        onClose={() => setShowAddLeadModal(false)}
+        onLeadCreated={fetchDashboardData}
+      />
     </div>
   )
 }

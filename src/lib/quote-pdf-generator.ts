@@ -6,6 +6,8 @@ import { jsPDF } from 'jspdf'
 import { PDFDocument } from 'pdf-lib'
 import fs from 'fs'
 import path from 'path'
+import sharp from 'sharp'
+import { renderSvgToPng, decodeSvgData } from './svg-renderer'
 
 export interface QuoteItem {
   openingId: number
@@ -339,16 +341,47 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
       const logoPath = path.join(process.cwd(), 'public', quoteData.companyLogo)
       if (fs.existsSync(logoPath)) {
         const logoBuffer = fs.readFileSync(logoPath)
-        const logoBase64 = logoBuffer.toString('base64')
         const logoExt = path.extname(quoteData.companyLogo).toLowerCase().replace('.', '')
-        const mimeType = logoExt === 'svg' ? 'image/svg+xml' :
-                         logoExt === 'jpg' ? 'image/jpeg' : `image/${logoExt}`
+
+        // Resize logo to reasonable dimensions for PDF (max 600px width for good print quality)
+        // This dramatically reduces file size while maintaining visual quality
+        let processedLogoBuffer: Buffer
+        let imageFormat: 'PNG' | 'JPEG' = 'PNG'
+
+        if (logoExt === 'svg') {
+          // SVG logos don't need resizing
+          processedLogoBuffer = logoBuffer
+        } else {
+          // Resize raster images (PNG, JPG) to max 600px width, maintaining aspect ratio
+          // Convert to JPEG for better compression (unless it has transparency)
+          const metadata = await sharp(logoBuffer).metadata()
+          const hasAlpha = metadata.channels === 4
+
+          if (hasAlpha) {
+            // Keep PNG for images with transparency, but resize
+            processedLogoBuffer = await sharp(logoBuffer)
+              .resize(600, 200, { fit: 'inside', withoutEnlargement: true })
+              .png({ compressionLevel: 9 })
+              .toBuffer()
+          } else {
+            // Convert to JPEG for smaller size
+            processedLogoBuffer = await sharp(logoBuffer)
+              .resize(600, 200, { fit: 'inside', withoutEnlargement: true })
+              .jpeg({ quality: 85 })
+              .toBuffer()
+            imageFormat = 'JPEG'
+          }
+        }
+
+        const logoBase64 = processedLogoBuffer.toString('base64')
+        const mimeType = imageFormat === 'JPEG' ? 'image/jpeg' :
+                         (logoExt === 'svg' ? 'image/svg+xml' : 'image/png')
         const logoData = `data:${mimeType};base64,${logoBase64}`
 
         // Position logo in top right, above where date will be
         const logoX = pageWidth - 20 - logoMaxWidth
-        pdf.addImage(logoData, logoExt.toUpperCase() === 'JPG' ? 'JPEG' : logoExt.toUpperCase(),
-          logoX, headerY, logoMaxWidth, logoMaxHeight)
+        pdf.addImage(logoData, imageFormat,
+          logoX, headerY, logoMaxWidth, logoMaxHeight, undefined, 'SLOW')
         logoActualHeight = logoMaxHeight
       }
     } catch (error) {
@@ -429,7 +462,8 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
 
 /**
  * Adds the quote items table with elevation images
- * Uses pagination: 3 items per page, with footer on the last page
+ * Cards display text content on left and elevation images on right
+ * Uses pagination: max 3 items per page, with footer on the last page
  */
 async function addQuoteItemsTable(
   pdf: jsPDF,
@@ -440,12 +474,14 @@ async function addQuoteItemsTable(
   const pageHeight = pdf.internal.pageSize.getHeight()
   const marginX = 15 // Reduced from 20mm to maximize width for portrait layout
   const cellPadding = 5
-  const cardHeight = 42 // Height for each opening card
+  const cardHeight = 55 // Height for each opening card (increased for elevation images)
   const cardSpacing = 6 // Space between cards
   const footerHeight = 60 // Space needed for footer with pricing
-  const ITEMS_PER_PAGE = 5 // Maximum items per page (cards are more compact)
+  const ITEMS_PER_PAGE = 4 // Maximum items per page (reduced due to taller cards)
   const cardWidth = pageWidth - 2 * marginX
   const cornerRadius = 3 // Rounded corner radius
+  const elevationAreaWidth = 65 // Width allocated for elevation images on right side
+  const textContentWidth = cardWidth - elevationAreaWidth - cellPadding // Width for text content on left
 
   const totalItems = quoteData.quoteItems.length
   let currentY = startY
@@ -453,22 +489,20 @@ async function addQuoteItemsTable(
   let currentPageIsFirst = true
 
   // Smart pagination: calculate max items per page based on total items
-  // - If 2 or fewer items: All items + footer on page 1
-  // - If 3 items: Try to fit all + footer on page 1
-  // - If 4 items: All 4 items + footer on page 1
-  // - If 5+ items: Max 4 per intermediate page, max 2 on last page with footer
+  // - If 3 or fewer items: All items + footer on page 1
+  // - If 4+ items: Max 3 per intermediate page, max 2 on last page with footer
   const getMaxItemsForCurrentPage = (currentPageFirst: boolean, itemsLeft: number): number => {
-    if (totalItems <= 4) {
-      // 4 or fewer items: all on first page with footer
+    if (totalItems <= 3) {
+      // 3 or fewer items: all on first page with footer
       return totalItems
     } else {
-      // 5+ items
+      // 4+ items
       if (itemsLeft <= 2) {
         // Last page: max 2 items + footer
         return 2
       } else {
-        // Intermediate pages: max 4 items
-        return 4
+        // Intermediate pages: max 3 items
+        return 3
       }
     }
   }
@@ -495,7 +529,7 @@ async function addQuoteItemsTable(
       needsNewPage = true
     } else if (isLastItem) {
       // For last item, check if it + footer will fit
-      if (totalItems <= 5 && currentPageIsFirst) {
+      if (totalItems <= 3 && currentPageIsFirst) {
         if (currentY + totalCardHeight + footerHeight > pageHeight) {
           needsNewPage = true
         }
@@ -576,7 +610,7 @@ async function addQuoteItemsTable(
       const formattedHardware = hardwareItems
         .map(h => h.replace(' | +', ' +').replace(' | STANDARD', ''))
         .join('  •  ')
-      const hardwareLines = pdf.splitTextToSize(formattedHardware, cardWidth - 2 * cellPadding - optionsWidth - 10)
+      const hardwareLines = pdf.splitTextToSize(formattedHardware, textContentWidth - 2 * cellPadding - optionsWidth - 10)
       pdf.text(hardwareLines, marginX + cellPadding + optionsWidth, contentY)
       pdf.setTextColor(0, 0, 0)
     } else {
@@ -587,6 +621,82 @@ async function addQuoteItemsTable(
       pdf.text('No additional options', marginX + cellPadding, contentY)
       pdf.setTextColor(0, 0, 0)
       pdf.setFont('helvetica', 'normal')
+    }
+
+    // Render elevation images on the right side of the card
+    if (item.elevationImages && item.elevationImages.length > 0) {
+      const imageAreaX = marginX + textContentWidth + cellPadding
+      const imageAreaY = currentY + 8 // Start below the price badge
+      const imageAreaWidth = elevationAreaWidth - cellPadding * 2
+      const imageAreaHeight = cardHeight - 12 // Leave padding at top and bottom
+
+      // Calculate how to fit all elevation images
+      const numImages = item.elevationImages.length
+      const imageSpacing = 0 // No gaps between components for continuous elevation view
+
+      // Determine layout: side-by-side if 2+ images fit, otherwise stack
+      const maxImageWidth = numImages > 1
+        ? (imageAreaWidth - imageSpacing * (numImages - 1)) / numImages
+        : imageAreaWidth
+
+      let imgX = imageAreaX
+
+      for (let imgIndex = 0; imgIndex < numImages; imgIndex++) {
+        const elevationImage = item.elevationImages[imgIndex]
+
+        try {
+          let imageFormat: 'PNG' | 'JPEG' = 'PNG'
+          let imageData = elevationImage
+
+          // Check if the image is SVG and needs conversion
+          const isSvgData = elevationImage.startsWith('data:image/svg+xml') ||
+            (elevationImage.startsWith('data:') === false &&
+             Buffer.from(elevationImage.substring(0, 100), 'base64').toString('utf-8').includes('<svg'))
+
+          if (isSvgData) {
+            // SVG data - render to PNG first
+            try {
+              const svgString = decodeSvgData(elevationImage)
+              // Use moderate dimensions for quote display - balances quality vs file size
+              // Larger dimensions preserve stroke width proportions for cleaner lines
+              const pngData = await renderSvgToPng(svgString, {
+                width: 12, // inches - larger size preserves stroke proportions for cleaner lines
+                height: 28, // inches - proportional height for typical door aspect ratio
+                background: '#f3f4f6', // Match card background
+                mode: 'elevation'
+              })
+              imageData = pngData
+            } catch (svgError) {
+              console.error(`Failed to render SVG to PNG for image ${imgIndex}:`, svgError)
+              continue // Skip this image if SVG rendering fails
+            }
+          } else if (elevationImage.startsWith('data:')) {
+            // Non-SVG data URI
+            if (elevationImage.includes('image/jpeg') || elevationImage.includes('image/jpg')) {
+              imageFormat = 'JPEG'
+            }
+            // Remove data URI prefix for jsPDF
+            imageData = elevationImage.split(',')[1] || elevationImage
+          }
+
+          // Add the elevation image, fitting within allocated space
+          // jsPDF will scale the image to fit within maxImageWidth x imageAreaHeight
+          pdf.addImage(
+            imageData,
+            imageFormat,
+            imgX,
+            imageAreaY,
+            maxImageWidth,
+            imageAreaHeight,
+            undefined,
+            'SLOW' // Maximum lossless compression for smaller file size
+          )
+
+          imgX += maxImageWidth + imageSpacing
+        } catch (imageError) {
+          console.error(`Failed to add elevation image ${imgIndex}:`, imageError)
+        }
+      }
     }
 
     currentY += cardHeight + cardSpacing

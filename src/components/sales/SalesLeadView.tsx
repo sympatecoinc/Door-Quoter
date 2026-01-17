@@ -8,6 +8,11 @@ import LeadListPanel from './LeadListPanel'
 import LeadDetailPanel from './LeadDetailPanel'
 import { ProjectStatus } from '@/types'
 
+export interface LatestQuote {
+  version: number
+  totalPrice: number
+}
+
 export interface LeadSummary {
   id: number
   name: string
@@ -15,11 +20,15 @@ export interface LeadSummary {
   value: number
   openingsCount: number
   updatedAt: string
+  hasThinWall?: boolean
+  hasTrimmed?: boolean
+  latestQuote?: LatestQuote | null
   customer: {
     id: number
     companyName: string
     isProspect: boolean
   } | null
+  prospectCompanyName?: string | null
 }
 
 export default function SalesLeadView() {
@@ -47,6 +56,8 @@ export default function SalesLeadView() {
           filteredList = (data.recentProjects || []).map((p: any) => ({
             ...p,
             customer: null, // Won projects don't have customer in the response
+            hasThinWall: p.hasThinWall,
+            hasTrimmed: p.hasTrimmed,
           }))
         }
         setLeads(filteredList)
@@ -66,8 +77,10 @@ export default function SalesLeadView() {
 
   // Filter leads based on search
   const filteredLeads = leads.filter(lead => {
-    return lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      lead.customer?.companyName.toLowerCase().includes(searchTerm.toLowerCase())
+    const searchLower = searchTerm.toLowerCase()
+    return lead.name.toLowerCase().includes(searchLower) ||
+      lead.customer?.companyName.toLowerCase().includes(searchLower) ||
+      lead.prospectCompanyName?.toLowerCase().includes(searchLower)
   })
 
   // Find the selected lead

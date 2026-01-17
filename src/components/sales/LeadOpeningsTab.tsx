@@ -52,36 +52,6 @@ interface LeadData {
   openings: OpeningData[]
 }
 
-// Helper to apply markup to a cost
-function applyMarkup(baseCost: number, categoryMarkup: number, globalMarkup: number, discount: number): number {
-  const markupPercent = categoryMarkup > 0 ? categoryMarkup : globalMarkup
-  let price = baseCost * (1 + markupPercent / 100)
-  if (discount > 0) {
-    price *= (1 - discount / 100)
-  }
-  return price
-}
-
-// Calculate sale price for an opening using pricing mode
-function calculateOpeningSalePrice(opening: OpeningData, pricingMode: PricingMode | null): number {
-  if (!pricingMode) {
-    return opening.price || 0
-  }
-
-  const globalMarkup = pricingMode.markup || 0
-  const discount = pricingMode.discount || 0
-
-  const markedUpExtrusion = applyMarkup(opening.extrusionCost || 0, pricingMode.extrusionMarkup || 0, globalMarkup, discount)
-  const markedUpHardware = applyMarkup(opening.hardwareCost || 0, pricingMode.hardwareMarkup || 0, globalMarkup, discount)
-  const markedUpGlass = applyMarkup(opening.glassCost || 0, pricingMode.glassMarkup || 0, globalMarkup, discount)
-  const markedUpPackaging = applyMarkup(opening.packagingCost || 0, pricingMode.packagingMarkup || 0, globalMarkup, discount)
-  const markedUpOther = applyMarkup(opening.otherCost || 0, globalMarkup, globalMarkup, discount)
-
-  const standardOptions = opening.standardOptionCost || 0
-  const hybridRemaining = opening.hybridRemainingCost || 0
-
-  return markedUpExtrusion + markedUpHardware + markedUpGlass + markedUpPackaging + markedUpOther + standardOptions + hybridRemaining
-}
 
 interface LeadOpeningsTabProps {
   lead: LeadData
@@ -119,8 +89,6 @@ export default function LeadOpeningsTab({ lead, onOpeningsUpdated }: LeadOpening
       .join(', ')
   }
 
-  const totalValue = lead.openings.reduce((sum, o) => sum + calculateOpeningSalePrice(o, lead.pricingMode), 0)
-
   return (
     <div className="space-y-4">
       {/* Header with actions */}
@@ -129,9 +97,6 @@ export default function LeadOpeningsTab({ lead, onOpeningsUpdated }: LeadOpening
           <h3 className="text-lg font-semibold text-gray-900">
             Openings ({lead.openings.length})
           </h3>
-          <p className="text-sm text-gray-500">
-            Total: ${totalValue.toLocaleString()}
-          </p>
         </div>
         <button
           onClick={handleOpenInEditor}
@@ -150,7 +115,7 @@ export default function LeadOpeningsTab({ lead, onOpeningsUpdated }: LeadOpening
               key={opening.id}
               className="bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
             >
-              <div className="flex items-start justify-between">
+              <div className="flex items-start">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-blue-50 rounded-lg">
@@ -173,11 +138,6 @@ export default function LeadOpeningsTab({ lead, onOpeningsUpdated }: LeadOpening
                       {getPanelSummary(opening.panels)}
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-semibold text-gray-900">
-                    ${calculateOpeningSalePrice(opening, lead.pricingMode).toLocaleString()}
-                  </span>
                 </div>
               </div>
             </div>

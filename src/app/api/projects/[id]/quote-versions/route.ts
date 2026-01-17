@@ -57,10 +57,15 @@ export async function POST(
 
     const quoteData = await quoteResponse.json()
 
-    // Get the project for pricing mode info
+    // Get the project for pricing mode info and attachments
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      include: { pricingMode: true },
+      include: {
+        pricingMode: true,
+        quoteAttachments: {
+          orderBy: { displayOrder: 'asc' },
+        },
+      },
     })
 
     if (!project) {
@@ -108,6 +113,17 @@ export async function POST(
         )
       }
 
+      // Check for document changes
+      const lastAttachments = lastSnapshot?.attachments || []
+      const currentAttachmentCount = project.quoteAttachments.length
+      const lastAttachmentCount = lastAttachments.length
+      if (currentAttachmentCount !== lastAttachmentCount) {
+        const diff = currentAttachmentCount - lastAttachmentCount
+        changes.push(
+          `${Math.abs(diff)} quote document${Math.abs(diff) !== 1 ? 's' : ''} ${diff > 0 ? 'added' : 'removed'}`
+        )
+      }
+
       if (changes.length > 0) {
         changeNotes = changes.join('. ')
       }
@@ -146,6 +162,13 @@ export async function POST(
       installationComplexity: project.installationComplexity,
       manualInstallationCost: project.manualInstallationCost,
       quoteItems: quoteData.quoteItems || [],
+      // Include attachment info for change detection
+      attachments: project.quoteAttachments.map((a) => ({
+        id: a.id,
+        originalName: a.originalName,
+        position: a.position,
+        displayOrder: a.displayOrder,
+      })),
     }
 
     // Create the quote version record

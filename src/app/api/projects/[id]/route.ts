@@ -347,15 +347,63 @@ export async function PUT(
 
     // Update project and track status change in a transaction
     const updatedProject = await prisma.$transaction(async (tx) => {
-      // Check if status changed
+      // Get current project with full details for conversion check
       const currentProject = await tx.project.findUnique({
         where: { id: projectId },
-        select: { status: true }
+        select: {
+          status: true,
+          customerId: true,
+          prospectCompanyName: true,
+          prospectPhone: true,
+          prospectAddress: true,
+          prospectCity: true,
+          prospectState: true,
+          prospectZipCode: true
+        }
       })
+
+      if (!currentProject) {
+        throw new Error('Project not found')
+      }
+
+      // Check if we need to convert lead to customer
+      // This happens when:
+      // 1. Status is changing to QUOTE_ACCEPTED
+      // 2. Project has no linked customer (customerId is null)
+      // 3. Project has prospect info (prospectCompanyName)
+      const isConvertingToQuoteAccepted = status === ProjectStatus.QUOTE_ACCEPTED &&
+        currentProject.status !== ProjectStatus.QUOTE_ACCEPTED
+      const needsCustomerConversion = isConvertingToQuoteAccepted &&
+        !currentProject.customerId &&
+        currentProject.prospectCompanyName
+
+      let newCustomerId: number | null = null
+
+      if (needsCustomerConversion) {
+        // Create new customer from prospect info
+        const newCustomer = await tx.customer.create({
+          data: {
+            companyName: currentProject.prospectCompanyName!,
+            phone: currentProject.prospectPhone,
+            address: currentProject.prospectAddress,
+            city: currentProject.prospectCity,
+            state: currentProject.prospectState,
+            zipCode: currentProject.prospectZipCode,
+            status: 'Active'
+          }
+        })
+        newCustomerId = newCustomer.id
+
+        // Add customerId to update data
+        updateData.customerId = newCustomerId
+      }
 
       const project = await tx.project.update({
         where: { id: projectId },
-        data: updateData
+        data: updateData,
+        include: {
+          customer: true
+        }
       })
 
       // Record status change if status was updated
@@ -368,7 +416,7 @@ export async function PUT(
         })
       }
 
-      return project
+      return { ...project, customerCreated: needsCustomerConversion }
     })
 
     return NextResponse.json(updatedProject)

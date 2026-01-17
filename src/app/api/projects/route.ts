@@ -45,7 +45,20 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, status = ProjectStatus.STAGING, dueDate, pricingModeId, customerId } = await request.json()
+    const {
+      name,
+      status = ProjectStatus.STAGING,
+      dueDate,
+      pricingModeId,
+      customerId,
+      // Prospect fields for leads without a customer
+      prospectCompanyName,
+      prospectPhone,
+      prospectAddress,
+      prospectCity,
+      prospectState,
+      prospectZipCode
+    } = await request.json()
 
     if (!name) {
       return NextResponse.json(
@@ -54,9 +67,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!customerId) {
+    // Require either customerId OR prospectCompanyName (for leads without customer)
+    if (!customerId && !prospectCompanyName) {
       return NextResponse.json(
-        { error: 'Customer ID is required - all projects must be associated with a customer' },
+        { error: 'Either Customer ID or Prospect Company Name is required' },
         { status: 400 }
       )
     }
@@ -75,9 +89,34 @@ export async function POST(request: NextRequest) {
     const projectData: any = {
       name,
       status,
-      customerId,
       pricingModeId: finalPricingModeId
     }
+
+    // Add customerId if provided
+    if (customerId) {
+      projectData.customerId = customerId
+    }
+
+    // Add prospect fields if provided (for leads without customer)
+    if (prospectCompanyName) {
+      projectData.prospectCompanyName = prospectCompanyName
+    }
+    if (prospectPhone) {
+      projectData.prospectPhone = prospectPhone
+    }
+    if (prospectAddress) {
+      projectData.prospectAddress = prospectAddress
+    }
+    if (prospectCity) {
+      projectData.prospectCity = prospectCity
+    }
+    if (prospectState) {
+      projectData.prospectState = prospectState
+    }
+    if (prospectZipCode) {
+      projectData.prospectZipCode = prospectZipCode
+    }
+
     if (dueDate) {
       projectData.dueDate = new Date(dueDate)
     }

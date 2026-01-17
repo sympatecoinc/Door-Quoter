@@ -80,10 +80,22 @@ export default function LeadListPanel({
                     : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
                 }`}
               >
-                <div className="font-medium text-gray-900 truncate">
-                  {lead.name}
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-gray-900 truncate">
+                    {lead.name}
+                  </span>
+                  {lead.hasThinWall && (
+                    <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
+                      ThinWall
+                    </span>
+                  )}
+                  {lead.hasTrimmed && (
+                    <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">
+                      Trimmed
+                    </span>
+                  )}
                 </div>
-                {lead.customer && (
+                {lead.customer ? (
                   <div className="text-sm text-gray-500 truncate mt-0.5">
                     {lead.customer.companyName}
                     {lead.customer.isProspect ? (
@@ -92,7 +104,12 @@ export default function LeadListPanel({
                       <span className="ml-1.5 px-1 py-px text-[10px] bg-blue-100 text-blue-700 rounded font-medium">C</span>
                     )}
                   </div>
-                )}
+                ) : lead.prospectCompanyName ? (
+                  <div className="text-sm text-gray-500 truncate mt-0.5">
+                    {lead.prospectCompanyName}
+                    <span className="ml-1.5 px-1 py-px text-[10px] bg-orange-100 text-orange-700 rounded font-medium">Lead</span>
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between mt-2">
                   <div className="flex items-center gap-2">
                     <StatusBadge status={lead.status} />
@@ -101,7 +118,14 @@ export default function LeadListPanel({
                     </span>
                   </div>
                   <span className="text-sm font-semibold text-gray-900">
-                    ${lead.value.toLocaleString()}
+                    {lead.latestQuote ? (
+                      <>
+                        <span className="text-xs font-bold text-emerald-600">v{lead.latestQuote.version}</span>
+                        {' '}${lead.latestQuote.totalPrice.toLocaleString()}
+                      </>
+                    ) : (
+                      <span className="text-gray-400">--</span>
+                    )}
                   </span>
                 </div>
               </button>

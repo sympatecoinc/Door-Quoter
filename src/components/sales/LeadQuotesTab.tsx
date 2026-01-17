@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Download, Send, Clock, DollarSign, FileText, RefreshCw } from 'lucide-react'
+import { Plus, Download, Send, Clock, DollarSign, FileText, RefreshCw, Info } from 'lucide-react'
 import { QuoteVersion } from '@/types'
 import QuoteVersionModal from './QuoteVersionModal'
 import QuoteSettingsPanel from './QuoteSettingsPanel'
@@ -12,12 +12,24 @@ interface LeadQuotesTabProps {
   leadName: string
 }
 
+interface ChangeStatus {
+  hasChanges: boolean
+  reason: string
+  details?: {
+    isFirstQuote?: boolean
+    changeCount?: number
+    changes?: string[]
+  }
+}
+
 export default function LeadQuotesTab({ leadId, leadName }: LeadQuotesTabProps) {
   const [versions, setVersions] = useState<QuoteVersion[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [selectedVersion, setSelectedVersion] = useState<QuoteVersion | null>(null)
   const [downloadingPdf, setDownloadingPdf] = useState<number | null>(null)
+  const [changeStatus, setChangeStatus] = useState<ChangeStatus | null>(null)
+  const [checkingChanges, setCheckingChanges] = useState(false)
 
   const fetchVersions = useCallback(async () => {
     try {
@@ -34,9 +46,33 @@ export default function LeadQuotesTab({ leadId, leadName }: LeadQuotesTabProps) 
     }
   }, [leadId])
 
+  const checkForChanges = useCallback(async () => {
+    try {
+      setCheckingChanges(true)
+      const response = await fetch(`/api/projects/${leadId}/quote-versions/has-changes`)
+      if (response.ok) {
+        const data = await response.json()
+        setChangeStatus(data)
+      }
+    } catch (error) {
+      console.error('Error checking for changes:', error)
+      // On error, allow generating (fail open)
+      setChangeStatus({ hasChanges: true, reason: 'Unable to check for changes' })
+    } finally {
+      setCheckingChanges(false)
+    }
+  }, [leadId])
+
   useEffect(() => {
     fetchVersions()
-  }, [fetchVersions])
+    checkForChanges()
+  }, [fetchVersions, checkForChanges])
+
+  // Re-check for changes when settings or documents are updated
+  const handleSettingsOrDocumentsChanged = useCallback(() => {
+    fetchVersions()
+    checkForChanges()
+  }, [fetchVersions, checkForChanges])
 
   const handleGenerateQuote = async () => {
     if (generating) return
@@ -50,6 +86,7 @@ export default function LeadQuotesTab({ leadId, leadName }: LeadQuotesTabProps) 
 
       if (response.ok) {
         await fetchVersions()
+        await checkForChanges() // Re-check changes after generating
       } else {
         const error = await response.json()
         alert(error.error || 'Failed to generate quote')
@@ -108,8 +145,8 @@ export default function LeadQuotesTab({ leadId, leadName }: LeadQuotesTabProps) 
   return (
     <div className="space-y-4">
       {/* Quote Settings Panels */}
-      <QuoteSettingsPanel projectId={leadId} onSettingsChanged={fetchVersions} />
-      <QuoteDocumentsPanel projectId={leadId} onDocumentsChanged={fetchVersions} />
+      <QuoteSettingsPanel projectId={leadId} onSettingsChanged={handleSettingsOrDocumentsChanged} />
+      <QuoteDocumentsPanel projectId={leadId} onDocumentsChanged={handleSettingsOrDocumentsChanged} />
 
       {/* Header with Generate button */}
       <div className="flex items-center justify-between">
@@ -121,23 +158,42 @@ export default function LeadQuotesTab({ leadId, leadName }: LeadQuotesTabProps) 
             Configure settings above, then generate quote snapshots
           </p>
         </div>
-        <button
-          onClick={handleGenerateQuote}
-          disabled={generating}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-        >
-          {generating ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              Generating...
-            </>
-          ) : (
-            <>
-              <Plus className="w-4 h-4" />
-              Generate New Quote
-            </>
+        <div className="flex items-center gap-3">
+          {/* Show reason when button is disabled */}
+          {!generating && changeStatus && !changeStatus.hasChanges && (
+            <div className="flex items-center gap-1.5 text-sm text-gray-500" title={changeStatus.reason}>
+              <Info className="w-4 h-4" />
+              <span>No changes since last quote</span>
+            </div>
           )}
-        </button>
+          <button
+            onClick={handleGenerateQuote}
+            disabled={generating || checkingChanges || (changeStatus !== null && !changeStatus.hasChanges)}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title={
+              changeStatus && !changeStatus.hasChanges
+                ? changeStatus.reason
+                : changeStatus?.details?.changes?.join(', ') || 'Generate a new quote version'
+            }
+          >
+            {generating ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Generating...
+              </>
+            ) : checkingChanges ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Checking...
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4" />
+                Generate New Quote
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Quote Versions List */}
@@ -256,13 +312,23 @@ export default function LeadQuotesTab({ leadId, leadName }: LeadQuotesTabProps) 
           </p>
           <button
             onClick={handleGenerateQuote}
-            disabled={generating}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+            disabled={generating || checkingChanges || (changeStatus !== null && !changeStatus.hasChanges)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title={
+              changeStatus && !changeStatus.hasChanges
+                ? changeStatus.reason
+                : 'Generate your first quote'
+            }
           >
             {generating ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
                 Generating...
+              </>
+            ) : checkingChanges ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Checking...
               </>
             ) : (
               <>

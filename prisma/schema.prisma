@@ -12,7 +12,7 @@ model Project {
   id                     Int                @id @default(autoincrement())
   name                   String
   status                 ProjectStatus      @default(STAGING)
-  customerId             Int
+  customerId             Int?               // Optional - null for prospect leads until converted
   pricingModeId          Int?
   extrusionCostingMethod String             @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED"
   excludedPartNumbers    String[]           @default([]) // Part numbers to exclude from FULL_STOCK rule (use percentage-based instead)
@@ -32,6 +32,13 @@ model Project {
   shippingZipCode        String?            // Shipping zip code
   primaryContactId       Int?               // Primary contact from customer's contacts
   primaryProjectContactId Int?              // Primary contact from project contacts
+  // Prospect fields - used for leads without a customer
+  prospectCompanyName    String?            // Company name for leads without customer
+  prospectPhone          String?            // Phone number for prospect
+  prospectAddress        String?            // Street address for prospect
+  prospectCity           String?            // City for prospect
+  prospectState          String?            // State for prospect
+  prospectZipCode        String?            // Zip code for prospect
   boms                   BOM[]
   openings               Opening[]
   quoteAttachments       QuoteAttachment[]
@@ -39,7 +46,7 @@ model Project {
   projectContacts        ProjectContact[]   // Project-specific contacts (architect, GC, etc.)
   projectNotes           ProjectNote[]      // Project notes
   quoteVersions          QuoteVersion[]     // Historical quote snapshots
-  customer               Customer           @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: Restrict)
+  customer               Customer?          @relation("CustomerProjects", fields: [customerId], references: [id], onDelete: Restrict)
   pricingMode            PricingMode?       @relation(fields: [pricingModeId], references: [id], onDelete: SetNull)
   primaryContact         Contact?           @relation("ProjectPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
   primaryProjectContact  ProjectContact?    @relation("ProjectPrimaryProjectContact", fields: [primaryProjectContactId], references: [id], onDelete: SetNull)

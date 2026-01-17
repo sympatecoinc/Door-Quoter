@@ -23,6 +23,13 @@ interface LeadData {
     zipCode: string | null
     status: string
   } | null
+  // Prospect fields for leads without customer
+  prospectCompanyName: string | null
+  prospectPhone: string | null
+  prospectAddress: string | null
+  prospectCity: string | null
+  prospectState: string | null
+  prospectZipCode: string | null
   projectNotes: Array<{
     id: number
     content: string
@@ -109,7 +116,7 @@ export default function LeadOverviewTab({ lead, onLeadUpdated }: LeadOverviewTab
   return (
     <div className="space-y-6">
       {/* Customer Info Card */}
-      {lead.customer && (
+      {lead.customer ? (
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Building className="w-5 h-5 text-gray-500" />
@@ -173,7 +180,58 @@ export default function LeadOverviewTab({ lead, onLeadUpdated }: LeadOverviewTab
             )}
           </div>
         </div>
-      )}
+      ) : lead.prospectCompanyName ? (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Building className="w-5 h-5 text-gray-500" />
+            Lead Information
+            <span className="ml-2 px-2 py-0.5 text-xs bg-orange-100 text-orange-700 rounded font-medium">
+              No Customer
+            </span>
+          </h3>
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Company</p>
+              <p className="font-medium text-gray-900">{lead.prospectCompanyName}</p>
+            </div>
+            {lead.prospectPhone && (
+              <div>
+                <p className="text-sm text-gray-500 mb-1 flex items-center gap-1">
+                  <Phone className="w-3 h-3" /> Phone
+                </p>
+                <a
+                  href={`tel:${lead.prospectPhone}`}
+                  className="font-medium text-blue-600 hover:text-blue-800"
+                >
+                  {lead.prospectPhone}
+                </a>
+              </div>
+            )}
+            {(lead.prospectAddress || lead.prospectCity) && (
+              <div className="col-span-2">
+                <p className="text-sm text-gray-500 mb-1 flex items-center gap-1">
+                  <MapPin className="w-3 h-3" /> Address
+                </p>
+                <p className="font-medium text-gray-900">
+                  {[
+                    lead.prospectAddress,
+                    lead.prospectCity,
+                    lead.prospectState,
+                    lead.prospectZipCode,
+                  ]
+                    .filter(Boolean)
+                    .join(', ')}
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-sm text-amber-800">
+              This lead does not have a linked customer. A customer will be automatically created when the status changes to "Quote Accepted".
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {/* Key Dates Card */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">

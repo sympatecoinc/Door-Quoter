@@ -216,7 +216,16 @@ export async function GET() {
             packagingCost: true,
             otherCost: true,
             standardOptionCost: true,
-            hybridRemainingCost: true
+            hybridRemainingCost: true,
+            openingType: true
+          }
+        },
+        quoteVersions: {
+          orderBy: { version: 'desc' },
+          take: 1,
+          select: {
+            version: true,
+            totalPrice: true
           }
         },
         _count: {
@@ -242,6 +251,9 @@ export async function GET() {
         updatedAt: true,
         taxRate: true,
         manualInstallationCost: true,
+        // Prospect fields for leads without customer
+        prospectCompanyName: true,
+        prospectPhone: true,
         pricingMode: {
           select: {
             markup: true,
@@ -260,7 +272,16 @@ export async function GET() {
             packagingCost: true,
             otherCost: true,
             standardOptionCost: true,
-            hybridRemainingCost: true
+            hybridRemainingCost: true,
+            openingType: true
+          }
+        },
+        quoteVersions: {
+          orderBy: { version: 'desc' },
+          take: 1,
+          select: {
+            version: true,
+            totalPrice: true
           }
         },
         customer: {
@@ -279,29 +300,54 @@ export async function GET() {
     })
 
     // Calculate project values
-    const projectsWithValues = recentProjects.map((project) => ({
-      id: project.id,
-      name: project.name,
-      status: project.status,
-      openingsCount: project._count.openings,
-      value: calculateQuoteTotal(project, defaultPricingMode),
-      updatedAt: project.updatedAt.toISOString()
-    }))
+    const projectsWithValues = recentProjects.map((project) => {
+      const hasThinWall = project.openings.some(o => o.openingType === 'THINWALL')
+      const hasTrimmed = project.openings.some(o => o.openingType === 'FRAMED')
+      const latestQuote = project.quoteVersions[0] || null
+      return {
+        id: project.id,
+        name: project.name,
+        status: project.status,
+        openingsCount: project._count.openings,
+        value: calculateQuoteTotal(project, defaultPricingMode),
+        updatedAt: project.updatedAt.toISOString(),
+        hasThinWall,
+        hasTrimmed,
+        latestQuote: latestQuote ? {
+          version: latestQuote.version,
+          totalPrice: latestQuote.totalPrice
+        } : null
+      }
+    })
 
     // Calculate lead values
-    const leadsWithValues = recentLeads.map((lead) => ({
-      id: lead.id,
-      name: lead.name,
-      status: lead.status,
-      openingsCount: lead._count.openings,
-      value: calculateQuoteTotal(lead, defaultPricingMode),
-      updatedAt: lead.updatedAt.toISOString(),
-      customer: lead.customer ? {
-        id: lead.customer.id,
-        companyName: lead.customer.companyName,
-        isProspect: lead.customer.status === 'Prospect'
-      } : null
-    }))
+    const leadsWithValues = recentLeads.map((lead) => {
+      const hasThinWall = lead.openings.some(o => o.openingType === 'THINWALL')
+      const hasTrimmed = lead.openings.some(o => o.openingType === 'FRAMED')
+      const latestQuote = lead.quoteVersions[0] || null
+      return {
+        id: lead.id,
+        name: lead.name,
+        status: lead.status,
+        openingsCount: lead._count.openings,
+        value: calculateQuoteTotal(lead, defaultPricingMode),
+        updatedAt: lead.updatedAt.toISOString(),
+        // Include customer if linked, otherwise include prospect info
+        customer: lead.customer ? {
+          id: lead.customer.id,
+          companyName: lead.customer.companyName,
+          isProspect: lead.customer.status === 'Prospect'
+        } : null,
+        // Prospect info for leads without customer
+        prospectCompanyName: lead.prospectCompanyName,
+        hasThinWall,
+        hasTrimmed,
+        latestQuote: latestQuote ? {
+          version: latestQuote.version,
+          totalPrice: latestQuote.totalPrice
+        } : null
+      }
+    })
 
     return NextResponse.json({
       stats: {
