@@ -205,56 +205,6 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Auto-add Frame product when opening type is FRAMED
-    if (openingType === 'FRAMED') {
-      const frameProduct = await prisma.product.findFirst({
-        where: { productType: 'FRAME', archived: false }
-      })
-
-      if (frameProduct) {
-        // Create a panel for the frame with opening dimensions
-        const framePanel = await prisma.panel.create({
-          data: {
-            openingId: opening.id,
-            type: 'Frame',
-            width: opening.finishedWidth || 0,
-            height: opening.finishedHeight || 0,
-            glassType: 'N/A',
-            locking: 'N/A',
-            displayOrder: 0
-          }
-        })
-
-        // Create component instance linking panel to Frame product
-        await prisma.componentInstance.create({
-          data: {
-            panelId: framePanel.id,
-            productId: frameProduct.id,
-            subOptionSelections: '{}',
-            includedOptions: '[]'
-          }
-        })
-
-        // Re-fetch opening with the new panel
-        const updatedOpening = await prisma.opening.findUnique({
-          where: { id: opening.id },
-          include: {
-            panels: {
-              include: {
-                componentInstance: {
-                  include: {
-                    product: { include: { productSubOptions: { include: { category: { include: { individualOptions: true } } } } } }
-                  }
-                }
-              }
-            }
-          }
-        })
-
-        return NextResponse.json(updatedOpening, { status: 201 })
-      }
-    }
-
     return NextResponse.json(opening, { status: 201 })
   } catch (error) {
     console.error('Error creating opening:', error)
