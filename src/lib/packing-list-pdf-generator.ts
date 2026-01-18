@@ -3,6 +3,9 @@
 // Each product instance and each individual hardware item gets its own checkable line
 
 import { jsPDF } from 'jspdf'
+import fs from 'fs'
+import path from 'path'
+import sharp from 'sharp'
 
 export interface PackingListItem {
   openingName: string
@@ -21,11 +24,18 @@ export interface ProductInstance {
   height?: number
 }
 
+export interface JambKitEntry {
+  openingName: string
+  itemCount: number
+}
+
 export interface PackingListData {
   projectName: string
   customerName?: string
+  companyLogo?: string | null
   items: PackingListItem[]  // Hardware items
   productInstances: ProductInstance[]
+  jambKits?: JambKitEntry[]  // Jamb kit items per opening
   generatedDate: string
 }
 
@@ -138,30 +148,70 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
 
   let yPos = MARGIN
 
-  // Title
+  // Logo constants
+  const logoMaxWidth = 40
+  const logoMaxHeight = 15
+
+  // Add company logo in top right if available
+  if (data.companyLogo) {
+    try {
+      const logoPath = path.join(process.cwd(), 'public', data.companyLogo)
+      if (fs.existsSync(logoPath)) {
+        const logoBuffer = fs.readFileSync(logoPath)
+        const logoExt = path.extname(data.companyLogo).toLowerCase().replace('.', '')
+
+        let processedLogoBuffer: Buffer
+        let imageFormat: 'PNG' | 'JPEG' = 'PNG'
+
+        if (logoExt === 'svg') {
+          processedLogoBuffer = logoBuffer
+        } else {
+          const metadata = await sharp(logoBuffer).metadata()
+          const hasAlpha = metadata.channels === 4
+
+          if (hasAlpha) {
+            processedLogoBuffer = await sharp(logoBuffer)
+              .resize(600, 200, { fit: 'inside', withoutEnlargement: true })
+              .png({ compressionLevel: 9 })
+              .toBuffer()
+          } else {
+            processedLogoBuffer = await sharp(logoBuffer)
+              .resize(600, 200, { fit: 'inside', withoutEnlargement: true })
+              .jpeg({ quality: 85 })
+              .toBuffer()
+            imageFormat = 'JPEG'
+          }
+        }
+
+        const logoBase64 = processedLogoBuffer.toString('base64')
+        const mimeType = imageFormat === 'JPEG' ? 'image/jpeg' :
+                         (logoExt === 'svg' ? 'image/svg+xml' : 'image/png')
+        const logoData = `data:${mimeType};base64,${logoBase64}`
+
+        const logoX = PAGE_WIDTH - MARGIN - logoMaxWidth
+        pdf.addImage(logoData, imageFormat, logoX, yPos, logoMaxWidth, logoMaxHeight, undefined, 'SLOW')
+      }
+    } catch (error) {
+      console.error('Error adding company logo to Packing List PDF:', error)
+    }
+  }
+
+  // Title (left-aligned)
   pdf.setFontSize(18)
   pdf.setFont('helvetica', 'bold')
-  pdf.text('Packing List', PAGE_WIDTH / 2, yPos, { align: 'center' })
-  yPos += 8
-
-  // Customer name (if available)
-  if (data.customerName) {
-    pdf.setFontSize(12)
-    pdf.setFont('helvetica', 'bold')
-    pdf.text(data.customerName, PAGE_WIDTH / 2, yPos, { align: 'center' })
-    yPos += 6
-  }
+  pdf.text('Packing List', MARGIN, yPos + 5)
+  yPos += 16
 
   // Project name
   pdf.setFontSize(14)
-  pdf.setFont('helvetica', 'normal')
-  pdf.text(data.projectName, PAGE_WIDTH / 2, yPos, { align: 'center' })
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(data.projectName, MARGIN, yPos)
   yPos += 6
 
   // Generated date
   pdf.setFontSize(9)
   pdf.setTextColor(100, 100, 100)
-  pdf.text(`Generated: ${data.generatedDate}`, PAGE_WIDTH / 2, yPos, { align: 'center' })
+  pdf.text(`Generated: ${data.generatedDate}`, MARGIN, yPos)
   pdf.setTextColor(0, 0, 0)
   yPos += 10
 
@@ -297,7 +347,7 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
 
       // Opening name and size
       let itemText = product.openingName
-      if (product.panelType) {
+      if (product.panelType && product.panelType !== 'Component') {
         itemText += ` (${product.panelType})`
       }
       if (product.width && product.height) {
@@ -322,7 +372,105 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
   }
 
   // =====================================================
-  // SECTION 2: Hardware (at the end, one line per item)
+  // SECTION 2: Jamb Kits (between Products and Hardware)
+  // =====================================================
+  if (data.jambKits && data.jambKits.length > 0) {
+    // Add some space before jamb kits section
+    yPos += 4
+
+    checkNewPage(headerHeight + rowHeight * 3 + 20)
+
+    // Jamb Kits section header
+    pdf.setFillColor(16, 185, 129) // Green (matches existing jamb kit styling)
+    pdf.rect(MARGIN, yPos, CONTENT_WIDTH, 8, 'F')
+    pdf.setFontSize(11)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(255, 255, 255)
+    pdf.text('Jamb Kits', MARGIN + 3, yPos + 5.5)
+    pdf.setTextColor(0, 0, 0)
+    yPos += 10
+
+    // Table header
+    pdf.setFillColor(240, 240, 240)
+    pdf.rect(MARGIN, yPos, CONTENT_WIDTH, headerHeight, 'F')
+    pdf.setFontSize(8)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(50, 50, 50)
+    let xPos = MARGIN + 2
+    pdf.text('Opening / Item Count', xPos, yPos + 5.5)
+    xPos += COL_ITEM
+    pdf.text('Staged', xPos + COL_STAGED / 2, yPos + 5.5, { align: 'center' })
+    xPos += COL_STAGED
+    pdf.text('QA', xPos + COL_QA / 2, yPos + 5.5, { align: 'center' })
+    xPos += COL_QA
+    pdf.text('Loaded', xPos + COL_LOADED / 2, yPos + 5.5, { align: 'center' })
+    pdf.setTextColor(0, 0, 0)
+    yPos += headerHeight
+
+    for (let i = 0; i < data.jambKits.length; i++) {
+      const jambKit = data.jambKits[i]
+
+      if (checkNewPage(rowHeight + 10)) {
+        // Re-draw jamb kits header
+        pdf.setFillColor(16, 185, 129)
+        pdf.rect(MARGIN, yPos, CONTENT_WIDTH, 8, 'F')
+        pdf.setFontSize(11)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(255, 255, 255)
+        pdf.text('Jamb Kits (continued)', MARGIN + 3, yPos + 5.5)
+        pdf.setTextColor(0, 0, 0)
+        yPos += 10
+
+        // Redraw table header
+        pdf.setFillColor(240, 240, 240)
+        pdf.rect(MARGIN, yPos, CONTENT_WIDTH, headerHeight, 'F')
+        pdf.setFontSize(8)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(50, 50, 50)
+        let headerX = MARGIN + 2
+        pdf.text('Opening / Item Count', headerX, yPos + 5.5)
+        headerX += COL_ITEM
+        pdf.text('Staged', headerX + COL_STAGED / 2, yPos + 5.5, { align: 'center' })
+        headerX += COL_STAGED
+        pdf.text('QA', headerX + COL_QA / 2, yPos + 5.5, { align: 'center' })
+        headerX += COL_QA
+        pdf.text('Loaded', headerX + COL_LOADED / 2, yPos + 5.5, { align: 'center' })
+        pdf.setTextColor(0, 0, 0)
+        yPos += headerHeight
+      }
+
+      // Alternating row background
+      if (i % 2 === 0) {
+        pdf.setFillColor(240, 253, 244) // Light green background
+        pdf.rect(MARGIN, yPos, CONTENT_WIDTH, rowHeight, 'F')
+      }
+
+      pdf.setFontSize(9)
+      pdf.setFont('helvetica', 'normal')
+
+      let rowX = MARGIN + 2
+
+      // Opening name and item count
+      const itemText = truncateText(pdf, `${jambKit.openingName} - ${jambKit.itemCount} items`, COL_ITEM - 8)
+      pdf.text(itemText, rowX, yPos + 5.5)
+      rowX += COL_ITEM
+
+      // Checkboxes (centered in each column)
+      drawCheckbox(pdf, rowX + (COL_STAGED - 5) / 2, yPos + 5.5, 5)
+      rowX += COL_STAGED
+      drawCheckbox(pdf, rowX + (COL_QA - 5) / 2, yPos + 5.5, 5)
+      rowX += COL_QA
+      drawCheckbox(pdf, rowX + (COL_LOADED - 5) / 2, yPos + 5.5, 5)
+
+      yPos += rowHeight
+    }
+
+    // Space after jamb kits section
+    yPos += 6
+  }
+
+  // =====================================================
+  // SECTION 3: Hardware (at the end, one line per item)
   // =====================================================
   if (expandedHardware.length > 0) {
     // Add some space before hardware section
@@ -414,11 +562,16 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
   const totalProducts = data.productInstances.length
   const uniqueOpenings = new Set(data.productInstances.map(p => p.openingName)).size
   const totalHardwareItems = expandedHardware.length
+  const totalJambKits = data.jambKits?.length || 0
 
   pdf.text(`Total Openings: ${uniqueOpenings}`, MARGIN, yPos)
   yPos += 5
   pdf.text(`Total Products: ${totalProducts}`, MARGIN, yPos)
   yPos += 5
+  if (totalJambKits > 0) {
+    pdf.text(`Total Jamb Kits: ${totalJambKits}`, MARGIN, yPos)
+    yPos += 5
+  }
   pdf.text(`Total Hardware Items: ${totalHardwareItems}`, MARGIN, yPos)
 
   // Footer

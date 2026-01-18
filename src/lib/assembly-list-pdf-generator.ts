@@ -2,6 +2,9 @@
 // Generates a professional assembly list PDF showing product types, sizes, and quantities
 
 import { jsPDF } from 'jspdf'
+import fs from 'fs'
+import path from 'path'
+import sharp from 'sharp'
 
 export interface AssemblyListItem {
   productName: string
@@ -14,6 +17,8 @@ export interface AssemblyListItem {
 
 export interface AssemblyListData {
   projectName: string
+  customerName?: string
+  companyLogo?: string | null
   items: AssemblyListItem[]
   generatedDate: string
 }
@@ -142,22 +147,78 @@ export async function createAssemblyListPDF(data: AssemblyListData): Promise<Buf
 
   let yPos = MARGIN
 
-  // Title
+  // Logo constants
+  const logoMaxWidth = 40
+  const logoMaxHeight = 15
+
+  // Add company logo in top right if available
+  if (data.companyLogo) {
+    try {
+      const logoPath = path.join(process.cwd(), 'public', data.companyLogo)
+      if (fs.existsSync(logoPath)) {
+        const logoBuffer = fs.readFileSync(logoPath)
+        const logoExt = path.extname(data.companyLogo).toLowerCase().replace('.', '')
+
+        let processedLogoBuffer: Buffer
+        let imageFormat: 'PNG' | 'JPEG' = 'PNG'
+
+        if (logoExt === 'svg') {
+          processedLogoBuffer = logoBuffer
+        } else {
+          const metadata = await sharp(logoBuffer).metadata()
+          const hasAlpha = metadata.channels === 4
+
+          if (hasAlpha) {
+            processedLogoBuffer = await sharp(logoBuffer)
+              .resize(600, 200, { fit: 'inside', withoutEnlargement: true })
+              .png({ compressionLevel: 9 })
+              .toBuffer()
+          } else {
+            processedLogoBuffer = await sharp(logoBuffer)
+              .resize(600, 200, { fit: 'inside', withoutEnlargement: true })
+              .jpeg({ quality: 85 })
+              .toBuffer()
+            imageFormat = 'JPEG'
+          }
+        }
+
+        const logoBase64 = processedLogoBuffer.toString('base64')
+        const mimeType = imageFormat === 'JPEG' ? 'image/jpeg' :
+                         (logoExt === 'svg' ? 'image/svg+xml' : 'image/png')
+        const logoData = `data:${mimeType};base64,${logoBase64}`
+
+        const logoX = PAGE_WIDTH - MARGIN - logoMaxWidth
+        pdf.addImage(logoData, imageFormat, logoX, yPos, logoMaxWidth, logoMaxHeight, undefined, 'SLOW')
+      }
+    } catch (error) {
+      console.error('Error adding company logo to Assembly List PDF:', error)
+    }
+  }
+
+  // Title (left-aligned)
   pdf.setFontSize(18)
   pdf.setFont('helvetica', 'bold')
-  pdf.text('Assembly List', PAGE_WIDTH / 2, yPos, { align: 'center' })
-  yPos += 8
+  pdf.text('Assembly List', MARGIN, yPos + 5)
+  yPos += 10
+
+  // Customer name (if available)
+  if (data.customerName) {
+    pdf.setFontSize(12)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text(data.customerName, MARGIN, yPos)
+    yPos += 6
+  }
 
   // Project name
   pdf.setFontSize(14)
   pdf.setFont('helvetica', 'normal')
-  pdf.text(data.projectName, PAGE_WIDTH / 2, yPos, { align: 'center' })
+  pdf.text(data.projectName, MARGIN, yPos)
   yPos += 6
 
   // Generated date
   pdf.setFontSize(9)
   pdf.setTextColor(100, 100, 100)
-  pdf.text(`Generated: ${data.generatedDate}`, PAGE_WIDTH / 2, yPos, { align: 'center' })
+  pdf.text(`Generated: ${data.generatedDate}`, MARGIN, yPos)
   pdf.setTextColor(0, 0, 0)
   yPos += 10
 

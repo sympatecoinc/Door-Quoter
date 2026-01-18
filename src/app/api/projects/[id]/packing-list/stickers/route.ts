@@ -80,6 +80,9 @@ export async function GET(
       // Get the finish code for this opening if it has a finish color
       const finishCode = opening.finishColor ? await getFinishCode(opening.finishColor) : ''
 
+      // Track jamb kit item count for this opening
+      let jambKitItemCount = 0
+
       // Add component stickers (one per panel)
       for (const panel of opening.panels) {
         const productName = panel.componentInstance?.product?.name || panel.type || 'Unknown'
@@ -92,7 +95,27 @@ export async function GET(
           partNumber: null
         })
 
-        // Process hardware from productBOMs for this panel
+        // Check ALL BOM items (not just hardware) for jamb kit inclusion
+        if (panel.componentInstance?.product) {
+          const allBoms = await prisma.productBOM.findMany({
+            where: { productId: panel.componentInstance.product.id },
+            select: { partNumber: true, quantity: true }
+          })
+
+          for (const bom of allBoms) {
+            if (bom.partNumber) {
+              const masterPart = await prisma.masterPart.findUnique({
+                where: { partNumber: bom.partNumber },
+                select: { includeInJambKit: true }
+              })
+              if (masterPart?.includeInJambKit) {
+                jambKitItemCount += (bom.quantity || 1)
+              }
+            }
+          }
+        }
+
+        // Process hardware from productBOMs for this panel (only Hardware type with addToPackingList)
         if (panel.componentInstance?.product?.productBOMs) {
           for (const bom of panel.componentInstance.product.productBOMs) {
             if (!bom.addToPackingList) continue
@@ -161,6 +184,17 @@ export async function GET(
             console.error('Error parsing sub-option selections:', error)
           }
         }
+      }
+
+      // Add jamb kit sticker for this opening if it has any jamb kit items
+      if (jambKitItemCount > 0) {
+        stickers.push({
+          openingName: opening.name,
+          itemType: 'jambkit',
+          itemName: 'Jamb Kit',
+          itemCount: jambKitItemCount,
+          partNumber: null
+        })
       }
     }
 

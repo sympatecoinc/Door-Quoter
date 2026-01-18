@@ -14,6 +14,19 @@ import {
 } from '@/lib/bom-utils'
 import { aggregateFromProjectData, createAssemblyListPDF } from '@/lib/assembly-list-pdf-generator'
 
+// Helper function to get company logo from branding settings
+async function getCompanyLogo(): Promise<string | null> {
+  try {
+    const logoSetting = await prisma.globalSetting.findUnique({
+      where: { key: 'company_logo' }
+    })
+    return logoSetting?.value || null
+  } catch (error) {
+    console.error('Error fetching company logo:', error)
+    return null
+  }
+}
+
 // Helper function to get finish code from database
 async function getFinishCode(finishType: string): Promise<string> {
   try {
@@ -1035,8 +1048,11 @@ export async function GET(
       const assemblyItems = aggregateFromProjectData(project.openings)
 
       if (format === 'pdf') {
+        const companyLogo = await getCompanyLogo()
         const pdfData = {
           projectName: project.name,
+          customerName: project.customer?.companyName,
+          companyLogo,
           items: assemblyItems,
           generatedDate: new Date().toLocaleDateString('en-US', {
             year: 'numeric',
@@ -1129,9 +1145,11 @@ export async function GET(
       if (format === 'pdf') {
         // PDF generation will be handled by a separate utility
         const { createPickListPDF } = await import('@/lib/pick-list-pdf-generator')
+        const companyLogo = await getCompanyLogo()
         const pdfBuffer = await createPickListPDF({
           projectName: project.name,
           customerName: project.customer?.companyName,
+          companyLogo,
           items: aggregatedPickList,
           generatedDate: new Date().toLocaleDateString('en-US', {
             year: 'numeric',
@@ -1208,9 +1226,11 @@ export async function GET(
 
       if (format === 'pdf') {
         const { createJambKitPDF } = await import('@/lib/jamb-kit-pdf-generator')
+        const companyLogo = await getCompanyLogo()
         const pdfBuffer = await createJambKitPDF({
           projectName: project.name,
           customerName: project.customer?.companyName,
+          companyLogo,
           openings: jambKitList,
           generatedDate: new Date().toLocaleDateString('en-US', {
             year: 'numeric',

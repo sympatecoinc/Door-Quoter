@@ -7,12 +7,13 @@ import QRCode from 'qrcode'
 
 export interface StickerData {
   openingName: string
-  itemType: 'component' | 'hardware'
+  itemType: 'component' | 'hardware' | 'jambkit'
   itemName: string
   partNumber?: string | null
   quantity?: number
   dimensions?: string // For components: "36" x 84""
   unit?: string | null
+  itemCount?: number // For jamb kits: number of items in kit
 }
 
 // Page layout constants (6-up: 3 rows x 2 cols)
@@ -70,8 +71,18 @@ function drawSticker(
   const contentWidth = STICKER_WIDTH - 2 * padding
   const contentHeight = STICKER_HEIGHT - 2 * padding
 
-  // Opening name header (prominent, at top)
-  pdf.setFillColor(40, 40, 40)
+  // Determine color based on item type (used for both header and badge)
+  let headerR: number, headerG: number, headerB: number
+  if (sticker.itemType === 'component') {
+    headerR = 59; headerG = 130; headerB = 246 // Blue for components
+  } else if (sticker.itemType === 'jambkit') {
+    headerR = 245; headerG = 158; headerB = 11 // Amber for jamb kits
+  } else {
+    headerR = 34; headerG = 197; headerB = 94 // Green for hardware
+  }
+
+  // Opening name header (prominent, at top) - matches item type color
+  pdf.setFillColor(headerR, headerG, headerB)
   pdf.rect(contentX, contentY, contentWidth, 10, 'F')
   pdf.setFontSize(11)
   pdf.setFont('helvetica', 'bold')
@@ -82,14 +93,11 @@ function drawSticker(
   })
   pdf.setTextColor(0, 0, 0)
 
-  // Item type badge
+  // Item type badge (same color as header)
   const badgeY = contentY + 14
-  if (sticker.itemType === 'component') {
-    pdf.setFillColor(59, 130, 246) // Blue for components
-  } else {
-    pdf.setFillColor(34, 197, 94) // Green for hardware
-  }
-  const badgeText = sticker.itemType === 'component' ? 'COMPONENT' : 'HARDWARE'
+  pdf.setFillColor(headerR, headerG, headerB)
+  const badgeText = sticker.itemType === 'component' ? 'COMPONENT' :
+                    sticker.itemType === 'jambkit' ? 'JAMB KIT' : 'HARDWARE'
   const badgeWidth = pdf.getTextWidth(badgeText) + 6
   pdf.roundedRect(contentX, badgeY, badgeWidth, 5, 1, 1, 'F')
   pdf.setFontSize(7)
@@ -133,6 +141,14 @@ function drawSticker(
     pdf.setFontSize(12)
     pdf.setFont('helvetica', 'bold')
     pdf.text(`QTY: ${sticker.quantity}${sticker.unit ? ' ' + sticker.unit : ''}`, contentX, qtyY)
+  }
+
+  // Item count (for jamb kits)
+  if (sticker.itemType === 'jambkit' && sticker.itemCount) {
+    const countY = contentY + contentHeight - 8
+    pdf.setFontSize(12)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text(`${sticker.itemCount} ITEMS`, contentX, countY)
   }
 
   // QR Code (bottom right)
@@ -200,9 +216,15 @@ export async function createStickersPDF(
   // Generate QR codes for all stickers first
   const qrCodes: string[] = []
   for (const sticker of stickers) {
-    const qrData = [sticker.partNumber || '', sticker.openingName, sticker.itemName]
-      .filter(Boolean)
-      .join('|')
+    let qrData: string
+    if (sticker.itemType === 'jambkit') {
+      // Jamb kit QR format: JAMB-KIT|{openingName}
+      qrData = `JAMB-KIT|${sticker.openingName}`
+    } else {
+      qrData = [sticker.partNumber || '', sticker.openingName, sticker.itemName]
+        .filter(Boolean)
+        .join('|')
+    }
     const qrDataUrl = await generateQRCodeDataUrl(qrData)
     qrCodes.push(qrDataUrl)
   }

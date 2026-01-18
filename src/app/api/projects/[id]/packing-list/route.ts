@@ -62,6 +62,9 @@ export async function GET(
       orderBy: { name: 'asc' }
     })
 
+    // Track jamb kit items per opening
+    const jambKitsMap = new Map<number, { openingId: number, openingName: string, itemCount: number }>()
+
     // Build packing list grouped by opening
     const packingList = await Promise.all(openings.map(async (opening) => {
       const components = opening.panels.map(panel => ({
@@ -74,6 +77,9 @@ export async function GET(
 
       // Get the finish code for this opening if it has a finish color
       const finishCode = opening.finishColor ? await getFinishCode(opening.finishColor) : ''
+
+      // Track jamb kit item count for this opening
+      let jambKitItemCount = 0
 
       // Collect all hardware items from all panels in this opening
       // Use a Map to aggregate quantities for duplicate parts (keyed by final part number with finish)
@@ -88,7 +94,25 @@ export async function GET(
       for (const panel of opening.panels) {
         if (!panel.componentInstance?.product) continue
 
-        // Add hardware from productBOMs
+        // Check ALL BOM items (not just hardware) for jamb kit inclusion
+        const allBoms = await prisma.productBOM.findMany({
+          where: { productId: panel.componentInstance.product.id },
+          select: { partNumber: true, quantity: true }
+        })
+
+        for (const bom of allBoms) {
+          if (bom.partNumber) {
+            const masterPart = await prisma.masterPart.findUnique({
+              where: { partNumber: bom.partNumber },
+              select: { includeInJambKit: true }
+            })
+            if (masterPart?.includeInJambKit) {
+              jambKitItemCount += (bom.quantity || 1)
+            }
+          }
+        }
+
+        // Add hardware from productBOMs (only Hardware type with addToPackingList)
         if (panel.componentInstance.product.productBOMs) {
           for (const bom of panel.componentInstance.product.productBOMs) {
             if (!bom.addToPackingList) continue
@@ -166,6 +190,15 @@ export async function GET(
         }
       }
 
+      // Track jamb kit for this opening if it has any jamb kit items
+      if (jambKitItemCount > 0) {
+        jambKitsMap.set(opening.id, {
+          openingId: opening.id,
+          openingName: opening.name,
+          itemCount: jambKitItemCount
+        })
+      }
+
       return {
         openingId: opening.id,
         openingName: opening.name,
@@ -174,7 +207,10 @@ export async function GET(
       }
     }))
 
-    return NextResponse.json({ packingList })
+    // Convert jamb kits map to array
+    const jambKits = Array.from(jambKitsMap.values())
+
+    return NextResponse.json({ packingList, jambKits })
   } catch (error) {
     console.error('Error generating packing list:', error)
     return NextResponse.json(

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { createPackingListPDF, PackingListItem, ProductInstance, PackingListData } from '@/lib/packing-list-pdf-generator'
+import { createPackingListPDF, PackingListItem, ProductInstance, PackingListData, JambKitEntry } from '@/lib/packing-list-pdf-generator'
 
 // Helper function to get finish code from database
 async function getFinishCode(finishType: string): Promise<string> {
@@ -12,6 +12,19 @@ async function getFinishCode(finishType: string): Promise<string> {
   } catch (error) {
     console.error('Error fetching finish code:', error)
     return ''
+  }
+}
+
+// Helper function to get company logo from branding settings
+async function getCompanyLogo(): Promise<string | null> {
+  try {
+    const logoSetting = await prisma.globalSetting.findUnique({
+      where: { key: 'company_logo' }
+    })
+    return logoSetting?.value || null
+  } catch (error) {
+    console.error('Error fetching company logo:', error)
+    return null
   }
 }
 
@@ -81,10 +94,14 @@ export async function GET(
     // Build packing list items and product instances
     const itemsMap = new Map<string, PackingListItem>()
     const productInstances: ProductInstance[] = []
+    const jambKitsMap = new Map<number, JambKitEntry>()
 
     for (const opening of openings) {
       // Get the finish code for this opening if it has a finish color
       const finishCode = opening.finishColor ? await getFinishCode(opening.finishColor) : ''
+
+      // Track jamb kit item count for this opening
+      let jambKitItemCount = 0
 
       for (const panel of opening.panels) {
         const productName = panel.componentInstance?.product?.name || 'Unknown Product'
@@ -98,7 +115,27 @@ export async function GET(
           height: panel.height || undefined
         })
 
-        // Process hardware from productBOMs for this panel
+        // Check ALL BOM items (not just hardware) for jamb kit inclusion
+        if (panel.componentInstance?.product) {
+          const allBoms = await prisma.productBOM.findMany({
+            where: { productId: panel.componentInstance.product.id },
+            select: { partNumber: true, quantity: true }
+          })
+
+          for (const bom of allBoms) {
+            if (bom.partNumber) {
+              const masterPart = await prisma.masterPart.findUnique({
+                where: { partNumber: bom.partNumber },
+                select: { includeInJambKit: true }
+              })
+              if (masterPart?.includeInJambKit) {
+                jambKitItemCount += (bom.quantity || 1)
+              }
+            }
+          }
+        }
+
+        // Process hardware from productBOMs for this panel (only Hardware type with addToPackingList)
         if (panel.componentInstance?.product?.productBOMs) {
           for (const bom of panel.componentInstance.product.productBOMs) {
             if (!bom.addToPackingList) continue
@@ -181,17 +218,31 @@ export async function GET(
           }
         }
       }
+
+      // Track jamb kit for this opening if it has any jamb kit items
+      if (jambKitItemCount > 0) {
+        jambKitsMap.set(opening.id, {
+          openingName: opening.name,
+          itemCount: jambKitItemCount
+        })
+      }
     }
 
-    // Convert map to array
+    // Convert maps to arrays
     const items = Array.from(itemsMap.values())
+    const jambKits = Array.from(jambKitsMap.values())
+
+    // Get company logo for branding
+    const companyLogo = await getCompanyLogo()
 
     // Build the data structure for the PDF
     const pdfData: PackingListData = {
       projectName: project.name,
       customerName: project.customer?.companyName,
+      companyLogo,
       items: items,
       productInstances: productInstances,
+      jambKits: jambKits,
       generatedDate: new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
