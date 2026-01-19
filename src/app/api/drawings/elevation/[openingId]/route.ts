@@ -51,9 +51,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     for (const panel of opening.panels) {
       const product = panel.componentInstance?.product
+      if (!product) continue
 
       // Handle corners (they don't have elevation images but need to be markers)
-      if (product?.productType === 'CORNER_90' && panel.isCorner) {
+      if (product.productType === 'CORNER_90' && panel.isCorner) {
         elevationImages.push({
           productName: product.name,
           imageData: '', // Empty for corners
@@ -70,9 +71,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
 
       // Handle regular components with elevation images
-      if (panel.componentInstance?.product?.elevationImageData) {
-        let imageData = panel.componentInstance.product.elevationImageData
-        const fileName = panel.componentInstance.product.elevationFileName ?? undefined
+      if (product.elevationImageData) {
+        let imageData = product.elevationImageData
+        const fileName = product.elevationFileName ?? undefined
 
         // If SVG, render to PNG server-side (SHOPGEN approach)
         if (isSvgFile(fileName)) {

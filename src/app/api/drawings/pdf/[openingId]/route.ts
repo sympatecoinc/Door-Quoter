@@ -71,9 +71,10 @@ export async function GET(
 
     for (const panel of opening.panels) {
       const product = panel.componentInstance?.product
+      if (!product) continue
 
       // Handle corners (they don't have elevation images but need to be markers)
-      if (product?.productType === 'CORNER_90' && panel.isCorner) {
+      if (product.productType === 'CORNER_90' && panel.isCorner) {
         console.log(`Adding CORNER marker for elevation panel ${panel.id} at position ${elevationImages.length}`)
 
         elevationImages.push({
@@ -94,15 +95,15 @@ export async function GET(
         continue
       }
 
-      if (!panel.componentInstance?.product?.elevationImageData) {
+      if (!product.elevationImageData) {
         // Skip panels without elevation images
         console.log(`Skipping panel ${panel.id} - no elevation image`)
         continue
       }
 
-      if (panel.componentInstance?.product?.elevationImageData) {
-        let imageData = panel.componentInstance.product.elevationImageData
-        const fileName = panel.componentInstance.product.elevationFileName ?? undefined
+      if (product.elevationImageData) {
+        let imageData = product.elevationImageData
+        const fileName = product.elevationFileName ?? undefined
         const componentInstance = panel.componentInstance
 
         // If SVG, render to PNG server-side with hardware injection
@@ -233,7 +234,7 @@ export async function GET(
         const hardwareText = hardwareOptions.length > 0 ? hardwareOptions.join(', ') : 'None'
 
         elevationImages.push({
-          productName: panel.componentInstance.product.name,
+          productName: product.name,
           imageData: imageData,
           width: panel.width,
           height: panel.height,
@@ -253,9 +254,10 @@ export async function GET(
 
     for (const panel of opening.panels) {
       const product = panel.componentInstance?.product
+      if (!product) continue
 
       // Handle corners (they don't have plan view images but need to be markers)
-      if (product?.productType === 'CORNER_90' && panel.isCorner) {
+      if (product.productType === 'CORNER_90' && panel.isCorner) {
         console.log(`Adding CORNER marker for plan view, panel ${panel.id}, direction: ${panel.cornerDirection}`)
 
         planViews.push({
@@ -272,7 +274,7 @@ export async function GET(
         continue
       }
 
-      if (panel.componentInstance?.product?.planViews) {
+      if (product.planViews) {
         let matchingPlanView
 
         // Fixed Panels use first plan view
@@ -458,7 +460,7 @@ export async function GET(
           console.log(`Adding plan view to array: ${matchingPlanView.name}, orientation: ${planViewOrientation}`)
 
           planViews.push({
-            productName: panel.componentInstance.product.name,
+            productName: product.name,
             imageData: imageData,
             width: displayWidth,
             height: displayHeight,

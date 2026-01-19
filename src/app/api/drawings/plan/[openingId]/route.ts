@@ -98,9 +98,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     for (const panel of opening.panels) {
       const product = panel.componentInstance?.product
+      if (!product) continue
 
       // Handle corners (they don't have plan view images but need to be markers)
-      if (product?.productType === 'CORNER_90' && panel.isCorner) {
+      if (product.productType === 'CORNER_90' && panel.isCorner) {
         console.log(`\n=== Adding CORNER marker for panel ${panel.id} ===`)
         console.log(`  Corner Direction: ${panel.cornerDirection}`)
 
@@ -120,7 +121,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         continue
       }
 
-      if (panel.componentInstance?.product?.planViews) {
+      if (product.planViews) {
         let matchingPlanView
 
         // Fixed Panels should use the first/only plan view regardless of swing direction
@@ -312,7 +313,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           }
 
           const planViewData = {
-            productName: panel.componentInstance.product.name,
+            productName: product.name,
             planViewName: matchingPlanView.name,
             imageData: imageData,
             fileName: fileName || undefined,

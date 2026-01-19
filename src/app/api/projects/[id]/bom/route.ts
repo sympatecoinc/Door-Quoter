@@ -181,7 +181,7 @@ export async function GET(
         let effectiveHeight = panel.height || 0
 
         if (isFrameProduct) {
-          const frameDimensions = getFrameDimensions(opening.panels, panel.id)
+          const frameDimensions = getFrameDimensions(opening.panels as any, panel.id)
           effectiveWidth = frameDimensions.width
           effectiveHeight = frameDimensions.height
         }
@@ -581,7 +581,7 @@ export async function GET(
                     color: opening.finishColor || 'N/A',
                     isIncluded: false,
                     isStandard: true,
-                    optionPrice: standardOption.price,
+                    optionPrice: (standardOption as any).price ?? 0,
                     isMilled: optionBom?.isMilled !== false,
                     binLocation: optionBinLocation
                   })
@@ -726,7 +726,7 @@ export async function GET(
                   color: opening.finishColor || 'N/A',
                   isIncluded: isIncluded,
                   isStandard: isStandardOption,
-                  optionPrice: individualOption.price,
+                  optionPrice: (individualOption as any).price ?? 0,
                   isMilled: optionBom?.isMilled !== false,
                   binLocation: optionBinLocation
                 })
@@ -924,7 +924,7 @@ export async function GET(
                 color: opening.finishColor || 'N/A',
                 isIncluded: false,
                 isStandard: true,
-                optionPrice: standardOption.price,
+                optionPrice: (standardOption as any).price ?? 0,
                 isMilled: optionBom?.isMilled !== false,
                 binLocation: optionBinLocation
               })
@@ -1057,7 +1057,7 @@ export async function GET(
         // Total optimized stock pieces to order for all extrusions and CutStock
         totalStockPiecesToOrder: summaryItems
           .filter(item => (item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockPiecesNeeded !== null)
-          .reduce((sum, item) => sum + item.stockPiecesNeeded, 0)
+          .reduce((sum, item) => sum + (item.stockPiecesNeeded ?? 0), 0)
       }
 
       // If CSV format requested, return as file download
