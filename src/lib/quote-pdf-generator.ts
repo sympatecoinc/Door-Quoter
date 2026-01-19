@@ -537,6 +537,21 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
  * Cards display text content on left and elevation images on right
  * Uses pagination: max 3 items per page, with footer on the last page
  */
+/**
+ * Calculates the required card height based on content
+ * Base height covers: name, description, dimensions, options header, glass, color
+ * Dynamic height adds: 3.5mm per additional hardware item
+ */
+function calculateCardHeight(item: QuoteItem): number {
+  const baseHeight = 32 // Fixed content: name, description, dimensions, options header, glass type, color
+  const hardwareItems = item.hardware && item.hardware !== 'Standard' && item.hardware.trim() !== ''
+    ? item.hardware.split(' • ').length
+    : 0
+  const optionsHeight = hardwareItems * 3.5
+  const minHeight = 48 // Maintain minimum for image area
+  return Math.max(minHeight, baseHeight + optionsHeight + 8) // +8 for bottom padding
+}
+
 async function addQuoteItemsTable(
   pdf: jsPDF,
   quoteData: QuoteData,
@@ -546,7 +561,7 @@ async function addQuoteItemsTable(
   const pageHeight = pdf.internal.pageSize.getHeight()
   const marginX = 15 // Reduced from 20mm to maximize width for portrait layout
   const cellPadding = 5
-  const cardHeight = 48 // Height for each opening card (reduced from 55mm to fit 3 cards + footer)
+  const minCardHeight = 48 // Minimum height for each opening card
   const cardSpacing = 4 // Space between cards (reduced from 6mm)
   const footerHeight = 63 // Space needed for footer with pricing (matches actual footer height)
   const ITEMS_PER_PAGE = 4 // Maximum items per page
@@ -557,18 +572,11 @@ async function addQuoteItemsTable(
 
   const totalItems = quoteData.quoteItems.length
   let currentY = startY
-  const totalCardHeight = cardHeight + cardSpacing
 
-  // Calculate how many items can fit on a page based on available space
-  const calculateItemsForPage = (
-    startYForPage: number,
-    includeFooter: boolean
-  ): number => {
-    const availableHeight = pageHeight - startYForPage - 10 - (includeFooter ? footerHeight : 0)
-    return Math.min(Math.floor(availableHeight / totalCardHeight), ITEMS_PER_PAGE)
-  }
+  // Pre-calculate heights for all items
+  const itemHeights = quoteData.quoteItems.map(item => calculateCardHeight(item))
 
-  // Pre-calculate page assignments for all items
+  // Pre-calculate page assignments for all items using actual heights
   interface PageAssignment {
     pageItems: number[]
     includeFooter: boolean
@@ -585,29 +593,47 @@ async function addQuoteItemsTable(
     while (itemIndex < totalItems) {
       // First page starts after main header; continuation pages start after continuation header
       const pageStartY = isFirstPage ? startY : continuationHeaderEndY
-      const remainingItems = totalItems - itemIndex
+      const pageItems: number[] = []
+      let currentPageHeight = 0
+      const availableHeightWithFooter = pageHeight - pageStartY - 10 - footerHeight
+      const availableHeightWithoutFooter = pageHeight - pageStartY - 10
 
-      // Try fitting remaining items + footer
-      const itemsWithFooter = calculateItemsForPage(pageStartY, true)
+      // Try to fit items on this page
+      while (itemIndex + pageItems.length < totalItems) {
+        const nextItemIndex = itemIndex + pageItems.length
+        const nextItemHeight = itemHeights[nextItemIndex] + cardSpacing
+        const remainingItemsAfterThis = totalItems - nextItemIndex - 1
 
-      if (remainingItems <= itemsWithFooter) {
-        // All remaining items fit with footer - this is the last page
-        pages.push({
-          pageItems: Array.from({length: remainingItems}, (_, i) => itemIndex + i),
-          includeFooter: true
-        })
-        break
-      } else {
-        // Not last page - fit as many as possible without footer, but leave at least 1 for footer page
-        const itemsThisPage = calculateItemsForPage(pageStartY, false)
-        // Ensure we leave at least 1 item for the next page (which will have the footer)
-        const itemsToPlace = Math.max(1, Math.min(itemsThisPage, remainingItems - 1))
-        pages.push({
-          pageItems: Array.from({length: itemsToPlace}, (_, i) => itemIndex + i),
-          includeFooter: false
-        })
-        itemIndex += itemsToPlace
+        // Check if we can fit this item
+        // If this could be the last page (no remaining items after), use footer height
+        // Otherwise, use full height
+        const needsFooterSpace = remainingItemsAfterThis === 0
+        const availableHeight = needsFooterSpace ? availableHeightWithFooter : availableHeightWithoutFooter
+
+        if (currentPageHeight + nextItemHeight <= availableHeight) {
+          pageItems.push(nextItemIndex)
+          currentPageHeight += nextItemHeight
+        } else {
+          // Can't fit more items on this page
+          break
+        }
+
+        // Limit items per page
+        if (pageItems.length >= ITEMS_PER_PAGE) break
       }
+
+      // Ensure we place at least one item per page (unless we're out of items)
+      if (pageItems.length === 0 && itemIndex < totalItems) {
+        pageItems.push(itemIndex)
+      }
+
+      const isLastPage = itemIndex + pageItems.length >= totalItems
+      pages.push({
+        pageItems,
+        includeFooter: isLastPage
+      })
+
+      itemIndex += pageItems.length
       isFirstPage = false
     }
     return pages
@@ -632,6 +658,7 @@ async function addQuoteItemsTable(
     // Process each item on this page
     for (const itemIndex of pageAssignment.pageItems) {
       const item = quoteData.quoteItems[itemIndex]
+      const cardHeight = itemHeights[itemIndex] // Use pre-calculated dynamic height for this item
 
     // Draw card with rounded corners and grey background (no outline)
     pdf.setFillColor(243, 244, 246) // bg-gray-100

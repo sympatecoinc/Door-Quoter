@@ -18,10 +18,19 @@ interface Category {
   individualOptions: IndividualOption[]
 }
 
+interface OptionVariant {
+  id: number
+  optionId: number
+  name: string
+  isDefault: boolean
+  sortOrder: number
+}
+
 interface LinkedPart {
   id: number
   optionId: number
   masterPartId: number
+  variantId: number | null
   quantity: number
   masterPart: {
     id: number
@@ -32,6 +41,10 @@ interface LinkedPart {
     cost?: number
     partType?: string
   }
+  variant?: {
+    id: number
+    name: string
+  } | null
 }
 
 interface IndividualOption {
@@ -88,6 +101,15 @@ export default function CategoryDetailView({
   const [addingLinkedPart, setAddingLinkedPart] = useState(false)
   const [newLinkedPartId, setNewLinkedPartId] = useState<number | null>(null)
   const [newLinkedPartQty, setNewLinkedPartQty] = useState('1')
+  const [newLinkedPartVariantId, setNewLinkedPartVariantId] = useState<number | null>(null)
+
+  // Variant state
+  const [variants, setVariants] = useState<OptionVariant[]>([])
+  const [loadingVariants, setLoadingVariants] = useState(false)
+  const [newVariantName, setNewVariantName] = useState('')
+  const [addingVariant, setAddingVariant] = useState(false)
+  const [editingVariantId, setEditingVariantId] = useState<number | null>(null)
+  const [editingVariantName, setEditingVariantName] = useState('')
 
   // Copy SVG Origin ID to clipboard
   const handleCopyOriginId = async () => {
@@ -410,6 +432,118 @@ export default function CategoryDetailView({
     }
   }
 
+  // Fetch variants for an option
+  async function fetchVariants(optionId: number) {
+    setLoadingVariants(true)
+    try {
+      const response = await fetch(`/api/options/${optionId}/variants`)
+      if (response.ok) {
+        const data = await response.json()
+        setVariants(data)
+      }
+    } catch (error) {
+      console.error('Error fetching variants:', error)
+    } finally {
+      setLoadingVariants(false)
+    }
+  }
+
+  // Add a new variant
+  async function handleAddVariant() {
+    if (!selectedOptionForLinkedParts || !newVariantName.trim()) return
+
+    setAddingVariant(true)
+    try {
+      const response = await fetch(`/api/options/${selectedOptionForLinkedParts.id}/variants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newVariantName.trim(),
+          isDefault: variants.length === 0 // First variant is default
+        })
+      })
+
+      if (response.ok) {
+        await fetchVariants(selectedOptionForLinkedParts.id)
+        setNewVariantName('')
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to add variant')
+      }
+    } catch (error) {
+      console.error('Error adding variant:', error)
+      alert('Error adding variant')
+    } finally {
+      setAddingVariant(false)
+    }
+  }
+
+  // Update variant
+  async function handleUpdateVariant(variantId: number) {
+    if (!selectedOptionForLinkedParts || !editingVariantName.trim()) return
+
+    try {
+      const response = await fetch(`/api/options/${selectedOptionForLinkedParts.id}/variants/${variantId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingVariantName.trim() })
+      })
+
+      if (response.ok) {
+        await fetchVariants(selectedOptionForLinkedParts.id)
+        await fetchLinkedParts(selectedOptionForLinkedParts.id) // Refresh to get updated variant names
+        setEditingVariantId(null)
+        setEditingVariantName('')
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to update variant')
+      }
+    } catch (error) {
+      console.error('Error updating variant:', error)
+    }
+  }
+
+  // Delete variant
+  async function handleDeleteVariant(variantId: number) {
+    if (!selectedOptionForLinkedParts) return
+    if (!confirm('Delete this variant? Linked parts specific to this variant will also be deleted.')) return
+
+    try {
+      const response = await fetch(`/api/options/${selectedOptionForLinkedParts.id}/variants/${variantId}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        await fetchVariants(selectedOptionForLinkedParts.id)
+        await fetchLinkedParts(selectedOptionForLinkedParts.id) // Refresh linked parts as some may have been deleted
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to delete variant')
+      }
+    } catch (error) {
+      console.error('Error deleting variant:', error)
+    }
+  }
+
+  // Set variant as default
+  async function handleSetDefaultVariant(variantId: number) {
+    if (!selectedOptionForLinkedParts) return
+
+    try {
+      const response = await fetch(`/api/options/${selectedOptionForLinkedParts.id}/variants/${variantId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isDefault: true })
+      })
+
+      if (response.ok) {
+        await fetchVariants(selectedOptionForLinkedParts.id)
+      }
+    } catch (error) {
+      console.error('Error setting default variant:', error)
+    }
+  }
+
   // Open linked parts modal
   async function handleOpenLinkedParts(option: IndividualOption, e: React.MouseEvent) {
     e.stopPropagation()
@@ -417,7 +551,12 @@ export default function CategoryDetailView({
     setLinkedPartSearchTerm('')
     setNewLinkedPartId(null)
     setNewLinkedPartQty('1')
+    setNewLinkedPartVariantId(null)
+    setNewVariantName('')
+    setEditingVariantId(null)
+    setEditingVariantName('')
     fetchLinkedParts(option.id)
+    fetchVariants(option.id)
     if (allMasterParts.length === 0) {
       fetchAllMasterParts()
     }
@@ -434,7 +573,8 @@ export default function CategoryDetailView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           masterPartId: newLinkedPartId,
-          quantity: parseFloat(newLinkedPartQty) || 1
+          quantity: parseFloat(newLinkedPartQty) || 1,
+          variantId: newLinkedPartVariantId
         })
       })
 
@@ -442,6 +582,7 @@ export default function CategoryDetailView({
         await fetchLinkedParts(selectedOptionForLinkedParts.id)
         setNewLinkedPartId(null)
         setNewLinkedPartQty('1')
+        setNewLinkedPartVariantId(null)
         setLinkedPartSearchTerm('')
         // Refresh category details to update badge
         const detailsResponse = await fetch(`/api/categories/${category.id}`)
@@ -1059,7 +1200,7 @@ export default function CategoryDetailView({
       {/* Linked Parts Modal */}
       {selectedOptionForLinkedParts && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -1083,7 +1224,124 @@ export default function CategoryDetailView({
               Parts linked here will be automatically added to the BOM when this option is selected.
             </p>
 
-            {/* Current linked parts */}
+            {/* Variants Section */}
+            <div className="mb-6 border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <h3 className="font-medium text-gray-900 mb-3">Variants</h3>
+              <p className="text-xs text-gray-500 mb-3">
+                Create variants to have different linked parts for different configurations (e.g., "Locking" vs "Non-Locking").
+              </p>
+
+              {loadingVariants ? (
+                <div className="flex justify-center py-2">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                </div>
+              ) : (
+                <>
+                  {variants.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {variants.map((variant) => (
+                        <div key={variant.id} className="flex items-center justify-between bg-white p-2 rounded border border-gray-200">
+                          {editingVariantId === variant.id ? (
+                            <div className="flex items-center gap-2 flex-1">
+                              <input
+                                type="text"
+                                value={editingVariantName}
+                                onChange={(e) => setEditingVariantName(e.target.value)}
+                                className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm text-gray-900"
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleUpdateVariant(variant.id)
+                                  if (e.key === 'Escape') {
+                                    setEditingVariantId(null)
+                                    setEditingVariantName('')
+                                  }
+                                }}
+                              />
+                              <button
+                                onClick={() => handleUpdateVariant(variant.id)}
+                                className="p-1 text-green-600 hover:text-green-700"
+                                title="Save"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingVariantId(null)
+                                  setEditingVariantName('')
+                                }}
+                                className="p-1 text-gray-400 hover:text-gray-600"
+                                title="Cancel"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-900">{variant.name}</span>
+                                {variant.isDefault && (
+                                  <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Default</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {!variant.isDefault && (
+                                  <button
+                                    onClick={() => handleSetDefaultVariant(variant.id)}
+                                    className="p-1 text-gray-400 hover:text-green-600 text-xs"
+                                    title="Set as default"
+                                  >
+                                    Set Default
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    setEditingVariantId(variant.id)
+                                    setEditingVariantName(variant.name)
+                                  }}
+                                  className="p-1 text-gray-400 hover:text-blue-600"
+                                  title="Edit"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteVariant(variant.id)}
+                                  className="p-1 text-gray-400 hover:text-red-600"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={newVariantName}
+                      onChange={(e) => setNewVariantName(e.target.value)}
+                      placeholder="New variant name..."
+                      className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleAddVariant()
+                      }}
+                    />
+                    <button
+                      onClick={handleAddVariant}
+                      disabled={addingVariant || !newVariantName.trim()}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {addingVariant ? '...' : 'Add'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Current linked parts - grouped by variant */}
             <div className="mb-6">
               <h3 className="font-medium text-gray-900 mb-3">Current Linked Parts</h3>
               {loadingLinkedParts ? (
@@ -1091,24 +1349,64 @@ export default function CategoryDetailView({
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                 </div>
               ) : linkedParts.length > 0 ? (
-                <div className="space-y-2">
-                  {linkedParts.map((lp) => (
-                    <div key={lp.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900">{lp.masterPart.baseName}</p>
-                        <p className="text-xs text-gray-500">
-                          Part #: {lp.masterPart.partNumber} | Qty: {lp.quantity}
-                        </p>
+                <div className="space-y-4">
+                  {/* Parts for all variants (variantId = null) */}
+                  {linkedParts.filter(lp => lp.variantId === null).length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">All Variants</h4>
+                      <div className="space-y-2">
+                        {linkedParts.filter(lp => lp.variantId === null).map((lp) => (
+                          <div key={lp.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div className="flex-1">
+                              <p className="font-medium text-gray-900">{lp.masterPart.baseName}</p>
+                              <p className="text-xs text-gray-500">
+                                Part #: {lp.masterPart.partNumber} | Qty: {lp.quantity}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteLinkedPart(lp.id)}
+                              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                              title="Remove linked part"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                      <button
-                        onClick={() => handleDeleteLinkedPart(lp.id)}
-                        className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                        title="Remove linked part"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </div>
-                  ))}
+                  )}
+
+                  {/* Parts for each variant */}
+                  {variants.map((variant) => {
+                    const variantParts = linkedParts.filter(lp => lp.variantId === variant.id)
+                    if (variantParts.length === 0) return null
+                    return (
+                      <div key={variant.id}>
+                        <h4 className="text-xs font-semibold text-purple-600 uppercase tracking-wide mb-2">
+                          {variant.name} {variant.isDefault && '(Default)'}
+                        </h4>
+                        <div className="space-y-2">
+                          {variantParts.map((lp) => (
+                            <div key={lp.id} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+                              <div className="flex-1">
+                                <p className="font-medium text-gray-900">{lp.masterPart.baseName}</p>
+                                <p className="text-xs text-gray-500">
+                                  Part #: {lp.masterPart.partNumber} | Qty: {lp.quantity}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => handleDeleteLinkedPart(lp.id)}
+                                className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                title="Remove linked part"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               ) : (
                 <p className="text-sm text-gray-500 text-center py-4">No linked parts yet</p>
@@ -1161,6 +1459,21 @@ export default function CategoryDetailView({
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                       />
                     </div>
+                    {variants.length > 0 && (
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Variant</label>
+                        <select
+                          value={newLinkedPartVariantId ?? ''}
+                          onChange={(e) => setNewLinkedPartVariantId(e.target.value ? parseInt(e.target.value) : null)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        >
+                          <option value="">All Variants</option>
+                          {variants.map((v) => (
+                            <option key={v.id} value={v.id}>{v.name}{v.isDefault ? ' (Default)' : ''}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <button
                       onClick={handleAddLinkedPart}
                       disabled={addingLinkedPart}

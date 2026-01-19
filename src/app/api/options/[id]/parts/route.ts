@@ -39,6 +39,12 @@ export async function GET(
             addFinishToPartNumber: true,
             addToPackingList: true
           }
+        },
+        variant: {
+          select: {
+            id: true,
+            name: true
+          }
         }
       },
       orderBy: { createdAt: 'asc' }
@@ -65,7 +71,7 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { masterPartId, quantity } = body
+    const { masterPartId, quantity, variantId } = body
 
     if (!masterPartId) {
       return NextResponse.json({ error: 'Master part ID is required' }, { status: 400 })
@@ -89,18 +95,29 @@ export async function POST(
       return NextResponse.json({ error: 'Master part not found' }, { status: 404 })
     }
 
-    // Check if this part is already linked to this option
+    // Check if variant exists if provided
+    if (variantId) {
+      const variant = await prisma.optionVariant.findFirst({
+        where: { id: variantId, optionId }
+      })
+      if (!variant) {
+        return NextResponse.json({ error: 'Variant not found' }, { status: 404 })
+      }
+    }
+
+    // Check if this part is already linked to this option with this variant
     const existingPart = await prisma.optionLinkedPart.findUnique({
       where: {
-        optionId_masterPartId: {
+        optionId_masterPartId_variantId: {
           optionId,
-          masterPartId
+          masterPartId,
+          variantId: variantId || null
         }
       }
     })
 
     if (existingPart) {
-      return NextResponse.json({ error: 'This part is already linked to this option' }, { status: 409 })
+      return NextResponse.json({ error: 'This part is already linked to this option with this variant' }, { status: 409 })
     }
 
     // Create the linked part
@@ -108,6 +125,7 @@ export async function POST(
       data: {
         optionId,
         masterPartId,
+        variantId: variantId || null,
         quantity: quantity ? parseFloat(quantity) : 1
       },
       include: {
@@ -122,6 +140,12 @@ export async function POST(
             partType: true,
             addFinishToPartNumber: true,
             addToPackingList: true
+          }
+        },
+        variant: {
+          select: {
+            id: true,
+            name: true
           }
         }
       }
@@ -184,6 +208,12 @@ export async function PUT(
             partType: true,
             addFinishToPartNumber: true,
             addToPackingList: true
+          }
+        },
+        variant: {
+          select: {
+            id: true,
+            name: true
           }
         }
       }

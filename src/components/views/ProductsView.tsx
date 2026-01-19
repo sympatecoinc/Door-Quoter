@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Package, Tag, Settings, Edit2, Trash2, Save, X, Copy } from 'lucide-react'
+import { Plus, Edit2, Trash2, Save, X, Copy } from 'lucide-react'
 import ProductDetailView from './ProductDetailView'
 import CategoryDetailView from './CategoryDetailView'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
@@ -68,7 +68,6 @@ function ProductCardSkeleton() {
 }
 
 export default function ProductsView() {
-  const [activeTab, setActiveTab] = useState('products')
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -97,10 +96,10 @@ export default function ProductsView() {
     { isOpen: showCreateForm, onClose: () => setShowCreateForm(false) },
   ])
 
-  // Cmd+N to create new product (only on products tab)
+  // Cmd+N to create new product
   useNewShortcut(
     () => setShowCreateForm(true),
-    { disabled: showCreateForm || editingProduct !== null || activeTab !== 'products' || selectedProduct !== null }
+    { disabled: showCreateForm || editingProduct !== null || selectedProduct !== null }
   )
 
   useEffect(() => {
@@ -277,50 +276,25 @@ export default function ProductsView() {
     }
   }
 
-  const tabs = [
-    { id: 'products', label: 'Products', icon: Package },
-  ]
-
   return (
     <div className="p-8">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Products</h1>
-          <p className="text-gray-600 mt-2">Manage product catalog and configurations</p>
+      {!selectedProduct && (
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Products</h1>
+            <p className="text-gray-600 mt-2">Manage product catalog and configurations</p>
+          </div>
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            New Product
+          </button>
         </div>
-        <button
-          onClick={() => setShowCreateForm(true)}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          New Product
-        </button>
-      </div>
+      )}
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
-          {tabs.map((tab) => {
-            const Icon = tab.icon
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <Icon className="w-5 h-5 mr-2" />
-                {tab.label}
-              </button>
-            )
-          })}
-        </nav>
-      </div>
-
-      {/* Tab Content */}
+      {/* Content */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -328,45 +302,39 @@ export default function ProductsView() {
               <ProductCardSkeleton key={i} />
             ))}
           </div>
+        ) : selectedProduct ? (
+          <ProductDetailView
+            product={selectedProduct}
+            categories={categories}
+            productBOMs={[]}
+            onBack={() => setSelectedProduct(null)}
+            onRefresh={loadData}
+            onEdit={startEditProduct}
+            onDelete={handleDeleteProduct}
+          />
         ) : (
-          <>
-            {activeTab === 'products' && (
-              selectedProduct ? (
-                <ProductDetailView
-                  product={selectedProduct}
-                  categories={categories}
-                  productBOMs={[]}
-                  onBack={() => setSelectedProduct(null)}
-                  onRefresh={loadData}
-                  onEdit={startEditProduct}
-                  onDelete={handleDeleteProduct}
-                />
-              ) : (
-                <ProductsTab
-                  products={products}
-                  onRefresh={fetchProducts}
-                  onSelectProduct={setSelectedProduct}
-                  editingProduct={editingProduct}
-                  editProductName={editProductName}
-                  editProductDescription={editProductDescription}
-                  editProductInstallationPrice={editProductInstallationPrice}
-                  updating={updating}
-                  onStartEdit={startEditProduct}
-                  onCancelEdit={cancelEditProduct}
-                  onUpdateProduct={handleUpdateProduct}
-                  onDeleteProduct={handleDeleteProduct}
-                  onDuplicateProduct={handleDuplicateProduct}
-                  setEditProductName={setEditProductName}
-                  setEditProductDescription={setEditProductDescription}
-                  setEditProductInstallationPrice={setEditProductInstallationPrice}
-                  showCreateForm={showCreateForm}
-                  setShowCreateForm={setShowCreateForm}
-                  showArchived={showArchived}
-                  setShowArchived={setShowArchived}
-                />
-              )
-            )}
-          </>
+          <ProductsTab
+            products={products}
+            onRefresh={fetchProducts}
+            onSelectProduct={setSelectedProduct}
+            editingProduct={editingProduct}
+            editProductName={editProductName}
+            editProductDescription={editProductDescription}
+            editProductInstallationPrice={editProductInstallationPrice}
+            updating={updating}
+            onStartEdit={startEditProduct}
+            onCancelEdit={cancelEditProduct}
+            onUpdateProduct={handleUpdateProduct}
+            onDeleteProduct={handleDeleteProduct}
+            onDuplicateProduct={handleDuplicateProduct}
+            setEditProductName={setEditProductName}
+            setEditProductDescription={setEditProductDescription}
+            setEditProductInstallationPrice={setEditProductInstallationPrice}
+            showCreateForm={showCreateForm}
+            setShowCreateForm={setShowCreateForm}
+            showArchived={showArchived}
+            setShowArchived={setShowArchived}
+          />
         )}
       </div>
 

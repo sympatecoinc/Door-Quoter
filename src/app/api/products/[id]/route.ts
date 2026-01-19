@@ -18,7 +18,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           include: {
             category: {
               include: {
-                individualOptions: true
+                individualOptions: {
+                  include: {
+                    variants: {
+                      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+                    }
+                  }
+                }
               }
             },
             standardOption: true
@@ -174,7 +180,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           include: {
             category: {
               include: {
-                individualOptions: true
+                individualOptions: {
+                  include: {
+                    variants: {
+                      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+                    }
+                  }
+                }
               }
             },
             standardOption: true

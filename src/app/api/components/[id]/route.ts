@@ -19,7 +19,7 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { subOptionSelections, includedOptions } = body
+    const { subOptionSelections, includedOptions, variantSelections } = body
 
     if (!subOptionSelections || typeof subOptionSelections !== 'object') {
       return NextResponse.json(
@@ -36,6 +36,11 @@ export async function PATCH(
     // Add includedOptions if provided
     if (includedOptions !== undefined) {
       updateData.includedOptions = JSON.stringify(includedOptions)
+    }
+
+    // Add variantSelections if provided
+    if (variantSelections !== undefined) {
+      updateData.variantSelections = JSON.stringify(variantSelections)
     }
 
     // Update the component instance with the new option selections

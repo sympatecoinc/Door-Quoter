@@ -468,6 +468,15 @@ interface ProductPlanView {
   updatedAt: string
 }
 
+// Product type display mapping for badges
+const productTypeDisplay: Record<string, { label: string; colors: string }> = {
+  'SWING_DOOR': { label: 'Swing Door', colors: 'bg-blue-100 text-blue-700' },
+  'SLIDING_DOOR': { label: 'Sliding Door', colors: 'bg-green-100 text-green-700' },
+  'FIXED_PANEL': { label: 'Fixed Panel', colors: 'bg-orange-100 text-orange-700' },
+  'CORNER_90': { label: '90 Degree Corner', colors: 'bg-purple-100 text-purple-700' },
+  'FRAME': { label: 'Frame', colors: 'bg-gray-100 text-gray-700' },
+}
+
 export default function ProductDetailView({ 
   product, 
   categories, 
@@ -1577,14 +1586,9 @@ export default function ProductDetailView({
           <div className="flex items-center gap-3 mb-2">
             <h2 className="text-2xl font-bold text-gray-900">{product.name}</h2>
             <span className={`px-3 py-1 text-sm rounded-full ${
-              product.productType === 'SWING_DOOR'
-                ? 'bg-blue-100 text-blue-700'
-                : product.productType === 'SLIDING_DOOR'
-                ? 'bg-green-100 text-green-700'
-                : 'bg-orange-100 text-orange-700'
+              productTypeDisplay[product.productType]?.colors || 'bg-gray-100 text-gray-700'
             }`}>
-              {product.productType === 'SWING_DOOR' ? 'Swing Door' :
-               product.productType === 'SLIDING_DOOR' ? 'Sliding Door' : 'Fixed Panel'}
+              {productTypeDisplay[product.productType]?.label || product.productType}
             </span>
           </div>
           <p className="text-gray-600">{product.description || 'No description'}</p>
@@ -1731,15 +1735,8 @@ export default function ProductDetailView({
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900 min-w-[180px] whitespace-nowrap">
                           {part.formula ? (
-                            <div>
-                              <div className="font-mono text-xs">
-                                {renderFormulaWithHighlights(part.formula)}
-                              </div>
-                              {(part.unit === 'LF' || part.unit === 'IN') && part.partType !== 'Extrusion' && (
-                                <div className="text-xs text-gray-500 mt-1">
-                                  = {part.quantity} pc × length
-                                </div>
-                              )}
+                            <div className="font-mono text-xs">
+                              {renderFormulaWithHighlights(part.formula)}
                             </div>
                           ) : '-'}
                         </td>

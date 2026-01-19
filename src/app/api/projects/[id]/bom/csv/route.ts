@@ -166,8 +166,12 @@ export async function GET(
                                   include: {
                                     linkedParts: {
                                       include: {
-                                        masterPart: true
+                                        masterPart: true,
+                                        variant: true
                                       }
+                                    },
+                                    variants: {
+                                      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
                                     }
                                   }
                                 }
@@ -412,6 +416,7 @@ export async function GET(
           try {
             const selections = JSON.parse(panel.componentInstance.subOptionSelections)
             const includedOptions = JSON.parse(panel.componentInstance.includedOptions || '[]')
+            const variantSelections = JSON.parse(panel.componentInstance.variantSelections || '{}')
 
             // Process each selected option
             for (const [categoryIdStr, optionId] of Object.entries(selections)) {
@@ -523,7 +528,19 @@ export async function GET(
 
                   // Process linked parts for standard option
                   if (standardOption.linkedParts && standardOption.linkedParts.length > 0) {
-                    for (const linkedPart of standardOption.linkedParts) {
+                    // For standard options, use the default variant
+                    const defaultVariant = standardOption.variants?.find((v: any) => v.isDefault)
+
+                    // Filter linked parts based on default variant
+                    const applicableLinkedParts = standardOption.linkedParts.filter((lp: any) => {
+                      if (lp.variantId === null) return true // Applies to all variants
+                      if (defaultVariant) {
+                        return lp.variantId === defaultVariant.id
+                      }
+                      return false // No default, only include parts without variant
+                    })
+
+                    for (const linkedPart of applicableLinkedParts) {
                       const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
 
                       // Build part number with finish code if applicable
@@ -548,7 +565,7 @@ export async function GET(
                         percentOfStock: '',
                         isMilled: true,
                         unit: linkedPart.masterPart.unit || 'EA',
-                        description: `Linked: ${standardOption.name}`,
+                        description: `Linked: ${standardOption.name}${linkedPart.variant ? ` (${linkedPart.variant.name})` : ''}`,
                         color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A'
                       })
                     }
@@ -672,7 +689,25 @@ export async function GET(
 
                 // Process linked parts for this option
                 if (individualOption.linkedParts && individualOption.linkedParts.length > 0) {
-                  for (const linkedPart of individualOption.linkedParts) {
+                  // Get the selected variant for this option (if any)
+                  const selectedVariantId = variantSelections[String(individualOption.id)]
+
+                  // Filter linked parts based on variant selection:
+                  // Include parts where variantId is null (applies to all variants) OR matches selected variant
+                  const applicableLinkedParts = individualOption.linkedParts.filter((lp: any) => {
+                    if (lp.variantId === null) return true // Applies to all variants
+                    if (!selectedVariantId) {
+                      // No variant selected - use default variant if exists, otherwise only include null-variant parts
+                      const defaultVariant = individualOption.variants?.find((v: any) => v.isDefault)
+                      if (defaultVariant) {
+                        return lp.variantId === defaultVariant.id
+                      }
+                      return false // No default, only include parts without variant
+                    }
+                    return lp.variantId === selectedVariantId
+                  })
+
+                  for (const linkedPart of applicableLinkedParts) {
                     const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
 
                     // Build part number with finish code if applicable
@@ -697,7 +732,7 @@ export async function GET(
                       percentOfStock: '',
                       isMilled: true,
                       unit: linkedPart.masterPart.unit || 'EA',
-                      description: `Linked: ${individualOption.name}`,
+                      description: `Linked: ${individualOption.name}${linkedPart.variant ? ` (${linkedPart.variant.name})` : ''}`,
                       color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A'
                     })
                   }
@@ -807,7 +842,19 @@ export async function GET(
 
               // Process linked parts for standard option
               if (standardOption.linkedParts && standardOption.linkedParts.length > 0) {
-                for (const linkedPart of standardOption.linkedParts) {
+                // For standard options, use the default variant
+                const defaultVariant = standardOption.variants?.find((v: any) => v.isDefault)
+
+                // Filter linked parts based on default variant
+                const applicableLinkedParts = standardOption.linkedParts.filter((lp: any) => {
+                  if (lp.variantId === null) return true // Applies to all variants
+                  if (defaultVariant) {
+                    return lp.variantId === defaultVariant.id
+                  }
+                  return false // No default, only include parts without variant
+                })
+
+                for (const linkedPart of applicableLinkedParts) {
                   const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
 
                   // Build part number with finish code if applicable
@@ -832,7 +879,7 @@ export async function GET(
                     percentOfStock: '',
                     isMilled: true,
                     unit: linkedPart.masterPart.unit || 'EA',
-                    description: `Linked: ${standardOption.name}`,
+                    description: `Linked: ${standardOption.name}${linkedPart.variant ? ` (${linkedPart.variant.name})` : ''}`,
                     color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A'
                   })
                 }

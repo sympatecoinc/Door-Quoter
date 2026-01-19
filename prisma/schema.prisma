@@ -258,6 +258,7 @@ model IndividualOption {
   productSubOptionsAsStandard ProductSubOption[] @relation("StandardOption")
   productBOMs                 ProductBOM[]       // BOM entries for this option (per product)
   linkedParts                 OptionLinkedPart[] // Parts automatically added to BOM when this option is selected
+  variants                    OptionVariant[]    // Named variants for this option (e.g., "Locking", "Non-Locking")
 
   @@map("IndividualOptions")
 }
@@ -327,6 +328,7 @@ model ComponentInstance {
   productId           Int
   subOptionSelections String
   includedOptions     String   @default("[]") // JSON array: [optionId1, optionId2, ...] - options marked as included (no charge)
+  variantSelections   String   @default("{}") // JSON: { [optionId]: variantId } - selected variant for each option
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   product             Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -673,14 +675,31 @@ model OptionLinkedPart {
   id           Int              @id @default(autoincrement())
   optionId     Int
   masterPartId Int
+  variantId    Int?             // null = applies to all variants, set = variant-specific
   quantity     Float            @default(1) // Fixed quantity to add
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   option       IndividualOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
   masterPart   MasterPart       @relation(fields: [masterPartId], references: [id], onDelete: Cascade)
+  variant      OptionVariant?   @relation(fields: [variantId], references: [id], onDelete: Cascade)
 
-  @@unique([optionId, masterPartId])
+  @@unique([optionId, masterPartId, variantId])
   @@map("OptionLinkedParts")
+}
+
+// Option Variants - Named variants for options (e.g., "Locking" / "Non-Locking" for handles)
+model OptionVariant {
+  id          Int              @id @default(autoincrement())
+  optionId    Int
+  name        String           // e.g., "Locking", "Non-Locking"
+  isDefault   Boolean          @default(false)
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  option      IndividualOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  linkedParts OptionLinkedPart[]
+
+  @@map("OptionVariants")
 }
 
 // Pricing Modes - Configurable pricing strategies for projects

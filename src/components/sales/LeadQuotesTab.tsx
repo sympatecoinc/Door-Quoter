@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Download, Send, Clock, DollarSign, FileText, RefreshCw, Info } from 'lucide-react'
 import { QuoteVersion } from '@/types'
 import QuoteVersionModal from './QuoteVersionModal'
@@ -31,6 +31,9 @@ export default function LeadQuotesTab({ leadId, leadName }: LeadQuotesTabProps) 
   const [changeStatus, setChangeStatus] = useState<ChangeStatus | null>(null)
   const [checkingChanges, setCheckingChanges] = useState(false)
 
+  // Track latest request to prevent stale responses from race conditions
+  const latestChangeCheckRef = useRef(0)
+
   const fetchVersions = useCallback(async () => {
     try {
       setLoading(true)
@@ -47,19 +50,35 @@ export default function LeadQuotesTab({ leadId, leadName }: LeadQuotesTabProps) 
   }, [leadId])
 
   const checkForChanges = useCallback(async () => {
+    // Increment and capture the request ID to detect stale responses
+    const requestId = ++latestChangeCheckRef.current
+
     try {
       setCheckingChanges(true)
       const response = await fetch(`/api/projects/${leadId}/quote-versions/has-changes`)
+
+      // Only update state if this is still the latest request
+      if (requestId !== latestChangeCheckRef.current) {
+        return // Discard stale response
+      }
+
       if (response.ok) {
         const data = await response.json()
         setChangeStatus(data)
       }
     } catch (error) {
+      // Only update state if this is still the latest request
+      if (requestId !== latestChangeCheckRef.current) {
+        return
+      }
       console.error('Error checking for changes:', error)
       // On error, allow generating (fail open)
       setChangeStatus({ hasChanges: true, reason: 'Unable to check for changes' })
     } finally {
-      setCheckingChanges(false)
+      // Only clear loading state if this is still the latest request
+      if (requestId === latestChangeCheckRef.current) {
+        setCheckingChanges(false)
+      }
     }
   }, [leadId])
 
@@ -257,29 +276,38 @@ export default function LeadQuotesTab({ leadId, leadName }: LeadQuotesTabProps) 
                       {version.changeNotes}
                     </p>
                   )}
-                  <div className="mt-2 grid grid-cols-4 gap-4 text-xs text-gray-500">
-                    <div>
+                  <div className="mt-2 flex flex-wrap items-start justify-start gap-4 text-xs text-gray-500 divide-x divide-gray-200">
+                    <div className="pr-4">
                       <span className="block text-gray-400">Subtotal</span>
                       <span className="text-gray-700">{formatPrice(version.subtotal)}</span>
                     </div>
                     {version.markupAmount > 0 && (
-                      <div>
+                      <div className="pl-4 pr-4">
                         <span className="block text-gray-400">Markup</span>
                         <span className="text-gray-700">+{formatPrice(version.markupAmount)}</span>
                       </div>
                     )}
-                    {version.installationCost > 0 && (
-                      <div>
-                        <span className="block text-gray-400">Installation</span>
-                        <span className="text-gray-700">{formatPrice(version.installationCost)}</span>
-                      </div>
-                    )}
                     {version.taxAmount > 0 && (
-                      <div>
+                      <div className="pl-4 pr-4">
                         <span className="block text-gray-400">Tax ({(version.taxRate * 100).toFixed(1)}%)</span>
                         <span className="text-gray-700">{formatPrice(version.taxAmount)}</span>
                       </div>
                     )}
+                    <div className="pl-4 pr-4">
+                      <span className="block text-gray-400">Drawing View</span>
+                      <span className="text-gray-700">
+                        {(version.snapshot as any)?.quoteDrawingView === 'PLAN' ? 'Plan' : 'Elevation'}
+                      </span>
+                    </div>
+                    <div className="pl-4">
+                      <span className="block text-gray-400">Installation</span>
+                      <span className="text-gray-700">
+                        {(version.snapshot as any)?.installationMethod === 'MANUAL'
+                          ? 'Manual'
+                          : (version.snapshot as any)?.installationComplexity || 'Standard'}
+                        {version.installationCost > 0 && ` (${formatPrice(version.installationCost)})`}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 ml-4">

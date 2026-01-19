@@ -212,9 +212,9 @@ export default function ProjectDetailView() {
   const [showDivideSpace, setShowDivideSpace] = useState(false)
   const [divideComponentCount, setDivideComponentCount] = useState(2)
   const [divideProducts, setDivideProducts] = useState<(number | null)[]>([null, null])
-  const [swingDirection, setSwingDirection] = useState<string>('Right In')
-  const [slidingDirection, setSlidingDirection] = useState<string>('Left')
-  const [cornerDirection, setCornerDirection] = useState<string>('Up')
+  const [swingDirection, setSwingDirection] = useState<string>('')
+  const [slidingDirection, setSlidingDirection] = useState<string>('')
+  const [cornerDirection, setCornerDirection] = useState<string>('')
   const [glassType, setGlassType] = useState<string>('')
   const [componentQuantity, setComponentQuantity] = useState<string>('1')
   const [componentValidationErrors, setComponentValidationErrors] = useState<string[]>([])
@@ -223,6 +223,9 @@ export default function ProjectDetailView() {
   const [addComponentSelectedOptions, setAddComponentSelectedOptions] = useState<Record<number, number | null>>({})
   const [addComponentOptionQuantities, setAddComponentOptionQuantities] = useState<Record<string, number>>({})
   const [hardwareOptionsExpanded, setHardwareOptionsExpanded] = useState(false)
+  // Wizard step tracking for add component modal
+  const [addComponentStep, setAddComponentStep] = useState<'product' | 'dimensions' | 'direction' | 'glassType' | 'options' | 'ready'>('product')
+  const [currentMandatoryOptionIndex, setCurrentMandatoryOptionIndex] = useState<number>(0)
   const [showComponentEdit, setShowComponentEdit] = useState(false)
   const [selectedComponentId, setSelectedComponentId] = useState<number | null>(null)
   const [componentOptions, setComponentOptions] = useState<any[]>([])
@@ -230,6 +233,7 @@ export default function ProjectDetailView() {
   const [editComponentOptionQuantities, setEditComponentOptionQuantities] = useState<Record<string, number>>({})
   const [editComponentProductBOMs, setEditComponentProductBOMs] = useState<any[]>([])
   const [includedOptions, setIncludedOptions] = useState<number[]>([]) // Hardware options marked as included (no charge)
+  const [variantSelections, setVariantSelections] = useState<Record<string, number>>({}) // { [optionId]: variantId }
   const [editingComponentWidth, setEditingComponentWidth] = useState<string>('')
   const [editingComponentHeight, setEditingComponentHeight] = useState<string>('')
   const [editWidthDivisor, setEditWidthDivisor] = useState<string>('1')
@@ -2126,6 +2130,7 @@ export default function ProjectDetailView() {
             setEditComponentOptionQuantities(quantities)
             setEditComponentProductBOMs(productData.productBOMs || [])
             setIncludedOptions(JSON.parse(componentData.includedOptions || '[]'))
+            setVariantSelections(JSON.parse(componentData.variantSelections || '{}'))
             setEditingProductType(productData.productType || '')
             setEditingPlanViews(productData.planViews || [])
             setShowComponentEdit(true)
@@ -3049,74 +3054,124 @@ export default function ProjectDetailView() {
             <h2 className="text-xl font-bold text-gray-900 mb-4 flex-shrink-0">Add Component</h2>
             <div className="overflow-y-auto flex-1 pr-2">
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Product</label>
-                <select
-                  value={selectedProductId || ''}
-                  onChange={(e) => {
-                    const productId = parseInt(e.target.value)
-                    setSelectedProductId(productId)
+              {/* Step 1: Product Selection - only show when on product step */}
+              {addComponentStep === 'product' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Product</label>
+                  <select
+                    value={selectedProductId || ''}
+                    onChange={(e) => {
+                      const productId = parseInt(e.target.value)
+                      setSelectedProductId(productId)
 
-                    // Load hardware options for the selected product
-                    const product = products.find(p => p.id === productId)
-                    if (product?.productSubOptions && product.productSubOptions.length > 0) {
-                      setAddComponentOptions(product.productSubOptions)
-                      // Pre-select standard options
-                      const preselected: Record<number, number | null> = {}
-                      for (const pso of product.productSubOptions) {
-                        if (pso.standardOptionId) {
-                          preselected[pso.category.id] = pso.standardOptionId
+                      // Load hardware options for the selected product
+                      const product = products.find(p => p.id === productId)
+                      if (product?.productSubOptions && product.productSubOptions.length > 0) {
+                        setAddComponentOptions(product.productSubOptions)
+                        // Pre-select standard options
+                        const preselected: Record<number, number | null> = {}
+                        for (const pso of product.productSubOptions) {
+                          if (pso.standardOptionId) {
+                            preselected[pso.category.id] = pso.standardOptionId
+                          }
                         }
+                        setAddComponentSelectedOptions(preselected)
+                      } else {
+                        setAddComponentOptions([])
+                        setAddComponentSelectedOptions({})
                       }
-                      setAddComponentSelectedOptions(preselected)
-                    } else {
-                      setAddComponentOptions([])
-                      setAddComponentSelectedOptions({})
-                    }
 
-                    // Pre-fill width from product defaultWidth if available
-                    if (product?.defaultWidth && product.productType !== 'CORNER_90' && product.productType !== 'FRAME') {
-                      setComponentWidth(product.defaultWidth.toString())
-                    }
-
-                    // Set direction to first plan view name if available
-                    if (product?.planViews?.length > 0) {
-                      const firstPlanViewName = product.planViews[0].name
-                      if (product.productType === 'SWING_DOOR') {
-                        setSwingDirection(firstPlanViewName)
-                      } else if (product.productType === 'SLIDING_DOOR') {
-                        setSlidingDirection(firstPlanViewName)
-                      } else if (product.productType === 'CORNER_90') {
-                        setCornerDirection(firstPlanViewName)
+                      // Pre-fill width from product defaultWidth if available
+                      if (product?.defaultWidth && product.productType !== 'CORNER_90' && product.productType !== 'FRAME') {
+                        setComponentWidth(product.defaultWidth.toString())
                       }
-                    }
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                >
-                  <option value="">Select a product...</option>
-                  {products.filter(p => p.productType !== 'FRAME').map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.productType === 'CORNER_90' ? '90° Corner' : product.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {/* Dimensions - Hide for corner and frame components */}
-              {(() => {
+
+                      // Reset direction selections when product changes (no default selection)
+                      setSwingDirection('')
+                      setSlidingDirection('')
+                      setCornerDirection('')
+                      setGlassType('')
+
+                      // Reset current mandatory option index
+                      setCurrentMandatoryOptionIndex(0)
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  >
+                    <option value="">Select a product...</option>
+                    {products.filter(p => p.productType !== 'FRAME').map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.productType === 'CORNER_90' ? '90° Corner' : product.name}
+                      </option>
+                    ))}
+                  </select>
+                  {/* Quantity field - show for non-corner/non-frame products on product step */}
+                  {selectedProductId && (() => {
+                    const selectedProduct = products.find(p => p.id === selectedProductId)
+                    const isCornerProduct = selectedProduct?.productType === 'CORNER_90'
+                    const isFrameProduct = selectedProduct?.productType === 'FRAME'
+
+                    if (isCornerProduct || isFrameProduct) return null
+
+                    return (
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                        <input
+                          type="number"
+                          value={componentQuantity}
+                          onChange={(e) => setComponentQuantity(e.target.value)}
+                          placeholder="Enter quantity"
+                          step="1"
+                          min="1"
+                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
+                            componentQuantity && parseInt(componentQuantity) <= 0
+                              ? 'border-red-300 bg-red-50'
+                              : 'border-gray-300'
+                          }`}
+                        />
+                        {componentQuantity && parseInt(componentQuantity) <= 0 && (
+                          <p className="text-red-500 text-xs mt-1">Quantity must be at least 1</p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          Number of identical components to add
+                        </p>
+                      </div>
+                    )
+                  })()}
+                  {/* Next button - only show when product is selected */}
+                  {selectedProductId && (
+                    <div className="flex justify-end pt-4">
+                      <button
+                        type="button"
+                        onClick={() => setAddComponentStep('dimensions')}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                      >
+                        Next
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Dimensions - Hide for corner and frame components, and hide when past dimensions step */}
+              {addComponentStep === 'dimensions' && (() => {
                 const selectedProduct = products.find(p => p.id === selectedProductId)
                 const isCornerProduct = selectedProduct?.productType === 'CORNER_90'
                 const isFrameProduct = selectedProduct?.productType === 'FRAME'
 
                 if (isCornerProduct) {
                   return (
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                      <div className="flex items-center">
-                        <div className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full mr-3">
-                          90°
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-orange-800">Directional Corner</p>
-                          <p className="text-xs text-orange-600">No dimensions required - represents change in direction</p>
+                    <div className="space-y-4">
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                        <div className="flex items-center">
+                          <div className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full mr-3">
+                            90°
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-orange-800">Directional Corner</p>
+                            <p className="text-xs text-orange-600">No dimensions required - represents change in direction</p>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -3334,266 +3389,476 @@ export default function ProjectDetailView() {
                 )
               })()}
 
-              {/* Quantity field - show for all non-corner/non-frame components */}
-              {(() => {
+
+              {/* Wizard Step Navigation for Required Options */}
+              {selectedProductId && (() => {
                 const selectedProduct = products.find(p => p.id === selectedProductId)
                 const isCornerProduct = selectedProduct?.productType === 'CORNER_90'
                 const isFrameProduct = selectedProduct?.productType === 'FRAME'
-
-                if (isCornerProduct || isFrameProduct) return null
-
-                return (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
-                    <input
-                      type="number"
-                      value={componentQuantity}
-                      onChange={(e) => setComponentQuantity(e.target.value)}
-                      placeholder="Enter quantity"
-                      step="1"
-                      min="1"
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
-                        componentQuantity && parseInt(componentQuantity) <= 0
-                          ? 'border-red-300 bg-red-50'
-                          : 'border-gray-300'
-                      }`}
-                    />
-                    {componentQuantity && parseInt(componentQuantity) <= 0 && (
-                      <p className="text-red-500 text-xs mt-1">Quantity must be at least 1</p>
-                    )}
-                    <p className="text-xs text-gray-500 mt-1">
-                      Number of identical components to add
-                    </p>
-                  </div>
-                )
-              })()}
-
-              {/* Direction and Glass Type Selection - Side by side with separate backgrounds */}
-              {selectedProductId && (() => {
-                const selectedProduct = products.find(p => p.id === selectedProductId)
                 const showGlassType = selectedProduct?.productType !== 'FRAME'
                 const hasDirection = ['SWING_DOOR', 'SLIDING_DOOR', 'CORNER_90'].includes(selectedProduct?.productType || '')
                 const planViewOptions = selectedProduct?.planViews || []
                 const hasPlanViews = planViewOptions.length > 0
+                // All options (mandatory and non-mandatory) shown in wizard flow, with required first
+                const allOptions = [...addComponentOptions].sort((a: any, b: any) => {
+                  if (a.isMandatory && !b.isMandatory) return -1
+                  if (!a.isMandatory && b.isMandatory) return 1
+                  return 0
+                })
 
-                // Glass Type element with its own background
-                const glassTypeElement = showGlassType ? (
-                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Glass Type</label>
-                    <select
-                      value={glassType}
-                      onChange={(e) => setGlassType(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-                    >
-                      {glassTypes.length > 0 ? (
-                        glassTypes.map((type) => (
-                          <option key={type.id} value={type.name}>
-                            {type.name} (${type.pricePerSqFt}/sqft)
-                          </option>
-                        ))
-                      ) : (
-                        <option value="">No glass types available</option>
-                      )}
-                    </select>
-                  </div>
-                ) : null
-
-                // Direction element based on product type - each with its own background
-                let directionElement = null
-                if (hasDirection && !hasPlanViews) {
-                  const viewType = selectedProduct?.productType === 'SWING_DOOR' ? 'elevation' : 'plan'
-                  directionElement = (
-                    <div className="col-span-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                      <p className="text-sm text-yellow-800">
-                        No {viewType} views have been added to this product. Please add {viewType} views in the product settings to enable direction selection.
-                      </p>
-                    </div>
-                  )
-                } else if (selectedProduct?.productType === 'SWING_DOOR') {
-                  directionElement = (
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
-                      <select
-                        value={swingDirection}
-                        onChange={(e) => setSwingDirection(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-                      >
-                        {planViewOptions.map((planView: any) => (
-                          <option key={planView.id} value={planView.name}>
-                            {planView.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )
-                } else if (selectedProduct?.productType === 'SLIDING_DOOR') {
-                  directionElement = (
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
-                      <select
-                        value={slidingDirection}
-                        onChange={(e) => setSlidingDirection(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-                      >
-                        {planViewOptions.map((planView: any) => (
-                          <option key={planView.id} value={planView.name}>
-                            {planView.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )
-                } else if (selectedProduct?.productType === 'CORNER_90') {
-                  directionElement = (
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Opening Direction</label>
-                      <select
-                        value={cornerDirection}
-                        onChange={(e) => setCornerDirection(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-                      >
-                        {planViewOptions.map((planView: any) => (
-                          <option key={planView.id} value={planView.name}>
-                            {planView.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )
+                // Get current direction value based on product type
+                const getCurrentDirection = () => {
+                  if (selectedProduct?.productType === 'SWING_DOOR') return swingDirection
+                  if (selectedProduct?.productType === 'SLIDING_DOOR') return slidingDirection
+                  if (selectedProduct?.productType === 'CORNER_90') return cornerDirection
+                  return ''
+                }
+                const setCurrentDirection = (value: string) => {
+                  if (selectedProduct?.productType === 'SWING_DOOR') setSwingDirection(value)
+                  else if (selectedProduct?.productType === 'SLIDING_DOOR') setSlidingDirection(value)
+                  else if (selectedProduct?.productType === 'CORNER_90') setCornerDirection(value)
                 }
 
-                // If both exist, show in grid. If only one, show full width
-                if (directionElement && glassTypeElement) {
-                  return (
-                    <div className="grid grid-cols-2 gap-4">
-                      {directionElement}
-                      {glassTypeElement}
-                    </div>
-                  )
-                } else if (glassTypeElement) {
-                  return glassTypeElement
-                } else if (directionElement) {
-                  return directionElement
-                }
-                return null
-              })()}
-              
-              {/* Hardware Options - Collapsible section */}
-              {selectedProductId && addComponentOptions.length > 0 && (() => {
-                const allStandard = addComponentOptions.every(
-                  option => addComponentSelectedOptions[option.category.id] === option.standardOptionId
+                // Check if dimensions are valid
+                const dimensionsValid = isCornerProduct || isFrameProduct || (
+                  componentWidth && parseFloat(componentWidth) > 0 &&
+                  componentHeight && parseFloat(componentHeight) > 0 &&
+                  componentValidationErrors.length === 0
                 )
 
-                return (
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setHardwareOptionsExpanded(!hardwareOptionsExpanded)}
-                      className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-gray-700">Hardware Options</h3>
-                        {allStandard && !hardwareOptionsExpanded && (
-                          <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard Options Applied</span>
-                        )}
-                      </div>
-                      <svg
-                        className={`w-5 h-5 text-gray-500 transition-transform ${hardwareOptionsExpanded ? 'rotate-180' : ''}`}
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {hardwareOptionsExpanded && (
-                      <div className="p-4 space-y-3 bg-white">
-                        {addComponentOptions.map((option) => {
-                          const selectedOptionId = addComponentSelectedOptions[option.category.id]
-                          const selectedProduct = products.find(p => p.id === selectedProductId)
-                          const optionBom = selectedProduct?.productBOMs?.find(
-                            (bom: any) => bom.optionId === selectedOptionId
-                          )
-                          const isRangeMode = optionBom?.quantityMode === 'RANGE'
-                          const quantityKey = `${option.category.id}_qty`
+                // Check if direction is selected (or not needed)
+                const directionSelected = !hasDirection || !hasPlanViews || getCurrentDirection() !== ''
 
-                          return (
-                            <div key={option.id}>
-                              <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
-                                {option.category.name}
-                                {addComponentSelectedOptions[option.category.id] === option.standardOptionId && (
-                                  <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard</span>
-                                )}
-                              </label>
-                              <div className="flex gap-2">
-                                <select
-                                  value={addComponentSelectedOptions[option.category.id] === null ? 'none' : (addComponentSelectedOptions[option.category.id] || '')}
-                                  onChange={(e) => {
-                                    const newValue = e.target.value === 'none' ? null : (e.target.value ? parseInt(e.target.value) : undefined)
-                                    setAddComponentSelectedOptions({
-                                      ...addComponentSelectedOptions,
-                                      [option.category.id]: newValue
-                                    })
-                                    // Check if new option has RANGE mode and set default quantity
-                                    const newOptionBom = selectedProduct?.productBOMs?.find(
-                                      (bom: any) => bom.optionId === newValue
-                                    )
-                                    if (newOptionBom?.quantityMode === 'RANGE') {
-                                      setAddComponentOptionQuantities({
-                                        ...addComponentOptionQuantities,
-                                        [quantityKey]: newOptionBom.defaultQuantity || newOptionBom.minQuantity || 0
-                                      })
-                                    } else {
-                                      // Remove quantity selection if not RANGE mode
-                                      const newQuantities = { ...addComponentOptionQuantities }
-                                      delete newQuantities[quantityKey]
-                                      setAddComponentOptionQuantities(newQuantities)
-                                    }
-                                  }}
-                                  className={`${isRangeMode ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900`}
-                                >
-                                  <option value="">Select option...</option>
-                                  <option value="none">None (No hardware)</option>
-                                  {option.category.individualOptions?.map((individualOption: any) => (
-                                    <option key={individualOption.id} value={individualOption.id}>
-                                      {individualOption.name}
-                                    </option>
-                                  ))}
-                                </select>
-                                {isRangeMode && (
-                                  <select
-                                    value={addComponentOptionQuantities[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}
-                                    onChange={(e) => {
-                                      setAddComponentOptionQuantities({
-                                        ...addComponentOptionQuantities,
-                                        [quantityKey]: parseInt(e.target.value)
-                                      })
-                                    }}
-                                    className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                                    title="Select quantity"
-                                  >
-                                    {Array.from(
-                                      { length: (optionBom.maxQuantity || 4) - (optionBom.minQuantity || 0) + 1 },
-                                      (_, i) => (optionBom.minQuantity || 0) + i
-                                    ).map((qty) => (
-                                      <option key={qty} value={qty}>
-                                        {qty}
-                                      </option>
-                                    ))}
-                                  </select>
-                                )}
-                              </div>
-                              {isRangeMode && (
-                                <p className="text-xs text-gray-500 mt-1">
-                                  Select quantity ({optionBom.minQuantity}-{optionBom.maxQuantity})
-                                </p>
-                              )}
-                            </div>
-                          )
-                        })}
+                // Check if glass type is selected (or not needed)
+                const glassTypeSelected = !showGlassType || glassType !== ''
+
+                // Determine what steps are needed
+                const needsDirection = hasDirection && hasPlanViews
+                const needsGlassType = showGlassType
+                const needsOptions = allOptions.length > 0
+
+                // Helper function to auto-select option and set default quantity for RANGE mode
+                // Only auto-selects for mandatory options; non-required options default to "None"
+                const autoSelectOption = (optionIndex: number) => {
+                  const option = allOptions[optionIndex]
+                  if (!option) return
+
+                  // Check if already selected
+                  if (addComponentSelectedOptions[option.category.id] !== undefined) return
+
+                  // Only auto-select for mandatory options
+                  if (!option.isMandatory) return
+
+                  // Auto-select: prefer standard option, otherwise first option
+                  const optionToSelect = option.standardOptionId || option.category.individualOptions?.[0]?.id
+                  if (optionToSelect) {
+                    setAddComponentSelectedOptions(prev => ({
+                      ...prev,
+                      [option.category.id]: optionToSelect
+                    }))
+
+                    // Check if option has RANGE mode and set default quantity
+                    const optionBom = selectedProduct?.productBOMs?.find(
+                      (bom: any) => bom.optionId === optionToSelect
+                    )
+                    if (optionBom?.quantityMode === 'RANGE') {
+                      const quantityKey = `${option.category.id}_qty`
+                      setAddComponentOptionQuantities(prev => ({
+                        ...prev,
+                        [quantityKey]: optionBom.defaultQuantity || optionBom.minQuantity || 0
+                      }))
+                    }
+                  }
+                }
+
+                // Navigation helper functions
+                const goToNextStep = () => {
+                  if (addComponentStep === 'dimensions') {
+                    if (needsDirection) {
+                      setAddComponentStep('direction')
+                    } else if (needsGlassType) {
+                      setAddComponentStep('glassType')
+                    } else if (needsOptions) {
+                      setAddComponentStep('options')
+                      setCurrentMandatoryOptionIndex(0)
+                      autoSelectOption(0)
+                    } else {
+                      setAddComponentStep('ready')
+                    }
+                  } else if (addComponentStep === 'direction') {
+                    if (needsGlassType) {
+                      setAddComponentStep('glassType')
+                    } else if (needsOptions) {
+                      setAddComponentStep('options')
+                      setCurrentMandatoryOptionIndex(0)
+                      autoSelectOption(0)
+                    } else {
+                      setAddComponentStep('ready')
+                    }
+                  } else if (addComponentStep === 'glassType') {
+                    if (needsOptions) {
+                      setAddComponentStep('options')
+                      setCurrentMandatoryOptionIndex(0)
+                      autoSelectOption(0)
+                    } else {
+                      setAddComponentStep('ready')
+                    }
+                  } else if (addComponentStep === 'options') {
+                    if (currentMandatoryOptionIndex < allOptions.length - 1) {
+                      const nextIndex = currentMandatoryOptionIndex + 1
+                      setCurrentMandatoryOptionIndex(nextIndex)
+                      autoSelectOption(nextIndex)
+                    } else {
+                      setAddComponentStep('ready')
+                    }
+                  }
+                }
+
+                const goToPreviousStep = () => {
+                  if (addComponentStep === 'dimensions') {
+                    setAddComponentStep('product')
+                  } else if (addComponentStep === 'direction') {
+                    setAddComponentStep('dimensions')
+                  } else if (addComponentStep === 'glassType') {
+                    if (needsDirection) {
+                      setAddComponentStep('direction')
+                    } else {
+                      setAddComponentStep('dimensions')
+                    }
+                  } else if (addComponentStep === 'options') {
+                    if (currentMandatoryOptionIndex > 0) {
+                      setCurrentMandatoryOptionIndex(currentMandatoryOptionIndex - 1)
+                    } else if (needsGlassType) {
+                      setAddComponentStep('glassType')
+                    } else if (needsDirection) {
+                      setAddComponentStep('direction')
+                    } else {
+                      setAddComponentStep('dimensions')
+                    }
+                  } else if (addComponentStep === 'ready') {
+                    if (needsOptions) {
+                      setAddComponentStep('options')
+                      setCurrentMandatoryOptionIndex(allOptions.length - 1)
+                    } else if (needsGlassType) {
+                      setAddComponentStep('glassType')
+                    } else if (needsDirection) {
+                      setAddComponentStep('direction')
+                    } else {
+                      setAddComponentStep('dimensions')
+                    }
+                  }
+                }
+
+                // Current option (if on options step)
+                const currentOption = allOptions[currentMandatoryOptionIndex]
+
+                return (
+                  <>
+                    {/* Step: Dimensions - Show Back/Next buttons for all products */}
+                    {addComponentStep === 'dimensions' && (
+                      <div className="flex justify-between pt-2">
+                        <button
+                          type="button"
+                          onClick={goToPreviousStep}
+                          className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                          Back
+                        </button>
+                        <button
+                          type="button"
+                          onClick={goToNextStep}
+                          disabled={!dimensionsValid}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          Next
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
                       </div>
                     )}
-                  </div>
+
+                    {/* Step 2: Opening Direction */}
+                    {addComponentStep === 'direction' && needsDirection && (
+                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-medium">2</span>
+                          <h4 className="text-sm font-semibold text-gray-800">Opening Direction</h4>
+                        </div>
+                        <select
+                          value={getCurrentDirection()}
+                          onChange={(e) => setCurrentDirection(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+                        >
+                          <option value="">Select opening direction...</option>
+                          {planViewOptions.map((planView: any) => (
+                            <option key={planView.id} value={planView.name}>
+                              {planView.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex justify-between pt-2">
+                          <button
+                            type="button"
+                            onClick={goToPreviousStep}
+                            className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                            Back
+                          </button>
+                          <button
+                            type="button"
+                            onClick={goToNextStep}
+                            disabled={getCurrentDirection() === ''}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          >
+                            Next
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step 3: Glass Type */}
+                    {addComponentStep === 'glassType' && needsGlassType && (
+                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-medium">{needsDirection ? '3' : '2'}</span>
+                          <h4 className="text-sm font-semibold text-gray-800">Glass Type</h4>
+                        </div>
+                        <select
+                          value={glassType}
+                          onChange={(e) => setGlassType(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+                        >
+                          <option value="">Select glass type...</option>
+                          {glassTypes.map((type) => (
+                            <option key={type.id} value={type.name}>
+                              {type.name} (${type.pricePerSqFt}/sqft)
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex justify-between pt-2">
+                          <button
+                            type="button"
+                            onClick={goToPreviousStep}
+                            className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                            Back
+                          </button>
+                          <button
+                            type="button"
+                            onClick={goToNextStep}
+                            disabled={glassType === ''}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          >
+                            Next
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step 4+: Hardware Options (one at a time) */}
+                    {addComponentStep === 'options' && currentOption && (() => {
+                      const selectedOptionId = addComponentSelectedOptions[currentOption.category.id]
+                      const optionBom = selectedProduct?.productBOMs?.find(
+                        (bom: any) => bom.optionId === selectedOptionId
+                      )
+                      const isRangeMode = optionBom?.quantityMode === 'RANGE'
+                      const quantityKey = `${currentOption.category.id}_qty`
+
+                      return (
+                        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-medium">
+                                {(needsDirection ? 1 : 0) + (needsGlassType ? 1 : 0) + 2 + currentMandatoryOptionIndex}
+                              </span>
+                              <h4 className="text-sm font-semibold text-gray-800">{currentOption.category.name}</h4>
+                              {currentOption.isMandatory && (
+                                <span className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded-full">Required</span>
+                              )}
+                            </div>
+                            <span className="text-xs text-gray-500">
+                              {currentMandatoryOptionIndex + 1} of {allOptions.length}
+                            </span>
+                          </div>
+                          <div className="flex gap-2">
+                            <select
+                              value={addComponentSelectedOptions[currentOption.category.id] || ''}
+                              onChange={(e) => {
+                                if (e.target.value === '') {
+                                  // Remove the selection (set to undefined by deleting key)
+                                  const newOptions = { ...addComponentSelectedOptions }
+                                  delete newOptions[currentOption.category.id]
+                                  setAddComponentSelectedOptions(newOptions)
+                                  // Also remove quantity if any
+                                  const newQuantities = { ...addComponentOptionQuantities }
+                                  delete newQuantities[quantityKey]
+                                  setAddComponentOptionQuantities(newQuantities)
+                                } else {
+                                  const newValue = parseInt(e.target.value)
+                                  setAddComponentSelectedOptions({
+                                    ...addComponentSelectedOptions,
+                                    [currentOption.category.id]: newValue
+                                  })
+                                  // Check if new option has RANGE mode and set default quantity
+                                  const newOptionBom = selectedProduct?.productBOMs?.find(
+                                    (bom: any) => bom.optionId === newValue
+                                  )
+                                  if (newOptionBom?.quantityMode === 'RANGE') {
+                                    setAddComponentOptionQuantities({
+                                      ...addComponentOptionQuantities,
+                                      [quantityKey]: newOptionBom.defaultQuantity || newOptionBom.minQuantity || 0
+                                    })
+                                  } else {
+                                    // Remove quantity selection if not RANGE mode
+                                    const newQuantities = { ...addComponentOptionQuantities }
+                                    delete newQuantities[quantityKey]
+                                    setAddComponentOptionQuantities(newQuantities)
+                                  }
+                                }
+                              }}
+                              className={`${isRangeMode ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white`}
+                            >
+                              <option value="">Select {currentOption.category.name}...</option>
+                              {currentOption.category.individualOptions?.map((opt: any) => (
+                                <option key={opt.id} value={opt.id}>
+                                  {opt.name}
+                                  {opt.id === currentOption.standardOptionId && ' (Standard)'}
+                                </option>
+                              ))}
+                            </select>
+                            {isRangeMode && (
+                              <select
+                                value={addComponentOptionQuantities[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}
+                                onChange={(e) => {
+                                  setAddComponentOptionQuantities({
+                                    ...addComponentOptionQuantities,
+                                    [quantityKey]: parseInt(e.target.value)
+                                  })
+                                }}
+                                className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                                title="Select quantity"
+                              >
+                                {Array.from(
+                                  { length: (optionBom.maxQuantity || 4) - (optionBom.minQuantity || 0) + 1 },
+                                  (_, i) => (optionBom.minQuantity || 0) + i
+                                ).map((qty) => (
+                                  <option key={qty} value={qty}>
+                                    {qty}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                          {isRangeMode && (
+                            <p className="text-xs text-gray-500">
+                              Select quantity ({optionBom.minQuantity}-{optionBom.maxQuantity})
+                            </p>
+                          )}
+                          <div className="flex justify-between pt-2">
+                            <button
+                              type="button"
+                              onClick={goToPreviousStep}
+                              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                              </svg>
+                              Back
+                            </button>
+                            <button
+                              type="button"
+                              onClick={goToNextStep}
+                              disabled={currentOption.isMandatory && addComponentSelectedOptions[currentOption.category.id] === undefined}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                              {currentMandatoryOptionIndex < allOptions.length - 1 ? 'Next' : 'Finish'}
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Ready step - show summary and Edit button */}
+                    {addComponentStep === 'ready' && (
+                      <div className="p-4 bg-green-50 rounded-lg border border-green-200 space-y-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <h4 className="text-sm font-semibold text-green-800">Ready to Add Component</h4>
+                        </div>
+                        <div className="text-sm text-gray-700 space-y-1">
+                          <p>Product: <span className="font-medium">{selectedProduct?.name}</span></p>
+                          {!isCornerProduct && !isFrameProduct && (
+                            <>
+                              <p>Size: <span className="font-medium">{componentWidth}" W × {componentHeight}" H</span></p>
+                              <p>Quantity: <span className="font-medium">{componentQuantity}</span></p>
+                            </>
+                          )}
+                          {needsDirection && getCurrentDirection() && (
+                            <p>Direction: <span className="font-medium">{getCurrentDirection()}</span></p>
+                          )}
+                          {needsGlassType && glassType && (
+                            <p>Glass Type: <span className="font-medium">{glassType}</span></p>
+                          )}
+                          {allOptions.length > 0 && (
+                            <div>
+                              <p className="font-medium">Hardware Options:</p>
+                              <ul className="ml-4 text-xs text-gray-600">
+                                {allOptions.map((opt: any) => {
+                                  const selectedValue = addComponentSelectedOptions[opt.category.id]
+                                  const selectedOptName = selectedValue ? opt.category.individualOptions?.find((o: any) => o.id === selectedValue)?.name || 'Not selected' : 'Not selected'
+                                  const quantityKey = `${opt.category.id}_qty`
+                                  const optionBom = selectedProduct?.productBOMs?.find(
+                                    (bom: any) => bom.optionId === selectedValue
+                                  )
+                                  const isRangeMode = optionBom?.quantityMode === 'RANGE'
+                                  const quantity = addComponentOptionQuantities[quantityKey]
+                                  return (
+                                    <li key={opt.id}>
+                                      - {opt.category.name}: {selectedOptName}
+                                      {isRangeMode && quantity !== undefined && ` (Qty: ${quantity})`}
+                                    </li>
+                                  )
+                                })}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex justify-start pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setAddComponentStep('product')}
+                            className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                            Edit
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )
               })()}
 
@@ -3609,23 +3874,6 @@ export default function ProjectDetailView() {
                 </div>
               )}
 
-              {/* Mandatory Options Warning */}
-              {(() => {
-                const mandatoryOptions = addComponentOptions.filter((opt: any) => opt.isMandatory)
-                const missingMandatory = mandatoryOptions.filter((opt: any) =>
-                  addComponentSelectedOptions[opt.category.id] === undefined ||
-                  addComponentSelectedOptions[opt.category.id] === null
-                )
-                if (missingMandatory.length === 0) return null
-                return (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                    <h4 className="text-sm font-medium text-yellow-800 mb-1">Required Options</h4>
-                    <p className="text-sm text-yellow-700">
-                      Please select: {missingMandatory.map((m: any) => m.category.name).join(', ')}
-                    </p>
-                  </div>
-                )
-              })()}
             </div>
             </div>
             <div className="flex justify-end space-x-3 pt-6 flex-shrink-0 border-t mt-4">
@@ -3641,13 +3889,17 @@ export default function ProjectDetailView() {
                   setShowDivideSpace(false)
                   setDivideProducts([null, null])
                   setComponentValidationErrors([])
-                  setSwingDirection('Right In')
-                  setSlidingDirection('Left')
-                  setGlassType(glassTypes[0]?.name || '')
+                  setSwingDirection('')
+                  setSlidingDirection('')
+                  setCornerDirection('')
+                  setGlassType('')
                   setHardwareOptionsExpanded(false)
                   setAddComponentOptions([])
                   setAddComponentSelectedOptions({})
                   setAddComponentOptionQuantities({})
+                  // Reset wizard state
+                  setAddComponentStep('product')
+                  setCurrentMandatoryOptionIndex(0)
                 }}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
@@ -3664,15 +3916,17 @@ export default function ProjectDetailView() {
                   // Check mandatory options
                   const mandatoryOptions = addComponentOptions.filter((opt: any) => opt.isMandatory)
                   const missingMandatory = mandatoryOptions.filter((opt: any) =>
-                    addComponentSelectedOptions[opt.category.id] === undefined ||
-                    addComponentSelectedOptions[opt.category.id] === null
+                    addComponentSelectedOptions[opt.category.id] === undefined
                   )
                   if (missingMandatory.length > 0) return true
 
                   // For corner and frame components, only product selection is required
                   if (isCorner || isFrame) return false
 
-                  // For other components, dimensions and valid quantity are required
+                  // For other components, wizard must be on 'ready' step
+                  if (addComponentStep !== 'ready') return true
+
+                  // Also verify dimensions and quantity are valid
                   const quantityValue = parseInt(componentQuantity)
                   const hasValidationErrors = componentValidationErrors.length > 0
                   return !componentWidth || !componentHeight ||
@@ -3830,6 +4084,13 @@ export default function ProjectDetailView() {
                   const isRangeMode = optionBom?.quantityMode === 'RANGE'
                   const quantityKey = `${option.category.id}_qty`
 
+                  // Find the selected individual option to check if it has variants
+                  const selectedIndividualOption = selectedOptionIdNum
+                    ? option.category.individualOptions?.find((opt: any) => opt.id === selectedOptionIdNum)
+                    : null
+                  const optionVariants = selectedIndividualOption?.variants || []
+                  const hasVariants = optionVariants.length > 0
+
                   return (
                     <div key={option.id}>
                       <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
@@ -3850,9 +4111,25 @@ export default function ProjectDetailView() {
                               ...selectedOptions,
                               [option.category.id]: newValue
                             })
-                            // If unselecting an option, remove it from included list
+                            // If unselecting an option, remove it from included list and clear variant selection
                             if (!newValue && selectedOptions[option.category.id]) {
                               setIncludedOptions(includedOptions.filter(id => id !== selectedOptions[option.category.id]))
+                              // Clear variant selection for the old option
+                              const newVariantSelections = { ...variantSelections }
+                              delete newVariantSelections[String(selectedOptions[option.category.id])]
+                              setVariantSelections(newVariantSelections)
+                            }
+                            // If selecting a new option, set default variant if available
+                            if (newValue) {
+                              const newIndividualOption = option.category.individualOptions?.find((opt: any) => opt.id === newValue)
+                              const newVariants = newIndividualOption?.variants || []
+                              if (newVariants.length > 0) {
+                                const defaultVariant = newVariants.find((v: any) => v.isDefault) || newVariants[0]
+                                setVariantSelections({
+                                  ...variantSelections,
+                                  [String(newValue)]: defaultVariant.id
+                                })
+                              }
                             }
                             // Check if new option has RANGE mode and set default quantity
                             const newOptionBom = editComponentProductBOMs?.find(
@@ -3870,17 +4147,37 @@ export default function ProjectDetailView() {
                               setEditComponentOptionQuantities(newQuantities)
                             }
                           }}
-                          className={`${isRangeMode ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900`}
+                          className={`${isRangeMode || hasVariants ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900`}
                         >
-                          <option value="">Select option...</option>
+                          <option value="">None</option>
                           <option value="none">None (No hardware)</option>
                           {option.category.individualOptions?.map((individualOption: any) => (
                             <option key={individualOption.id} value={individualOption.id}>
                               {individualOption.name}
                               {option.standardOptionId === individualOption.id && ' \u2605'}
+                              {individualOption.variants?.length > 0 && ' \u2726'}
                             </option>
                           ))}
                         </select>
+                        {hasVariants && (
+                          <select
+                            value={variantSelections[String(selectedOptionIdNum)] || ''}
+                            onChange={(e) => {
+                              setVariantSelections({
+                                ...variantSelections,
+                                [String(selectedOptionIdNum)]: parseInt(e.target.value)
+                              })
+                            }}
+                            className="w-32 px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-900 bg-purple-50"
+                            title="Select variant"
+                          >
+                            {optionVariants.map((variant: any) => (
+                              <option key={variant.id} value={variant.id}>
+                                {variant.name}{variant.isDefault ? ' *' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                         {isRangeMode && (
                           <select
                             value={editComponentOptionQuantities[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}
@@ -4015,7 +4312,8 @@ export default function ProjectDetailView() {
                       },
                       body: JSON.stringify({
                         subOptionSelections: mergedSelections,
-                        includedOptions: includedOptions
+                        includedOptions: includedOptions,
+                        variantSelections: variantSelections
                       })
                     })
 
@@ -4049,6 +4347,7 @@ export default function ProjectDetailView() {
                     setEditComponentOptionQuantities({})
                     setEditComponentProductBOMs([])
                     setIncludedOptions([])
+                    setVariantSelections({})
                     setEditingComponentWidth('')
                     setEditingComponentHeight('')
                     setEditWidthDivisor('1')
