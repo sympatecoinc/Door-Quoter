@@ -109,7 +109,7 @@ export async function GET(
         if (isSvgFile(fileName)) {
           try {
             console.log(`[Single PDF] Processing SVG elevation for panel ${panel.id}`)
-            let svgString = decodeSvgData(imageData)
+            const svgString = decodeSvgData(imageData)
 
             // First, apply parametric scaling
             const { scaledSVG } = processParametricSVG(svgString, {
@@ -206,7 +206,7 @@ export async function GET(
         }
 
         // Parse sub-option selections to get hardware options (same logic as plan API)
-        let hardwareOptions: string[] = []
+        const hardwareOptions: string[] = []
         if (componentInstance?.subOptionSelections) {
           try {
             const selections = JSON.parse(componentInstance.subOptionSelections)
@@ -342,7 +342,7 @@ export async function GET(
             try {
               console.log(`[Single PDF] Processing SVG plan view for panel ${panel.id}: ${fileName}`)
 
-              let svgString = decodeSvgData(imageData)
+              const svgString = decodeSvgData(imageData)
 
               // Extract original dimensions for calculating display height
               const viewBoxMatch = svgString.match(/viewBox="([^"]+)"/)

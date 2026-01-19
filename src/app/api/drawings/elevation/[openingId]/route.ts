@@ -83,7 +83,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             console.log(`  Panel dimensions: ${panel.width}" x ${panel.height}"`)
 
             // Decode SVG data
-            let svgString = decodeSvgData(imageData)
+            const svgString = decodeSvgData(imageData)
 
             // Import processParametricSVG for manual control
             const { processParametricSVG } = await import('@/lib/parametric-svg-server')

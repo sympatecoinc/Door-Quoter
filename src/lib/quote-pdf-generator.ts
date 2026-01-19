@@ -8,7 +8,7 @@ import fs from 'fs'
 import path from 'path'
 import sharp from 'sharp'
 import { renderSvgToPng, decodeSvgData } from './svg-renderer'
-import { downloadFile } from './gcs-storage'
+import { downloadFile, fileExists } from './gcs-storage'
 
 /**
  * Extracts width and height from PNG image data (base64 or buffer)
@@ -405,11 +405,16 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
       try {
         const logoInfo = JSON.parse(quoteData.companyLogo)
         if (logoInfo.gcsPath) {
-          // New GCS storage format
-          logoBuffer = await downloadFile(logoInfo.gcsPath)
-          logoMimeType = logoInfo.mimeType || 'image/png'
+          // New GCS storage format - check if file exists first
+          const exists = await fileExists(logoInfo.gcsPath)
+          if (exists) {
+            logoBuffer = await downloadFile(logoInfo.gcsPath)
+            logoMimeType = logoInfo.mimeType || 'image/png'
+          } else {
+            console.error(`Logo file not found in storage: ${logoInfo.gcsPath}. Please re-upload the logo in Settings > Branding.`)
+          }
         }
-      } catch {
+      } catch (parseError) {
         // Legacy format - try filesystem (will be removed after migration)
         const logoPath = path.join(process.cwd(), 'uploads', 'branding', quoteData.companyLogo)
         if (fs.existsSync(logoPath)) {
@@ -417,6 +422,8 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
           const logoExt = path.extname(quoteData.companyLogo).toLowerCase()
           logoMimeType = logoExt === '.svg' ? 'image/svg+xml' :
                         logoExt === '.jpg' || logoExt === '.jpeg' ? 'image/jpeg' : 'image/png'
+        } else {
+          console.error(`Logo file not found: ${logoPath}. Please re-upload the logo in Settings > Branding.`)
         }
       }
 

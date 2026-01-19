@@ -368,7 +368,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
 
         // Parse sub-option selections to get hardware options
-        let hardwareOptions: string[] = []
+        const hardwareOptions: string[] = []
         if (componentInstance?.subOptionSelections) {
           try {
             const selections = JSON.parse(componentInstance.subOptionSelections)
