@@ -129,7 +129,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                                 id: true,
                                 name: true,
                                 excludeFromQuote: true,
-                                individualOptions: true
+                                individualOptions: {
+                                  include: {
+                                    linkedParts: {
+                                      include: {
+                                        masterPart: true,
+                                        variant: true
+                                      }
+                                    },
+                                    variants: {
+                                      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+                                    }
+                                  }
+                                }
                               }
                             }
                           }
@@ -316,6 +328,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             try {
               const selections = JSON.parse(panel.componentInstance.subOptionSelections)
               const includedOptions = JSON.parse(panel.componentInstance.includedOptions || '[]')
+              const variantSelections = JSON.parse(panel.componentInstance.variantSelections || '{}')
 
               // Resolve all selected options for display
               for (const [categoryId, optionId] of Object.entries(selections)) {
@@ -357,13 +370,69 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                                 standardCost = standardMasterPart?.cost ?? 0
                               }
 
+                              // Calculate linked parts cost for selected option based on variant
+                              let selectedLinkedPartsCost = 0
+                              const selectedVariantIdForPricing = variantSelections[String(optionId)]
+                              if (option.linkedParts && option.linkedParts.length > 0) {
+                                const applicableLinkedParts = (option.linkedParts as any[]).filter((lp: any) => {
+                                  if (lp.variantId === null) return true
+                                  if (!selectedVariantIdForPricing) {
+                                    const defaultVariant = (option.variants as any[] | undefined)?.find((v: any) => v.isDefault)
+                                    if (defaultVariant) return lp.variantId === defaultVariant.id
+                                    return false
+                                  }
+                                  return lp.variantId === selectedVariantIdForPricing
+                                })
+                                for (const linkedPart of applicableLinkedParts) {
+                                  const linkedQuantity = linkedPart.quantity || 1
+                                  const partCost = linkedPart.masterPart?.cost || 0
+                                  selectedLinkedPartsCost += partCost * linkedQuantity
+                                }
+                              }
+
+                              // Calculate linked parts cost for standard option based on its default variant
+                              let standardLinkedPartsCost = 0
+                              if (standardOption?.linkedParts && (standardOption.linkedParts as any[]).length > 0) {
+                                const defaultVariant = (standardOption.variants as any[] | undefined)?.find((v: any) => v.isDefault)
+                                const applicableStdLinkedParts = (standardOption.linkedParts as any[]).filter((lp: any) => {
+                                  if (lp.variantId === null) return true
+                                  if (defaultVariant) return lp.variantId === defaultVariant.id
+                                  return false
+                                })
+                                for (const linkedPart of applicableStdLinkedParts) {
+                                  const linkedQuantity = linkedPart.quantity || 1
+                                  const partCost = linkedPart.masterPart?.cost || 0
+                                  standardLinkedPartsCost += partCost * linkedQuantity
+                                }
+                              }
+
                               // Sale price = difference from standard (upgrade/downgrade) with markup
-                              const costDifference = selectedCost - standardCost
+                              // Includes both direct partNumber cost difference AND linked parts cost difference
+                              const costDifference = (selectedCost - standardCost) + (selectedLinkedPartsCost - standardLinkedPartsCost)
                               optionPrice = calculateMarkupPrice(costDifference, 'Hardware', pricingMode, globalPricingMultiplier)
                             }
 
+                            // Get variant name if a variant is selected for this option
+                            // Also show default variant name if no explicit selection but option has variants
+                            let variantSuffix = ''
+                            const selectedVariantId = variantSelections[String(optionId)]
+                            if (option.variants && option.variants.length > 0) {
+                              if (selectedVariantId) {
+                                const selectedVariant = option.variants.find((v: any) => v.id === selectedVariantId)
+                                if (selectedVariant) {
+                                  variantSuffix = ` (${selectedVariant.name})`
+                                }
+                              } else {
+                                // No explicit selection - show default variant name
+                                const defaultVariant = option.variants.find((v: any) => v.isDefault)
+                                if (defaultVariant) {
+                                  variantSuffix = ` (${defaultVariant.name})`
+                                }
+                              }
+                            }
+
                             hardwareItems.push({
-                              name: `${pso.category.name}: ${option.name}`,
+                              name: `${pso.category.name}: ${option.name}${variantSuffix}`,
                               price: optionPrice,
                               isIncluded: isIncluded,
                               isStandard: isStandardOption

@@ -96,16 +96,20 @@ export async function GET() {
     const defaultPricingMode = await getDefaultPricingMode(prisma)
 
     // Get total projects (only "Won" projects - QUOTE_ACCEPTED, ACTIVE, COMPLETE)
+    // Only count current versions (not historical revisions)
     const totalProjects = await prisma.project.count({
       where: {
-        status: { in: PROJECT_STATUSES }
+        status: { in: PROJECT_STATUSES },
+        isCurrentVersion: true
       }
     })
 
     // Get total leads (STAGING, APPROVED, REVISE, QUOTE_SENT)
+    // Only count current versions (not historical revisions)
     const totalLeads = await prisma.project.count({
       where: {
-        status: { in: LEAD_STATUSES }
+        status: { in: LEAD_STATUSES },
+        isCurrentVersion: true
       }
     })
 
@@ -113,9 +117,11 @@ export async function GET() {
     const totalOpenings = await prisma.opening.count()
 
     // Get all projects to calculate total portfolio value (only won projects)
+    // Only include current versions (not historical revisions)
     const allProjects = await prisma.project.findMany({
       where: {
-        status: { in: PROJECT_STATUSES }
+        status: { in: PROJECT_STATUSES },
+        isCurrentVersion: true
       },
       select: {
         taxRate: true,
@@ -145,9 +151,11 @@ export async function GET() {
     })
 
     // Get all leads to calculate lead pipeline value
+    // Only include current versions (not historical revisions)
     const allLeadProjects = await prisma.project.findMany({
       where: {
-        status: { in: LEAD_STATUSES }
+        status: { in: LEAD_STATUSES },
+        isCurrentVersion: true
       },
       select: {
         taxRate: true,
@@ -183,9 +191,11 @@ export async function GET() {
     const leadPipelineValue = allLeadProjects.reduce((sum, lead) => sum + calculateQuoteTotal(lead, defaultPricingMode), 0)
 
     // Get recent projects (won projects only)
+    // Only include current versions (not historical revisions)
     const recentProjects = await prisma.project.findMany({
       where: {
-        status: { in: PROJECT_STATUSES }
+        status: { in: PROJECT_STATUSES },
+        isCurrentVersion: true
       },
       take: 5,
       orderBy: {
@@ -196,6 +206,7 @@ export async function GET() {
         name: true,
         status: true,
         updatedAt: true,
+        version: true,
         taxRate: true,
         manualInstallationCost: true,
         pricingMode: {
@@ -237,9 +248,11 @@ export async function GET() {
     })
 
     // Get all leads
+    // Only include current versions (not historical revisions)
     const recentLeads = await prisma.project.findMany({
       where: {
-        status: { in: LEAD_STATUSES }
+        status: { in: LEAD_STATUSES },
+        isCurrentVersion: true
       },
       orderBy: {
         updatedAt: 'desc'
@@ -249,6 +262,7 @@ export async function GET() {
         name: true,
         status: true,
         updatedAt: true,
+        version: true,
         taxRate: true,
         manualInstallationCost: true,
         // Prospect fields for leads without customer
@@ -308,6 +322,7 @@ export async function GET() {
         id: project.id,
         name: project.name,
         status: project.status,
+        version: project.version,
         openingsCount: project._count.openings,
         value: calculateQuoteTotal(project, defaultPricingMode),
         updatedAt: project.updatedAt.toISOString(),
@@ -329,6 +344,7 @@ export async function GET() {
         id: lead.id,
         name: lead.name,
         status: lead.status,
+        version: lead.version,
         openingsCount: lead._count.openings,
         value: calculateQuoteTotal(lead, defaultPricingMode),
         updatedAt: lead.updatedAt.toISOString(),

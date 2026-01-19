@@ -131,6 +131,39 @@ export function isProjectStatus(status: ProjectStatus): boolean {
   return PROJECT_STATUSES.includes(status)
 }
 
+// Locked statuses - projects in these statuses cannot have openings/panels edited
+export const LOCKED_STATUSES: ProjectStatus[] = [
+  ProjectStatus.QUOTE_SENT,
+  ProjectStatus.QUOTE_ACCEPTED,
+  ProjectStatus.ACTIVE,
+  ProjectStatus.COMPLETE
+]
+
+// Helper to check if a project status is locked for editing
+export function isProjectLocked(status: ProjectStatus): boolean {
+  return LOCKED_STATUSES.includes(status)
+}
+
+// Project Version type for version switcher
+export interface ProjectVersion {
+  id: number
+  name: string
+  version: number
+  status: ProjectStatus
+  isCurrentVersion: boolean
+  createdAt: Date
+  _count: {
+    openings: number
+  }
+}
+
+// Project Versions API Response
+export interface ProjectVersionsResponse {
+  currentProjectId: number
+  rootProjectId: number
+  versions: ProjectVersion[]
+}
+
 // Opening Type enum for finished opening tolerances
 export type OpeningType = 'THINWALL' | 'FRAMED'
 
@@ -152,6 +185,7 @@ export interface Opening {
   openingType?: OpeningType | null
   widthToleranceTotal?: number | null
   heightToleranceTotal?: number | null
+  toleranceProductId?: number | null  // ID of product that defined tolerances
   createdAt: Date
   updatedAt: Date
 }
@@ -198,6 +232,8 @@ export interface Product {
   maxWidth?: number | null
   minHeight?: number | null
   maxHeight?: number | null
+  widthTolerance?: number | null   // Product-specific width tolerance
+  heightTolerance?: number | null  // Product-specific height tolerance
   createdAt: Date
   updatedAt: Date
 }

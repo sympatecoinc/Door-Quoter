@@ -9,13 +9,16 @@ export async function PUT(
   try {
     const { planViewId } = await params
     const planViewIdInt = parseInt(planViewId)
-    const { name, imageData, fileName, displayOrder } = await request.json()
+    const { name, imageData, fileName, fileType, displayOrder, orientation, referenceWidth } = await request.json()
 
     const updateData: any = {}
     if (name !== undefined) updateData.name = name
     if (imageData !== undefined) updateData.imageData = imageData
     if (fileName !== undefined) updateData.fileName = fileName
+    if (fileType !== undefined) updateData.fileType = fileType
     if (displayOrder !== undefined) updateData.displayOrder = displayOrder
+    if (orientation !== undefined) updateData.orientation = orientation
+    if (referenceWidth !== undefined) updateData.referenceWidth = referenceWidth ? parseFloat(referenceWidth) : null
 
     const planView = await prisma.productPlanView.update({
       where: { id: planViewIdInt },

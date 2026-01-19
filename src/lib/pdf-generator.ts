@@ -354,11 +354,11 @@ async function addCombinedViewPage(
   // Component table with same columns as modal: Opening Name, Dimensions, Direction, Glass, Hardware
   const tableStartY = scheduleY + 5
   const colWidths = {
-    openingName: 50,  // Product name (reduced to make room for dimensions)
+    openingName: 50,  // Product name
     dimensions: 30,   // Width x Height
-    direction: 30,    // Direction (reduced)
-    glass: 35,        // Glass type (reduced)
-    hardware: 40      // Hardware (reduced)
+    direction: 30,    // Direction
+    glass: 35,        // Glass type
+    hardware: 80      // Hardware (wide enough for multiple options)
   }
 
   // Table header - simple borders only, no background fills
@@ -434,7 +434,7 @@ async function addCombinedViewPage(
     currentX += colWidths.glass
     pdf.rect(currentX, currentY, colWidths.hardware, rowHeight)
     const hardwareText = component.hardware || 'None'
-    const truncatedHardware = hardwareText.length > 18 ? hardwareText.substring(0, 16) + '..' : hardwareText
+    const truncatedHardware = hardwareText.length > 45 ? hardwareText.substring(0, 43) + '..' : hardwareText
     pdf.text(truncatedHardware, currentX + 3, currentY + 4)
 
     currentY += rowHeight

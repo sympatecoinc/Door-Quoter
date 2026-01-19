@@ -1,12 +1,21 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { FileText, LayoutGrid, Receipt, ChevronDown } from 'lucide-react'
-import { ProjectStatus, STATUS_CONFIG, LEAD_STATUSES, PROJECT_STATUSES } from '@/types'
+import { FileText, LayoutGrid, Receipt, ChevronDown, GitBranch, History, AlertTriangle } from 'lucide-react'
+import { ProjectStatus, STATUS_CONFIG, LEAD_STATUSES, PROJECT_STATUSES, isLeadStatus, isProjectStatus } from '@/types'
+import { SalesViewMode } from '@/stores/appStore'
 import StatusBadge from '@/components/projects/StatusBadge'
 import LeadOverviewTab from './LeadOverviewTab'
 import LeadOpeningsTab from './LeadOpeningsTab'
 import LeadQuotesTab from './LeadQuotesTab'
+
+// Locked statuses that allow creating revisions
+const LOCKED_STATUSES = [
+  ProjectStatus.QUOTE_SENT,
+  ProjectStatus.QUOTE_ACCEPTED,
+  ProjectStatus.ACTIVE,
+  ProjectStatus.COMPLETE
+]
 
 interface PricingMode {
   id: number
@@ -52,6 +61,9 @@ interface LeadDetailData {
   id: number
   name: string
   status: ProjectStatus
+  version: number
+  parentProjectId: number | null
+  isCurrentVersion: boolean
   createdAt: string
   updatedAt: string
   dueDate: string | null
@@ -90,10 +102,22 @@ interface LeadDetailData {
   }>
 }
 
+interface ProjectVersion {
+  id: number
+  name: string
+  version: number
+  status: ProjectStatus
+  isCurrentVersion: boolean
+  createdAt: string
+  _count: { openings: number }
+}
+
 interface LeadDetailPanelProps {
   leadId: number
   onClose: () => void
   onLeadUpdated: () => void
+  onVersionSwitch?: (versionId: number) => void
+  onStatusCategoryChange?: (newMode: SalesViewMode) => void
 }
 
 type TabType = 'overview' | 'openings' | 'quotes'
@@ -102,6 +126,8 @@ export default function LeadDetailPanel({
   leadId,
   onClose,
   onLeadUpdated,
+  onVersionSwitch,
+  onStatusCategoryChange,
 }: LeadDetailPanelProps) {
   const [lead, setLead] = useState<LeadDetailData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -110,6 +136,12 @@ export default function LeadDetailPanel({
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<ProjectStatus | null>(null)
   const [showStatusConfirm, setShowStatusConfirm] = useState(false)
+
+  // Version management state
+  const [versions, setVersions] = useState<ProjectVersion[]>([])
+  const [showVersionDropdown, setShowVersionDropdown] = useState(false)
+  const [showRevisionConfirm, setShowRevisionConfirm] = useState(false)
+  const [creatingRevision, setCreatingRevision] = useState(false)
 
   const fetchLead = useCallback(async () => {
     try {
@@ -126,9 +158,53 @@ export default function LeadDetailPanel({
     }
   }, [leadId])
 
+  const fetchVersions = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/projects/${leadId}/revisions`)
+      if (response.ok) {
+        const data = await response.json()
+        setVersions(data.versions || [])
+      }
+    } catch (error) {
+      console.error('Error fetching versions:', error)
+    }
+  }, [leadId])
+
   useEffect(() => {
     fetchLead()
-  }, [fetchLead])
+    fetchVersions()
+  }, [fetchLead, fetchVersions])
+
+  const handleCreateRevision = async () => {
+    if (creatingRevision) return
+
+    try {
+      setCreatingRevision(true)
+      const response = await fetch(`/api/projects/${leadId}/revisions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Refresh the list and notify parent
+        await fetchVersions()
+        onLeadUpdated()
+        // Close the confirmation modal
+        setShowRevisionConfirm(false)
+        // Optionally switch to viewing the new revision
+        // For now, we'll just refresh the current view
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to create revision')
+      }
+    } catch (error) {
+      console.error('Error creating revision:', error)
+      alert('Failed to create revision')
+    } finally {
+      setCreatingRevision(false)
+    }
+  }
 
   const initiateStatusChange = (newStatus: ProjectStatus) => {
     if (!lead || updatingStatus) return
@@ -140,6 +216,12 @@ export default function LeadDetailPanel({
   const handleStatusChange = async () => {
     if (!lead || updatingStatus || !pendingStatus) return
 
+    // Check if status is changing categories (lead → project or project → lead)
+    const wasLeadStatus = isLeadStatus(lead.status)
+    const willBeProjectStatus = isProjectStatus(pendingStatus)
+    const wasProjectStatus = isProjectStatus(lead.status)
+    const willBeLeadStatus = isLeadStatus(pendingStatus)
+
     try {
       setUpdatingStatus(true)
       const response = await fetch(`/api/projects/${leadId}`, {
@@ -150,7 +232,17 @@ export default function LeadDetailPanel({
 
       if (response.ok) {
         await fetchLead()
-        onLeadUpdated()
+
+        // If changing between lead and project categories, switch the view mode
+        // The mode change triggers a refetch via useEffect, so don't call onLeadUpdated
+        if (wasLeadStatus && willBeProjectStatus && onStatusCategoryChange) {
+          onStatusCategoryChange('projects')
+        } else if (wasProjectStatus && willBeLeadStatus && onStatusCategoryChange) {
+          onStatusCategoryChange('leads')
+        } else {
+          // Only manually refetch if staying in the same category
+          onLeadUpdated()
+        }
       }
     } catch (error) {
       console.error('Error updating status:', error)
@@ -168,6 +260,15 @@ export default function LeadDetailPanel({
 
   // Check if status change is moving from lead to project
   const isMovingToProject = pendingStatus && PROJECT_STATUSES.includes(pendingStatus) && lead && LEAD_STATUSES.includes(lead.status)
+
+  // Check if project can create revision (locked status + current version)
+  const canCreateRevision = lead && LOCKED_STATUSES.includes(lead.status) && lead.isCurrentVersion
+
+  // Check if this is a historical (non-current) version
+  const isHistoricalVersion = lead && !lead.isCurrentVersion
+
+  // Check if there are multiple versions
+  const hasMultipleVersions = versions.length > 1
 
   if (loading) {
     return (
@@ -187,6 +288,31 @@ export default function LeadDetailPanel({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Historical Version Banner */}
+      {isHistoricalVersion && (
+        <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-amber-800">
+            <History className="w-4 h-4" />
+            <span className="text-sm font-medium">
+              Viewing v{lead.version} (historical) - This version is read-only
+            </span>
+          </div>
+          {versions.find(v => v.isCurrentVersion) && (
+            <button
+              onClick={() => {
+                const currentVersion = versions.find(v => v.isCurrentVersion)
+                if (currentVersion && onVersionSwitch) {
+                  onVersionSwitch(currentVersion.id)
+                }
+              }}
+              className="text-sm text-amber-700 hover:text-amber-900 font-medium underline"
+            >
+              View current version
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-200 bg-white">
         <div className="flex items-start justify-between">
@@ -195,6 +321,55 @@ export default function LeadDetailPanel({
               <h2 className="text-xl font-semibold text-gray-900 truncate">
                 {lead.name}
               </h2>
+              {/* Version Badge */}
+              {lead.version > 1 && (
+                <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded font-medium">
+                  v{lead.version}
+                </span>
+              )}
+              {/* Version Selector */}
+              {hasMultipleVersions && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowVersionDropdown(!showVersionDropdown)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>{versions.length} versions</span>
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                  {showVersionDropdown && (
+                    <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20 min-w-[280px]">
+                      <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase">Version History</div>
+                      {versions.map((v) => (
+                        <button
+                          key={v.id}
+                          onClick={() => {
+                            setShowVersionDropdown(false)
+                            if (v.id !== leadId && onVersionSwitch) {
+                              onVersionSwitch(v.id)
+                            }
+                          }}
+                          className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between ${
+                            v.id === leadId ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">v{v.version}</span>
+                            <StatusBadge status={v.status} />
+                            {v.isCurrentVersion && (
+                              <span className="text-[10px] px-1 py-0.5 bg-green-100 text-green-700 rounded">Current</span>
+                            )}
+                          </div>
+                          <span className="text-xs text-gray-400">
+                            {v._count.openings} opening{v._count.openings !== 1 ? 's' : ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="relative">
                 <button
                   onClick={() => setShowStatusDropdown(!showStatusDropdown)}
@@ -261,6 +436,16 @@ export default function LeadDetailPanel({
               </span>
             </div>
           </div>
+          {/* Create Revision Button */}
+          {canCreateRevision && (
+            <button
+              onClick={() => setShowRevisionConfirm(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+            >
+              <GitBranch className="w-4 h-4" />
+              Create Revision
+            </button>
+          )}
         </div>
       </div>
 
@@ -325,12 +510,15 @@ export default function LeadDetailPanel({
               fetchLead()
               onLeadUpdated()
             }}
+            isCurrentVersion={lead.isCurrentVersion}
           />
         )}
         {activeTab === 'quotes' && (
           <LeadQuotesTab
             leadId={lead.id}
             leadName={lead.name}
+            isCurrentVersion={lead.isCurrentVersion}
+            status={lead.status}
           />
         )}
       </div>
@@ -367,6 +555,58 @@ export default function LeadDetailPanel({
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {updatingStatus ? 'Updating...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Revision Confirmation Modal */}
+      {showRevisionConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-amber-100 rounded-lg">
+                <GitBranch className="w-5 h-5 text-amber-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Create New Revision
+              </h3>
+            </div>
+            <p className="text-gray-600 mb-4">
+              This will create a new revision (v{lead.version + 1}) of this project:
+            </p>
+            <ul className="text-sm text-gray-600 mb-4 space-y-2">
+              <li className="flex items-start gap-2">
+                <span className="text-amber-500 mt-0.5">•</span>
+                <span>All openings and configurations will be copied</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-amber-500 mt-0.5">•</span>
+                <span>The new revision will start with <strong>no quotes</strong> (clean slate)</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-amber-500 mt-0.5">•</span>
+                <span>The new revision will be set to <strong>Staging</strong> status</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-amber-500 mt-0.5">•</span>
+                <span>This version (v{lead.version}) will become historical and read-only</span>
+              </li>
+            </ul>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowRevisionConfirm(false)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateRevision}
+                disabled={creatingRevision}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors"
+              >
+                {creatingRevision ? 'Creating...' : 'Create Revision'}
               </button>
             </div>
           </div>

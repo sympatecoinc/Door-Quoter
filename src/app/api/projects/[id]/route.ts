@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ProjectStatus } from '@prisma/client'
 import { ensureProjectPricingMode, getDefaultPricingMode } from '@/lib/pricing-mode'
+import { createProjectRevision } from '@/lib/project-revisions'
+import { LEAD_STATUSES } from '@/types'
 
 export async function GET(
   request: NextRequest,
@@ -69,7 +71,13 @@ export async function GET(
                           include: {
                             category: {
                               include: {
-                                individualOptions: true
+                                individualOptions: {
+                                  include: {
+                                    variants: {
+                                      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+                                    }
+                                  }
+                                }
                               }
                             }
                           }
@@ -377,6 +385,34 @@ export async function PUT(
 
       if (!currentProject) {
         throw new Error('Project not found')
+      }
+
+      // Check if we're reverting from QUOTE_ACCEPTED to a lead status
+      // This requires creating a new revision to preserve the accepted quote history
+      const isRevertingToLead = status &&
+        currentProject.status === ProjectStatus.QUOTE_ACCEPTED &&
+        LEAD_STATUSES.includes(status as any)
+
+      if (isRevertingToLead) {
+        // Create a new revision with the target lead status
+        // The original project stays at QUOTE_ACCEPTED to preserve history
+        const revisionResult = await createProjectRevision(tx, {
+          sourceProjectId: projectId,
+          targetStatus: status as ProjectStatus,
+          changedBy: 'System (Reverted from Quote Accepted)'
+        })
+
+        if (!revisionResult.success) {
+          throw new Error(revisionResult.error)
+        }
+
+        // Return the new revision info - the original project is NOT modified
+        return {
+          ...revisionResult.revision,
+          revisionCreated: true,
+          originalProjectId: projectId,
+          message: `Project reverted to ${status}. A new revision (v${revisionResult.revision.version}) was created to preserve the accepted quote history.`
+        }
       }
 
       // Check if we need to convert lead to customer

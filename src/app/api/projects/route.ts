@@ -5,7 +5,11 @@ import { ensureProjectPricingMode } from '@/lib/pricing-mode'
 
 export async function GET() {
   try {
+    // Only return current versions (not historical revisions)
     const projects = await prisma.project.findMany({
+      where: {
+        isCurrentVersion: true
+      },
       include: {
         openings: {
           orderBy: { id: 'asc' },

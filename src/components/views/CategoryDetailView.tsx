@@ -631,8 +631,8 @@ export default function CategoryDetailView({
 
   // Filter master parts for linked parts dropdown
   const filteredLinkedMasterParts = allMasterParts.filter(part => {
-    // Exclude parts already linked
-    if (linkedParts.some(lp => lp.masterPartId === part.id)) return false
+    // Exclude parts already linked to the same variant (allow same part on different variants)
+    if (linkedParts.some(lp => lp.masterPartId === part.id && lp.variantId === newLinkedPartVariantId)) return false
     // Apply search filter
     if (linkedPartSearchTerm.trim()) {
       return (

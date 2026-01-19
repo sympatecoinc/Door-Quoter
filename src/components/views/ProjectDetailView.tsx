@@ -2,16 +2,17 @@
 
 import { useState, useEffect } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
+import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
 
 // Direction options are now loaded dynamically from product plan views
-import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive, X, ChevronDown, Receipt } from 'lucide-react'
+import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive, X, ChevronDown, Receipt, Check, Lock, GitBranch } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 import DrawingViewer from '../ui/DrawingViewer'
-import { ProjectStatus, STATUS_CONFIG } from '@/types'
+import { ProjectStatus, STATUS_CONFIG, isProjectLocked, ProjectVersion, ProjectVersionsResponse } from '@/types'
 
 interface Project {
   id: number
@@ -265,6 +266,11 @@ export default function ProjectDetailView() {
   const [creatingSalesOrder, setCreatingSalesOrder] = useState(false)
   const [existingSalesOrderNumber, setExistingSalesOrderNumber] = useState<string | null>(null)
 
+  // Project versioning state
+  const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([])
+  const [showVersionSelector, setShowVersionSelector] = useState(false)
+  const [creatingRevision, setCreatingRevision] = useState(false)
+
   // Bulk delete state
   const [selectedOpeningIds, setSelectedOpeningIds] = useState<Set<number>>(new Set())
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
@@ -290,9 +296,9 @@ export default function ProjectDetailView() {
     // Otherwise stay on projects menu (will show projects list)
   }
 
-  // Check if project has quote accepted status and require confirmation for modifications
+  // Check if project is in a locked status and require confirmation for modifications
   const requireQuoteAcceptedConfirmation = (action: () => void, actionDescription: string): boolean => {
-    if (project?.status === ProjectStatus.QUOTE_ACCEPTED) {
+    if (project && isProjectLocked(project.status as ProjectStatus)) {
       setPendingAction(() => action)
       setPendingActionDescription(actionDescription)
       setShowQuoteAcceptedConfirm(true)
@@ -318,6 +324,7 @@ export default function ProjectDetailView() {
 
   // Handle Escape key to close modals one at a time
   useEscapeKey([
+    { isOpen: showVersionSelector, onClose: () => setShowVersionSelector(false) },
     { isOpen: showQuoteAcceptedConfirm, onClose: () => { setShowQuoteAcceptedConfirm(false); setPendingAction(null); setPendingActionDescription('') } },
     { isOpen: showDeleteModal, isBlocked: isDeleting, onClose: () => { setShowDeleteModal(false); setDeletingOpeningId(null); setDeletingOpeningName('') } },
     { isOpen: showDeleteComponentModal, isBlocked: isDeletingComponent, onClose: () => { setShowDeleteComponentModal(false); setDeletingComponentId(null); setDeletingComponentName('') } },
@@ -517,6 +524,7 @@ export default function ProjectDetailView() {
   useEffect(() => {
     if (selectedProjectId) {
       fetchProject()
+      fetchProjectVersions()
     }
   }, [selectedProjectId])
 
@@ -577,6 +585,79 @@ export default function ProjectDetailView() {
       console.error('Error refreshing project:', error)
     }
   }
+
+  // Fetch project versions for version switcher
+  async function fetchProjectVersions() {
+    if (!selectedProjectId) return
+
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}/revisions`)
+      if (response.ok) {
+        const data: ProjectVersionsResponse = await response.json()
+        setProjectVersions(data.versions)
+      }
+    } catch (error) {
+      console.error('Error fetching project versions:', error)
+    }
+  }
+
+  // Create a new revision from a locked project
+  async function handleCreateRevision() {
+    if (!selectedProjectId) return
+
+    setCreatingRevision(true)
+    setCalculatingPrices(true)
+    try {
+      const response = await fetch(`/api/projects/${selectedProjectId}/revisions`, {
+        method: 'POST'
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+
+        // Fetch the new revision's full project data
+        const projectResponse = await fetch(`/api/projects/${data.revision.id}`)
+        if (projectResponse.ok) {
+          const newProjectData = await projectResponse.json()
+
+          // Calculate prices for all openings in the new revision
+          await calculateAllOpeningPrices(newProjectData)
+
+          // Navigate to the new revision
+          setSelectedProjectId(data.revision.id)
+
+          showSuccess(`Revision v${data.revision.version} created and prices calculated`)
+        } else {
+          // Still navigate even if price calculation fails
+          setSelectedProjectId(data.revision.id)
+          showSuccess(`Revision v${data.revision.version} created successfully`)
+        }
+      } else {
+        const error = await response.json()
+        showError(error.error || 'Failed to create revision')
+      }
+    } catch (error) {
+      console.error('Error creating revision:', error)
+      showError('Failed to create revision')
+    } finally {
+      setCreatingRevision(false)
+      setCalculatingPrices(false)
+    }
+  }
+
+  // Switch to a different version
+  function handleSwitchVersion(versionId: number) {
+    if (versionId !== selectedProjectId) {
+      setSelectedProjectId(versionId)
+      setShowVersionSelector(false)
+    }
+  }
+
+  // Check if project is in a locked status
+  const projectIsLocked = project ? isProjectLocked(project.status as ProjectStatus) : false
+
+  // Check if viewing the current version (not a historical version)
+  const isViewingCurrentVersion = projectVersions.length === 0 || projectVersions.find(v => v.id === selectedProjectId)?.isCurrentVersion === true
 
   async function fetchGlassTypes() {
     try {
@@ -1382,6 +1463,8 @@ export default function ProjectDetailView() {
       setAddComponentOptions([])
       setAddComponentSelectedOptions({})
       setAddComponentOptionQuantities({})
+      setAddComponentStep('product')
+      setCurrentMandatoryOptionIndex(0)
 
       setSelectedOpeningId(openingId)
 
@@ -2030,7 +2113,8 @@ export default function ProjectDetailView() {
           body: JSON.stringify({
             panelId: panelData.id,
             productId: productIdForInstance,
-            subOptionSelections: selectionsForInstance
+            subOptionSelections: selectionsForInstance,
+            variantSelections: panelData._isPairedPanel ? {} : variantSelections
           })
         })
 
@@ -2057,6 +2141,7 @@ export default function ProjectDetailView() {
       setAddComponentOptions([])
       setAddComponentSelectedOptions({})
       setAddComponentOptionQuantities({})
+      setVariantSelections({})
 
       // Recalculate opening price
       if (selectedOpeningId) {
@@ -2566,7 +2651,7 @@ export default function ProjectDetailView() {
               >
                 <FileText className="w-4 h-4" />
               </button>
-              {needsSync && !calculatingPrices && (
+              {isViewingCurrentVersion && needsSync && !calculatingPrices && (
                 <button
                   onClick={() => setShowSyncConfirmation(true)}
                   className="ml-3 flex items-center text-sm text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg transition-colors"
@@ -2586,21 +2671,81 @@ export default function ProjectDetailView() {
               )}
             </div>
             <div className="flex items-center mt-2">
-              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                project.status === 'Draft'
-                  ? 'bg-gray-100 text-gray-800'
-                  : project.status === 'In Progress'
-                  ? 'bg-blue-100 text-blue-800'
-                  : project.status === 'Completed'
-                  ? 'bg-green-100 text-green-800'
-                  : project.status === 'Archive'
-                  ? 'bg-orange-100 text-orange-800'
-                  : project.status === 'QUOTE_ACCEPTED'
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-gray-100 text-gray-800'
-              }`}>
-                {project.status === 'QUOTE_ACCEPTED' ? 'Quote Accepted' : project.status}
-              </span>
+              {/* For historical versions, only show Editing Locked badge */}
+              {!isViewingCurrentVersion ? (
+                <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">
+                  <Lock className="w-3 h-3 mr-1" />
+                  Editing Locked
+                </span>
+              ) : (
+                <>
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    project.status === 'Draft'
+                      ? 'bg-gray-100 text-gray-800'
+                      : project.status === 'In Progress'
+                      ? 'bg-blue-100 text-blue-800'
+                      : project.status === 'Completed'
+                      ? 'bg-green-100 text-green-800'
+                      : project.status === 'Archive'
+                      ? 'bg-orange-100 text-orange-800'
+                      : project.status === 'QUOTE_ACCEPTED'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {project.status === 'QUOTE_ACCEPTED' ? 'Quote Accepted' : project.status}
+                  </span>
+                  {/* Lock indicator for locked statuses */}
+                  {projectIsLocked && (
+                    <span className="ml-2 inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">
+                      <Lock className="w-3 h-3 mr-1" />
+                      Editing Locked
+                    </span>
+                  )}
+                </>
+              )}
+              {/* Version indicator and switcher */}
+              {projectVersions.length > 1 && (
+                <div className="ml-2 relative">
+                  <button
+                    onClick={() => setShowVersionSelector(!showVersionSelector)}
+                    className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 hover:bg-blue-200"
+                  >
+                    <GitBranch className="w-3 h-3 mr-1" />
+                    v{projectVersions.find(v => v.id === selectedProjectId)?.version || 1}
+                    <ChevronDown className="w-3 h-3 ml-1" />
+                  </button>
+                  {showVersionSelector && (
+                    <div className="absolute left-0 mt-1 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                      <div className="p-2 border-b border-gray-100">
+                        <span className="text-xs font-medium text-gray-500">Project Versions</span>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto">
+                        {projectVersions.map((version) => (
+                          <button
+                            key={version.id}
+                            onClick={() => handleSwitchVersion(version.id)}
+                            className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between ${
+                              version.id === selectedProjectId ? 'bg-blue-50' : ''
+                            }`}
+                          >
+                            <div className="flex items-center">
+                              <span className={`font-medium ${version.id === selectedProjectId ? 'text-blue-600' : 'text-gray-900'}`}>
+                                v{version.version}
+                              </span>
+                              {version.isCurrentVersion && (
+                                <span className="ml-2 text-xs text-green-600">(current)</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {version._count.openings} openings
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <span className="ml-4 text-gray-600">
                 {project._count.openings} openings • Created {new Date(project.createdAt).toLocaleDateString()}
               </span>
@@ -2608,8 +2753,8 @@ export default function ProjectDetailView() {
           </div>
         </div>
         <div className="flex items-center space-x-3">
-          {/* Create Sales Order button - only for QUOTE_ACCEPTED or ACTIVE projects */}
-          {(project.status === 'QUOTE_ACCEPTED' || project.status === 'ACTIVE') && !existingSalesOrderNumber && (
+          {/* Create Sales Order button - only for QUOTE_ACCEPTED or ACTIVE projects on current version */}
+          {isViewingCurrentVersion && (project.status === 'QUOTE_ACCEPTED' || project.status === 'ACTIVE') && !existingSalesOrderNumber && (
             <button
               onClick={handleCreateSalesOrder}
               disabled={creatingSalesOrder || project.openings.length === 0}
@@ -2636,9 +2781,36 @@ export default function ProjectDetailView() {
               SO: {existingSalesOrderNumber}
             </span>
           )}
+          {/* Create Revision button - only shown when project is locked and viewing current version */}
+          {isViewingCurrentVersion && projectIsLocked && (
+            <button
+              onClick={handleCreateRevision}
+              disabled={creatingRevision}
+              className="flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+              title="Create a new editable revision of this project"
+            >
+              {creatingRevision ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <GitBranch className="w-5 h-5 mr-2" />
+                  Create Revision
+                </>
+              )}
+            </button>
+          )}
           <button
             onClick={handleShowAddOpeningModal}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            disabled={projectIsLocked}
+            className={`flex items-center px-4 py-2 rounded-lg ${
+              projectIsLocked
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+            title={projectIsLocked ? 'Project is locked. Create a revision to add openings.' : 'Add a new opening'}
           >
             <Plus className="w-5 h-5 mr-2" />
             Add Opening
@@ -2783,6 +2955,8 @@ export default function ProjectDetailView() {
                                   try {
                                     const selectionsStr = panel.componentInstance!.subOptionSelections || '{}'
                                     const selections = JSON.parse(selectionsStr)
+                                    const variantSelectionsStr = panel.componentInstance!.variantSelections || '{}'
+                                    const variantSelectionsData = JSON.parse(variantSelectionsStr)
                                     const product = panel.componentInstance!.product
                                     const optionItems: Array<{ categoryName: string; optionName: string }> = []
 
@@ -2802,9 +2976,18 @@ export default function ProjectDetailView() {
                                             opt.id === Number(optionId)
                                           )
                                           if (individualOption) {
+                                            // Check for variant selection
+                                            let variantSuffix = ''
+                                            const selectedVariantId = variantSelectionsData[String(optionId)]
+                                            if (selectedVariantId && individualOption.variants) {
+                                              const selectedVariant = individualOption.variants.find((v: any) => v.id === selectedVariantId)
+                                              if (selectedVariant) {
+                                                variantSuffix = ` (${selectedVariant.name})`
+                                              }
+                                            }
                                             optionItems.push({
                                               categoryName: productOption.category.name,
-                                              optionName: individualOption.name
+                                              optionName: `${individualOption.name}${variantSuffix}`
                                             })
                                           }
                                         }
@@ -3058,27 +3241,40 @@ export default function ProjectDetailView() {
               {addComponentStep === 'product' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Select Product</label>
-                  <select
-                    value={selectedProductId || ''}
-                    onChange={(e) => {
-                      const productId = parseInt(e.target.value)
+                  <Listbox
+                    value={selectedProductId || null}
+                    onChange={(productId: number | null) => {
+                      if (!productId) return
                       setSelectedProductId(productId)
 
                       // Load hardware options for the selected product
                       const product = products.find(p => p.id === productId)
                       if (product?.productSubOptions && product.productSubOptions.length > 0) {
                         setAddComponentOptions(product.productSubOptions)
-                        // Pre-select standard options
+                        // Pre-select standard options and their default variants
                         const preselected: Record<number, number | null> = {}
+                        const preselectedVariants: Record<string, number> = {}
                         for (const pso of product.productSubOptions) {
                           if (pso.standardOptionId) {
                             preselected[pso.category.id] = pso.standardOptionId
+                            // Find the standard option and check for default variant
+                            const standardOption = pso.category.individualOptions?.find(
+                              (opt: any) => opt.id === pso.standardOptionId
+                            )
+                            if (standardOption?.variants?.length > 0) {
+                              const defaultVariant = standardOption.variants.find((v: any) => v.isDefault)
+                              if (defaultVariant) {
+                                preselectedVariants[String(pso.standardOptionId)] = defaultVariant.id
+                              }
+                            }
                           }
                         }
                         setAddComponentSelectedOptions(preselected)
+                        setVariantSelections(preselectedVariants)
                       } else {
                         setAddComponentOptions([])
                         setAddComponentSelectedOptions({})
+                        setVariantSelections({})
                       }
 
                       // Pre-fill width from product defaultWidth if available
@@ -3095,15 +3291,36 @@ export default function ProjectDetailView() {
                       // Reset current mandatory option index
                       setCurrentMandatoryOptionIndex(0)
                     }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                   >
-                    <option value="">Select a product...</option>
-                    {products.filter(p => p.productType !== 'FRAME').map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.productType === 'CORNER_90' ? '90° Corner' : product.name}
-                      </option>
-                    ))}
-                  </select>
+                    <div className="relative">
+                      <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
+                        {(() => {
+                          const selectedProduct = products.find(p => p.id === selectedProductId)
+                          if (selectedProduct) {
+                            return <span>{selectedProduct.productType === 'CORNER_90' ? '90° Corner' : selectedProduct.name}</span>
+                          }
+                          return <span className="text-gray-500">Select a product...</span>
+                        })()}
+                        <ChevronDown className="w-4 h-4 text-gray-400" />
+                      </ListboxButton>
+                      <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                        {products.filter(p => p.productType !== 'FRAME').map((product) => (
+                          <ListboxOption
+                            key={product.id}
+                            value={product.id}
+                            className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
+                          >
+                            {({ selected }) => (
+                              <>
+                                <span>{product.productType === 'CORNER_90' ? '90° Corner' : product.name}</span>
+                                {selected && <Check className="w-4 h-4 text-blue-600" />}
+                              </>
+                            )}
+                          </ListboxOption>
+                        ))}
+                      </ListboxOptions>
+                    </div>
+                  </Listbox>
                   {/* Quantity field - show for non-corner/non-frame products on product step */}
                   {selectedProductId && (() => {
                     const selectedProduct = products.find(p => p.id === selectedProductId)
@@ -3588,18 +3805,37 @@ export default function ProjectDetailView() {
                           <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-medium">2</span>
                           <h4 className="text-sm font-semibold text-gray-800">Opening Direction</h4>
                         </div>
-                        <select
-                          value={getCurrentDirection()}
-                          onChange={(e) => setCurrentDirection(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+                        <Listbox
+                          value={getCurrentDirection() || null}
+                          onChange={(value: string | null) => setCurrentDirection(value || '')}
                         >
-                          <option value="">Select opening direction...</option>
-                          {planViewOptions.map((planView: any) => (
-                            <option key={planView.id} value={planView.name}>
-                              {planView.name}
-                            </option>
-                          ))}
-                        </select>
+                          <div className="relative">
+                            <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
+                              {getCurrentDirection() ? (
+                                <span>{getCurrentDirection()}</span>
+                              ) : (
+                                <span className="text-gray-500">Select opening direction...</span>
+                              )}
+                              <ChevronDown className="w-4 h-4 text-gray-400" />
+                            </ListboxButton>
+                            <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                              {planViewOptions.map((planView: any) => (
+                                <ListboxOption
+                                  key={planView.id}
+                                  value={planView.name}
+                                  className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
+                                >
+                                  {({ selected }) => (
+                                    <>
+                                      <span>{planView.name}</span>
+                                      {selected && <Check className="w-4 h-4 text-blue-600" />}
+                                    </>
+                                  )}
+                                </ListboxOption>
+                              ))}
+                            </ListboxOptions>
+                          </div>
+                        </Listbox>
                         <div className="flex justify-between pt-2">
                           <button
                             type="button"
@@ -3633,18 +3869,39 @@ export default function ProjectDetailView() {
                           <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-medium">{needsDirection ? '3' : '2'}</span>
                           <h4 className="text-sm font-semibold text-gray-800">Glass Type</h4>
                         </div>
-                        <select
-                          value={glassType}
-                          onChange={(e) => setGlassType(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+                        <Listbox
+                          value={glassType || null}
+                          onChange={(value: string | null) => setGlassType(value || '')}
                         >
-                          <option value="">Select glass type...</option>
-                          {glassTypes.map((type) => (
-                            <option key={type.id} value={type.name}>
-                              {type.name} (${type.pricePerSqFt}/sqft)
-                            </option>
-                          ))}
-                        </select>
+                          <div className="relative">
+                            <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
+                              {(() => {
+                                const selectedGlassType = glassTypes.find(t => t.name === glassType)
+                                if (selectedGlassType) {
+                                  return <span>{selectedGlassType.name} (${selectedGlassType.pricePerSqFt}/sqft)</span>
+                                }
+                                return <span className="text-gray-500">Select glass type...</span>
+                              })()}
+                              <ChevronDown className="w-4 h-4 text-gray-400" />
+                            </ListboxButton>
+                            <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                              {glassTypes.map((type) => (
+                                <ListboxOption
+                                  key={type.id}
+                                  value={type.name}
+                                  className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
+                                >
+                                  {({ selected }) => (
+                                    <>
+                                      <span>{type.name} (${type.pricePerSqFt}/sqft)</span>
+                                      {selected && <Check className="w-4 h-4 text-blue-600" />}
+                                    </>
+                                  )}
+                                </ListboxOption>
+                              ))}
+                            </ListboxOptions>
+                          </div>
+                        </Listbox>
                         <div className="flex justify-between pt-2">
                           <button
                             type="button"
@@ -3680,6 +3937,13 @@ export default function ProjectDetailView() {
                       const isRangeMode = optionBom?.quantityMode === 'RANGE'
                       const quantityKey = `${currentOption.category.id}_qty`
 
+                      // Find selected option and check for variants
+                      const selectedIndividualOption = selectedOptionId
+                        ? currentOption.category.individualOptions?.find((opt: any) => opt.id === selectedOptionId)
+                        : null
+                      const optionVariants = selectedIndividualOption?.variants || []
+                      const hasVariants = optionVariants.length > 0
+
                       return (
                         <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-4">
                           <div className="flex items-center justify-between mb-2">
@@ -3697,10 +3961,10 @@ export default function ProjectDetailView() {
                             </span>
                           </div>
                           <div className="flex gap-2">
-                            <select
-                              value={addComponentSelectedOptions[currentOption.category.id] || ''}
-                              onChange={(e) => {
-                                if (e.target.value === '') {
+                            <Listbox
+                              value={addComponentSelectedOptions[currentOption.category.id] || null}
+                              onChange={(newValue: number | null) => {
+                                if (newValue === null) {
                                   // Remove the selection (set to undefined by deleting key)
                                   const newOptions = { ...addComponentSelectedOptions }
                                   delete newOptions[currentOption.category.id]
@@ -3709,12 +3973,33 @@ export default function ProjectDetailView() {
                                   const newQuantities = { ...addComponentOptionQuantities }
                                   delete newQuantities[quantityKey]
                                   setAddComponentOptionQuantities(newQuantities)
+                                  // Clear variant selection for the old option
+                                  if (selectedOptionId) {
+                                    const newVariantSelections = { ...variantSelections }
+                                    delete newVariantSelections[String(selectedOptionId)]
+                                    setVariantSelections(newVariantSelections)
+                                  }
                                 } else {
-                                  const newValue = parseInt(e.target.value)
                                   setAddComponentSelectedOptions({
                                     ...addComponentSelectedOptions,
                                     [currentOption.category.id]: newValue
                                   })
+                                  // Clear old variant selection and auto-select default variant for new option
+                                  const newVariantSelections = { ...variantSelections }
+                                  if (selectedOptionId) {
+                                    delete newVariantSelections[String(selectedOptionId)]
+                                  }
+                                  // Find the new option and check for default variant
+                                  const newOption = currentOption.category.individualOptions?.find(
+                                    (opt: any) => opt.id === newValue
+                                  )
+                                  if (newOption?.variants?.length > 0) {
+                                    const defaultVariant = newOption.variants.find((v: any) => v.isDefault)
+                                    if (defaultVariant) {
+                                      newVariantSelections[String(newValue)] = defaultVariant.id
+                                    }
+                                  }
+                                  setVariantSelections(newVariantSelections)
                                   // Check if new option has RANGE mode and set default quantity
                                   const newOptionBom = selectedProduct?.productBOMs?.find(
                                     (bom: any) => bom.optionId === newValue
@@ -3732,37 +4017,142 @@ export default function ProjectDetailView() {
                                   }
                                 }
                               }}
-                              className={`${isRangeMode ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white`}
                             >
-                              <option value="">Select {currentOption.category.name}...</option>
-                              {currentOption.category.individualOptions?.map((opt: any) => (
-                                <option key={opt.id} value={opt.id}>
-                                  {opt.name}
-                                  {opt.id === currentOption.standardOptionId && ' (Standard)'}
-                                </option>
-                              ))}
-                            </select>
+                              <div className={`${isRangeMode || hasVariants ? 'flex-1' : 'w-full'} relative`}>
+                                <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
+                                  {(() => {
+                                    const selectedOpt = currentOption.category.individualOptions?.find((opt: any) => opt.id === addComponentSelectedOptions[currentOption.category.id])
+                                    if (selectedOpt) {
+                                      return (
+                                        <span className="flex items-center gap-2">
+                                          {selectedOpt.name}
+                                          {selectedOpt.id === currentOption.standardOptionId && (
+                                            <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded font-medium">Standard</span>
+                                          )}
+                                        </span>
+                                      )
+                                    }
+                                    return <span className="text-gray-500">Select {currentOption.category.name}...</span>
+                                  })()}
+                                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                                </ListboxButton>
+                                <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                                  {currentOption.category.individualOptions?.map((opt: any) => (
+                                    <ListboxOption
+                                      key={opt.id}
+                                      value={opt.id}
+                                      className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
+                                    >
+                                      {({ selected }) => (
+                                        <>
+                                          <span className="flex items-center gap-2">
+                                            {opt.name}
+                                            {opt.id === currentOption.standardOptionId && (
+                                              <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded font-medium">Standard</span>
+                                            )}
+                                          </span>
+                                          {selected && <Check className="w-4 h-4 text-blue-600" />}
+                                        </>
+                                      )}
+                                    </ListboxOption>
+                                  ))}
+                                </ListboxOptions>
+                              </div>
+                            </Listbox>
                             {isRangeMode && (
-                              <select
+                              <Listbox
                                 value={addComponentOptionQuantities[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}
-                                onChange={(e) => {
+                                onChange={(value: number) => {
                                   setAddComponentOptionQuantities({
                                     ...addComponentOptionQuantities,
-                                    [quantityKey]: parseInt(e.target.value)
+                                    [quantityKey]: value
                                   })
                                 }}
-                                className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                                title="Select quantity"
                               >
-                                {Array.from(
-                                  { length: (optionBom.maxQuantity || 4) - (optionBom.minQuantity || 0) + 1 },
-                                  (_, i) => (optionBom.minQuantity || 0) + i
-                                ).map((qty) => (
-                                  <option key={qty} value={qty}>
-                                    {qty}
-                                  </option>
-                                ))}
-                              </select>
+                                <div className="relative w-20">
+                                  <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
+                                    <span>{addComponentOptionQuantities[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}</span>
+                                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                                  </ListboxButton>
+                                  <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                                    {Array.from(
+                                      { length: (optionBom.maxQuantity || 4) - (optionBom.minQuantity || 0) + 1 },
+                                      (_, i) => (optionBom.minQuantity || 0) + i
+                                    ).map((qty) => (
+                                      <ListboxOption
+                                        key={qty}
+                                        value={qty}
+                                        className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
+                                      >
+                                        {({ selected }) => (
+                                          <>
+                                            <span>{qty}</span>
+                                            {selected && <Check className="w-4 h-4 text-blue-600" />}
+                                          </>
+                                        )}
+                                      </ListboxOption>
+                                    ))}
+                                  </ListboxOptions>
+                                </div>
+                              </Listbox>
+                            )}
+                            {hasVariants && (
+                              <Listbox
+                                value={variantSelections[String(selectedOptionId)] || null}
+                                onChange={(value: number | null) => {
+                                  if (value === null) {
+                                    const newVariantSelections = { ...variantSelections }
+                                    delete newVariantSelections[String(selectedOptionId)]
+                                    setVariantSelections(newVariantSelections)
+                                  } else {
+                                    setVariantSelections({
+                                      ...variantSelections,
+                                      [String(selectedOptionId)]: value
+                                    })
+                                  }
+                                }}
+                              >
+                                <div className="relative w-40">
+                                  <ListboxButton className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-900 bg-purple-50 text-left flex items-center justify-between">
+                                    {(() => {
+                                      const selectedVariant = optionVariants.find((v: any) => v.id === variantSelections[String(selectedOptionId)])
+                                      if (selectedVariant) {
+                                        return (
+                                          <span className="flex items-center gap-2">
+                                            {selectedVariant.name}
+                                            {selectedVariant.isDefault && (
+                                              <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
+                                            )}
+                                          </span>
+                                        )
+                                      }
+                                      return <span className="text-gray-500">Choose Variant...</span>
+                                    })()}
+                                    <ChevronDown className="w-4 h-4 text-purple-400" />
+                                  </ListboxButton>
+                                  <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-purple-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                                    {optionVariants.map((variant: any) => (
+                                      <ListboxOption
+                                        key={variant.id}
+                                        value={variant.id}
+                                        className="cursor-pointer select-none px-3 py-2 hover:bg-purple-50 data-[selected]:bg-purple-100 flex items-center justify-between"
+                                      >
+                                        {({ selected }) => (
+                                          <>
+                                            <span className="flex items-center gap-2">
+                                              {variant.name}
+                                              {variant.isDefault && (
+                                                <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
+                                              )}
+                                            </span>
+                                            {selected && <Check className="w-4 h-4 text-purple-600" />}
+                                          </>
+                                        )}
+                                      </ListboxOption>
+                                    ))}
+                                  </ListboxOptions>
+                                </div>
+                              </Listbox>
                             )}
                           </div>
                           {isRangeMode && (
@@ -3784,7 +4174,10 @@ export default function ProjectDetailView() {
                             <button
                               type="button"
                               onClick={goToNextStep}
-                              disabled={currentOption.isMandatory && addComponentSelectedOptions[currentOption.category.id] === undefined}
+                              disabled={
+                                (currentOption.isMandatory && addComponentSelectedOptions[currentOption.category.id] === undefined) ||
+                                (hasVariants && !variantSelections[String(selectedOptionId)])
+                              }
                               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                             >
                               {currentMandatoryOptionIndex < allOptions.length - 1 ? 'Next' : 'Finish'}
@@ -3826,16 +4219,22 @@ export default function ProjectDetailView() {
                               <ul className="ml-4 text-xs text-gray-600">
                                 {allOptions.map((opt: any) => {
                                   const selectedValue = addComponentSelectedOptions[opt.category.id]
-                                  const selectedOptName = selectedValue ? opt.category.individualOptions?.find((o: any) => o.id === selectedValue)?.name || 'Not selected' : 'Not selected'
+                                  const selectedOpt = selectedValue ? opt.category.individualOptions?.find((o: any) => o.id === selectedValue) : null
+                                  const selectedOptName = selectedOpt?.name || 'Not selected'
                                   const quantityKey = `${opt.category.id}_qty`
                                   const optionBom = selectedProduct?.productBOMs?.find(
                                     (bom: any) => bom.optionId === selectedValue
                                   )
                                   const isRangeMode = optionBom?.quantityMode === 'RANGE'
                                   const quantity = addComponentOptionQuantities[quantityKey]
+                                  // Get variant name if selected
+                                  const selectedVariantId = selectedValue ? variantSelections[String(selectedValue)] : null
+                                  const selectedVariant = selectedVariantId && selectedOpt?.variants?.find((v: any) => v.id === selectedVariantId)
+                                  const variantName = selectedVariant?.name
                                   return (
                                     <li key={opt.id}>
                                       - {opt.category.name}: {selectedOptName}
+                                      {variantName && ` - ${variantName}`}
                                       {isRangeMode && quantity !== undefined && ` (Qty: ${quantity})`}
                                     </li>
                                   )
@@ -5276,19 +5675,31 @@ export default function ProjectDetailView() {
       {/* Quote Accepted Edit Confirmation Modal */}
       {showQuoteAcceptedConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6">
             <h3 className="text-xl font-semibold text-gray-900 mb-4">
-              Edit Accepted Quote
+              Project is Locked
             </h3>
 
             <p className="text-sm text-gray-600 mb-4">
-              This project has a quote that has been <strong>accepted by the customer</strong>.
+              This project is in <strong>{project?.status === 'QUOTE_ACCEPTED' ? 'Quote Accepted' : project?.status}</strong> status and is locked for editing.
             </p>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
               <p className="text-sm text-amber-700">
-                You are about to {pendingActionDescription}. Making changes may affect the accepted quote. Are you sure you want to proceed?
+                You attempted to {pendingActionDescription}. To make changes, you can either:
               </p>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <div className="p-3 border border-gray-200 rounded-lg bg-gray-50">
+                <h4 className="font-medium text-gray-900 flex items-center">
+                  <GitBranch className="w-4 h-4 mr-2 text-amber-600" />
+                  Create a Revision (Recommended)
+                </h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  Creates a new editable copy while preserving this version as read-only history.
+                </p>
+              </div>
             </div>
 
             <div className="flex justify-end space-x-3">
@@ -5299,10 +5710,24 @@ export default function ProjectDetailView() {
                 Cancel
               </button>
               <button
-                onClick={handleConfirmQuoteAcceptedEdit}
-                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                onClick={() => {
+                  handleCancelQuoteAcceptedEdit()
+                  handleCreateRevision()
+                }}
+                disabled={creatingRevision}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 flex items-center"
               >
-                Yes, Proceed
+                {creatingRevision ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <GitBranch className="w-4 h-4 mr-2" />
+                    Create Revision
+                  </>
+                )}
               </button>
             </div>
           </div>

@@ -27,7 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { id } = await params
     const productId = parseInt(id)
-    const { name, imageData, fileName, fileType, orientation } = await request.json()
+    const { name, imageData, fileName, fileType, orientation, referenceWidth } = await request.json()
 
     if (!name || !imageData) {
       return NextResponse.json(
@@ -69,6 +69,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         fileName,
         fileType: detectedFileType || 'image/png',
         orientation: orientation || 'bottom',
+        referenceWidth: referenceWidth ? parseFloat(referenceWidth) : null,
         displayOrder: (maxOrder._max.displayOrder || 0) + 1
       }
     })

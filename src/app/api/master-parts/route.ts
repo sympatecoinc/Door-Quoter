@@ -57,10 +57,10 @@ export async function GET(request: NextRequest) {
       })
       return NextResponse.json(parts)
     } else if (optionsOnly) {
-      // Get parts marked as available for category options (Hardware and Extrusion types)
+      // Get parts marked as available for category options (Hardware, Extrusion, and CutStock types)
       const parts = await prisma.masterPart.findMany({
         where: {
-          partType: { in: ['Hardware', 'Extrusion'] },
+          partType: { in: ['Hardware', 'Extrusion', 'CutStock'] },
           isOption: true
         },
         orderBy: { partNumber: 'asc' }
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, customPricePerLb, partType, isOption, addFinishToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, customPricePerLb, partType, isOption, addFinishToPartNumber, appendDirectionToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({
@@ -146,8 +146,9 @@ export async function POST(request: NextRequest) {
         weightPerFoot: (partType === 'Extrusion' && weightPerFoot) ? parseFloat(weightPerFoot) : null,
         customPricePerLb: (partType === 'Extrusion' && customPricePerLb) ? parseFloat(customPricePerLb) : null,
         partType: partType || 'Hardware',
-        isOption: (partType === 'Hardware' || partType === 'Extrusion') ? (isOption || false) : false,
+        isOption: (partType === 'Hardware' || partType === 'Extrusion' || partType === 'CutStock') ? (isOption || false) : false,
         addFinishToPartNumber: (partType === 'Hardware') ? (addFinishToPartNumber || false) : false,
+        appendDirectionToPartNumber: (partType === 'Hardware') ? (appendDirectionToPartNumber || false) : false,
         addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false,
         includeOnPickList: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? (includeOnPickList || false) : false,
         includeInJambKit: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? (includeInJambKit || false) : false

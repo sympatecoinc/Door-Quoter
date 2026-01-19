@@ -1,8 +1,15 @@
 'use client'
 
-import { useState } from 'react'
-import { X, Building2, Phone, MapPin } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { X, Building2, Phone, MapPin, Check } from 'lucide-react'
 import { useEscapeKey } from '@/hooks/useEscapeKey'
+
+interface Customer {
+  id: number
+  companyName: string
+  city?: string
+  state?: string
+}
 
 interface AddLeadModalProps {
   isOpen: boolean
@@ -24,10 +31,93 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Customer autocomplete state
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
+
   // Handle Escape key to close modal
   useEscapeKey([
     { isOpen, isBlocked: saving, onClose },
   ])
+
+  // Search customers as user types
+  const searchCustomers = async (query: string) => {
+    if (query.length < 2) {
+      setCustomers([])
+      setShowDropdown(false)
+      return
+    }
+
+    setSearchLoading(true)
+    try {
+      const response = await fetch(`/api/customers?search=${encodeURIComponent(query)}&limit=10&status=Active,Prospect`)
+      if (response.ok) {
+        const data = await response.json()
+        setCustomers(data.customers || [])
+        setShowDropdown(true)
+      }
+    } catch (error) {
+      console.error('Error searching customers:', error)
+    } finally {
+      setSearchLoading(false)
+    }
+  }
+
+  // Handle company name input change with debounce
+  const handleCompanyNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setFormData({ ...formData, prospectCompanyName: value })
+
+    // Clear selected customer when user types
+    if (selectedCustomer && value !== selectedCustomer.companyName) {
+      setSelectedCustomer(null)
+    }
+
+    // Debounce search
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+    }
+    debounceRef.current = setTimeout(() => {
+      searchCustomers(value)
+    }, 300)
+  }
+
+  // Handle customer selection from dropdown
+  const handleSelectCustomer = (customer: Customer) => {
+    setSelectedCustomer(customer)
+    setFormData({ ...formData, prospectCompanyName: customer.companyName })
+    setShowDropdown(false)
+    setCustomers([])
+  }
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) &&
+          inputRef.current && !inputRef.current.contains(event.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setCustomers([])
+      setSelectedCustomer(null)
+      setShowDropdown(false)
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+      }
+    }
+  }, [isOpen])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -45,17 +135,44 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
 
     try {
       setSaving(true)
+
+      let customerId: number | undefined
+
+      if (selectedCustomer) {
+        // Use existing customer
+        customerId = selectedCustomer.id
+      } else {
+        // Create new customer from the typed company name
+        const customerResponse = await fetch('/api/customers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            companyName: formData.prospectCompanyName.trim(),
+            phone: formData.phone.trim() || undefined,
+            address: formData.address.trim() || undefined,
+            city: formData.city.trim() || undefined,
+            state: formData.state.trim() || undefined,
+            zipCode: formData.zipCode.trim() || undefined,
+            status: 'Prospect'
+          })
+        })
+
+        if (!customerResponse.ok) {
+          const data = await customerResponse.json()
+          throw new Error(data.error || 'Failed to create customer')
+        }
+
+        const newCustomer = await customerResponse.json()
+        customerId = newCustomer.id
+      }
+
+      // Create project linked to customer
       const response = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formData.projectName.trim(),
-          prospectCompanyName: formData.prospectCompanyName.trim(),
-          prospectPhone: formData.phone.trim() || undefined,
-          prospectAddress: formData.address.trim() || undefined,
-          prospectCity: formData.city.trim() || undefined,
-          prospectState: formData.state.trim() || undefined,
-          prospectZipCode: formData.zipCode.trim() || undefined,
+          customerId,
           dueDate: formData.dueDate || undefined,
           status: 'STAGING'
         })
@@ -77,6 +194,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
         state: '',
         zipCode: ''
       })
+      setSelectedCustomer(null)
       onLeadCreated()
       onClose()
     } catch (err) {
@@ -99,6 +217,9 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
         state: '',
         zipCode: ''
       })
+      setSelectedCustomer(null)
+      setCustomers([])
+      setShowDropdown(false)
       onClose()
     }
   }
@@ -135,16 +256,78 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
                 Company Name <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 z-10" />
+                {selectedCustomer && (
+                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+                )}
                 <input
+                  ref={inputRef}
                   type="text"
                   value={formData.prospectCompanyName}
-                  onChange={(e) => setFormData({ ...formData, prospectCompanyName: e.target.value })}
-                  placeholder="Enter company name"
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onChange={handleCompanyNameChange}
+                  onFocus={() => {
+                    if (formData.prospectCompanyName.length >= 2 && customers.length > 0) {
+                      setShowDropdown(true)
+                    }
+                  }}
+                  placeholder="Search or enter new company"
+                  className={`w-full pl-10 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                    selectedCustomer ? 'pr-10 border-green-300 bg-green-50' : 'pr-4 border-gray-300'
+                  }`}
                   disabled={saving}
+                  autoComplete="off"
                 />
+
+                {/* Autocomplete dropdown */}
+                {showDropdown && (
+                  <div
+                    ref={dropdownRef}
+                    className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                  >
+                    {searchLoading ? (
+                      <div className="px-4 py-3 text-sm text-gray-500">Searching...</div>
+                    ) : customers.length > 0 ? (
+                      <>
+                        <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-b">
+                          Existing Customers
+                        </div>
+                        {customers.map((customer) => (
+                          <button
+                            key={customer.id}
+                            type="button"
+                            onClick={() => handleSelectCustomer(customer)}
+                            className="w-full px-4 py-2 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="font-medium text-gray-900">{customer.companyName}</div>
+                            {(customer.city || customer.state) && (
+                              <div className="text-xs text-gray-500">
+                                {[customer.city, customer.state].filter(Boolean).join(', ')}
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                        <div className="px-3 py-2 text-xs text-gray-400 bg-gray-50 border-t">
+                          Or continue typing to create new
+                        </div>
+                      </>
+                    ) : (
+                      <div className="px-4 py-3 text-sm text-gray-500">
+                        No matches found - a new customer will be created
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
+              {selectedCustomer && (
+                <p className="mt-1 text-xs text-green-600">
+                  Linked to existing customer
+                </p>
+              )}
+              {!selectedCustomer && formData.prospectCompanyName.length >= 2 && !showDropdown && (
+                <p className="mt-1 text-xs text-gray-500">
+                  New customer will be created
+                </p>
+              )}
             </div>
 
             <div>

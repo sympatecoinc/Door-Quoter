@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isProjectLocked, createLockedError } from '@/lib/project-status'
 
 /**
  * Intelligently increments a base name that may contain numbers.
@@ -54,10 +55,11 @@ export async function POST(
       )
     }
 
-    // Get the original opening with all relations
+    // Get the original opening with all relations and project status
     const originalOpening = await prisma.opening.findUnique({
       where: { id: openingId },
       include: {
+        project: { select: { status: true } },
         panels: {
           include: {
             componentInstance: {
@@ -75,6 +77,11 @@ export async function POST(
         { error: 'Opening not found' },
         { status: 404 }
       )
+    }
+
+    // Check if project is locked for editing
+    if (isProjectLocked(originalOpening.project.status)) {
+      return NextResponse.json(createLockedError(originalOpening.project.status), { status: 403 })
     }
 
     const trimmedBaseName = baseName.trim()

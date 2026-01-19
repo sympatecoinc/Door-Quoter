@@ -463,6 +463,7 @@ interface ProductPlanView {
   fileName?: string
   fileType?: string
   orientation?: string
+  referenceWidth?: number | null
   displayOrder: number
   createdAt: string
   updatedAt: string
@@ -542,11 +543,19 @@ export default function ProductDetailView({
   const [newPlanViewName, setNewPlanViewName] = useState('')
   const [newPlanViewFile, setNewPlanViewFile] = useState<File | null>(null)
   const [newPlanViewOrientation, setNewPlanViewOrientation] = useState<string>('bottom')
+  const [newPlanViewReferenceWidth, setNewPlanViewReferenceWidth] = useState<string>('')
   const [uploadingPlanView, setUploadingPlanView] = useState(false)
   const [showDeletePlanViewModal, setShowDeletePlanViewModal] = useState(false)
   const [deletingPlanViewId, setDeletingPlanViewId] = useState<number | null>(null)
   const [deletingPlanViewName, setDeletingPlanViewName] = useState('')
   const [isDeletingPlanView, setIsDeletingPlanView] = useState(false)
+  const [showEditPlanViewModal, setShowEditPlanViewModal] = useState(false)
+  const [editingPlanView, setEditingPlanView] = useState<ProductPlanView | null>(null)
+  const [editPlanViewName, setEditPlanViewName] = useState('')
+  const [editPlanViewOrientation, setEditPlanViewOrientation] = useState('bottom')
+  const [editPlanViewFile, setEditPlanViewFile] = useState<File | null>(null)
+  const [editPlanViewReferenceWidth, setEditPlanViewReferenceWidth] = useState<string>('')
+  const [savingPlanView, setSavingPlanView] = useState(false)
   const [showElevationUpload, setShowElevationUpload] = useState(false)
   const [elevationFile, setElevationFile] = useState<File | null>(null)
   const [uploadingElevation, setUploadingElevation] = useState(false)
@@ -559,6 +568,11 @@ export default function ProductDetailView({
   const [minHeightValue, setMinHeightValue] = useState('')
   const [maxHeightValue, setMaxHeightValue] = useState('')
   const [savingSizeConstraints, setSavingSizeConstraints] = useState(false)
+  // Product Tolerances
+  const [editingTolerances, setEditingTolerances] = useState(false)
+  const [widthToleranceValue, setWidthToleranceValue] = useState('')
+  const [heightToleranceValue, setHeightToleranceValue] = useState('')
+  const [savingTolerances, setSavingTolerances] = useState(false)
   // Product Settings (Category & Default Width)
   const [editingProductSettings, setEditingProductSettings] = useState(false)
   const [productCategoryValue, setProductCategoryValue] = useState('')
@@ -891,7 +905,8 @@ export default function ProductDetailView({
           imageData,
           fileName: newPlanViewFile.name,
           fileType: newPlanViewFile.type,
-          orientation: newPlanViewOrientation
+          orientation: newPlanViewOrientation,
+          referenceWidth: newPlanViewReferenceWidth || null
         })
       })
 
@@ -905,8 +920,8 @@ export default function ProductDetailView({
         setNewPlanViewName('')
         setNewPlanViewFile(null)
         setNewPlanViewOrientation('bottom')
+        setNewPlanViewReferenceWidth('')
         setShowPlanViewForm(false)
-        alert('Plan view added successfully!')
       } else {
         alert('Failed to add plan view')
       }
@@ -951,6 +966,77 @@ export default function ProductDetailView({
       alert('Error deleting plan view')
     } finally {
       setIsDeletingPlanView(false)
+    }
+  }
+
+  function openEditPlanViewModal(planView: ProductPlanView) {
+    setEditingPlanView(planView)
+    setEditPlanViewName(planView.name)
+    setEditPlanViewOrientation(planView.orientation || 'bottom')
+    setEditPlanViewReferenceWidth(planView.referenceWidth?.toString() || '')
+    setEditPlanViewFile(null)
+    setShowEditPlanViewModal(true)
+  }
+
+  function closeEditPlanViewModal() {
+    setShowEditPlanViewModal(false)
+    setEditingPlanView(null)
+    setEditPlanViewName('')
+    setEditPlanViewOrientation('bottom')
+    setEditPlanViewReferenceWidth('')
+    setEditPlanViewFile(null)
+  }
+
+  async function handleSavePlanView(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingPlanView) return
+
+    const isFixedPanel = product.productType === 'FIXED_PANEL'
+    const planViewName = isFixedPanel ? 'Fixed Panel' : editPlanViewName.trim()
+
+    if (!planViewName) {
+      alert('Please provide a name for the plan view')
+      return
+    }
+
+    setSavingPlanView(true)
+    try {
+      const updateData: any = {
+        name: planViewName,
+        orientation: editPlanViewOrientation,
+        referenceWidth: editPlanViewReferenceWidth || null
+      }
+
+      // If a new file was selected, include the image data
+      if (editPlanViewFile) {
+        const imageData = await fileToBase64(editPlanViewFile)
+        updateData.imageData = imageData
+        updateData.fileName = editPlanViewFile.name
+        updateData.fileType = editPlanViewFile.type
+      }
+
+      const response = await fetch(`/api/products/${product.id}/plan-views/${editingPlanView.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      })
+
+      if (response.ok) {
+        // Refresh plan views list
+        const planViewsResponse = await fetch(`/api/products/${product.id}/plan-views`)
+        if (planViewsResponse.ok) {
+          const data = await planViewsResponse.json()
+          setPlanViews(data)
+        }
+        closeEditPlanViewModal()
+      } else {
+        alert('Failed to update plan view')
+      }
+    } catch (error) {
+      console.error('Error updating plan view:', error)
+      alert('Error updating plan view')
+    } finally {
+      setSavingPlanView(false)
     }
   }
 
@@ -1046,6 +1132,52 @@ export default function ProductDetailView({
       showError('Error updating size constraints')
     } finally {
       setSavingSizeConstraints(false)
+    }
+  }
+
+  // Product Tolerances functions
+  function startEditTolerances() {
+    setWidthToleranceValue(productDetails?.widthTolerance?.toString() || '')
+    setHeightToleranceValue(productDetails?.heightTolerance?.toString() || '')
+    setEditingTolerances(true)
+  }
+
+  function cancelEditTolerances() {
+    setWidthToleranceValue('')
+    setHeightToleranceValue('')
+    setEditingTolerances(false)
+  }
+
+  async function handleSaveTolerances() {
+    setSavingTolerances(true)
+    try {
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          widthTolerance: widthToleranceValue || null,
+          heightTolerance: heightToleranceValue || null
+        })
+      })
+
+      if (response.ok) {
+        // Refresh product details
+        const detailsResponse = await fetch(`/api/products/${product.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setProductDetails(data)
+        }
+        setEditingTolerances(false)
+        onRefresh()
+        showSuccess('Product tolerances updated successfully!')
+      } else {
+        showError('Failed to update product tolerances')
+      }
+    } catch (error) {
+      console.error('Error updating product tolerances:', error)
+      showError('Error updating product tolerances')
+    } finally {
+      setSavingTolerances(false)
     }
   }
 
@@ -1349,8 +1481,8 @@ export default function ProductDetailView({
       return
     }
     
-    // For hardware and fasteners, validate quantity
-    if ((masterPartFound.partType === 'Hardware' || masterPartFound.partType === 'Fastener') && !newPartQuantity.trim()) {
+    // For hardware, fasteners, and packaging, validate quantity
+    if ((masterPartFound.partType === 'Hardware' || masterPartFound.partType === 'Fastener' || masterPartFound.partType === 'Packaging') && !newPartQuantity.trim()) {
       alert(`Please enter a quantity for the ${masterPartFound.partType.toLowerCase()}`)
       return
     }
@@ -1936,6 +2068,27 @@ export default function ProductDetailView({
                 </div>
               )}
 
+              {masterPartFound && masterPartFound.partType === 'Packaging' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                    <input
+                      type="number"
+                      value={newPartQuantity}
+                      onChange={(e) => setNewPartQuantity(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      placeholder="e.g., 1 (boxes per unit)"
+                      step="0.01"
+                      min="0"
+                      required
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Number of packaging units per product (e.g., 1 box per door)
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {masterPartFound && (
                 <div className="flex justify-end space-x-3">
                   <button
@@ -1956,7 +2109,7 @@ export default function ProductDetailView({
                   </button>
                   <button
                     type="submit"
-                    disabled={creating || !masterPartFound || ((masterPartFound.partType === 'Extrusion' || masterPartFound.partType === 'CutStock') && (!newPartFormula || !newPartQuantity)) || ((masterPartFound.partType === 'Hardware' || masterPartFound.partType === 'Fastener') && !newPartQuantity)}
+                    disabled={creating || !masterPartFound || ((masterPartFound.partType === 'Extrusion' || masterPartFound.partType === 'CutStock') && (!newPartFormula || !newPartQuantity)) || ((masterPartFound.partType === 'Hardware' || masterPartFound.partType === 'Fastener' || masterPartFound.partType === 'Packaging') && !newPartQuantity)}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {creating ? 'Adding...' : 'Add Part'}
@@ -2053,22 +2206,43 @@ export default function ProductDetailView({
                     <div key={planView.id} className="bg-white rounded-lg border border-gray-200 p-4">
                       <div className="flex items-start justify-between mb-2">
                         <h4 className="font-medium text-gray-900">{planView.name}</h4>
-                        <button
-                          onClick={() => handleDeletePlanView(planView.id, planView.name)}
-                          className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                          title="Delete plan view"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center space-x-1">
+                          <button
+                            onClick={() => openEditPlanViewModal(planView)}
+                            className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                            title="Edit plan view"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeletePlanView(planView.id, planView.name)}
+                            className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                            title="Delete plan view"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                       <img
                         src={planView.imageData}
                         alt={planView.name}
                         className="w-full h-48 object-contain border border-gray-300 rounded bg-gray-50"
                       />
-                      {planView.fileName && (
-                        <p className="text-xs text-gray-500 mt-2">{planView.fileName}</p>
-                      )}
+                      <div className="flex items-center justify-between mt-2">
+                        {planView.fileName && (
+                          <p className="text-xs text-gray-500">{planView.fileName}</p>
+                        )}
+                        <div className="flex items-center space-x-2">
+                          {planView.fileType === 'image/png' && planView.referenceWidth && (
+                            <span className="text-xs text-blue-600">
+                              Ref: {planView.referenceWidth}"
+                            </span>
+                          )}
+                          <span className="text-xs text-gray-400">
+                            {planView.orientation === 'top' ? 'Align: Bottom' : 'Align: Top'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2748,6 +2922,115 @@ export default function ProductDetailView({
             )}
           </div>
         </div>
+        )}
+
+        {/* Product Tolerances Section - Only for SWING_DOOR, SLIDING_DOOR, FIXED_PANEL */}
+        {['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL'].includes(productDetails?.productType || product?.productType || '') && (
+          <div className="col-span-full mt-6">
+            <div className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Product Tolerances</h3>
+                  <p className="text-sm text-gray-500">
+                    Custom tolerances applied when this product is added to a finished opening
+                  </p>
+                </div>
+                {!editingTolerances && (
+                  <button
+                    onClick={startEditTolerances}
+                    className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                  >
+                    <Edit2 className="w-4 h-4 mr-1" />
+                    Edit Tolerances
+                  </button>
+                )}
+              </div>
+
+              {editingTolerances ? (
+                <div className="bg-white rounded-lg p-4 border border-gray-200">
+                  <div className="space-y-4">
+                    <p className="text-xs text-gray-500 bg-amber-50 p-3 rounded-lg border border-amber-200">
+                      <strong>Note:</strong> When this product is added to a finished opening, these tolerances will be used instead of the opening type defaults. Only the first product&apos;s tolerances apply to each opening.
+                    </p>
+                    <div className="grid grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Width Tolerance (inches)</label>
+                        <input
+                          type="number"
+                          step="0.0625"
+                          min="0"
+                          value={widthToleranceValue}
+                          onChange={(e) => setWidthToleranceValue(e.target.value)}
+                          placeholder="Use defaults"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Total deducted from rough width</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Height Tolerance (inches)</label>
+                        <input
+                          type="number"
+                          step="0.0625"
+                          min="0"
+                          value={heightToleranceValue}
+                          onChange={(e) => setHeightToleranceValue(e.target.value)}
+                          placeholder="Use defaults"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Total deducted from rough height</p>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end space-x-3 pt-2">
+                      <button
+                        onClick={cancelEditTolerances}
+                        disabled={savingTolerances}
+                        className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveTolerances}
+                        disabled={savingTolerances}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                      >
+                        {savingTolerances ? (
+                          <>
+                            <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4 mr-2" />
+                            Save
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Width Tolerance</h4>
+                    <span className="text-gray-900">
+                      {productDetails?.widthTolerance !== null && productDetails?.widthTolerance !== undefined
+                        ? `${productDetails.widthTolerance}"`
+                        : 'Use opening defaults'}
+                    </span>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Height Tolerance</h4>
+                    <span className="text-gray-900">
+                      {productDetails?.heightTolerance !== null && productDetails?.heightTolerance !== undefined
+                        ? `${productDetails.heightTolerance}"`
+                        : 'Use opening defaults'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Export Product Section */}
@@ -3468,6 +3751,26 @@ export default function ProductDetailView({
                 </div>
               )}
 
+              {newPlanViewFile && newPlanViewFile.type === 'image/png' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Reference Width (inches)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.125"
+                    min="1"
+                    value={newPlanViewReferenceWidth}
+                    onChange={(e) => setNewPlanViewReferenceWidth(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    placeholder="e.g., 36"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    The real-world width this image represents. Used to scale PNG images on PDFs based on panel width.
+                  </p>
+                </div>
+              )}
+
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
@@ -3476,6 +3779,7 @@ export default function ProductDetailView({
                     setNewPlanViewName('')
                     setNewPlanViewFile(null)
                     setNewPlanViewOrientation('bottom')
+                    setNewPlanViewReferenceWidth('')
                   }}
                   disabled={uploadingPlanView}
                   className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
@@ -3540,6 +3844,147 @@ export default function ProductDetailView({
                 {isDeletingPlanView ? 'Deleting...' : 'Delete Plan View'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Plan View Modal */}
+      {showEditPlanViewModal && editingPlanView && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Edit Plan View</h3>
+              <button
+                onClick={closeEditPlanViewModal}
+                className="p-2 hover:bg-gray-100 rounded-full"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePlanView} className="space-y-4">
+              {product.productType === 'FIXED_PANEL' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Plan View Name
+                  </label>
+                  <input
+                    type="text"
+                    value="Fixed Panel"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900"
+                    disabled
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Fixed Panel products automatically use &quot;Fixed Panel&quot; as the plan view name.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Plan View Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={editPlanViewName}
+                    onChange={(e) => setEditPlanViewName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    placeholder="e.g., Right-In, Right-Out, Left-In"
+                    required
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Plan View Image (SVG/PNG)
+                </label>
+                <div className="mb-2">
+                  <img
+                    src={editPlanViewFile ? URL.createObjectURL(editPlanViewFile) : editingPlanView.imageData}
+                    alt={editingPlanView.name}
+                    className="w-full h-32 object-contain border border-gray-300 rounded bg-gray-50"
+                  />
+                </div>
+                <input
+                  type="file"
+                  accept=".svg,image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) setEditPlanViewFile(file)
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                />
+                {editPlanViewFile && (
+                  <p className="text-xs text-green-600 mt-1">New image selected: {editPlanViewFile.name}</p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">Leave empty to keep current image</p>
+              </div>
+
+              {product.productType !== 'FIXED_PANEL' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Orientation *
+                  </label>
+                  <select
+                    value={editPlanViewOrientation}
+                    onChange={(e) => setEditPlanViewOrientation(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  >
+                    <option value="bottom">Bottom (align top of PNG with other components)</option>
+                    <option value="top">Top (align bottom of PNG with other components)</option>
+                  </select>
+                </div>
+              )}
+
+              {((editPlanViewFile && editPlanViewFile.type === 'image/png') ||
+                (!editPlanViewFile && editingPlanView.fileType === 'image/png')) && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Reference Width (inches)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.125"
+                    min="1"
+                    value={editPlanViewReferenceWidth}
+                    onChange={(e) => setEditPlanViewReferenceWidth(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    placeholder="e.g., 36"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    The real-world width this image represents. Used to scale PNG images on PDFs based on panel width.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={closeEditPlanViewModal}
+                  disabled={savingPlanView}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingPlanView || (product.productType !== 'FIXED_PANEL' && !editPlanViewName.trim())}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                >
+                  {savingPlanView ? (
+                    <>
+                      <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Changes
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

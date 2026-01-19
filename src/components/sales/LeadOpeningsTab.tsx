@@ -56,9 +56,10 @@ interface LeadData {
 interface LeadOpeningsTabProps {
   lead: LeadData
   onOpeningsUpdated: () => void
+  isCurrentVersion?: boolean
 }
 
-export default function LeadOpeningsTab({ lead, onOpeningsUpdated }: LeadOpeningsTabProps) {
+export default function LeadOpeningsTab({ lead, onOpeningsUpdated, isCurrentVersion = true }: LeadOpeningsTabProps) {
   const { openProjectFromSalesDashboard } = useAppStore()
 
   const handleOpenInEditor = () => {
@@ -98,7 +99,13 @@ export default function LeadOpeningsTab({ lead, onOpeningsUpdated }: LeadOpening
         </div>
         <button
           onClick={handleOpenInEditor}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          disabled={!isCurrentVersion}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+            isCurrentVersion
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+          }`}
+          title={!isCurrentVersion ? 'Cannot edit historical versions' : undefined}
         >
           <ExternalLink className="w-4 h-4" />
           Open in Project Editor
@@ -146,15 +153,19 @@ export default function LeadOpeningsTab({ lead, onOpeningsUpdated }: LeadOpening
           <LayoutGrid className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No openings yet</h3>
           <p className="text-gray-500 mb-4">
-            Add openings to this lead using the Project Editor.
+            {isCurrentVersion
+              ? 'Add openings to this lead using the Project Editor.'
+              : 'This historical version has no openings.'}
           </p>
-          <button
-            onClick={handleOpenInEditor}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Opening
-          </button>
+          {isCurrentVersion && (
+            <button
+              onClick={handleOpenInEditor}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Opening
+            </button>
+          )}
         </div>
       )}
 

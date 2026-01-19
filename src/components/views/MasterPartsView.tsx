@@ -22,6 +22,7 @@ interface MasterPart {
   isOption?: boolean
   isMillFinish?: boolean
   addFinishToPartNumber?: boolean
+  appendDirectionToPartNumber?: boolean
   addToPackingList?: boolean
   includeOnPickList?: boolean
   includeInJambKit?: boolean
@@ -256,6 +257,7 @@ export default function MasterPartsView() {
   const [isOption, setIsOption] = useState(false)
   const [isMillFinish, setIsMillFinish] = useState(false)
   const [addFinishToPartNumber, setAddFinishToPartNumber] = useState(false)
+  const [appendDirectionToPartNumber, setAppendDirectionToPartNumber] = useState(false)
   const [addToPackingList, setAddToPackingList] = useState(false)
   const [includeOnPickList, setIncludeOnPickList] = useState(false)
   const [includeInJambKit, setIncludeInJambKit] = useState(false)
@@ -465,6 +467,7 @@ export default function MasterPartsView() {
     setIsOption(false)
     setIsMillFinish(false)
     setAddFinishToPartNumber(false)
+    setAppendDirectionToPartNumber(false)
     setAddToPackingList(false)
     setIncludeOnPickList(false)
     setIncludeInJambKit(false)
@@ -490,6 +493,7 @@ export default function MasterPartsView() {
           isOption: (partType === 'Hardware' || partType === 'Extrusion' || partType === 'CutStock') ? isOption : false,
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
+          appendDirectionToPartNumber: partType === 'Hardware' ? appendDirectionToPartNumber : false,
           addToPackingList: partType === 'Hardware' ? addToPackingList : false,
           includeOnPickList: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? includeOnPickList : false,
           includeInJambKit: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? includeInJambKit : false
@@ -534,6 +538,7 @@ export default function MasterPartsView() {
           isOption: (partType === 'Hardware' || partType === 'Extrusion' || partType === 'CutStock') ? isOption : false,
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
+          appendDirectionToPartNumber: partType === 'Hardware' ? appendDirectionToPartNumber : false,
           addToPackingList: partType === 'Hardware' ? addToPackingList : false,
           includeOnPickList: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? includeOnPickList : false,
           includeInJambKit: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? includeInJambKit : false
@@ -710,6 +715,7 @@ export default function MasterPartsView() {
     setIsOption(part.isOption || false)
     setIsMillFinish(part.isMillFinish || false)
     setAddFinishToPartNumber(part.addFinishToPartNumber || false)
+    setAppendDirectionToPartNumber(part.appendDirectionToPartNumber || false)
     setAddToPackingList(part.addToPackingList || false)
     setIncludeOnPickList(part.includeOnPickList || false)
     setIncludeInJambKit(part.includeInJambKit || false)
@@ -2123,8 +2129,8 @@ export default function MasterPartsView() {
                       // Keep isOption - extrusions can be category options too
                     } else {
                       setUnit('') // Reset unit for other types
-                      if (selectedType !== 'Hardware' && selectedType !== 'Extrusion') {
-                        setIsOption(false) // Reset isOption for non-hardware/extrusion types
+                      if (selectedType !== 'Hardware' && selectedType !== 'Extrusion' && selectedType !== 'CutStock') {
+                        setIsOption(false) // Reset isOption for non-hardware/extrusion/cutstock types
                       }
                     }
                   }}
@@ -2236,6 +2242,23 @@ export default function MasterPartsView() {
                         </label>
                         <span className="ml-2 text-xs text-gray-500">
                           (Appends finish code like -BL, -C2 to part number)
+                        </span>
+                      </div>
+
+                      {/* Append direction to part number checkbox */}
+                      <div className="flex items-center mt-2">
+                        <input
+                          type="checkbox"
+                          id="appendDirectionToPartNumber"
+                          checked={appendDirectionToPartNumber}
+                          onChange={(e) => setAppendDirectionToPartNumber(e.target.checked)}
+                          className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="appendDirectionToPartNumber" className="text-sm font-medium text-gray-700">
+                          Add direction to part number in BOM
+                        </label>
+                        <span className="ml-2 text-xs text-gray-500">
+                          (Appends swing/sliding direction from plan view name)
                         </span>
                       </div>
 

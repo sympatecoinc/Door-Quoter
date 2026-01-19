@@ -509,12 +509,16 @@ export function scaleElement(
  * - mullions: Evenly distributed markers, scaled around center
  * - right-jamb: Static elements at right edge, translated by widthDelta
  */
-function adjustPlanViewElements(svgElement: Element, scaling: ComponentScaling, originalDimensions: ScalingDimensions) {
+function adjustPlanViewElements(svgElement: Element, scaling: ComponentScaling, originalDimensions: ScalingDimensions): { contentRightEdge: number } {
   // Get the original viewBox width for calculating translations
   const origWidth = originalDimensions.width
   const targetWidth = origWidth * scaling.scaleX
   const widthDelta = targetWidth - origWidth
   const midpoint = origWidth / 2
+
+  // Track the actual right edge of content after all transformations
+  // This is important for calculating the correct viewBox when scaling down
+  let contentRightEdge = targetWidth  // Default to scaled width
 
   console.log(`Plan view adjustment: origWidth=${origWidth}, targetWidth=${targetWidth}, widthDelta=${widthDelta}, midpoint=${midpoint}`)
 
@@ -632,7 +636,14 @@ function adjustPlanViewElements(svgElement: Element, scaling: ComponentScaling, 
         `${currentTransform} ${translateTransform}` :
         translateTransform
       node.setAttribute('transform', newTransform)
+
+      // Track the final right edge of the right-jamb after translation
+      // This is critical for calculating viewBox - the jamb width stays constant even when scaling down
+      const rightJambFinalRightEdge = bounds.max + rightJambTranslation
+      contentRightEdge = Math.max(contentRightEdge, rightJambFinalRightEdge)
+
       console.log(`  → Right jamb: original gap to grow = ${originalGap.toFixed(1)}, translated by ${rightJambTranslation.toFixed(1)}`)
+      console.log(`  → Right jamb final right edge: ${rightJambFinalRightEdge.toFixed(1)}`)
       return // Don't process children
     }
 
@@ -684,7 +695,8 @@ function adjustPlanViewElements(svgElement: Element, scaling: ComponentScaling, 
 
     // Static groups: determine if left or right based on content position
     if (id.includes('static') || className.includes('static') || id === 'left-jamb' || id === 'left-detail') {
-      const groupX = getGroupXPosition(node)
+      const bounds = getGroupXBounds(node)
+      const groupX = bounds.min
       console.log(`  → Static group "${id}" at x=${groupX}`)
 
       // If this static group is on the right side of the SVG, translate it
@@ -699,7 +711,13 @@ function adjustPlanViewElements(svgElement: Element, scaling: ComponentScaling, 
           `${currentTransform} ${translateTransform}` :
           translateTransform
         node.setAttribute('transform', newTransform)
+
+        // Track the final right edge of right-side static groups
+        const staticFinalRightEdge = bounds.max + staticTranslation
+        contentRightEdge = Math.max(contentRightEdge, staticFinalRightEdge)
+
         console.log(`  → RIGHT static group translated by ${staticTranslation.toFixed(1)}`)
+        console.log(`  → RIGHT static group final right edge: ${staticFinalRightEdge.toFixed(1)}`)
       } else {
         console.log(`  → LEFT static group - no transform`)
       }
@@ -722,6 +740,10 @@ function adjustPlanViewElements(svgElement: Element, scaling: ComponentScaling, 
       processGroup(child as Element)
     }
   }
+
+  console.log(`Plan view final content right edge: ${contentRightEdge.toFixed(1)} (targetWidth: ${targetWidth.toFixed(1)})`)
+
+  return { contentRightEdge }
 }
 
 /**
@@ -889,20 +911,21 @@ export function processParametricSVG(
   // Handle plan view specific adjustments
   if (mode === 'plan') {
     console.log('→ Applying plan view adjustments')
-    adjustPlanViewElements(svgElement, scaling, originalDimensions)
+    const { contentRightEdge } = adjustPlanViewElements(svgElement, scaling, originalDimensions)
 
     // For plan views with group transforms:
-    // The transforms (scale, translate) expand the content beyond original viewBox
-    // We need to expand the viewBox to match the new content bounds
-    // viewBox expands to targetPixelWidth to show all transformed content
-    const finalViewBoxWidth = targetPixelWidth
+    // The transforms (scale, translate) may extend content beyond the scaled viewBox
+    // This happens when scaling DOWN: the right-jamb is translated (not scaled),
+    // so its constant width can extend beyond the shrunk viewBox
+    // Use the larger of scaled width or actual content right edge + safety margin
+    const finalViewBoxWidth = Math.max(targetPixelWidth, contentRightEdge + 1)
     const finalViewBoxHeight = originalDimensions.height
 
     console.log(`Plan view final viewBox: 0 0 ${finalViewBoxWidth} ${finalViewBoxHeight}`)
-    console.log(`Plan view final width/height: ${targetPixelWidth} x ${originalDimensions.height}`)
+    console.log(`Plan view final width/height: ${finalViewBoxWidth} x ${originalDimensions.height}`)
 
     svgElement.setAttribute('viewBox', `0 0 ${finalViewBoxWidth} ${finalViewBoxHeight}`)
-    svgElement.setAttribute('width', targetPixelWidth.toString())
+    svgElement.setAttribute('width', finalViewBoxWidth.toString())
     svgElement.setAttribute('height', originalDimensions.height.toString())
     svgElement.setAttribute('preserveAspectRatio', 'none')
   } else {

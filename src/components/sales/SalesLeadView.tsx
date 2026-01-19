@@ -17,6 +17,7 @@ export interface LeadSummary {
   id: number
   name: string
   status: ProjectStatus
+  version: number
   value: number
   openingsCount: number
   updatedAt: string
@@ -32,7 +33,7 @@ export interface LeadSummary {
 }
 
 export default function SalesLeadView() {
-  const { salesLeadId, showSalesLeadView, closeSalesLeadView, setSalesLeadId, salesViewMode } = useAppStore()
+  const { salesLeadId, showSalesLeadView, closeSalesLeadView, setSalesLeadId, salesViewMode, setSalesViewMode } = useAppStore()
   const [leads, setLeads] = useState<LeadSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -83,9 +84,6 @@ export default function SalesLeadView() {
       lead.prospectCompanyName?.toLowerCase().includes(searchLower)
   })
 
-  // Find the selected lead
-  const selectedLead = leads.find(l => l.id === salesLeadId)
-
   if (!showSalesLeadView) return null
 
   return (
@@ -121,11 +119,13 @@ export default function SalesLeadView() {
 
           {/* Right Panel - Lead Detail */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            {selectedLead ? (
+            {salesLeadId ? (
               <LeadDetailPanel
-                leadId={selectedLead.id}
+                leadId={salesLeadId}
                 onClose={() => setSalesLeadId(null)}
                 onLeadUpdated={fetchLeads}
+                onVersionSwitch={setSalesLeadId}
+                onStatusCategoryChange={setSalesViewMode}
               />
             ) : (
               <div className="flex-1 flex items-center justify-center text-gray-500">

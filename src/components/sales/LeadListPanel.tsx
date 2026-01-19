@@ -81,9 +81,16 @@ export default function LeadListPanel({
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-gray-900 truncate">
-                    {lead.name}
-                  </span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-medium text-gray-900 truncate">
+                      {lead.name}
+                    </span>
+                    {lead.version > 1 && (
+                      <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-medium flex-shrink-0">
+                        v{lead.version}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {lead.hasThinWall && (
                       <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
@@ -117,7 +124,7 @@ export default function LeadListPanel({
                     {lead.latestQuote ? (
                       <>
                         <span className="text-xs font-bold text-emerald-600">v{lead.latestQuote.version}</span>
-                        {' '}${lead.latestQuote.totalPrice.toLocaleString()}
+                        {' '}${lead.latestQuote.totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </>
                     ) : (
                       <span className="text-gray-400">--</span>

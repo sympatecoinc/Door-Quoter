@@ -27,6 +27,7 @@ interface AppState {
   setSalesLeadId: (id: number | null) => void
   setShowSalesLeadView: (show: boolean) => void
   openSalesLead: (id: number, mode: SalesViewMode) => void
+  setSalesViewMode: (mode: SalesViewMode) => void
   closeSalesLeadView: () => void
   setCameFromSalesDashboard: (value: boolean) => void
   openProjectFromSalesDashboard: (projectId: number) => void
@@ -56,6 +57,7 @@ export const useAppStore = create<AppState>((set) => ({
   setSalesLeadId: (id) => set({ salesLeadId: id }),
   setShowSalesLeadView: (show) => set({ showSalesLeadView: show }),
   openSalesLead: (id, mode) => set({ salesLeadId: id, showSalesLeadView: true, salesViewMode: mode }),
+  setSalesViewMode: (mode) => set({ salesViewMode: mode }),
   closeSalesLeadView: () => set({ showSalesLeadView: false }),
   setCameFromSalesDashboard: (value) => set({ cameFromSalesDashboard: value }),
   openProjectFromSalesDashboard: (projectId) => set({

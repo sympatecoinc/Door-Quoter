@@ -28,7 +28,7 @@ interface LogisticsProject {
   updatedAt: string
 }
 
-type DownloadType = 'packinglist' | 'labels' | 'all'
+type DownloadType = 'packinglist' | 'labels' | 'boxlist' | 'all'
 
 interface DownloadingState {
   [projectId: number]: {
@@ -136,6 +136,10 @@ export default function LogisticsView() {
           url = `/api/projects/${projectId}/packing-list/stickers`
           filename = `${safeProjectName}-packing-stickers.pdf`
           break
+        case 'boxlist':
+          url = `/api/projects/${projectId}/bom?boxlist=true&format=pdf`
+          filename = `${safeProjectName}-box-cut-list.pdf`
+          break
         case 'all':
           url = `/api/projects/${projectId}/logistics-all`
           filename = `${safeProjectName}-logistics-documents.zip`
@@ -216,6 +220,7 @@ export default function LogisticsView() {
   const downloadOptions = [
     { value: 'packinglist' as DownloadType, label: 'Packing List (PDF)', icon: ClipboardList },
     { value: 'labels' as DownloadType, label: 'Labels/Stickers (PDF)', icon: Tag },
+    { value: 'boxlist' as DownloadType, label: 'Box Cut List (PDF)', icon: Package2 },
     { value: 'all' as DownloadType, label: 'All Documents (ZIP)', icon: Download },
   ]
 

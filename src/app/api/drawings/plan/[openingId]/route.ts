@@ -259,29 +259,55 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             }
           } else {
             // PNG files: calculate height based on actual PNG aspect ratio
-            // Scale factor to reduce PNG plan view size
-            // Swing doors need different scaling based on whether they're standalone or with other panels
-            let PNG_PLAN_VIEW_SCALE = 0.67
-            if (product.productType === 'SWING_DOOR') {
-              // Standalone swing doors need moderate scale
-              // Swing doors with other panels need slightly smaller scale to stay proportional
-              const isStandalone = opening.panels.length === 1
-              PNG_PLAN_VIEW_SCALE = isStandalone ? 0.65 : 0.5
-            }
-
-            console.log(`Processing PNG plan view for panel ${panel.id} (${product.productType}, standalone: ${opening.panels.length === 1})`)
-            displayWidth = panel.width * PNG_PLAN_VIEW_SCALE
-
             const pngDims = getPngDimensions(imageData)
-            if (pngDims) {
-              // Calculate display height maintaining the PNG's aspect ratio
+
+            // Check if plan view has a reference width for calibrated scaling
+            const referenceWidth = (matchingPlanView as any).referenceWidth as number | null
+
+            if (referenceWidth && pngDims) {
+              // Calibrated scaling: PNG displays proportionally to actual panel width
+              // referenceWidth tells us what real-world width the PNG represents
+              // This makes the PNG proportional to other panels in the opening
+
+              // Scale factor: panel width relative to reference width
+              const proportionalScale = panel.width / referenceWidth
+
+              // Display at panel width (scaled proportionally from reference)
+              // This makes a 36" swing door PNG appear same width as a 36" fixed panel SVG
+              displayWidth = panel.width
+
+              // Maintain PNG aspect ratio for height
               displayHeight = (displayWidth / pngDims.width) * pngDims.height
+
+              console.log(`Processing PNG plan view for panel ${panel.id} with reference width calibration`)
               console.log(`PNG original: ${pngDims.width}px x ${pngDims.height}px`)
-              console.log(`PNG display: ${displayWidth.toFixed(2)}" x ${displayHeight.toFixed(2)}" (scaled ${PNG_PLAN_VIEW_SCALE})`)
+              console.log(`Reference width: ${referenceWidth}", Panel width: ${panel.width}"`)
+              console.log(`Proportional scale: ${proportionalScale.toFixed(3)}`)
+              console.log(`PNG display: ${displayWidth.toFixed(2)}" x ${displayHeight.toFixed(2)}"`)
             } else {
-              // Fallback: use scaled width as height if dimensions can't be read
-              displayHeight = displayWidth
-              console.log(`PNG dimensions could not be read, using square fallback: ${displayWidth.toFixed(2)}" x ${displayHeight.toFixed(2)}"`)
+              // Fallback: Legacy scaling with hardcoded scale factors
+              // Swing doors need different scaling based on whether they're standalone or with other panels
+              let PNG_PLAN_VIEW_SCALE = 0.67
+              if (product.productType === 'SWING_DOOR') {
+                // Standalone swing doors need moderate scale
+                // Swing doors with other panels need slightly smaller scale to stay proportional
+                const isStandalone = opening.panels.length === 1
+                PNG_PLAN_VIEW_SCALE = isStandalone ? 0.65 : 0.5
+              }
+
+              console.log(`Processing PNG plan view for panel ${panel.id} (${product.productType}, standalone: ${opening.panels.length === 1})`)
+              displayWidth = panel.width * PNG_PLAN_VIEW_SCALE
+
+              if (pngDims) {
+                // Calculate display height maintaining the PNG's aspect ratio
+                displayHeight = (displayWidth / pngDims.width) * pngDims.height
+                console.log(`PNG original: ${pngDims.width}px x ${pngDims.height}px`)
+                console.log(`PNG display: ${displayWidth.toFixed(2)}" x ${displayHeight.toFixed(2)}" (scaled ${PNG_PLAN_VIEW_SCALE})`)
+              } else {
+                // Fallback: use scaled width as height if dimensions can't be read
+                displayHeight = displayWidth
+                console.log(`PNG dimensions could not be read, using square fallback: ${displayWidth.toFixed(2)}" x ${displayHeight.toFixed(2)}"`)
+              }
             }
           }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isProjectLocked, createLockedError } from '@/lib/project-status'
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,6 +21,18 @@ export async function POST(request: NextRequest) {
         { error: 'All opening IDs must be valid positive numbers' },
         { status: 400 }
       )
+    }
+
+    // Check if any of the openings belong to a locked project
+    const openingsWithStatus = await prisma.opening.findMany({
+      where: { id: { in: validIds } },
+      include: { project: { select: { status: true } } }
+    })
+
+    for (const opening of openingsWithStatus) {
+      if (isProjectLocked(opening.project.status)) {
+        return NextResponse.json(createLockedError(opening.project.status), { status: 403 })
+      }
     }
 
     // Delete all openings in a single transaction (cascade handles related panels)

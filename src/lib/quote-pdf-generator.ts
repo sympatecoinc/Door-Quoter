@@ -8,6 +8,7 @@ import fs from 'fs'
 import path from 'path'
 import sharp from 'sharp'
 import { renderSvgToPng, decodeSvgData } from './svg-renderer'
+import { downloadFile } from './gcs-storage'
 
 /**
  * Extracts width and height from PNG image data (base64 or buffer)
@@ -210,10 +211,10 @@ export async function createQuotePDF(
   try {
     // Helper function to merge a single PDF attachment
     async function mergePdfAttachment(attachment: QuoteAttachment, targetPdf: PDFDocument) {
-      const attachmentPath = resolveAttachmentPath(attachment, quoteData.project.id)
+      const attachmentBuffer = await getAttachmentBuffer(attachment, quoteData.project.id)
 
-      if (!fs.existsSync(attachmentPath)) {
-        console.error(`PDF attachment not found: ${attachmentPath}`)
+      if (!attachmentBuffer) {
+        console.error(`PDF attachment not found for: ${attachment.filename}`)
         // Add a placeholder page for the missing PDF
         const placeholderPdf = new jsPDF({
           orientation: 'portrait',
@@ -238,12 +239,11 @@ export async function createQuotePDF(
       }
 
       try {
-        const attachmentBytes = await fs.promises.readFile(attachmentPath)
-        const attachmentPdf = await PDFDocument.load(attachmentBytes)
+        const attachmentPdf = await PDFDocument.load(attachmentBuffer)
         const pages = await targetPdf.copyPages(attachmentPdf, attachmentPdf.getPageIndices())
         return pages
       } catch (error) {
-        console.error(`Error loading PDF attachment ${attachmentPath}:`, error)
+        console.error(`Error loading PDF attachment ${attachment.filename}:`, error)
         // Add error placeholder page
         const errorPdf = new jsPDF({
           orientation: 'portrait',
@@ -350,31 +350,35 @@ export async function createQuotePDF(
 }
 
 /**
- * Helper function to resolve the filesystem path for an attachment
+ * Helper function to get attachment buffer from GCS or filesystem
  */
-function resolveAttachmentPath(
+async function getAttachmentBuffer(
   attachment: QuoteAttachment & { isPersistent?: boolean },
   projectId: number
-): string {
-  if (attachment.isPersistent) {
-    // Persistent quote documents are stored in /uploads/quote-documents/[docId]/[filename]
-    return path.join(
-      process.cwd(),
-      'public',
-      'uploads',
-      'quote-documents',
-      String(attachment.id),
-      attachment.filename
-    )
-  } else {
-    // Project-specific attachments are stored in /uploads/quote-attachments/[projectId]/[filename]
-    return path.join(
-      process.cwd(),
-      'uploads',
-      'quote-attachments',
-      String(projectId),
-      attachment.filename
-    )
+): Promise<Buffer | null> {
+  try {
+    if (attachment.isPersistent) {
+      // Persistent quote documents are stored locally in /uploads/quote-documents/[docId]/[filename]
+      const localPath = path.join(
+        process.cwd(),
+        'public',
+        'uploads',
+        'quote-documents',
+        String(attachment.id),
+        attachment.filename
+      )
+      if (fs.existsSync(localPath)) {
+        return fs.readFileSync(localPath)
+      }
+      return null
+    } else {
+      // Project-specific attachments are stored in GCS
+      const gcsPath = `quote-attachments/${projectId}/${attachment.filename}`
+      return await downloadFile(gcsPath)
+    }
+  } catch (error) {
+    console.error('Error getting attachment buffer:', error)
+    return null
   }
 }
 
@@ -394,17 +398,37 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
   // Right side: Company logo above the date
   if (quoteData.companyLogo) {
     try {
-      const logoPath = path.join(process.cwd(), 'uploads', 'branding', quoteData.companyLogo)
-      if (fs.existsSync(logoPath)) {
-        const logoBuffer = fs.readFileSync(logoPath)
-        const logoExt = path.extname(quoteData.companyLogo).toLowerCase().replace('.', '')
+      // Parse the logo data - it's now stored as JSON with GCS path
+      let logoBuffer: Buffer | null = null
+      let logoMimeType = 'image/png'
+
+      try {
+        const logoInfo = JSON.parse(quoteData.companyLogo)
+        if (logoInfo.gcsPath) {
+          // New GCS storage format
+          logoBuffer = await downloadFile(logoInfo.gcsPath)
+          logoMimeType = logoInfo.mimeType || 'image/png'
+        }
+      } catch {
+        // Legacy format - try filesystem (will be removed after migration)
+        const logoPath = path.join(process.cwd(), 'uploads', 'branding', quoteData.companyLogo)
+        if (fs.existsSync(logoPath)) {
+          logoBuffer = fs.readFileSync(logoPath)
+          const logoExt = path.extname(quoteData.companyLogo).toLowerCase()
+          logoMimeType = logoExt === '.svg' ? 'image/svg+xml' :
+                        logoExt === '.jpg' || logoExt === '.jpeg' ? 'image/jpeg' : 'image/png'
+        }
+      }
+
+      if (logoBuffer) {
+        const logoExt = logoMimeType.split('/')[1]
 
         // Resize logo to reasonable dimensions for PDF (max 600px width for good print quality)
         // This dramatically reduces file size while maintaining visual quality
         let processedLogoBuffer: Buffer
         let imageFormat: 'PNG' | 'JPEG' = 'PNG'
 
-        if (logoExt === 'svg') {
+        if (logoExt === 'svg+xml' || logoExt === 'svg') {
           // SVG logos don't need resizing
           processedLogoBuffer = logoBuffer
         } else {
@@ -446,9 +470,9 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
         }
 
         const logoBase64 = processedLogoBuffer.toString('base64')
-        const mimeType = imageFormat === 'JPEG' ? 'image/jpeg' :
-                         (logoExt === 'svg' ? 'image/svg+xml' : 'image/png')
-        const logoData = `data:${mimeType};base64,${logoBase64}`
+        const finalMimeType = imageFormat === 'JPEG' ? 'image/jpeg' :
+                         (logoExt === 'svg+xml' || logoExt === 'svg' ? 'image/svg+xml' : 'image/png')
+        const logoData = `data:${finalMimeType};base64,${logoBase64}`
 
         // Position logo in top right, above where date will be
         const logoX = pageWidth - 20 - finalWidth
@@ -684,31 +708,26 @@ async function addQuoteItemsTable(
 
     let contentY = currentY + cellPadding + 4
 
-    // Opening name as header (bold, larger font)
+    // Opening name as header with dimensions (bold, larger font)
+    // Format: "Opening Name | 48" W × 96" H"
     pdf.setFontSize(11)
     pdf.setFont('helvetica', 'bold')
-    pdf.text(item.name, marginX + cellPadding, contentY)
-
-    // Direction in accent color (bold, dark blue)
-    if (item.openingDirections && item.openingDirections.length > 0) {
-      const nameWidth = pdf.getTextWidth(item.name)
-      pdf.setTextColor(30, 64, 175) // Dark blue accent (#1E40AF)
-      pdf.text(` (${item.openingDirections.join(', ')})`, marginX + cellPadding + nameWidth, contentY)
-      pdf.setTextColor(0, 0, 0) // Reset to black
-    }
+    const nameWithSize = `${item.name} | ${item.dimensions}`
+    pdf.text(nameWithSize, marginX + cellPadding, contentY)
     contentY += 5
 
-    // Opening type (description - e.g., "1 Sliding Door") - smaller, normal weight
+    // Opening type (description - e.g., "1 Sliding Door") with direction after
+    // Format: "1 Fixed Panel, 1 Swing Door (LO / RI)"
     pdf.setFontSize(9)
     pdf.setFont('helvetica', 'normal')
     pdf.setTextColor(100, 100, 100)
-    pdf.text(item.description, marginX + cellPadding, contentY)
+    let descriptionText = item.description
+    // Add opening directions after the component type description
+    if (item.openingDirections && item.openingDirections.length > 0) {
+      descriptionText += ` (${item.openingDirections.join(' / ')})`
+    }
+    pdf.text(descriptionText, marginX + cellPadding, contentY)
     pdf.setTextColor(0, 0, 0)
-    contentY += 5
-
-    // Specifications - just dimensions
-    pdf.setFontSize(8)
-    pdf.text(item.dimensions, marginX + cellPadding, contentY)
     contentY += 8
 
     // Options section - always show with glass type and color
@@ -1191,31 +1210,11 @@ async function addAttachmentPage(
   pdf.text(displayName, pageWidth / 2, currentY, { align: 'center' })
   currentY += 10
 
-  // Determine the correct path based on whether this is a persistent document or project-specific attachment
-  let attachmentPath: string
-  if (attachment.isPersistent) {
-    // Persistent quote documents are stored in /uploads/quote-documents/[docId]/[filename]
-    attachmentPath = path.join(
-      process.cwd(),
-      'public',
-      'uploads',
-      'quote-documents',
-      String(attachment.id),
-      attachment.filename
-    )
-  } else {
-    // Project-specific attachments are stored in /uploads/quote-attachments/[projectId]/[filename]
-    attachmentPath = path.join(
-      process.cwd(),
-      'uploads',
-      'quote-attachments',
-      String(projectId),
-      attachment.filename
-    )
-  }
+  // Get attachment buffer from GCS or filesystem
+  const attachmentBuffer = await getAttachmentBuffer(attachment, projectId)
 
-  if (!fs.existsSync(attachmentPath)) {
-    console.error(`Attachment file not found: ${attachmentPath}`)
+  if (!attachmentBuffer) {
+    console.error(`Attachment file not found: ${attachment.filename}`)
     pdf.setFontSize(10)
     pdf.setTextColor(150, 150, 150)
     pdf.text('Attachment file not found', pageWidth / 2, pageHeight / 2, { align: 'center' })
@@ -1225,7 +1224,7 @@ async function addAttachmentPage(
 
   // Handle different file types
   if (attachment.mimeType.startsWith('image/')) {
-    await addImageAttachment(pdf, attachmentPath, attachment.mimeType, currentY, pageWidth, pageHeight, marginX, marginY)
+    await addImageAttachmentFromBuffer(pdf, attachmentBuffer, attachment.mimeType, currentY, pageWidth, pageHeight, marginX, marginY)
   } else if (attachment.mimeType === 'application/pdf') {
     // For PDF attachments, we'll add a note and handle embedding in the future
     // For now, just indicate that a PDF spec sheet is included
@@ -1239,11 +1238,11 @@ async function addAttachmentPage(
 }
 
 /**
- * Adds an image attachment to the PDF
+ * Adds an image attachment to the PDF from a buffer
  */
-async function addImageAttachment(
+async function addImageAttachmentFromBuffer(
   pdf: jsPDF,
-  imagePath: string,
+  imageBuffer: Buffer,
   mimeType: string,
   startY: number,
   pageWidth: number,
@@ -1252,8 +1251,6 @@ async function addImageAttachment(
   marginY: number
 ): Promise<void> {
   try {
-    // Read image file
-    const imageBuffer = fs.readFileSync(imagePath)
     const imageBase64 = imageBuffer.toString('base64')
     const imageType = mimeType.split('/')[1].toUpperCase()
 

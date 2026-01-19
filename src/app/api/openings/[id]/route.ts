@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isProjectLocked, createLockedError } from '@/lib/project-status'
 
 export async function GET(
   request: NextRequest,
@@ -81,9 +82,10 @@ export async function PUT(
       heightToleranceTotal
     } = await request.json()
 
-    // Get existing opening data
+    // Get existing opening data with project status
     const existingOpening = await prisma.opening.findUnique({
-      where: { id: openingId }
+      where: { id: openingId },
+      include: { project: { select: { status: true } } }
     })
 
     if (!existingOpening) {
@@ -91,6 +93,11 @@ export async function PUT(
         { error: 'Opening not found' },
         { status: 404 }
       )
+    }
+
+    // Check if project is locked for editing
+    if (isProjectLocked(existingOpening.project.status)) {
+      return NextResponse.json(createLockedError(existingOpening.project.status), { status: 403 })
     }
 
     const updateData: any = {}
@@ -230,9 +237,10 @@ export async function DELETE(
       )
     }
 
-    // Check if opening exists
+    // Check if opening exists and get project status
     const opening = await prisma.opening.findUnique({
-      where: { id: openingId }
+      where: { id: openingId },
+      include: { project: { select: { status: true } } }
     })
 
     if (!opening) {
@@ -240,6 +248,11 @@ export async function DELETE(
         { error: 'Opening not found' },
         { status: 404 }
       )
+    }
+
+    // Check if project is locked for editing
+    if (isProjectLocked(opening.project.status)) {
+      return NextResponse.json(createLockedError(opening.project.status), { status: 403 })
     }
 
     // Delete the opening (cascade will handle related panels)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isProjectLocked, createLockedError } from '@/lib/project-status'
 
 export async function GET(request: NextRequest) {
   try {
@@ -67,6 +68,16 @@ export async function POST(request: NextRequest) {
         { error: 'Project ID and opening name are required' },
         { status: 400 }
       )
+    }
+
+    // Check if project is locked for editing
+    const project = await prisma.project.findUnique({
+      where: { id: parseInt(projectId) },
+      select: { status: true }
+    })
+
+    if (project && isProjectLocked(project.status)) {
+      return NextResponse.json(createLockedError(project.status), { status: 403 })
     }
 
     // Check if opening name already exists for this project

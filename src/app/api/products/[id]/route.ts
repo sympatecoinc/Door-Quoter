@@ -86,7 +86,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       maxWidth,
       minHeight,
       maxHeight,
-      pairedProductId
+      pairedProductId,
+      widthTolerance,
+      heightTolerance
     } = await request.json()
 
     // Prepare update data
@@ -165,6 +167,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Default width for component creation
     if (defaultWidth !== undefined) {
       updateData.defaultWidth = defaultWidth !== null && defaultWidth !== '' ? parseFloat(defaultWidth) : null
+    }
+
+    // Product tolerance fields - allow null to clear the tolerance
+    const toleranceEligibleTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL']
+    const currentProductType = productType || (await prisma.product.findUnique({ where: { id: productId }, select: { productType: true } }))?.productType
+
+    if (toleranceEligibleTypes.includes(currentProductType || '')) {
+      if (widthTolerance !== undefined) {
+        updateData.widthTolerance = widthTolerance !== null && widthTolerance !== '' ? parseFloat(widthTolerance) : null
+      }
+      if (heightTolerance !== undefined) {
+        updateData.heightTolerance = heightTolerance !== null && heightTolerance !== '' ? parseFloat(heightTolerance) : null
+      }
     }
 
     const product = await prisma.product.update({

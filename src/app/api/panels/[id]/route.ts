@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { validateComponentSize } from '@/lib/component-validation'
+import { isProjectLocked, createLockedError } from '@/lib/project-status'
+import { recalculateTolerancesAfterDeletion } from '@/lib/tolerance-utils'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -40,6 +42,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params
     const panelId = parseInt(id)
     const { type, width, height, glassType, locking, swingDirection, slidingDirection, isCorner, cornerDirection, skipValidation = false } = await request.json()
+
+    // Check if project is locked by looking up panel -> opening -> project
+    const panelForLockCheck = await prisma.panel.findUnique({
+      where: { id: panelId },
+      include: { opening: { include: { project: { select: { status: true } } } } }
+    })
+
+    if (panelForLockCheck && isProjectLocked(panelForLockCheck.opening.project.status)) {
+      return NextResponse.json(createLockedError(panelForLockCheck.opening.project.status), { status: 403 })
+    }
 
     // Validate for Finished Openings
     if (!skipValidation) {
@@ -139,6 +151,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { id } = await params
     const panelId = parseInt(id)
     const updateData = await request.json()
+
+    // Check if project is locked
+    const panelForLockCheck = await prisma.panel.findUnique({
+      where: { id: panelId },
+      include: { opening: { include: { project: { select: { status: true } } } } }
+    })
+
+    if (panelForLockCheck && isProjectLocked(panelForLockCheck.opening.project.status)) {
+      return NextResponse.json(createLockedError(panelForLockCheck.opening.project.status), { status: 403 })
+    }
 
     // Build update object with only provided fields
     const fieldsToUpdate: any = {}
@@ -243,9 +265,17 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const { id } = await params
     const panelId = parseInt(id)
 
-    // First check if panel exists
+    // First check if panel exists and get project status with tolerance data
     const panel = await prisma.panel.findUnique({
-      where: { id: panelId }
+      where: { id: panelId },
+      include: {
+        componentInstance: {
+          include: { product: true }
+        },
+        opening: {
+          include: { project: { select: { status: true } } }
+        }
+      }
     })
 
     if (!panel) {
@@ -255,10 +285,36 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       )
     }
 
+    // Check if project is locked
+    if (isProjectLocked(panel.opening.project.status)) {
+      return NextResponse.json(createLockedError(panel.opening.project.status), { status: 403 })
+    }
+
+    const opening = panel.opening
+    const wasToleranceProduct = panel.componentInstance &&
+      opening.toleranceProductId === panel.componentInstance.productId
+
     // Delete the panel (this will cascade delete the componentInstance due to the schema)
     await prisma.panel.delete({
       where: { id: panelId }
     })
+
+    // Recalculate tolerances if this panel had the tolerance-setting product
+    if (wasToleranceProduct && opening.isFinishedOpening) {
+      const toleranceUpdate = await recalculateTolerancesAfterDeletion(opening.id)
+      if (toleranceUpdate) {
+        await prisma.opening.update({
+          where: { id: opening.id },
+          data: {
+            widthToleranceTotal: toleranceUpdate.widthToleranceTotal,
+            heightToleranceTotal: toleranceUpdate.heightToleranceTotal,
+            toleranceProductId: toleranceUpdate.toleranceProductId,
+            finishedWidth: toleranceUpdate.finishedWidth,
+            finishedHeight: toleranceUpdate.finishedHeight
+          }
+        })
+      }
+    }
 
     return NextResponse.json({ message: 'Panel deleted successfully' })
   } catch (error) {

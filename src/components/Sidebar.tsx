@@ -156,7 +156,7 @@ export default function Sidebar() {
   return (
     <div className="w-64 bg-white shadow-lg border-r border-gray-200 flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 flex-shrink-0 min-h-[64px]">
+      <div className="p-4 border-b border-gray-200 flex-shrink-0 min-h-[64px] flex justify-center items-center">
         {companyLogo && (
           <img
             src={companyLogo}

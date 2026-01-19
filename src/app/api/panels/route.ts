@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { validateComponentSize } from '@/lib/component-validation'
+import { isProjectLocked, createLockedError } from '@/lib/project-status'
 
 export async function GET(request: NextRequest) {
   try {
@@ -57,6 +58,16 @@ export async function POST(request: NextRequest) {
         { error: 'Opening ID and type are required' },
         { status: 400 }
       )
+    }
+
+    // Check if the opening's project is locked
+    const openingWithProject = await prisma.opening.findUnique({
+      where: { id: parseInt(openingId) },
+      include: { project: { select: { status: true } } }
+    })
+
+    if (openingWithProject && isProjectLocked(openingWithProject.project.status)) {
+      return NextResponse.json(createLockedError(openingWithProject.project.status), { status: 403 })
     }
 
     // Validate quantity

@@ -371,7 +371,7 @@ export default function QuoteAttachmentsManager({ projectId, onAttachmentsChange
               </button>
             </div>
             <img
-              src={`/uploads/quote-attachments/${projectId}/${previewAttachment.filename}`}
+              src={`/api/projects/${projectId}/quote-attachments/${previewAttachment.id}/download`}
               alt={previewAttachment.originalName}
               className="max-w-full h-auto"
             />

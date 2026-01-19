@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { writeFile, mkdir, unlink } from 'fs/promises'
-import path from 'path'
-import { existsSync } from 'fs'
+import { uploadFile, deleteFile } from '@/lib/gcs-storage'
 
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'branding')
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml', 'image/webp']
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 
@@ -71,45 +68,43 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Ensure upload directory exists
-    if (!existsSync(UPLOAD_DIR)) {
-      await mkdir(UPLOAD_DIR, { recursive: true })
-    }
-
-    // Delete old logo if exists
+    // Delete old logo from GCS if exists
     const existingSetting = await prisma.globalSetting.findUnique({
       where: { key: 'company_logo' }
     })
 
     if (existingSetting?.value) {
-      const oldPath = path.join(UPLOAD_DIR, existingSetting.value)
-      if (existsSync(oldPath)) {
-        try {
-          await unlink(oldPath)
-        } catch (e) {
-          console.warn('Could not delete old logo:', e)
+      try {
+        const oldData = JSON.parse(existingSetting.value)
+        if (oldData.gcsPath) {
+          await deleteFile(oldData.gcsPath)
         }
+      } catch {
+        // Ignore errors deleting old file
       }
     }
 
-    // Generate unique filename
-    const ext = path.extname(file.name) || '.png'
-    const filename = `logo-${Date.now()}${ext}`
-    const filePath = path.join(UPLOAD_DIR, filename)
-
-    // Write file
+    // Upload to GCS
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
-    await writeFile(filePath, buffer)
+    const ext = file.name.split('.').pop() || 'png'
+    const gcsPath = `branding/logo-${Date.now()}.${ext}`
 
-    // Upsert the setting - store just the filename
+    await uploadFile(buffer, gcsPath, file.type)
+
+    // Store GCS path and mime type in DB
+    const logoData = JSON.stringify({
+      gcsPath,
+      mimeType: file.type
+    })
+
     await prisma.globalSetting.upsert({
       where: { key: 'company_logo' },
-      update: { value: filename },
+      update: { value: logoData },
       create: {
         key: 'company_logo',
-        value: filename,
-        dataType: 'string',
+        value: logoData,
+        dataType: 'json',
         category: 'branding',
         description: 'Company logo for quotes and documents'
       }
@@ -187,20 +182,25 @@ export async function PUT(request: NextRequest) {
 // DELETE - Remove logo
 export async function DELETE() {
   try {
+    // Get existing logo to delete from GCS
     const setting = await prisma.globalSetting.findUnique({
       where: { key: 'company_logo' }
     })
 
     if (setting?.value) {
-      const filePath = path.join(UPLOAD_DIR, setting.value)
-      if (existsSync(filePath)) {
-        await unlink(filePath)
+      try {
+        const logoData = JSON.parse(setting.value)
+        if (logoData.gcsPath) {
+          await deleteFile(logoData.gcsPath)
+        }
+      } catch {
+        // Ignore errors deleting from GCS
       }
-
-      await prisma.globalSetting.delete({
-        where: { key: 'company_logo' }
-      })
     }
+
+    await prisma.globalSetting.deleteMany({
+      where: { key: 'company_logo' }
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {

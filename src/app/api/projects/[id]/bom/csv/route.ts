@@ -83,7 +83,8 @@ function generateComponentHash(panel: any, opening: any): string {
     height: panel.height,
     glassType: panel.glassType || '',
     finishColor: opening.finishColor || '',
-    subOptions: componentInstance.subOptionSelections || '{}'
+    subOptions: componentInstance.subOptionSelections || '{}',
+    variantSelections: componentInstance.variantSelections || '{}'
   })
 }
 
@@ -215,10 +216,11 @@ export async function GET(
           if (!panel.componentInstance) continue
           const hash = generateComponentHash(panel, opening)
           if (!uniqueComponents.has(hash)) {
-            // Parse sub-option selections to get hardware names
+            // Parse sub-option selections to get hardware names (including variant names)
             const hardware: string[] = []
             try {
               const selections = JSON.parse(panel.componentInstance.subOptionSelections || '{}')
+              const variantSelections = JSON.parse(panel.componentInstance.variantSelections || '{}')
               const product = panel.componentInstance.product
 
               for (const [categoryId, optionId] of Object.entries(selections)) {
@@ -231,7 +233,24 @@ export async function GET(
                     (opt: any) => opt.id === optionId
                   )
                   if (option) {
-                    hardware.push(option.name)
+                    let optionName = option.name
+                    // Add variant suffix if option has variants
+                    if (option.variants && option.variants.length > 0) {
+                      const selectedVariantId = variantSelections[String(optionId)]
+                      if (selectedVariantId) {
+                        const selectedVariant = option.variants.find((v: any) => v.id === selectedVariantId)
+                        if (selectedVariant) {
+                          optionName += ` (${selectedVariant.name})`
+                        }
+                      } else {
+                        // No explicit selection - show default variant name
+                        const defaultVariant = option.variants.find((v: any) => v.isDefault)
+                        if (defaultVariant) {
+                          optionName += ` (${defaultVariant.name})`
+                        }
+                      }
+                    }
+                    hardware.push(optionName)
                   }
                 }
               }
@@ -338,6 +357,27 @@ export async function GET(
             const finishCode = await getFinishCode(opening.finishColor)
             if (finishCode) {
               fullPartNumber = `${fullPartNumber}${finishCode}`
+            }
+          }
+
+          // Apply direction suffix for Hardware parts with appendDirectionToPartNumber flag
+          if (bom.partType === 'Hardware' && fullPartNumber && bom.partNumber) {
+            const masterPartForDirection = await prisma.masterPart.findUnique({
+              where: { partNumber: bom.partNumber },
+              select: { appendDirectionToPartNumber: true }
+            })
+            if (masterPartForDirection?.appendDirectionToPartNumber) {
+              // Get direction from panel's swingDirection or slidingDirection
+              const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+              if (direction && direction !== 'None') {
+                // Convert direction to short code (e.g., "Right-In" -> "RI", "Left" -> "L")
+                const directionCode = direction
+                  .replace(/-/g, '')
+                  .split(' ')
+                  .map((word: string) => word.charAt(0).toUpperCase())
+                  .join('')
+                fullPartNumber = `${fullPartNumber}-${directionCode}`
+              }
             }
           }
 
@@ -499,6 +539,25 @@ export async function GET(
                         partNumber = `${partNumber}${finishCode}`
                       }
                     }
+
+                    // Apply direction suffix if MasterPart has appendDirectionToPartNumber set
+                    if (standardOption.partNumber) {
+                      const masterPartForDir = await prisma.masterPart.findUnique({
+                        where: { partNumber: standardOption.partNumber },
+                        select: { appendDirectionToPartNumber: true }
+                      })
+                      if (masterPartForDir?.appendDirectionToPartNumber) {
+                        const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                        if (direction && direction !== 'None') {
+                          const directionCode = direction
+                            .replace(/-/g, '')
+                            .split(' ')
+                            .map((word: string) => word.charAt(0).toUpperCase())
+                            .join('')
+                          partNumber = `${partNumber}-${directionCode}`
+                        }
+                      }
+                    }
                   }
 
                   // Determine quantity
@@ -549,6 +608,19 @@ export async function GET(
                         const finishCode = await getFinishCode(opening.finishColor)
                         if (finishCode) {
                           linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                        }
+                      }
+
+                      // Apply direction suffix if applicable
+                      if (linkedPart.masterPart.appendDirectionToPartNumber) {
+                        const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                        if (direction && direction !== 'None') {
+                          const directionCode = direction
+                            .replace(/-/g, '')
+                            .split(' ')
+                            .map((word: string) => word.charAt(0).toUpperCase())
+                            .join('')
+                          linkedPartNumber = `${linkedPartNumber}-${directionCode}`
                         }
                       }
 
@@ -644,6 +716,25 @@ export async function GET(
                       partNumber = `${partNumber}${finishCode}`
                     }
                   }
+
+                  // Apply direction suffix if MasterPart has appendDirectionToPartNumber set
+                  if (individualOption.partNumber) {
+                    const masterPartForDir = await prisma.masterPart.findUnique({
+                      where: { partNumber: individualOption.partNumber },
+                      select: { appendDirectionToPartNumber: true }
+                    })
+                    if (masterPartForDir?.appendDirectionToPartNumber) {
+                      const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                      if (direction && direction !== 'None') {
+                        const directionCode = direction
+                          .replace(/-/g, '')
+                          .split(' ')
+                          .map((word: string) => word.charAt(0).toUpperCase())
+                          .join('')
+                        partNumber = `${partNumber}-${directionCode}`
+                      }
+                    }
+                  }
                 }
 
                 let description = `${productSubOption.category.name}: ${individualOption.name}`
@@ -716,6 +807,19 @@ export async function GET(
                       const finishCode = await getFinishCode(opening.finishColor)
                       if (finishCode) {
                         linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                      }
+                    }
+
+                    // Apply direction suffix if applicable
+                    if (linkedPart.masterPart.appendDirectionToPartNumber) {
+                      const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                      if (direction && direction !== 'None') {
+                        const directionCode = direction
+                          .replace(/-/g, '')
+                          .split(' ')
+                          .map((word: string) => word.charAt(0).toUpperCase())
+                          .join('')
+                        linkedPartNumber = `${linkedPartNumber}-${directionCode}`
                       }
                     }
 
@@ -813,6 +917,25 @@ export async function GET(
                     partNumber = `${partNumber}${finishCode}`
                   }
                 }
+
+                // Apply direction suffix if MasterPart has appendDirectionToPartNumber set
+                if (standardOption.partNumber) {
+                  const masterPartForDir = await prisma.masterPart.findUnique({
+                    where: { partNumber: standardOption.partNumber },
+                    select: { appendDirectionToPartNumber: true }
+                  })
+                  if (masterPartForDir?.appendDirectionToPartNumber) {
+                    const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                    if (direction && direction !== 'None') {
+                      const directionCode = direction
+                        .replace(/-/g, '')
+                        .split(' ')
+                        .map((word: string) => word.charAt(0).toUpperCase())
+                        .join('')
+                      partNumber = `${partNumber}-${directionCode}`
+                    }
+                  }
+                }
               }
 
               // Determine quantity for standard option not in selections
@@ -863,6 +986,19 @@ export async function GET(
                     const finishCode = await getFinishCode(opening.finishColor)
                     if (finishCode) {
                       linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                    }
+                  }
+
+                  // Apply direction suffix if applicable
+                  if (linkedPart.masterPart.appendDirectionToPartNumber) {
+                    const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                    if (direction && direction !== 'None') {
+                      const directionCode = direction
+                        .replace(/-/g, '')
+                        .split(' ')
+                        .map((word: string) => word.charAt(0).toUpperCase())
+                        .join('')
+                      linkedPartNumber = `${linkedPartNumber}-${directionCode}`
                     }
                   }
 

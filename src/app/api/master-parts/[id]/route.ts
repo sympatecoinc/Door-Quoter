@@ -43,7 +43,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
     }
 
-    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, customPricePerLb, partType, isOption, addFinishToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, customPricePerLb, partType, isOption, addFinishToPartNumber, appendDirectionToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({
@@ -97,8 +97,9 @@ export async function PUT(
         weightPerFoot: (partType === 'Extrusion' && weightPerFoot) ? parseFloat(weightPerFoot) : null,
         customPricePerLb: (partType === 'Extrusion' && customPricePerLb !== undefined) ? (customPricePerLb ? parseFloat(customPricePerLb) : null) : undefined,
         partType: partType || 'Hardware',
-        isOption: (partType === 'Hardware' || partType === 'Extrusion') ? (isOption || false) : false,
+        isOption: (partType === 'Hardware' || partType === 'Extrusion' || partType === 'CutStock') ? (isOption || false) : false,
         addFinishToPartNumber: (partType === 'Hardware') ? (addFinishToPartNumber || false) : false,
+        appendDirectionToPartNumber: (partType === 'Hardware') ? (appendDirectionToPartNumber || false) : false,
         addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false,
         includeOnPickList: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? (includeOnPickList || false) : false,
         includeInJambKit: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? (includeInJambKit || false) : false

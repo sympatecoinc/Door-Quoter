@@ -89,6 +89,7 @@ export async function GET(
     const assembly = searchParams.get('assembly') === 'true'
     const picklist = searchParams.get('picklist') === 'true'
     const jambkit = searchParams.get('jambkit') === 'true'
+    const boxlist = searchParams.get('boxlist') === 'true'
     const format = searchParams.get('format')
     const productFilter = searchParams.get('product')
     const sizeFilter = searchParams.get('size')  // e.g., "42x108"
@@ -254,6 +255,27 @@ export async function GET(
             }
           }
 
+          // Apply direction suffix for Hardware parts with appendDirectionToPartNumber flag
+          if (bom.partType === 'Hardware' && fullPartNumber && bom.partNumber) {
+            const masterPartForDirection = await prisma.masterPart.findUnique({
+              where: { partNumber: bom.partNumber },
+              select: { appendDirectionToPartNumber: true }
+            })
+            if (masterPartForDirection?.appendDirectionToPartNumber) {
+              // Get direction from panel's swingDirection or slidingDirection
+              const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+              if (direction && direction !== 'None') {
+                // Convert direction to short code (e.g., "Right-In" -> "RI", "Left" -> "L")
+                const directionCode = direction
+                  .replace(/-/g, '')  // Remove hyphens
+                  .split(' ')
+                  .map((word: string) => word.charAt(0).toUpperCase())
+                  .join('')
+                fullPartNumber = `${fullPartNumber}-${directionCode}`
+              }
+            }
+          }
+
           // Calculate % of stock used
           let percentOfStock: number | null = null
           if ((bom.partType === 'Extrusion' || bom.partType === 'CutStock') && cutLength && stockLength && stockLength > 0) {
@@ -383,6 +405,19 @@ export async function GET(
                 }
               }
 
+              // Apply direction suffix if applicable
+              if (gtp.masterPart.appendDirectionToPartNumber) {
+                const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                if (direction && direction !== 'None') {
+                  const directionCode = direction
+                    .replace(/-/g, '')
+                    .split(' ')
+                    .map((word: string) => word.charAt(0).toUpperCase())
+                    .join('')
+                  fullPartNumber = `${fullPartNumber}-${directionCode}`
+                }
+              }
+
               bomItems.push({
                 openingName: opening.name,
                 panelId: panel.id,
@@ -498,6 +533,25 @@ export async function GET(
                         partNumber = `${partNumber}${finishCode}`
                       }
                     }
+
+                    // Apply direction suffix if MasterPart has appendDirectionToPartNumber set
+                    if (standardOption.partNumber) {
+                      const masterPartForDir = await prisma.masterPart.findUnique({
+                        where: { partNumber: standardOption.partNumber },
+                        select: { appendDirectionToPartNumber: true }
+                      })
+                      if (masterPartForDir?.appendDirectionToPartNumber) {
+                        const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                        if (direction && direction !== 'None') {
+                          const directionCode = direction
+                            .replace(/-/g, '')
+                            .split(' ')
+                            .map((word: string) => word.charAt(0).toUpperCase())
+                            .join('')
+                          partNumber = `${partNumber}-${directionCode}`
+                        }
+                      }
+                    }
                   }
 
                   // Determine quantity for standard option
@@ -609,6 +663,25 @@ export async function GET(
                       partNumber = `${partNumber}${finishCode}`
                     }
                   }
+
+                  // Apply direction suffix if MasterPart has appendDirectionToPartNumber set
+                  if (individualOption.partNumber) {
+                    const masterPartForDir = await prisma.masterPart.findUnique({
+                      where: { partNumber: individualOption.partNumber },
+                      select: { appendDirectionToPartNumber: true }
+                    })
+                    if (masterPartForDir?.appendDirectionToPartNumber) {
+                      const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                      if (direction && direction !== 'None') {
+                        const directionCode = direction
+                          .replace(/-/g, '')
+                          .split(' ')
+                          .map((word: string) => word.charAt(0).toUpperCase())
+                          .join('')
+                        partNumber = `${partNumber}-${directionCode}`
+                      }
+                    }
+                  }
                 }
 
                 let description = `${productSubOption.category.name}: ${individualOption.name}`
@@ -687,6 +760,19 @@ export async function GET(
                       const finishCode = await getFinishCode(opening.finishColor)
                       if (finishCode) {
                         linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                      }
+                    }
+
+                    // Apply direction suffix if applicable
+                    if (linkedPart.masterPart.appendDirectionToPartNumber) {
+                      const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                      if (direction && direction !== 'None') {
+                        const directionCode = direction
+                          .replace(/-/g, '')
+                          .split(' ')
+                          .map((word: string) => word.charAt(0).toUpperCase())
+                          .join('')
+                        linkedPartNumber = `${linkedPartNumber}-${directionCode}`
                       }
                     }
 
@@ -790,6 +876,25 @@ export async function GET(
                     partNumber = `${partNumber}${finishCode}`
                   }
                 }
+
+                // Apply direction suffix if MasterPart has appendDirectionToPartNumber set
+                if (standardOption.partNumber) {
+                  const masterPartForDir = await prisma.masterPart.findUnique({
+                    where: { partNumber: standardOption.partNumber },
+                    select: { appendDirectionToPartNumber: true }
+                  })
+                  if (masterPartForDir?.appendDirectionToPartNumber) {
+                    const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                    if (direction && direction !== 'None') {
+                      const directionCode = direction
+                        .replace(/-/g, '')
+                        .split(' ')
+                        .map((word: string) => word.charAt(0).toUpperCase())
+                        .join('')
+                      partNumber = `${partNumber}-${directionCode}`
+                    }
+                  }
+                }
               }
 
               // Determine quantity for standard option not in selections
@@ -847,6 +952,19 @@ export async function GET(
                     const finishCode = await getFinishCode(opening.finishColor)
                     if (finishCode) {
                       linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                    }
+                  }
+
+                  // Apply direction suffix if applicable
+                  if (linkedPart.masterPart.appendDirectionToPartNumber) {
+                    const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                    if (direction && direction !== 'None') {
+                      const directionCode = direction
+                        .replace(/-/g, '')
+                        .split(' ')
+                        .map((word: string) => word.charAt(0).toUpperCase())
+                        .join('')
+                      linkedPartNumber = `${linkedPartNumber}-${directionCode}`
                     }
                   }
 
@@ -1292,6 +1410,66 @@ export async function GET(
         jambKitList,
         totalOpenings: jambKitList.length,
         totalItems: jambKitItems.reduce((sum, item) => sum + (item.quantity || 1), 0)
+      })
+    }
+
+    // If boxlist mode is requested, return packaging items aggregated
+    if (boxlist) {
+      // Filter to packaging items only
+      const packagingItems = filteredBomItems.filter(item =>
+        item.partType === 'Packaging'
+      )
+
+      // Aggregate by part number
+      const aggregatedBoxList: Record<string, { partNumber: string; partName: string; totalQuantity: number }> = {}
+      for (const item of packagingItems) {
+        const key = item.partNumber
+        if (!aggregatedBoxList[key]) {
+          aggregatedBoxList[key] = {
+            partNumber: item.partNumber,
+            partName: item.partName,
+            totalQuantity: 0
+          }
+        }
+        aggregatedBoxList[key].totalQuantity += (item.quantity || 1)
+      }
+
+      const boxListItems = Object.values(aggregatedBoxList).sort((a, b) =>
+        a.partNumber.localeCompare(b.partNumber)
+      )
+
+      if (format === 'pdf') {
+        const { createBoxListPDF } = await import('@/lib/box-list-pdf-generator')
+        const companyLogo = await getCompanyLogo()
+        const pdfBuffer = await createBoxListPDF({
+          projectName: project.name,
+          customerName: project.customer?.companyName,
+          companyLogo,
+          items: boxListItems,
+          generatedDate: new Date().toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        })
+        const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '-')}-box-cut-list.pdf`
+
+        return new NextResponse(pdfBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${filename}"`
+          }
+        })
+      }
+
+      return NextResponse.json({
+        projectId,
+        projectName: project.name,
+        boxListItems,
+        totalItems: boxListItems.reduce((sum, item) => sum + item.totalQuantity, 0)
       })
     }
 

@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import fs from 'fs'
-import path from 'path'
-import { writeFile, mkdir } from 'fs/promises'
+import { uploadFile, deleteFile } from '@/lib/gcs-storage'
 
 // GET: Fetch all quote attachments for a project
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -84,22 +82,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       )
     }
 
-    // Create project-specific directory if it doesn't exist
-    const uploadDir = path.join(process.cwd(), 'uploads', 'quote-attachments', String(projectId))
-    if (!fs.existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true })
-    }
-
-    // Generate unique filename
+    // Generate unique filename and GCS path
     const timestamp = Date.now()
-    const extension = path.extname(file.name)
-    const filename = `attachment-${timestamp}${extension}`
-    const filePath = path.join(uploadDir, filename)
+    const ext = file.name.split('.').pop() || 'pdf'
+    const filename = `attachment-${timestamp}.${ext}`
+    const gcsPath = `quote-attachments/${projectId}/${filename}`
 
-    // Write file to disk
+    // Upload to GCS
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
-    await writeFile(filePath, buffer)
+    await uploadFile(buffer, gcsPath, file.type)
 
     // Get the next display order
     const maxOrderResult = await prisma.quoteAttachment.findFirst({
@@ -215,18 +207,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       )
     }
 
-    // Delete file from disk
-    const filePath = path.join(
-      process.cwd(),
-      'uploads',
-      'quote-attachments',
-      String(projectId),
-      attachment.filename
-    )
-
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath)
-    }
+    // Delete file from GCS
+    const gcsPath = `quote-attachments/${projectId}/${attachment.filename}`
+    await deleteFile(gcsPath)
 
     // Delete database record
     await prisma.quoteAttachment.delete({

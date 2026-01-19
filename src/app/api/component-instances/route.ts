@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isProjectLocked, createLockedError } from '@/lib/project-status'
+import { calculateProductTolerances, isToleranceEligible } from '@/lib/tolerance-utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,7 +37,8 @@ export async function POST(request: NextRequest) {
       panelId,
       productId,
       subOptionSelections = {},
-      includedOptions = [] // Array of option IDs to mark as included (no charge)
+      includedOptions = [], // Array of option IDs to mark as included (no charge)
+      variantSelections = {} // Object: { [optionId]: variantId }
     } = await request.json()
 
     if (!panelId || !productId) {
@@ -45,9 +48,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if panel exists
+    // Check if panel exists and get project status with opening tolerance data
     const panel = await prisma.panel.findUnique({
-      where: { id: parseInt(panelId) }
+      where: { id: parseInt(panelId) },
+      include: {
+        opening: {
+          include: {
+            project: { select: { status: true } }
+          }
+        }
+      }
     })
 
     if (!panel) {
@@ -55,6 +65,11 @@ export async function POST(request: NextRequest) {
         { error: 'Panel not found' },
         { status: 404 }
       )
+    }
+
+    // Check if project is locked
+    if (isProjectLocked(panel.opening.project.status)) {
+      return NextResponse.json(createLockedError(panel.opening.project.status), { status: 403 })
     }
 
     // Check if product exists
@@ -86,13 +101,50 @@ export async function POST(request: NextRequest) {
         panelId: parseInt(panelId),
         productId: parseInt(productId),
         subOptionSelections: JSON.stringify(subOptionSelections),
-        includedOptions: JSON.stringify(includedOptions)
+        includedOptions: JSON.stringify(includedOptions),
+        variantSelections: JSON.stringify(variantSelections)
       },
       include: {
         product: true,
         panel: true
       }
     })
+
+    // Apply product tolerances to opening if applicable (first-product-wins)
+    if (isToleranceEligible(product.productType)) {
+      const opening = panel.opening
+      const toleranceUpdate = await calculateProductTolerances(
+        {
+          id: opening.id,
+          roughWidth: opening.roughWidth,
+          roughHeight: opening.roughHeight,
+          openingType: opening.openingType,
+          isFinishedOpening: opening.isFinishedOpening,
+          toleranceProductId: opening.toleranceProductId,
+          widthToleranceTotal: opening.widthToleranceTotal,
+          heightToleranceTotal: opening.heightToleranceTotal
+        },
+        {
+          id: product.id,
+          productType: product.productType,
+          widthTolerance: product.widthTolerance,
+          heightTolerance: product.heightTolerance
+        }
+      )
+
+      if (toleranceUpdate) {
+        await prisma.opening.update({
+          where: { id: opening.id },
+          data: {
+            widthToleranceTotal: toleranceUpdate.widthToleranceTotal,
+            heightToleranceTotal: toleranceUpdate.heightToleranceTotal,
+            toleranceProductId: toleranceUpdate.toleranceProductId,
+            finishedWidth: toleranceUpdate.finishedWidth,
+            finishedHeight: toleranceUpdate.finishedHeight
+          }
+        })
+      }
+    }
 
     return NextResponse.json(componentInstance, { status: 201 })
   } catch (error) {

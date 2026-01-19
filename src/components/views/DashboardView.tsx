@@ -166,7 +166,7 @@ export default function DashboardView() {
                           <span className="px-1.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 rounded">
                             v{lead.latestQuote.version}
                           </span>
-                          ${lead.latestQuote.totalPrice.toLocaleString()}
+                          ${lead.latestQuote.totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       ) : (
                         <span className="text-gray-400">--</span>
@@ -291,7 +291,7 @@ export default function DashboardView() {
                           <span className="px-1.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 rounded">
                             v{project.latestQuote.version}
                           </span>
-                          ${project.latestQuote.totalPrice.toLocaleString()}
+                          ${project.latestQuote.totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       ) : (
                         <span className="text-gray-400">--</span>

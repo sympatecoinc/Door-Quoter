@@ -7,9 +7,10 @@ interface ToastProps {
   type?: 'success' | 'error' | 'info'
   duration?: number
   onClose: () => void
+  index?: number
 }
 
-export function Toast({ message, type = 'success', duration = 3000, onClose }: ToastProps) {
+export function Toast({ message, type = 'success', duration = 3000, onClose, index = 0 }: ToastProps) {
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
@@ -72,8 +73,9 @@ export function Toast({ message, type = 'success', duration = 3000, onClose }: T
 
   return (
     <div
-      className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl border shadow-2xl transition-all duration-300 ease-in-out transform backdrop-blur-sm ${
-        isVisible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
+      style={{ bottom: `${1 + index * 4}rem` }}
+      className={`fixed right-4 z-50 px-4 py-3 rounded-xl border shadow-2xl transition-all duration-300 ease-out transform backdrop-blur-sm ${
+        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
       } ${styles.bg}`}
     >
       <div className="flex items-center gap-3">
@@ -108,13 +110,14 @@ interface ToastContainerProps {
 export function ToastContainer({ toasts, removeToast }: ToastContainerProps) {
   return (
     <>
-      {toasts.map((toast) => (
+      {toasts.map((toast, index) => (
         <Toast
           key={toast.id}
           message={toast.message}
           type={toast.type}
           duration={toast.duration}
           onClose={() => removeToast(toast.id)}
+          index={index}
         />
       ))}
     </>

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isProjectLocked, createLockedError } from '@/lib/project-status'
+import { recalculateTolerancesAfterDeletion } from '@/lib/tolerance-utils'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -36,6 +38,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params
     const instanceId = parseInt(id)
     const { productId, subOptionSelections, includedOptions, variantSelections } = await request.json()
+
+    // Check if project is locked
+    const instanceForLockCheck = await prisma.componentInstance.findUnique({
+      where: { id: instanceId },
+      include: { panel: { include: { opening: { include: { project: { select: { status: true } } } } } } }
+    })
+
+    if (instanceForLockCheck && isProjectLocked(instanceForLockCheck.panel.opening.project.status)) {
+      return NextResponse.json(createLockedError(instanceForLockCheck.panel.opening.project.status), { status: 403 })
+    }
 
     const updateData: any = {}
 
@@ -79,9 +91,19 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const { id } = await params
     const instanceId = parseInt(id)
 
-    // First check if component instance exists
+    // Check if component instance exists and get project status with tolerance data
     const componentInstance = await prisma.componentInstance.findUnique({
-      where: { id: instanceId }
+      where: { id: instanceId },
+      include: {
+        product: true,
+        panel: {
+          include: {
+            opening: {
+              include: { project: { select: { status: true } } }
+            }
+          }
+        }
+      }
     })
 
     if (!componentInstance) {
@@ -91,10 +113,35 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       )
     }
 
+    // Check if project is locked
+    if (isProjectLocked(componentInstance.panel.opening.project.status)) {
+      return NextResponse.json(createLockedError(componentInstance.panel.opening.project.status), { status: 403 })
+    }
+
+    const opening = componentInstance.panel.opening
+    const wasToleranceProduct = opening.toleranceProductId === componentInstance.productId
+
     // Delete the component instance
     await prisma.componentInstance.delete({
       where: { id: instanceId }
     })
+
+    // Recalculate tolerances if this was the tolerance-setting product
+    if (wasToleranceProduct && opening.isFinishedOpening) {
+      const toleranceUpdate = await recalculateTolerancesAfterDeletion(opening.id)
+      if (toleranceUpdate) {
+        await prisma.opening.update({
+          where: { id: opening.id },
+          data: {
+            widthToleranceTotal: toleranceUpdate.widthToleranceTotal,
+            heightToleranceTotal: toleranceUpdate.heightToleranceTotal,
+            toleranceProductId: toleranceUpdate.toleranceProductId,
+            finishedWidth: toleranceUpdate.finishedWidth,
+            finishedHeight: toleranceUpdate.finishedHeight
+          }
+        })
+      }
+    }
 
     return NextResponse.json({ message: 'Component instance deleted successfully' })
   } catch (error) {

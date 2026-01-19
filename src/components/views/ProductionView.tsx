@@ -10,13 +10,15 @@ import {
   Loader2,
   RefreshCw,
   FileSpreadsheet,
-  ChevronDown
+  ChevronDown,
+  FileText
 } from 'lucide-react'
 import { ProjectStatus, STATUS_CONFIG } from '@/types'
 import StatusBadge from '@/components/projects/StatusBadge'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 import BomDownloadModal from '../production/BomDownloadModal'
+import ShopDrawingsDownloadModal from '../production/ShopDrawingsDownloadModal'
 
 interface ProductionProject {
   id: number
@@ -31,7 +33,7 @@ interface ProductionProject {
   updatedAt: string
 }
 
-type DownloadType = 'bom' | 'cutlist' | 'picklist' | 'jambkit' | 'all'
+type DownloadType = 'bom' | 'cutlist' | 'picklist' | 'jambkit' | 'shopdrawings' | 'all'
 
 interface DownloadingState {
   [projectId: number]: {
@@ -77,6 +79,7 @@ export default function ProductionView() {
   const [downloading, setDownloading] = useState<DownloadingState>({})
   const [bulkDownloading, setBulkDownloading] = useState(false)
   const [bomModalProject, setBomModalProject] = useState<{ id: number; name: string } | null>(null)
+  const [shopDrawingsModalProject, setShopDrawingsModalProject] = useState<{ id: number; name: string } | null>(null)
   const { toasts, removeToast, showSuccess, showError } = useToast()
 
   useEffect(() => {
@@ -225,6 +228,7 @@ export default function ProductionView() {
     { value: 'cutlist' as DownloadType, label: 'Cut List (CSV)', icon: Scissors },
     { value: 'picklist' as DownloadType, label: 'Pick List (PDF)', icon: ClipboardList },
     { value: 'jambkit' as DownloadType, label: 'Jamb Kit List (PDF)', icon: Package2 },
+    { value: 'shopdrawings' as DownloadType, label: 'Shop Drawings (PDF)', icon: FileText },
     { value: 'all' as DownloadType, label: 'All Documents (ZIP)', icon: Download },
   ]
 
@@ -267,6 +271,9 @@ export default function ProductionView() {
 
       if (selectedType === 'bom') {
         setBomModalProject({ id: projectId, name: projectName })
+        setSelectedType(null)
+      } else if (selectedType === 'shopdrawings') {
+        setShopDrawingsModalProject({ id: projectId, name: projectName })
         setSelectedType(null)
       } else {
         downloadDocument(projectId, selectedType, projectName)
@@ -517,6 +524,17 @@ export default function ProductionView() {
           projectId={bomModalProject.id}
           projectName={bomModalProject.name}
           onClose={() => setBomModalProject(null)}
+          showError={showError}
+          showSuccess={showSuccess}
+        />
+      )}
+
+      {/* Shop Drawings Download Modal */}
+      {shopDrawingsModalProject && (
+        <ShopDrawingsDownloadModal
+          projectId={shopDrawingsModalProject.id}
+          projectName={shopDrawingsModalProject.name}
+          onClose={() => setShopDrawingsModalProject(null)}
           showError={showError}
           showSuccess={showSuccess}
         />

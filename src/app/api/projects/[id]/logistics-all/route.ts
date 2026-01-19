@@ -42,11 +42,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Fetch logistics documents in parallel
-    const [packingListResponse, stickersResponse] = await Promise.all([
+    const [packingListResponse, stickersResponse, boxListResponse] = await Promise.all([
       // Packing List PDF
       fetch(`${baseUrl}/api/projects/${projectId}/packing-list/pdf`, fetchOptions),
       // Labels/Stickers PDF
-      fetch(`${baseUrl}/api/projects/${projectId}/packing-list/stickers`, fetchOptions)
+      fetch(`${baseUrl}/api/projects/${projectId}/packing-list/stickers`, fetchOptions),
+      // Box Cut List PDF
+      fetch(`${baseUrl}/api/projects/${projectId}/bom?boxlist=true&format=pdf`, fetchOptions)
     ])
 
     // Create the ZIP
@@ -70,6 +72,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     } else {
       console.error('Failed to fetch stickers:', await stickersResponse.text())
+    }
+
+    // Add Box Cut List PDF if available
+    if (boxListResponse.ok) {
+      const boxListBuffer = await boxListResponse.arrayBuffer()
+      if (boxListBuffer.byteLength > 0) {
+        zip.file('box-cut-list.pdf', boxListBuffer)
+      }
+    } else {
+      console.error('Failed to fetch box list:', await boxListResponse.text())
     }
 
     // Check if we have any files

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isProjectLocked, createLockedError } from '@/lib/project-status'
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,6 +20,19 @@ export async function POST(request: NextRequest) {
           { error: 'Each item must have id and displayOrder' },
           { status: 400 }
         )
+      }
+    }
+
+    // Check if any panel belongs to a locked project
+    const panelIds = panelOrders.map((p: { id: number }) => p.id)
+    const panelsWithStatus = await prisma.panel.findMany({
+      where: { id: { in: panelIds } },
+      include: { opening: { include: { project: { select: { status: true } } } } }
+    })
+
+    for (const panel of panelsWithStatus) {
+      if (isProjectLocked(panel.opening.project.status)) {
+        return NextResponse.json(createLockedError(panel.opening.project.status), { status: 403 })
       }
     }
 

@@ -53,6 +53,13 @@ model Project {
   primaryProjectContact  ProjectContact?    @relation("ProjectPrimaryProjectContact", fields: [primaryProjectContactId], references: [id], onDelete: SetNull)
   salesOrders            SalesOrder[]
 
+  // Version tracking fields for project revisions
+  version                Int         @default(1)
+  parentProjectId        Int?
+  isCurrentVersion       Boolean     @default(true)
+  parentProject          Project?    @relation("ProjectRevisions", fields: [parentProjectId], references: [id], onDelete: SetNull)
+  revisions              Project[]   @relation("ProjectRevisions")
+
   @@map("Projects")
 }
 
@@ -131,6 +138,7 @@ model Opening {
   openingType           String?   // "THINWALL" or "FRAMED" - determines which default tolerances to use
   widthToleranceTotal   Float?    // Override: total inches to deduct from width (null = use defaults)
   heightToleranceTotal  Float?    // Override: total inches to deduct from height (null = use defaults)
+  toleranceProductId    Int?      // ID of product that defined tolerances (first eligible product added)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   project               Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -210,6 +218,8 @@ model Product {
   maxWidth             Float?                 // Maximum allowed width (inches)
   minHeight            Float?                 // Minimum allowed height (inches)
   maxHeight            Float?                 // Maximum allowed height (inches)
+  widthTolerance       Float?                 // Product-specific width tolerance (null = use defaults)
+  heightTolerance      Float?                 // Product-specific height tolerance (null = use defaults)
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
   componentInstances   ComponentInstance[]
@@ -354,6 +364,7 @@ model MasterPart {
   optionImagePath         String?            // Path to uploaded image for category options (relative to public/)
   optionImageOriginalName String?            // Original filename of uploaded image
   addFinishToPartNumber   Boolean            @default(false) // When true, append finish color code to hardware part number in BOM
+  appendDirectionToPartNumber Boolean        @default(false) // When true, append swing/sliding direction suffix (from plan view name) to part number in BOM
   addToPackingList        Boolean            @default(false) // When true, this hardware item appears in the packing list
   includeOnPickList       Boolean            @default(false) // When true, shows in production pick list
   includeInJambKit        Boolean            @default(false) // When true, marked as Jamb Kit item on pick list
@@ -631,6 +642,7 @@ model ProductPlanView {
   fileName     String?  // Original filename
   fileType     String   @default("image/png") // MIME type of the uploaded file
   orientation  String   @default("bottom") // "bottom" (align top) or "top" (align bottom)
+  referenceWidth Float? // Real-world width (in inches) the image depicts, for PNG scaling
   displayOrder Int      @default(0) // Order for display in UI
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

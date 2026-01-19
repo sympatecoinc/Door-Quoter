@@ -2,14 +2,23 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Download, Send, Clock, DollarSign, FileText, RefreshCw, Info } from 'lucide-react'
-import { QuoteVersion } from '@/types'
+import { QuoteVersion, ProjectStatus } from '@/types'
 import QuoteVersionModal from './QuoteVersionModal'
 import QuoteSettingsPanel from './QuoteSettingsPanel'
 import QuoteDocumentsPanel from './QuoteDocumentsPanel'
 
+// Statuses where quote generation is locked (quote has been accepted or project is in progress)
+const QUOTE_LOCKED_STATUSES = [
+  ProjectStatus.QUOTE_ACCEPTED,
+  ProjectStatus.ACTIVE,
+  ProjectStatus.COMPLETE
+]
+
 interface LeadQuotesTabProps {
   leadId: number
   leadName: string
+  isCurrentVersion?: boolean
+  status?: ProjectStatus
 }
 
 interface ChangeStatus {
@@ -22,7 +31,9 @@ interface ChangeStatus {
   }
 }
 
-export default function LeadQuotesTab({ leadId, leadName }: LeadQuotesTabProps) {
+export default function LeadQuotesTab({ leadId, leadName, isCurrentVersion = true, status }: LeadQuotesTabProps) {
+  // Check if quotes are locked due to status (accepted/active/complete)
+  const isQuoteLocked = status ? QUOTE_LOCKED_STATUSES.includes(status) : false
   const [versions, setVersions] = useState<QuoteVersion[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
@@ -177,42 +188,52 @@ export default function LeadQuotesTab({ leadId, leadName }: LeadQuotesTabProps) 
             Configure settings above, then generate quote snapshots
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Show reason when button is disabled */}
-          {!generating && changeStatus && !changeStatus.hasChanges && (
-            <div className="flex items-center gap-1.5 text-sm text-gray-500" title={changeStatus.reason}>
-              <Info className="w-4 h-4" />
-              <span>No changes since last quote</span>
-            </div>
-          )}
-          <button
-            onClick={handleGenerateQuote}
-            disabled={generating || checkingChanges || (changeStatus !== null && !changeStatus.hasChanges)}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title={
-              changeStatus && !changeStatus.hasChanges
-                ? changeStatus.reason
-                : changeStatus?.details?.changes?.join(', ') || 'Generate a new quote version'
-            }
-          >
-            {generating ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Generating...
-              </>
-            ) : checkingChanges ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Checking...
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4" />
-                Generate New Quote
-              </>
+        {isCurrentVersion && (
+          <div className="flex items-center gap-3">
+            {/* Show reason when button is disabled */}
+            {!generating && isQuoteLocked && (
+              <div className="flex items-center gap-1.5 text-sm text-amber-600" title="Quote is locked after acceptance">
+                <Info className="w-4 h-4" />
+                <span>Quote locked - create revision to modify</span>
+              </div>
             )}
-          </button>
-        </div>
+            {!generating && !isQuoteLocked && changeStatus && !changeStatus.hasChanges && (
+              <div className="flex items-center gap-1.5 text-sm text-gray-500" title={changeStatus.reason}>
+                <Info className="w-4 h-4" />
+                <span>No changes since last quote</span>
+              </div>
+            )}
+            <button
+              onClick={handleGenerateQuote}
+              disabled={isQuoteLocked || generating || checkingChanges || (changeStatus !== null && !changeStatus.hasChanges)}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title={
+                isQuoteLocked
+                  ? 'Quote is locked after acceptance. Create a revision to generate new quotes.'
+                  : changeStatus && !changeStatus.hasChanges
+                    ? changeStatus.reason
+                    : changeStatus?.details?.changes?.join(', ') || 'Generate a new quote version'
+              }
+            >
+              {generating ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Generating...
+                </>
+              ) : checkingChanges ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Checking...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Generate New Quote
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Quote Versions List */}
@@ -336,35 +357,41 @@ export default function LeadQuotesTab({ leadId, leadName }: LeadQuotesTabProps) 
           <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No quote versions yet</h3>
           <p className="text-gray-500 mb-4">
-            Generate your first quote to create a versioned snapshot.
+            {!isCurrentVersion
+              ? 'This historical version has no quotes.'
+              : isQuoteLocked
+                ? 'Quote generation is locked. Create a revision to generate new quotes.'
+                : 'Generate your first quote to create a versioned snapshot.'}
           </p>
-          <button
-            onClick={handleGenerateQuote}
-            disabled={generating || checkingChanges || (changeStatus !== null && !changeStatus.hasChanges)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title={
-              changeStatus && !changeStatus.hasChanges
-                ? changeStatus.reason
-                : 'Generate your first quote'
-            }
-          >
-            {generating ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Generating...
-              </>
-            ) : checkingChanges ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Checking...
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4" />
-                Generate Quote
-              </>
-            )}
-          </button>
+          {isCurrentVersion && !isQuoteLocked && (
+            <button
+              onClick={handleGenerateQuote}
+              disabled={generating || checkingChanges || (changeStatus !== null && !changeStatus.hasChanges)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title={
+                changeStatus && !changeStatus.hasChanges
+                  ? changeStatus.reason
+                  : 'Generate your first quote'
+              }
+            >
+              {generating ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Generating...
+                </>
+              ) : checkingChanges ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Checking...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Generate Quote
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
 

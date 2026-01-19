@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { readFile } from 'fs/promises'
-import { existsSync } from 'fs'
-import path from 'path'
+import { downloadFile } from '@/lib/gcs-storage'
 
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'branding')
-
-// GET - Serve the company logo
+// GET - Serve the company logo from GCS
 export async function GET() {
   try {
     const setting = await prisma.globalSetting.findUnique({
@@ -20,34 +16,33 @@ export async function GET() {
       )
     }
 
-    const filename = setting.value
-    const filePath = path.join(UPLOAD_DIR, filename)
-
-    if (!existsSync(filePath)) {
+    // Parse the stored JSON containing GCS path and mime type
+    let logoData: { gcsPath: string; mimeType: string }
+    try {
+      logoData = JSON.parse(setting.value)
+    } catch {
+      // Handle legacy storage format
       return NextResponse.json(
-        { error: 'Logo file not found' },
+        { error: 'Logo needs to be re-uploaded' },
         { status: 404 }
       )
     }
 
-    const fileBuffer = await readFile(filePath)
-
-    // Determine content type from extension
-    const ext = path.extname(filename).toLowerCase()
-    const contentTypes: Record<string, string> = {
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.svg': 'image/svg+xml',
-      '.webp': 'image/webp'
+    if (!logoData.gcsPath) {
+      return NextResponse.json(
+        { error: 'Logo needs to be re-uploaded' },
+        { status: 404 }
+      )
     }
-    const contentType = contentTypes[ext] || 'application/octet-stream'
 
-    return new NextResponse(fileBuffer, {
+    // Download from GCS
+    const buffer = await downloadFile(logoData.gcsPath)
+
+    return new NextResponse(buffer, {
       headers: {
-        'Content-Type': contentType,
-        'Content-Length': fileBuffer.length.toString(),
-        'Cache-Control': 'no-cache, must-revalidate'
+        'Content-Type': logoData.mimeType,
+        'Content-Length': buffer.length.toString(),
+        'Cache-Control': 'public, max-age=3600'
       }
     })
   } catch (error) {

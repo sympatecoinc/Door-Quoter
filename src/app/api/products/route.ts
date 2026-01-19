@@ -32,7 +32,13 @@ export async function GET(request: NextRequest) {
           include: {
             category: {
               include: {
-                individualOptions: true
+                individualOptions: {
+                  include: {
+                    variants: {
+                      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+                    }
+                  }
+                }
               }
             }
           }
@@ -83,7 +89,9 @@ export async function POST(request: NextRequest) {
       elevationImageData,
       planImageData,
       elevationFileName,
-      planFileName
+      planFileName,
+      widthTolerance,
+      heightTolerance
     } = await request.json()
 
     if (!name) {
@@ -112,14 +120,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Create product
-    const product = await prisma.product.create({
-      data: {
-        name,
-        description,
-        type,
-        productType,
-        productCategory
+    const productData: any = {
+      name,
+      description,
+      type,
+      productType,
+      productCategory
+    }
+
+    // Add tolerance fields if provided (only for eligible product types)
+    const toleranceEligibleTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL']
+    if (toleranceEligibleTypes.includes(productType)) {
+      if (widthTolerance !== undefined && widthTolerance !== null && widthTolerance !== '') {
+        productData.widthTolerance = parseFloat(widthTolerance)
       }
+      if (heightTolerance !== undefined && heightTolerance !== null && heightTolerance !== '') {
+        productData.heightTolerance = parseFloat(heightTolerance)
+      }
+    }
+
+    const product = await prisma.product.create({
+      data: productData
     })
 
     // Only create ComponentLibrary entry if images are actually provided
