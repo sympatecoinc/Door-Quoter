@@ -154,7 +154,7 @@ export async function createAssemblyListPDF(data: AssemblyListData): Promise<Buf
   // Add company logo in top right if available
   if (data.companyLogo) {
     try {
-      const logoPath = path.join(process.cwd(), 'public', data.companyLogo)
+      const logoPath = path.join(process.cwd(), 'uploads', 'branding', data.companyLogo)
       if (fs.existsSync(logoPath)) {
         const logoBuffer = fs.readFileSync(logoPath)
         const logoExt = path.extname(data.companyLogo).toLowerCase().replace('.', '')
@@ -182,13 +182,29 @@ export async function createAssemblyListPDF(data: AssemblyListData): Promise<Buf
           }
         }
 
+        // Get actual dimensions after processing to calculate aspect ratio
+        const processedMetadata = await sharp(processedLogoBuffer).metadata()
+        const imgWidth = processedMetadata.width || 600
+        const imgHeight = processedMetadata.height || 200
+
+        // Calculate scaled dimensions preserving aspect ratio
+        const aspectRatio = imgWidth / imgHeight
+        let finalWidth = logoMaxWidth
+        let finalHeight = logoMaxWidth / aspectRatio
+
+        // If height exceeds max, scale down based on height instead
+        if (finalHeight > logoMaxHeight) {
+          finalHeight = logoMaxHeight
+          finalWidth = logoMaxHeight * aspectRatio
+        }
+
         const logoBase64 = processedLogoBuffer.toString('base64')
         const mimeType = imageFormat === 'JPEG' ? 'image/jpeg' :
                          (logoExt === 'svg' ? 'image/svg+xml' : 'image/png')
         const logoData = `data:${mimeType};base64,${logoBase64}`
 
-        const logoX = PAGE_WIDTH - MARGIN - logoMaxWidth
-        pdf.addImage(logoData, imageFormat, logoX, yPos, logoMaxWidth, logoMaxHeight, undefined, 'SLOW')
+        const logoX = PAGE_WIDTH - MARGIN - finalWidth
+        pdf.addImage(logoData, imageFormat, logoX, yPos, finalWidth, finalHeight, undefined, 'SLOW')
       }
     } catch (error) {
       console.error('Error adding company logo to Assembly List PDF:', error)

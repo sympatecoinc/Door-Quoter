@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRef, useCallback } from 'react'
 import {
   Scissors,
   ClipboardList,
@@ -8,7 +9,8 @@ import {
   Download,
   Loader2,
   RefreshCw,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ChevronDown
 } from 'lucide-react'
 import { ProjectStatus, STATUS_CONFIG } from '@/types'
 import StatusBadge from '@/components/projects/StatusBadge'
@@ -29,7 +31,7 @@ interface ProductionProject {
   updatedAt: string
 }
 
-type DownloadType = 'cutlist' | 'picklist' | 'jambkit' | 'all'
+type DownloadType = 'bom' | 'cutlist' | 'picklist' | 'jambkit' | 'all'
 
 interface DownloadingState {
   [projectId: number]: {
@@ -62,13 +64,7 @@ function ProjectRowSkeleton() {
         <div className="h-4 w-24 bg-gray-200 rounded" />
       </td>
       <td className="px-4 py-3">
-        <div className="flex space-x-1">
-          <div className="w-7 h-7 bg-gray-200 rounded" />
-          <div className="w-7 h-7 bg-gray-200 rounded" />
-          <div className="w-7 h-7 bg-gray-200 rounded" />
-          <div className="w-7 h-7 bg-gray-200 rounded" />
-          <div className="w-7 h-7 bg-gray-200 rounded" />
-        </div>
+        <div className="h-8 w-40 bg-gray-200 rounded" />
       </td>
     </tr>
   )
@@ -224,34 +220,121 @@ export default function ProductionView() {
     return Object.values(state).some(v => v)
   }
 
-  const DownloadButton = ({
+  const downloadOptions = [
+    { value: 'bom' as DownloadType, label: 'BOM (CSV)', icon: FileSpreadsheet },
+    { value: 'cutlist' as DownloadType, label: 'Cut List (CSV)', icon: Scissors },
+    { value: 'picklist' as DownloadType, label: 'Pick List (PDF)', icon: ClipboardList },
+    { value: 'jambkit' as DownloadType, label: 'Jamb Kit List (PDF)', icon: Package2 },
+    { value: 'all' as DownloadType, label: 'All Documents (ZIP)', icon: Download },
+  ]
+
+  const DownloadDropdown = ({
     projectId,
-    type,
     projectName,
-    icon: Icon,
-    title
   }: {
     projectId: number
-    type: DownloadType
     projectName: string
-    icon: React.ElementType
-    title: string
   }) => {
-    const isLoading = downloading[projectId]?.[type]
+    const [isOpen, setIsOpen] = useState(false)
+    const [selectedType, setSelectedType] = useState<DownloadType | null>(null)
+    const dropdownRef = useRef<HTMLDivElement>(null)
+
+    const handleClickOutside = useCallback((event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }, [])
+
+    useEffect(() => {
+      if (isOpen) {
+        document.addEventListener('mousedown', handleClickOutside)
+      }
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside)
+      }
+    }, [isOpen, handleClickOutside])
+
+    const selectedOption = downloadOptions.find(opt => opt.value === selectedType)
+    const isLoading = selectedType ? downloading[projectId]?.[selectedType] : false
+
+    const handleSelect = (value: DownloadType) => {
+      setSelectedType(value)
+      setIsOpen(false)
+    }
+
+    const handleDownload = () => {
+      if (!selectedType) return
+
+      if (selectedType === 'bom') {
+        setBomModalProject({ id: projectId, name: projectName })
+        setSelectedType(null)
+      } else {
+        downloadDocument(projectId, selectedType, projectName)
+      }
+    }
 
     return (
-      <button
-        onClick={() => downloadDocument(projectId, type, projectName)}
-        disabled={isLoading}
-        className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        title={title}
-      >
-        {isLoading ? (
-          <Loader2 className="w-4 h-4 animate-spin" />
-        ) : (
-          <Icon className="w-4 h-4" />
-        )}
-      </button>
+      <div className="inline-flex items-center rounded-lg border border-gray-200 bg-white shadow-sm" ref={dropdownRef}>
+        {/* Dropdown Select */}
+        <div className="relative">
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="flex items-center justify-between w-44 px-3 py-2 text-sm text-gray-700 bg-transparent hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset rounded-l-lg transition-colors"
+          >
+            {selectedOption ? (
+              <span className="flex items-center">
+                <selectedOption.icon className="w-4 h-4 mr-2 text-blue-600" />
+                <span className="truncate font-medium">{selectedOption.label}</span>
+              </span>
+            ) : (
+              <span className="text-gray-400">Select document...</span>
+            )}
+            <ChevronDown className={`w-4 h-4 ml-2 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {isOpen && (
+            <div className="absolute z-20 w-52 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
+              {downloadOptions.map((option, index) => (
+                <button
+                  key={option.value}
+                  onClick={() => handleSelect(option.value)}
+                  className={`flex items-center w-full px-3 py-2.5 text-sm text-left transition-colors ${
+                    selectedType === option.value
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  } ${index === 0 ? 'rounded-t-lg' : ''} ${index === downloadOptions.length - 1 ? 'rounded-b-lg' : ''}`}
+                >
+                  <option.icon className={`w-4 h-4 mr-3 ${selectedType === option.value ? 'text-blue-600' : 'text-gray-400'}`} />
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div className="w-px h-8 bg-gray-200" />
+
+        {/* Download Button - Always visible, disabled when no selection */}
+        <button
+          onClick={handleDownload}
+          disabled={!selectedType || isLoading}
+          className={`flex items-center px-4 py-2 text-sm font-medium rounded-r-lg transition-all duration-200 ${
+            selectedType
+              ? 'text-white bg-blue-600 hover:bg-blue-700'
+              : 'text-gray-400 bg-gray-50 cursor-not-allowed'
+          } disabled:opacity-60 disabled:cursor-not-allowed`}
+        >
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <>
+              <Download className="w-4 h-4 mr-1.5" />
+              Download
+            </>
+          )}
+        </button>
+      </div>
     )
   }
 
@@ -391,43 +474,10 @@ export default function ProductionView() {
                       ${project.value.toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center space-x-1">
-                        <button
-                          onClick={() => setBomModalProject({ id: project.id, name: project.name })}
-                          className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                          title="Download BOM (CSV)"
-                        >
-                          <FileSpreadsheet className="w-4 h-4" />
-                        </button>
-                        <DownloadButton
-                          projectId={project.id}
-                          type="cutlist"
-                          projectName={project.name}
-                          icon={Scissors}
-                          title="Download Cut List (CSV)"
-                        />
-                        <DownloadButton
-                          projectId={project.id}
-                          type="picklist"
-                          projectName={project.name}
-                          icon={ClipboardList}
-                          title="Download Pick List (PDF)"
-                        />
-                        <DownloadButton
-                          projectId={project.id}
-                          type="jambkit"
-                          projectName={project.name}
-                          icon={Package2}
-                          title="Download Jamb Kit List (PDF)"
-                        />
-                        <DownloadButton
-                          projectId={project.id}
-                          type="all"
-                          projectName={project.name}
-                          icon={Download}
-                          title="Download All Documents (ZIP)"
-                        />
-                      </div>
+                      <DownloadDropdown
+                        projectId={project.id}
+                        projectName={project.name}
+                      />
                     </td>
                   </tr>
                 ))}

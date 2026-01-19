@@ -4,7 +4,7 @@ import { writeFile, mkdir, unlink } from 'fs/promises'
 import path from 'path'
 import { existsSync } from 'fs'
 
-const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'branding')
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'branding')
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml', 'image/webp']
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 
@@ -25,8 +25,11 @@ export async function GET() {
       branding[s.key] = s.value
     })
 
+    // Return API URL for logo if one exists
+    const logoUrl = branding.company_logo ? '/api/settings/branding/logo' : null
+
     return NextResponse.json({
-      logo: branding.company_logo || null,
+      logo: logoUrl,
       primaryColor: branding.primary_color || '#2563eb',
       secondaryColor: branding.secondary_color || '#1e40af'
     })
@@ -79,7 +82,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingSetting?.value) {
-      const oldPath = path.join(process.cwd(), 'public', existingSetting.value)
+      const oldPath = path.join(UPLOAD_DIR, existingSetting.value)
       if (existsSync(oldPath)) {
         try {
           await unlink(oldPath)
@@ -93,20 +96,19 @@ export async function POST(request: NextRequest) {
     const ext = path.extname(file.name) || '.png'
     const filename = `logo-${Date.now()}${ext}`
     const filePath = path.join(UPLOAD_DIR, filename)
-    const publicPath = `/uploads/branding/${filename}`
 
     // Write file
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     await writeFile(filePath, buffer)
 
-    // Upsert the setting
+    // Upsert the setting - store just the filename
     await prisma.globalSetting.upsert({
       where: { key: 'company_logo' },
-      update: { value: publicPath },
+      update: { value: filename },
       create: {
         key: 'company_logo',
-        value: publicPath,
+        value: filename,
         dataType: 'string',
         category: 'branding',
         description: 'Company logo for quotes and documents'
@@ -115,7 +117,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      logo: publicPath
+      logo: '/api/settings/branding/logo'
     })
   } catch (error) {
     console.error('Error uploading logo:', error)
@@ -190,7 +192,7 @@ export async function DELETE() {
     })
 
     if (setting?.value) {
-      const filePath = path.join(process.cwd(), 'public', setting.value)
+      const filePath = path.join(UPLOAD_DIR, setting.value)
       if (existsSync(filePath)) {
         await unlink(filePath)
       }

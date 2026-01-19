@@ -423,11 +423,14 @@ export async function GET(
               }
             } else {
               // PNG files: scale proportionally (both width and height)
-              console.log(`Processing PNG plan view for panel ${panel.id}`)
-              displayWidth = panel.width
-              displayHeight = panel.width  // Square aspect ratio for PNGs
+              // Scale factor to reduce PNG plan view size (swing doors)
+              const PNG_PLAN_VIEW_SCALE = 0.67  // Reduce by 33%
 
-              console.log(`PNG display (square): ${displayWidth}" x ${displayHeight}"`)
+              console.log(`Processing PNG plan view for panel ${panel.id}`)
+              displayWidth = panel.width * PNG_PLAN_VIEW_SCALE
+              displayHeight = displayWidth  // Square aspect ratio for PNGs
+
+              console.log(`PNG display (square, scaled ${PNG_PLAN_VIEW_SCALE}): ${displayWidth.toFixed(2)}" x ${displayHeight.toFixed(2)}"`)
             }
 
             const planViewOrientation = (matchingPlanView as any).orientation || 'bottom'

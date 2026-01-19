@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, ArrowLeft, Trash2, Search, Camera, X, Upload, Copy, Check, Pencil, Scissors, Link } from 'lucide-react'
+import { Plus, ArrowLeft, Trash2, Search, Camera, X, Upload, Copy, Check, Pencil, Scissors, Link, EyeOff } from 'lucide-react'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 
@@ -10,6 +10,7 @@ interface Category {
   name: string
   description?: string
   svgOriginId?: string
+  excludeFromQuote?: boolean
   _count: {
     individualOptions: number
     productSubOptions: number
@@ -95,6 +96,30 @@ export default function CategoryDetailView({
       await navigator.clipboard.writeText(originId)
       setCopiedOriginId(true)
       setTimeout(() => setCopiedOriginId(false), 2000)
+    }
+  }
+
+  // Toggle exclude from quote setting
+  const handleToggleExcludeFromQuote = async () => {
+    const newValue = !(categoryDetails?.excludeFromQuote || category.excludeFromQuote)
+    try {
+      const response = await fetch(`/api/categories/${category.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: categoryDetails?.name || category.name,
+          description: categoryDetails?.description || category.description,
+          excludeFromQuote: newValue
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setCategoryDetails(data)
+        onRefresh()
+      }
+    } catch (error) {
+      console.error('Error updating category:', error)
     }
   }
 
@@ -532,6 +557,37 @@ export default function CategoryDetailView({
           </div>
         </div>
       )}
+
+      {/* Category Settings */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Category Settings</h3>
+        <label className="flex items-center justify-between cursor-pointer">
+          <div className="flex items-center gap-2">
+            <EyeOff className="w-4 h-4 text-gray-500" />
+            <div>
+              <span className="text-sm font-medium text-gray-700">Exclude from Quote</span>
+              <p className="text-xs text-gray-500">Options in this category won't appear on the quote output</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleToggleExcludeFromQuote}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              (categoryDetails?.excludeFromQuote || category.excludeFromQuote)
+                ? 'bg-orange-500'
+                : 'bg-gray-300'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                (categoryDetails?.excludeFromQuote || category.excludeFromQuote)
+                  ? 'translate-x-6'
+                  : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </label>
+      </div>
 
       {/* Options Section */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

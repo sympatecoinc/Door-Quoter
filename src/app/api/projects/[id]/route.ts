@@ -267,7 +267,7 @@ export async function PUT(
       )
     }
 
-    const { name, status, dueDate, shipDate, shippingAddress, shippingCity, shippingState, shippingZipCode, primaryContactId, primaryProjectContactId, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost } = await request.json()
+    const { name, status, dueDate, shipDate, shippingAddress, shippingCity, shippingState, shippingZipCode, primaryContactId, primaryProjectContactId, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost, quoteDrawingView } = await request.json()
 
     // Validate status if provided
     if (status && !Object.values(ProjectStatus).includes(status)) {
@@ -283,6 +283,16 @@ export async function PUT(
         extrusionCostingMethod !== 'PERCENTAGE_BASED') {
       return NextResponse.json(
         { error: 'Invalid extrusion costing method. Must be FULL_STOCK or PERCENTAGE_BASED' },
+        { status: 400 }
+      )
+    }
+
+    // Validate quoteDrawingView if provided
+    if (quoteDrawingView !== undefined &&
+        quoteDrawingView !== 'ELEVATION' &&
+        quoteDrawingView !== 'PLAN') {
+      return NextResponse.json(
+        { error: 'Invalid quote drawing view. Must be ELEVATION or PLAN' },
         { status: 400 }
       )
     }
@@ -343,6 +353,9 @@ export async function PUT(
     }
     if (manualInstallationCost !== undefined) {
       updateData.manualInstallationCost = manualInstallationCost
+    }
+    if (quoteDrawingView !== undefined) {
+      updateData.quoteDrawingView = quoteDrawingView
     }
 
     // Update project and track status change in a transaction

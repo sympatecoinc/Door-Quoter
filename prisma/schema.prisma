@@ -22,6 +22,7 @@ model Project {
   installationMethod     String             @default("MANUAL") // "MANUAL" or "PER_PRODUCT_TOTAL"
   installationComplexity String             @default("STANDARD") // "SIMPLE", "STANDARD", "COMPLEX", "VERY_COMPLEX"
   manualInstallationCost Float              @default(0) // Manual installation cost (preserved when switching modes)
+  quoteDrawingView       String             @default("ELEVATION") // "ELEVATION" or "PLAN" - which drawing view to show on quotes
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
   dueDate                DateTime?
@@ -229,6 +230,7 @@ model SubOptionCategory {
   name              String
   description       String?
   svgOriginId       String?            @unique  // Unique ID for SVG origin point (e.g., "origin-a1b2c3")
+  excludeFromQuote  Boolean            @default(false) // When true, options in this category won't show on quote
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   individualOptions IndividualOption[]

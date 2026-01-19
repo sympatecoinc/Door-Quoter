@@ -58,6 +58,7 @@ export default function Sidebar() {
   const [projects, setProjects] = useState<Project[]>([])
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [inventoryNotificationCount, setInventoryNotificationCount] = useState(0)
+  const [companyLogo, setCompanyLogo] = useState<string | null>(null)
 
   useEffect(() => {
     if (showProjects) {
@@ -68,7 +69,20 @@ export default function Sidebar() {
   useEffect(() => {
     fetchCurrentUser()
     fetchInventoryNotificationCount()
+    fetchBranding()
   }, [])
+
+  async function fetchBranding() {
+    try {
+      const response = await fetch('/api/settings/branding')
+      if (response.ok) {
+        const data = await response.json()
+        setCompanyLogo(data.logo)
+      }
+    } catch (error) {
+      console.error('Error fetching branding:', error)
+    }
+  }
 
   // Refresh notification count when navigating away from inventory
   useEffect(() => {
@@ -142,9 +156,14 @@ export default function Sidebar() {
   return (
     <div className="w-64 bg-white shadow-lg border-r border-gray-200 flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="p-6 border-b border-gray-200 flex-shrink-0">
-        <h1 className="text-xl font-bold text-gray-900">Quoting Tool</h1>
-        <p className="text-sm text-gray-600 mt-1">Aluminum Doors & Windows</p>
+      <div className="p-4 border-b border-gray-200 flex-shrink-0 min-h-[64px]">
+        {companyLogo && (
+          <img
+            src={companyLogo}
+            alt="Company Logo"
+            className="max-h-12 w-auto object-contain"
+          />
+        )}
       </div>
 
       {/* Navigation */}

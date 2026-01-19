@@ -50,8 +50,8 @@ export async function renderSvgToPng(
 
       // Calculate render width based on target width in inches
       // Use pixels per inch similar to elevation views for crisp output
-      const pixelsPerInch = 48  // Higher resolution for plan views (they're small)
-      const renderWidth = Math.max(2400, options.width * pixelsPerInch)
+      const pixelsPerInch = 32  // Reduced from 48 for smaller file size
+      const renderWidth = Math.max(1600, options.width * pixelsPerInch)
 
       console.log('→ Plan view render width:', renderWidth, 'pixels')
 

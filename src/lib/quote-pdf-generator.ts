@@ -9,6 +9,61 @@ import path from 'path'
 import sharp from 'sharp'
 import { renderSvgToPng, decodeSvgData } from './svg-renderer'
 
+/**
+ * Extracts width and height from PNG image data (base64 or buffer)
+ * PNG header structure: first 8 bytes are signature, then IHDR chunk contains width/height
+ */
+function getPngDimensions(base64Data: string): { width: number, height: number } | null {
+  try {
+    const buffer = Buffer.from(base64Data, 'base64')
+
+    // PNG signature check (first 8 bytes)
+    const pngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+    for (let i = 0; i < 8; i++) {
+      if (buffer[i] !== pngSignature[i]) {
+        return null // Not a valid PNG
+      }
+    }
+
+    // IHDR chunk starts at byte 8, width at byte 16, height at byte 20 (big-endian)
+    const width = buffer.readUInt32BE(16)
+    const height = buffer.readUInt32BE(20)
+
+    return { width, height }
+  } catch (error) {
+    console.error('Error reading PNG dimensions:', error)
+    return null
+  }
+}
+
+/**
+ * Extracts dimensions from SVG viewBox attribute
+ */
+function getSvgDimensions(svgString: string): { width: number, height: number } | null {
+  try {
+    const viewBoxMatch = svgString.match(/viewBox="([^"]+)"/)
+    if (viewBoxMatch) {
+      const parts = viewBoxMatch[1].split(/\s+/).map(parseFloat)
+      if (parts.length >= 4) {
+        return { width: parts[2], height: parts[3] }
+      }
+    }
+    return null
+  } catch (error) {
+    return null
+  }
+}
+
+// Plan view image with metadata for proper positioning
+export interface PlanViewImage {
+  imageData: string
+  orientation?: string // 'bottom' or 'top' - determines vertical alignment
+  width?: number // inches
+  height?: number // inches
+  productType?: string // SWING_DOOR, SLIDING_DOOR, FIXED_PANEL, etc.
+  productName?: string
+}
+
 export interface QuoteItem {
   openingId: number
   name: string
@@ -21,7 +76,8 @@ export interface QuoteItem {
   glassType: string
   costPrice: number
   price: number
-  elevationImages: string[]
+  elevationImages: string[] // For elevation view (just image data)
+  planViewImages?: PlanViewImage[] // For plan view with metadata
 }
 
 export interface QuoteData {
@@ -338,7 +394,7 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
   // Right side: Company logo above the date
   if (quoteData.companyLogo) {
     try {
-      const logoPath = path.join(process.cwd(), 'public', quoteData.companyLogo)
+      const logoPath = path.join(process.cwd(), 'uploads', 'branding', quoteData.companyLogo)
       if (fs.existsSync(logoPath)) {
         const logoBuffer = fs.readFileSync(logoPath)
         const logoExt = path.extname(quoteData.companyLogo).toLowerCase().replace('.', '')
@@ -373,16 +429,32 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
           }
         }
 
+        // Get actual dimensions after processing to calculate aspect ratio
+        const processedMetadata = await sharp(processedLogoBuffer).metadata()
+        const imgWidth = processedMetadata.width || 600
+        const imgHeight = processedMetadata.height || 200
+
+        // Calculate scaled dimensions preserving aspect ratio
+        const aspectRatio = imgWidth / imgHeight
+        let finalWidth = logoMaxWidth
+        let finalHeight = logoMaxWidth / aspectRatio
+
+        // If height exceeds max, scale down based on height instead
+        if (finalHeight > logoMaxHeight) {
+          finalHeight = logoMaxHeight
+          finalWidth = logoMaxHeight * aspectRatio
+        }
+
         const logoBase64 = processedLogoBuffer.toString('base64')
         const mimeType = imageFormat === 'JPEG' ? 'image/jpeg' :
                          (logoExt === 'svg' ? 'image/svg+xml' : 'image/png')
         const logoData = `data:${mimeType};base64,${logoBase64}`
 
         // Position logo in top right, above where date will be
-        const logoX = pageWidth - 20 - logoMaxWidth
+        const logoX = pageWidth - 20 - finalWidth
         pdf.addImage(logoData, imageFormat,
-          logoX, headerY, logoMaxWidth, logoMaxHeight, undefined, 'SLOW')
-        logoActualHeight = logoMaxHeight
+          logoX, headerY, finalWidth, finalHeight, undefined, 'SLOW')
+        logoActualHeight = finalHeight
       }
     } catch (error) {
       console.error('Error adding company logo to PDF:', error)
@@ -474,79 +546,92 @@ async function addQuoteItemsTable(
   const pageHeight = pdf.internal.pageSize.getHeight()
   const marginX = 15 // Reduced from 20mm to maximize width for portrait layout
   const cellPadding = 5
-  const cardHeight = 55 // Height for each opening card (increased for elevation images)
-  const cardSpacing = 6 // Space between cards
-  const footerHeight = 60 // Space needed for footer with pricing
-  const ITEMS_PER_PAGE = 4 // Maximum items per page (reduced due to taller cards)
+  const cardHeight = 48 // Height for each opening card (reduced from 55mm to fit 3 cards + footer)
+  const cardSpacing = 4 // Space between cards (reduced from 6mm)
+  const footerHeight = 63 // Space needed for footer with pricing (matches actual footer height)
+  const ITEMS_PER_PAGE = 4 // Maximum items per page
   const cardWidth = pageWidth - 2 * marginX
   const cornerRadius = 3 // Rounded corner radius
-  const elevationAreaWidth = 65 // Width allocated for elevation images on right side
+  const elevationAreaWidth = cardWidth * 0.55 // Width allocated for elevation images (55% of card width)
   const textContentWidth = cardWidth - elevationAreaWidth - cellPadding // Width for text content on left
 
   const totalItems = quoteData.quoteItems.length
   let currentY = startY
-  let itemsOnCurrentPage = 0
-  let currentPageIsFirst = true
+  const totalCardHeight = cardHeight + cardSpacing
 
-  // Smart pagination: calculate max items per page based on total items
-  // - If 3 or fewer items: All items + footer on page 1
-  // - If 4+ items: Max 3 per intermediate page, max 2 on last page with footer
-  const getMaxItemsForCurrentPage = (currentPageFirst: boolean, itemsLeft: number): number => {
-    if (totalItems <= 3) {
-      // 3 or fewer items: all on first page with footer
-      return totalItems
-    } else {
-      // 4+ items
-      if (itemsLeft <= 2) {
-        // Last page: max 2 items + footer
-        return 2
-      } else {
-        // Intermediate pages: max 3 items
-        return 3
-      }
-    }
+  // Calculate how many items can fit on a page based on available space
+  const calculateItemsForPage = (
+    startYForPage: number,
+    includeFooter: boolean
+  ): number => {
+    const availableHeight = pageHeight - startYForPage - 10 - (includeFooter ? footerHeight : 0)
+    return Math.min(Math.floor(availableHeight / totalCardHeight), ITEMS_PER_PAGE)
   }
 
-  // No section header - cards start directly
+  // Pre-calculate page assignments for all items
+  interface PageAssignment {
+    pageItems: number[]
+    includeFooter: boolean
+  }
 
-  // Process each item
-  for (let itemIndex = 0; itemIndex < totalItems; itemIndex++) {
-    const item = quoteData.quoteItems[itemIndex]
-    const isLastItem = itemIndex === totalItems - 1
-    const itemsRemaining = totalItems - itemIndex
-    const maxItemsThisPage = getMaxItemsForCurrentPage(currentPageIsFirst, itemsRemaining)
+  // Continuation header height (matches addContinuationHeader: headerY=15 + 12 = 27)
+  const continuationHeaderEndY = 27
 
-    // Check if we need a new page BEFORE drawing anything
-    let needsNewPage = false
+  const assignItemsToPages = (): PageAssignment[] => {
+    const pages: PageAssignment[] = []
+    let itemIndex = 0
+    let isFirstPage = true
 
-    const totalCardHeight = cardHeight + cardSpacing
+    while (itemIndex < totalItems) {
+      // First page starts after main header; continuation pages start after continuation header
+      const pageStartY = isFirstPage ? startY : continuationHeaderEndY
+      const remainingItems = totalItems - itemIndex
 
-    if (itemsOnCurrentPage >= maxItemsThisPage) {
-      // Already at max items for this page
-      needsNewPage = true
-    } else if (!isLastItem && currentY + totalCardHeight > pageHeight - 10) {
-      // Not last item and card won't fit
-      needsNewPage = true
-    } else if (isLastItem) {
-      // For last item, check if it + footer will fit
-      if (totalItems <= 3 && currentPageIsFirst) {
-        if (currentY + totalCardHeight + footerHeight > pageHeight) {
-          needsNewPage = true
-        }
+      // Try fitting remaining items + footer
+      const itemsWithFooter = calculateItemsForPage(pageStartY, true)
+
+      if (remainingItems <= itemsWithFooter) {
+        // All remaining items fit with footer - this is the last page
+        pages.push({
+          pageItems: Array.from({length: remainingItems}, (_, i) => itemIndex + i),
+          includeFooter: true
+        })
+        break
       } else {
-        if (currentY + totalCardHeight + footerHeight > pageHeight - 10) {
-          needsNewPage = true
-        }
+        // Not last page - fit as many as possible without footer, but leave at least 1 for footer page
+        const itemsThisPage = calculateItemsForPage(pageStartY, false)
+        // Ensure we leave at least 1 item for the next page (which will have the footer)
+        const itemsToPlace = Math.max(1, Math.min(itemsThisPage, remainingItems - 1))
+        pages.push({
+          pageItems: Array.from({length: itemsToPlace}, (_, i) => itemIndex + i),
+          includeFooter: false
+        })
+        itemIndex += itemsToPlace
       }
+      isFirstPage = false
+    }
+    return pages
+  }
+
+  const pageAssignments = assignItemsToPages()
+  const totalPages = pageAssignments.length
+
+  // Process items page by page
+  for (let pageIndex = 0; pageIndex < pageAssignments.length; pageIndex++) {
+    const pageAssignment = pageAssignments[pageIndex]
+    const isFirstPage = pageIndex === 0
+    const pageNumber = pageIndex + 1
+
+    // Add new page if not the first page
+    if (!isFirstPage) {
+      pdf.addPage()
+      // Add continuation header with project name
+      currentY = addContinuationHeader(pdf, quoteData.project.name)
     }
 
-    if (needsNewPage) {
-      // Add new page and reset
-      pdf.addPage()
-      currentY = 20
-      itemsOnCurrentPage = 0
-      currentPageIsFirst = false
-    }
+    // Process each item on this page
+    for (const itemIndex of pageAssignment.pageItems) {
+      const item = quoteData.quoteItems[itemIndex]
 
     // Draw card with rounded corners and grey background (no outline)
     pdf.setFillColor(243, 244, 246) // bg-gray-100
@@ -575,11 +660,15 @@ async function addQuoteItemsTable(
     // Opening name as header (bold, larger font)
     pdf.setFontSize(11)
     pdf.setFont('helvetica', 'bold')
-    let openingNameText = item.name
+    pdf.text(item.name, marginX + cellPadding, contentY)
+
+    // Direction in accent color (bold, dark blue)
     if (item.openingDirections && item.openingDirections.length > 0) {
-      openingNameText += ` (${item.openingDirections.join(', ')})`
+      const nameWidth = pdf.getTextWidth(item.name)
+      pdf.setTextColor(30, 64, 175) // Dark blue accent (#1E40AF)
+      pdf.text(` (${item.openingDirections.join(', ')})`, marginX + cellPadding + nameWidth, contentY)
+      pdf.setTextColor(0, 0, 0) // Reset to black
     }
-    pdf.text(openingNameText, marginX + cellPadding, contentY)
     contentY += 5
 
     // Opening type (description - e.g., "1 Sliding Door") - smaller, normal weight
@@ -590,123 +679,378 @@ async function addQuoteItemsTable(
     pdf.setTextColor(0, 0, 0)
     contentY += 5
 
-    // Specifications in a compact single line
+    // Specifications - just dimensions
     pdf.setFontSize(8)
-    const specLine = `${item.dimensions}  •  ${item.color}  •  ${item.glassType}`
-    pdf.text(specLine, marginX + cellPadding, contentY)
-    contentY += 5
+    pdf.text(item.dimensions, marginX + cellPadding, contentY)
+    contentY += 8
 
-    // Hardware section
-    if (item.hardware && item.hardware !== 'Standard' && item.hardware.trim() !== '') {
-      pdf.setFontSize(8)
+    // Options section - always show with glass type and color
+    pdf.setFontSize(8)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(70, 70, 70)
+    pdf.text('Options:', marginX + cellPadding, contentY)
+    contentY += 6
+
+    // Helper to render option with bold label
+    const renderOption = (label: string, value: string, y: number) => {
+      pdf.setFont('helvetica', 'normal')
+      pdf.text('• ', marginX + cellPadding + 2, y)
+      const bulletWidth = pdf.getTextWidth('• ')
       pdf.setFont('helvetica', 'bold')
-      pdf.setTextColor(70, 70, 70)
-      pdf.text('Options: ', marginX + cellPadding, contentY)
-      const optionsWidth = pdf.getTextWidth('Options: ')
-
-      // Format hardware items inline
+      pdf.text(`${label}: `, marginX + cellPadding + 2 + bulletWidth, y)
+      const labelWidth = pdf.getTextWidth(`${label}: `)
       pdf.setFont('helvetica', 'normal')
-      const hardwareItems = item.hardware.split(' • ')
-      const formattedHardware = hardwareItems
-        .map(h => h.replace(' | +', ' +').replace(' | STANDARD', ''))
-        .join('  •  ')
-      const hardwareLines = pdf.splitTextToSize(formattedHardware, textContentWidth - 2 * cellPadding - optionsWidth - 10)
-      pdf.text(hardwareLines, marginX + cellPadding + optionsWidth, contentY)
-      pdf.setTextColor(0, 0, 0)
-    } else {
-      // No hardware options
-      pdf.setFontSize(8)
-      pdf.setFont('helvetica', 'italic')
-      pdf.setTextColor(140, 140, 140)
-      pdf.text('No additional options', marginX + cellPadding, contentY)
-      pdf.setTextColor(0, 0, 0)
-      pdf.setFont('helvetica', 'normal')
+      pdf.text(value, marginX + cellPadding + 2 + bulletWidth + labelWidth, y)
     }
 
-    // Render elevation images on the right side of the card
-    if (item.elevationImages && item.elevationImages.length > 0) {
+    // Glass type
+    renderOption('Glass Type', item.glassType, contentY)
+    contentY += 3.5
+
+    // Extrusion color
+    renderOption('Extrusion Color', item.color, contentY)
+    contentY += 3.5
+
+    // Additional hardware options
+    if (item.hardware && item.hardware !== 'Standard' && item.hardware.trim() !== '') {
+      const hardwareItems = item.hardware.split(' • ')
+      for (const hwItem of hardwareItems) {
+        const formattedItem = hwItem.replace(' | +', ' +').replace(' | STANDARD', '')
+        // Parse "Category: Value" format
+        const colonIndex = formattedItem.indexOf(':')
+        if (colonIndex > -1) {
+          const optLabel = formattedItem.substring(0, colonIndex).trim()
+          const optValue = formattedItem.substring(colonIndex + 1).trim()
+          renderOption(optLabel, optValue, contentY)
+        } else {
+          pdf.setFont('helvetica', 'normal')
+          pdf.text(`• ${formattedItem}`, marginX + cellPadding + 2, contentY)
+        }
+        contentY += 3.5
+      }
+    }
+    pdf.setTextColor(0, 0, 0)
+
+    // Render images on the right side of the card
+    // Use planViewImages if available (has metadata for proper positioning), otherwise fall back to elevationImages
+    const hasImages = (item.planViewImages && item.planViewImages.length > 0) ||
+                     (item.elevationImages && item.elevationImages.length > 0)
+
+    if (hasImages) {
       const imageAreaX = marginX + textContentWidth + cellPadding
       const imageAreaY = currentY + 8 // Start below the price badge
       const imageAreaWidth = elevationAreaWidth - cellPadding * 2
-      const imageAreaHeight = cardHeight - 12 // Leave padding at top and bottom
+      const imageAreaHeight = cardHeight - 10 // Maintain image visibility with smaller card
 
-      // Calculate how to fit all elevation images
-      const numImages = item.elevationImages.length
-      const imageSpacing = 0 // No gaps between components for continuous elevation view
+      // Determine if we have plan view images with metadata
+      const usePlanViewImages = item.planViewImages && item.planViewImages.length > 0
 
-      // Determine layout: side-by-side if 2+ images fit, otherwise stack
-      const maxImageWidth = numImages > 1
-        ? (imageAreaWidth - imageSpacing * (numImages - 1)) / numImages
-        : imageAreaWidth
+      // Calculate how to fit all images
+      const numImages = usePlanViewImages ? item.planViewImages!.length : item.elevationImages.length
+      const imageSpacing = 0 // No gaps between components for continuous view
 
-      let imgX = imageAreaX
+      // ===== TWO-PASS APPROACH (like DrawingViewer) =====
+      // First pass: Process all images and get their PNG aspect ratios
+      interface ProcessedImage {
+        imageData: string
+        imageFormat: 'PNG' | 'JPEG'
+        scaledWidth: number
+        scaledHeight: number
+        aspectRatio: number | null
+        isPlanView: boolean
+        orientation?: string // 'bottom' or 'top' - from plan view metadata
+        apiWidth?: number // Width from API (in inches)
+        apiHeight?: number // Height from API (in inches)
+      }
 
+      // Intermediate structure to collect image data before scaling
+      interface PreProcessedImage {
+        imageData: string
+        imageFormat: 'PNG' | 'JPEG'
+        aspectRatio: number | null
+        isPlanView: boolean
+        orientation?: string
+        apiWidth?: number
+        apiHeight?: number
+      }
+      const preProcessedImages: PreProcessedImage[] = []
+
+      // First pass: Process all images to get their PNG aspect ratios
       for (let imgIndex = 0; imgIndex < numImages; imgIndex++) {
-        const elevationImage = item.elevationImages[imgIndex]
+        // Get image data and optional metadata
+        const planViewData = usePlanViewImages ? item.planViewImages![imgIndex] : null
+        const rawImageData = planViewData ? planViewData.imageData : item.elevationImages[imgIndex]
 
         try {
           let imageFormat: 'PNG' | 'JPEG' = 'PNG'
-          let imageData = elevationImage
+          let imageData = rawImageData
+          let imageAspectRatio: number | null = null // height / width
 
           // Check if the image is SVG and needs conversion
-          const isSvgData = elevationImage.startsWith('data:image/svg+xml') ||
-            (elevationImage.startsWith('data:') === false &&
-             Buffer.from(elevationImage.substring(0, 100), 'base64').toString('utf-8').includes('<svg'))
+          const isSvgData = rawImageData.startsWith('data:image/svg+xml') ||
+            (rawImageData.startsWith('data:') === false &&
+             Buffer.from(rawImageData.substring(0, 100), 'base64').toString('utf-8').includes('<svg'))
 
           if (isSvgData) {
             // SVG data - render to PNG first
             try {
-              const svgString = decodeSvgData(elevationImage)
+              const svgString = decodeSvgData(rawImageData)
+
+              // For SVGs, use the SVG viewBox aspect ratio to maintain natural proportions
+              const svgDims = getSvgDimensions(svgString)
+              if (svgDims) {
+                imageAspectRatio = svgDims.height / svgDims.width
+              }
+
               // Use moderate dimensions for quote display - balances quality vs file size
-              // Larger dimensions preserve stroke width proportions for cleaner lines
               const pngData = await renderSvgToPng(svgString, {
-                width: 12, // inches - larger size preserves stroke proportions for cleaner lines
-                height: 28, // inches - proportional height for typical door aspect ratio
-                background: '#f3f4f6', // Match card background
-                mode: 'elevation'
+                width: 12,
+                height: 28,
+                background: '#f3f4f6',
+                mode: usePlanViewImages ? 'plan' : 'elevation'
               })
               imageData = pngData
+
+              if (!imageAspectRatio) {
+                imageAspectRatio = 28 / 12
+              }
             } catch (svgError) {
               console.error(`Failed to render SVG to PNG for image ${imgIndex}:`, svgError)
-              continue // Skip this image if SVG rendering fails
+              continue
             }
-          } else if (elevationImage.startsWith('data:')) {
-            // Non-SVG data URI
-            if (elevationImage.includes('image/jpeg') || elevationImage.includes('image/jpg')) {
+          } else if (rawImageData.startsWith('data:')) {
+            if (rawImageData.includes('image/jpeg') || rawImageData.includes('image/jpg')) {
               imageFormat = 'JPEG'
             }
-            // Remove data URI prefix for jsPDF
-            imageData = elevationImage.split(',')[1] || elevationImage
+            imageData = rawImageData.split(',')[1] || rawImageData
+            // Use API-provided aspect ratio for consistent sizing
+            if (planViewData?.width && planViewData?.height) {
+              imageAspectRatio = planViewData.height / planViewData.width
+            } else {
+              const pngDims = getPngDimensions(imageData)
+              if (pngDims) {
+                imageAspectRatio = pngDims.height / pngDims.width
+              }
+            }
+          } else {
+            // Prefer API-provided aspect ratio for raw base64 images as well
+            if (planViewData?.width && planViewData?.height) {
+              imageAspectRatio = planViewData.height / planViewData.width
+            } else {
+              const pngDims = getPngDimensions(rawImageData)
+              if (pngDims) {
+                imageAspectRatio = pngDims.height / pngDims.width
+              }
+            }
           }
 
-          // Add the elevation image, fitting within allocated space
-          // jsPDF will scale the image to fit within maxImageWidth x imageAreaHeight
-          pdf.addImage(
+          const isPlanView = usePlanViewImages || (imageAspectRatio !== null && imageAspectRatio < 1)
+
+          preProcessedImages.push({
             imageData,
             imageFormat,
-            imgX,
-            imageAreaY,
-            maxImageWidth,
-            imageAreaHeight,
-            undefined,
-            'SLOW' // Maximum lossless compression for smaller file size
-          )
-
-          imgX += maxImageWidth + imageSpacing
+            aspectRatio: imageAspectRatio,
+            isPlanView,
+            orientation: planViewData?.orientation,
+            apiWidth: planViewData?.width,
+            apiHeight: planViewData?.height
+          })
         } catch (imageError) {
-          console.error(`Failed to add elevation image ${imgIndex}:`, imageError)
+          console.error(`Failed to process image ${imgIndex}:`, imageError)
+        }
+      }
+
+      // Second pass: Calculate uniform scale factor and apply scaling
+      // For plan views, use API widths and API-based aspect ratios for consistent sizing
+      let totalApiWidth = 0
+      let maxActualHeight = 0
+
+      if (usePlanViewImages) {
+        for (const img of preProcessedImages) {
+          if (img.apiWidth) {
+            totalApiWidth += img.apiWidth
+            // Calculate height using API-provided aspect ratio
+            if (img.aspectRatio !== null) {
+              const actualHeight = img.apiWidth * img.aspectRatio
+              if (actualHeight > maxActualHeight) maxActualHeight = actualHeight
+            }
+          }
+        }
+      }
+
+      // Calculate uniform scale factor based on actual dimensions
+      // Cap at 0.7 to create consistent sizing between single and multi-panel openings
+      const rawScaleFactor = usePlanViewImages && totalApiWidth > 0 && maxActualHeight > 0
+        ? Math.min(imageAreaWidth / totalApiWidth, imageAreaHeight / maxActualHeight)
+        : 1
+      const uniformScaleFactor = Math.min(rawScaleFactor, 0.7)
+
+      // Apply scaling to create final processed images
+      const processedImages: ProcessedImage[] = []
+
+      for (const preImg of preProcessedImages) {
+        let scaledWidth: number
+        let scaledHeight: number
+
+        // For plan views with API metadata, use uniform scale factor for WIDTH
+        // and API-based aspect ratio for HEIGHT for consistent sizing
+        if (usePlanViewImages && preImg.apiWidth && preImg.aspectRatio !== null) {
+          scaledWidth = preImg.apiWidth * uniformScaleFactor
+          scaledHeight = scaledWidth * preImg.aspectRatio
+        } else if (preImg.aspectRatio !== null) {
+          // Fallback: use PNG aspect ratio for elevation images or when no API data
+          const maxImageWidth = numImages > 1
+            ? (imageAreaWidth - imageSpacing * (numImages - 1)) / numImages
+            : imageAreaWidth
+          const containerAspectRatio = imageAreaHeight / maxImageWidth
+
+          if (preImg.aspectRatio > containerAspectRatio) {
+            scaledHeight = imageAreaHeight
+            scaledWidth = imageAreaHeight / preImg.aspectRatio
+          } else {
+            scaledWidth = maxImageWidth
+            scaledHeight = maxImageWidth * preImg.aspectRatio
+          }
+        } else {
+          // Default fallback
+          scaledWidth = imageAreaWidth / numImages
+          scaledHeight = imageAreaHeight
+        }
+
+        processedImages.push({
+          imageData: preImg.imageData,
+          imageFormat: preImg.imageFormat,
+          scaledWidth,
+          scaledHeight,
+          aspectRatio: preImg.aspectRatio,
+          isPlanView: preImg.isPlanView,
+          orientation: preImg.orientation,
+          apiWidth: preImg.apiWidth,
+          apiHeight: preImg.apiHeight
+        })
+      }
+
+      // Determine if this is a plan view assembly (using metadata or aspect ratio detection)
+      const isPlanViewAssembly = usePlanViewImages ||
+        (processedImages.length > 0 && processedImages.every(img => img.isPlanView))
+
+      // Second pass: Calculate positions and render
+      if (isPlanViewAssembly) {
+        // Plan view assembly: align components using orientation metadata
+        // Components with orientation='bottom' have their wall line at the bottom of their bounding box
+        // Components with other orientation have their wall line at the top
+
+        // Calculate total assembly width
+        const totalWidth = processedImages.reduce((sum, img) => sum + img.scaledWidth, 0)
+
+        // Calculate the bounding box considering orientation
+        // For orientation='bottom': wall line at bottom, content extends above
+        // For other: wall line at top, content extends below
+        let maxAboveBaseline = 0  // Max height above the wall line
+        let maxBelowBaseline = 0  // Max height below the wall line
+
+        for (const img of processedImages) {
+          if (img.orientation === 'bottom') {
+            // Wall line at bottom, entire image height is above baseline
+            maxAboveBaseline = Math.max(maxAboveBaseline, img.scaledHeight)
+          } else {
+            // Wall line at top, entire image height is below baseline
+            maxBelowBaseline = Math.max(maxBelowBaseline, img.scaledHeight)
+          }
+        }
+
+        // Total assembly height from top to bottom
+        const totalHeight = maxAboveBaseline + maxBelowBaseline
+
+        // Right-align the assembly within the available area
+        const assemblyOffsetX = imageAreaWidth - totalWidth
+        const assemblyOffsetY = (imageAreaHeight - totalHeight) / 2
+
+        // The baseline Y position (where wall lines align)
+        const baselineY = imageAreaY + assemblyOffsetY + maxAboveBaseline
+
+        let imgX = imageAreaX + assemblyOffsetX
+
+        for (const img of processedImages) {
+          // Calculate Y position based on orientation
+          let imgY: number
+          if (img.orientation === 'bottom') {
+            // Wall line at bottom of image, image extends ABOVE baseline
+            imgY = baselineY - img.scaledHeight
+          } else {
+            // Wall line at top of image, image extends BELOW baseline
+            imgY = baselineY
+          }
+
+          try {
+            pdf.addImage(
+              img.imageData,
+              img.imageFormat,
+              imgX,
+              imgY,
+              img.scaledWidth,
+              img.scaledHeight,
+              undefined,
+              'SLOW'
+            )
+          } catch (imageError) {
+            console.error('Failed to add plan view image:', imageError)
+          }
+
+          imgX += img.scaledWidth + imageSpacing
+        }
+      } else {
+        // Elevation view or mixed: center all images as a group, then place edge-to-edge
+
+        // Calculate total scaled width of all images
+        const totalScaledWidth = processedImages.reduce((sum, img) => sum + img.scaledWidth, 0)
+
+        // Calculate the maximum height for vertical centering
+        const maxScaledHeight = Math.max(...processedImages.map(img => img.scaledHeight))
+
+        // Start position to center the entire group horizontally
+        let imgX = imageAreaX + (imageAreaWidth - totalScaledWidth) / 2
+
+        // Vertical centering offset
+        const groupOffsetY = (imageAreaHeight - maxScaledHeight) / 2
+
+        for (const img of processedImages) {
+          // Center each image vertically within the max height
+          const individualOffsetY = (maxScaledHeight - img.scaledHeight) / 2
+
+          try {
+            pdf.addImage(
+              img.imageData,
+              img.imageFormat,
+              imgX,
+              imageAreaY + groupOffsetY + individualOffsetY,
+              img.scaledWidth,
+              img.scaledHeight,
+              undefined,
+              'SLOW'
+            )
+          } catch (imageError) {
+            console.error('Failed to add elevation image:', imageError)
+          }
+
+          // Move to the next image position (edge-to-edge, no gap)
+          imgX += img.scaledWidth
         }
       }
     }
 
-    currentY += cardHeight + cardSpacing
-    itemsOnCurrentPage++
+      currentY += cardHeight + cardSpacing
+    } // End of inner loop (items on this page)
 
-    // If this is the last item, add the footer on the current page
-    if (isLastItem) {
+    // Add appropriate footer based on whether this is the last page
+    if (pageAssignment.includeFooter) {
+      // Last page gets the full pricing footer
       addQuoteFooter(pdf, quoteData)
+    } else {
+      // Intermediate pages get a simple footer with date and page number
+      addSimplePageFooter(pdf, pageNumber, totalPages)
     }
-  }
+  } // End of outer loop (pages)
 }
 
 /**
@@ -915,6 +1259,70 @@ async function addImageAttachment(
     pdf.text('Error loading image', pageWidth / 2, pageHeight / 2, { align: 'center' })
     pdf.setTextColor(0, 0, 0)
   }
+}
+
+/**
+ * Helper function to add a continuation page header (for pages after the first)
+ * Returns the Y position where content should start
+ */
+function addContinuationHeader(
+  pdf: jsPDF,
+  projectName: string
+): number {
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const headerY = 15
+
+  // Project name on the left
+  pdf.setFontSize(12)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setTextColor(0, 0, 0)
+  pdf.text(projectName, 15, headerY)
+
+  // "Continued" text on the right in gray
+  pdf.setFontSize(9)
+  pdf.setFont('helvetica', 'normal')
+  pdf.setTextColor(120, 120, 120)
+  pdf.text('(continued)', pageWidth - 15, headerY, { align: 'right' })
+
+  // Light separator line
+  pdf.setLineWidth(0.3)
+  pdf.setDrawColor(200, 200, 200)
+  pdf.line(15, headerY + 4, pageWidth - 15, headerY + 4)
+
+  // Reset text color
+  pdf.setTextColor(0, 0, 0)
+
+  // Return the Y position where content should start (below the header)
+  return headerY + 12
+}
+
+/**
+ * Helper function to add a simple page footer (date and page number)
+ * Used on pages that don't have the full pricing footer
+ */
+function addSimplePageFooter(
+  pdf: jsPDF,
+  pageNum: number,
+  totalPages: number
+): void {
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  const footerY = pageHeight - 10
+
+  // Footer text
+  pdf.setFontSize(8)
+  pdf.setFont('helvetica', 'normal')
+  pdf.setTextColor(120, 120, 120)
+
+  // Left: Date
+  const dateText = new Date().toLocaleDateString()
+  pdf.text(dateText, 15, footerY)
+
+  // Right: Page number
+  pdf.text(`Page ${pageNum} of ${totalPages}`, pageWidth - 15, footerY, { align: 'right' })
+
+  // Reset text color
+  pdf.setTextColor(0, 0, 0)
 }
 
 /**

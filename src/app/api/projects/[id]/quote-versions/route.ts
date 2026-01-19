@@ -161,6 +161,7 @@ export async function POST(
       installationMethod: project.installationMethod,
       installationComplexity: project.installationComplexity,
       manualInstallationCost: project.manualInstallationCost,
+      quoteDrawingView: project.quoteDrawingView || 'ELEVATION',
       quoteItems: quoteData.quoteItems || [],
       // Include attachment info for change detection
       attachments: project.quoteAttachments.map((a) => ({

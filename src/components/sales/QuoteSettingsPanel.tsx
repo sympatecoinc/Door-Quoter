@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronDown, ChevronUp, Settings, DollarSign, Percent, Wrench, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronUp, Settings, DollarSign, Percent, Wrench, RefreshCw, Image } from 'lucide-react'
 
 interface PricingMode {
   id: number
@@ -17,6 +17,7 @@ interface ProjectSettings {
   installationMethod: string
   installationComplexity: string
   manualInstallationCost: number
+  quoteDrawingView: 'ELEVATION' | 'PLAN'
 }
 
 interface QuoteSettingsPanelProps {
@@ -42,6 +43,7 @@ export default function QuoteSettingsPanel({ projectId, onSettingsChanged }: Quo
     installationMethod: 'MANUAL',
     installationComplexity: 'STANDARD',
     manualInstallationCost: 0,
+    quoteDrawingView: 'ELEVATION',
   })
   const [calculatedInstallation, setCalculatedInstallation] = useState<number | null>(null)
 
@@ -67,6 +69,7 @@ export default function QuoteSettingsPanel({ projectId, onSettingsChanged }: Quo
           installationMethod: project.installationMethod || 'MANUAL',
           installationComplexity: project.installationComplexity || 'STANDARD',
           manualInstallationCost: project.manualInstallationCost || 0,
+          quoteDrawingView: project.quoteDrawingView || 'ELEVATION',
         })
       }
     } catch (error) {
@@ -152,6 +155,10 @@ export default function QuoteSettingsPanel({ projectId, onSettingsChanged }: Quo
     saveSettings({ manualInstallationCost: cost })
   }
 
+  const handleDrawingViewChange = (view: 'ELEVATION' | 'PLAN') => {
+    saveSettings({ quoteDrawingView: view })
+  }
+
   const formatPrice = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -198,7 +205,7 @@ export default function QuoteSettingsPanel({ projectId, onSettingsChanged }: Quo
           {loading ? (
             <div className="py-4 text-center text-gray-500">Loading settings...</div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 pt-4">
               {/* Pricing Mode */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
@@ -302,6 +309,38 @@ export default function QuoteSettingsPanel({ projectId, onSettingsChanged }: Quo
                     )}
                   </>
                 )}
+              </div>
+
+              {/* Drawing View */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
+                  <Image className="w-4 h-4" />
+                  Quote Drawings
+                </label>
+                <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => handleDrawingViewChange('ELEVATION')}
+                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                      settings.quoteDrawingView === 'ELEVATION'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Elevation
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDrawingViewChange('PLAN')}
+                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                      settings.quoteDrawingView === 'PLAN'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Plan
+                  </button>
+                </div>
               </div>
             </div>
           )}

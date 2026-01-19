@@ -146,6 +146,13 @@ export async function GET(
       }
     }
 
+    // Check quote drawing view setting
+    const currentDrawingView = project.quoteDrawingView || 'ELEVATION'
+    const snapshotDrawingView = snapshot.quoteDrawingView || 'ELEVATION'
+    if (currentDrawingView !== snapshotDrawingView) {
+      changes.push('Quote drawing view changed')
+    }
+
     // 3. Check for quote document changes
     const currentAttachmentSignature = project.quoteAttachments
       .map((a) => `${a.id}:${a.position}:${a.displayOrder}`)

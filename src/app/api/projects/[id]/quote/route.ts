@@ -125,7 +125,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                         productSubOptions: {
                           include: {
                             category: {
-                              include: {
+                              select: {
+                                id: true,
+                                name: true,
+                                excludeFromQuote: true,
                                 individualOptions: true
                               }
                             }
@@ -209,14 +212,70 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // Determine which drawing view to use (elevation or plan)
+    const drawingViewType = project.quoteDrawingView || 'ELEVATION'
+
+    // Get the base URL for internal API calls (used for plan view fetching)
+    const protocol = request.headers.get('x-forwarded-proto') || 'http'
+    const host = request.headers.get('host') || 'localhost:3000'
+    const baseUrl = `${protocol}://${host}`
+    const cookieHeader = request.headers.get('cookie') || ''
+
     // Generate quote data for each opening
     const quoteItems = await Promise.all(
       project.openings.map(async (opening) => {
-        // Get all product elevation images from all panels
+        // Get drawing images based on quoteDrawingView setting
         const elevationImages: string[] = []
-        for (const panel of opening.panels) {
-          if (panel.componentInstance?.product?.elevationImageData) {
-            elevationImages.push(panel.componentInstance.product.elevationImageData)
+
+        // Array to hold plan view images with metadata (for proper positioning)
+        const planViewImages: Array<{
+          imageData: string
+          orientation?: string
+          width?: number
+          height?: number
+          productType?: string
+          productName?: string
+        }> = []
+
+        if (drawingViewType === 'PLAN') {
+          // Fetch plan view images for this opening
+          try {
+            const planResponse = await fetch(`${baseUrl}/api/drawings/plan/${opening.id}`, {
+              method: 'GET',
+              headers: {
+                'Cookie': cookieHeader
+              }
+            })
+            if (planResponse.ok) {
+              const planData = await planResponse.json()
+              if (planData.success && planData.planViews) {
+                // Extract full plan view data with metadata for proper positioning
+                for (const planView of planData.planViews) {
+                  if (planView.imageData) {
+                    // Add to legacy elevationImages for backwards compatibility
+                    elevationImages.push(planView.imageData)
+                    // Add to new planViewImages with full metadata
+                    planViewImages.push({
+                      imageData: planView.imageData,
+                      orientation: planView.orientation, // 'bottom' or 'top'
+                      width: planView.width,
+                      height: planView.height,
+                      productType: planView.productType,
+                      productName: planView.productName
+                    })
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching plan views for opening ${opening.id}:`, error)
+          }
+        } else {
+          // Default: Get elevation images from product data
+          for (const panel of opening.panels) {
+            if (panel.componentInstance?.product?.elevationImageData) {
+              elevationImages.push(panel.componentInstance.product.elevationImageData)
+            }
           }
         }
 
@@ -258,15 +317,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               const selections = JSON.parse(panel.componentInstance.subOptionSelections)
               const includedOptions = JSON.parse(panel.componentInstance.includedOptions || '[]')
 
-              // Resolve hardware options for display
+              // Resolve all selected options for display
               for (const [categoryId, optionId] of Object.entries(selections)) {
                 if (optionId) {
                   for (const pso of product.productSubOptions || []) {
                     if (String(pso.category.id) === String(categoryId)) {
-                      const categoryName = pso.category.name.toLowerCase()
-                      if (categoryName.includes('hardware') || categoryName.includes('handle') ||
-                          categoryName.includes('lock') || categoryName.includes('hinge')) {
-                        for (const option of pso.category.individualOptions) {
+                      // Skip categories marked as excluded from quote
+                      if (pso.category.excludeFromQuote) {
+                        continue
+                      }
+                      for (const option of pso.category.individualOptions) {
                           if (option.id === optionId) {
                             const isIncluded = includedOptions.includes(Number(optionId))
                             const isStandardOption = pso.standardOptionId === option.id
@@ -297,8 +357,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                                 standardCost = standardMasterPart?.cost ?? 0
                               }
 
-                              // Sale price = difference from standard (upgrade/downgrade)
-                              optionPrice = selectedCost - standardCost
+                              // Sale price = difference from standard (upgrade/downgrade) with markup
+                              const costDifference = selectedCost - standardCost
+                              optionPrice = calculateMarkupPrice(costDifference, 'Hardware', pricingMode, globalPricingMultiplier)
                             }
 
                             hardwareItems.push({
@@ -313,7 +374,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                             break
                           }
                         }
-                      }
                       break
                     }
                   }
@@ -402,10 +462,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               : `${item.name} | +$${item.price.toLocaleString()}${item.isIncluded ? ' | INCLUDED' : ''}`
           ).join(' • ') : 'Standard',
           hardwarePrice: totalHardwarePrice,
-          glassType: Array.from(glassTypes).join(', ') || 'Clear',
+          glassType: Array.from(glassTypes).join(', ') || 'N/A',
           costPrice: opening.price, // Internal cost (not shown to customer)
           price: markedUpPrice, // Customer-facing price with category-specific markups
           elevationImages: elevationImages,
+          planViewImages: planViewImages.length > 0 ? planViewImages : undefined, // Plan view images with metadata for proper positioning
           // Include cost breakdown for debugging/transparency (optional)
           costBreakdown: {
             extrusion: { base: extrusionCostForMarkup, markedUp: markedUpExtrusionCost }, // Base excludes hybrid remaining
@@ -488,6 +549,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         extrusionCostingMethod: project.pricingMode?.extrusionCostingMethod || project.extrusionCostingMethod,
         excludedPartNumbers: project.excludedPartNumbers,
         pricingModeId: project.pricingModeId,
+        quoteDrawingView: project.quoteDrawingView || 'ELEVATION',
         pricingMode: project.pricingMode ? {
           id: project.pricingMode.id,
           name: project.pricingMode.name,
@@ -499,6 +561,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           extrusionCostingMethod: project.pricingMode.extrusionCostingMethod
         } : null
       },
+      drawingViewType, // "ELEVATION" or "PLAN" - indicates which drawings are included
       availablePricingModes: availablePricingModes.map(mode => ({
         id: mode.id,
         name: mode.name,

@@ -3,6 +3,35 @@ import { prisma } from '@/lib/prisma'
 import { renderSvgToPng, isSvgFile, decodeSvgData } from '@/lib/svg-renderer'
 import { processParametricSVG } from '@/lib/parametric-svg-server'
 
+/**
+ * Extracts width and height from PNG image data (base64 or buffer)
+ * PNG header structure: first 8 bytes are signature, then IHDR chunk contains width/height
+ */
+function getPngDimensions(base64Data: string): { width: number, height: number } | null {
+  try {
+    // Strip data URL prefix if present
+    const data = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data
+    const buffer = Buffer.from(data, 'base64')
+
+    // PNG signature check (first 8 bytes)
+    const pngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+    for (let i = 0; i < 8; i++) {
+      if (buffer[i] !== pngSignature[i]) {
+        return null // Not a valid PNG
+      }
+    }
+
+    // IHDR chunk starts at byte 8, width at byte 16, height at byte 20 (big-endian)
+    const width = buffer.readUInt32BE(16)
+    const height = buffer.readUInt32BE(20)
+
+    return { width, height }
+  } catch (error) {
+    console.error('Error reading PNG dimensions:', error)
+    return null
+  }
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ openingId: string }> }) {
   try {
     const { openingId } = await params
@@ -112,11 +141,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               (pv: any) => pv.name.startsWith(panelDirection)
             )
           }
+          if (!matchingPlanView) {
+            // Additional fuzzy match: plan view name contains the direction
+            matchingPlanView = product.planViews.find(
+              (pv: any) => pv.name.toLowerCase().includes(panelDirection.toLowerCase())
+            )
+          }
+          // Fallback to first available plan view if no match found
+          if (!matchingPlanView && product.planViews.length > 0) {
+            matchingPlanView = product.planViews[0]
+            console.log(`Using fallback plan view: ${matchingPlanView.name}`)
+          }
           if (matchingPlanView) {
             console.log(`Found matching plan view: ${matchingPlanView.name}`)
           } else {
-            console.log(`No matching plan view found for sliding direction: ${panelDirection}`)
-            console.log(`Available plan views:`, product.planViews.map((pv: any) => pv.name))
+            console.log(`No plan views available for sliding door`)
           }
         } else if (product.productType === 'SWING_DOOR') {
           // For swing doors, use swingDirection
@@ -125,11 +164,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           matchingPlanView = product.planViews.find(
             (pv: any) => pv.name === panelDirection
           )
+          if (!matchingPlanView) {
+            // Fuzzy match: plan view name contains the direction
+            matchingPlanView = product.planViews.find(
+              (pv: any) => pv.name.toLowerCase().includes(panelDirection.toLowerCase())
+            )
+          }
+          // Fallback to first available plan view if no match found
+          if (!matchingPlanView && product.planViews.length > 0) {
+            matchingPlanView = product.planViews[0]
+            console.log(`Using fallback plan view: ${matchingPlanView.name}`)
+          }
           if (matchingPlanView) {
             console.log(`Found matching plan view: ${matchingPlanView.name}`)
           } else {
-            console.log(`No matching plan view found for swing direction: ${panelDirection}`)
-            console.log(`Available plan views:`, product.planViews.map((pv: any) => pv.name))
+            console.log(`No plan views available for swing door`)
           }
         } else {
           // For other product types (e.g., CORNER_90), use fallback logic
@@ -137,6 +186,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           matchingPlanView = product.planViews.find(
             (pv: any) => pv.name === panelDirection
           )
+          // Fallback to first available plan view if no match found
+          if (!matchingPlanView && product.planViews.length > 0) {
+            matchingPlanView = product.planViews[0]
+            console.log(`Using fallback plan view for ${product.productType}: ${matchingPlanView.name}`)
+          }
         }
 
         if (matchingPlanView) {
@@ -173,10 +227,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               const constantHeightInches = originalWidthInches * aspectRatio
 
               displayWidth = panel.width
-              displayHeight = constantHeightInches  // Stays constant regardless of width
+              displayHeight = constantHeightInches
 
               console.log(`SVG original: ${svgWidthPx}px x ${svgHeightPx}px`)
-              console.log(`SVG display: width scales to ${displayWidth}", height CONSTANT at ${displayHeight.toFixed(2)}"`)
+              console.log(`SVG display: width scales to ${displayWidth}", height at ${displayHeight.toFixed(2)}"`)
+              console.log(`SVG aspect ratio: ${aspectRatio.toFixed(4)}`)
 
               // Process SVG with parametric scaling (handles group transforms)
               console.log(`Applying parametric transforms for plan view`)
@@ -203,12 +258,31 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               // Fall back to original image data on error
             }
           } else {
-            // PNG files: scale proportionally (both width and height)
-            console.log(`Processing PNG plan view for panel ${panel.id}`)
-            displayWidth = panel.width
-            displayHeight = panel.width  // Square aspect ratio for PNGs
+            // PNG files: calculate height based on actual PNG aspect ratio
+            // Scale factor to reduce PNG plan view size
+            // Swing doors need different scaling based on whether they're standalone or with other panels
+            let PNG_PLAN_VIEW_SCALE = 0.67
+            if (product.productType === 'SWING_DOOR') {
+              // Standalone swing doors need moderate scale
+              // Swing doors with other panels need slightly smaller scale to stay proportional
+              const isStandalone = opening.panels.length === 1
+              PNG_PLAN_VIEW_SCALE = isStandalone ? 0.65 : 0.5
+            }
 
-            console.log(`PNG display (square): ${displayWidth}" x ${displayHeight}"`)
+            console.log(`Processing PNG plan view for panel ${panel.id} (${product.productType}, standalone: ${opening.panels.length === 1})`)
+            displayWidth = panel.width * PNG_PLAN_VIEW_SCALE
+
+            const pngDims = getPngDimensions(imageData)
+            if (pngDims) {
+              // Calculate display height maintaining the PNG's aspect ratio
+              displayHeight = (displayWidth / pngDims.width) * pngDims.height
+              console.log(`PNG original: ${pngDims.width}px x ${pngDims.height}px`)
+              console.log(`PNG display: ${displayWidth.toFixed(2)}" x ${displayHeight.toFixed(2)}" (scaled ${PNG_PLAN_VIEW_SCALE})`)
+            } else {
+              // Fallback: use scaled width as height if dimensions can't be read
+              displayHeight = displayWidth
+              console.log(`PNG dimensions could not be read, using square fallback: ${displayWidth.toFixed(2)}" x ${displayHeight.toFixed(2)}"`)
+            }
           }
 
           const planViewData = {

@@ -24,7 +24,7 @@ export default function LeadListPanel({
   onSearchChange,
   viewMode,
 }: LeadListPanelProps) {
-  const listLabel = viewMode === 'leads' ? 'Leads' : 'Projects'
+  const listLabel = viewMode === 'leads' ? 'Current Leads' : 'Projects'
   const searchPlaceholder = viewMode === 'leads' ? 'Search leads...' : 'Search projects...'
 
   return (
@@ -80,20 +80,22 @@ export default function LeadListPanel({
                     : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
                 }`}
               >
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center justify-between gap-2">
                   <span className="font-medium text-gray-900 truncate">
                     {lead.name}
                   </span>
-                  {lead.hasThinWall && (
-                    <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
-                      ThinWall
-                    </span>
-                  )}
-                  {lead.hasTrimmed && (
-                    <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">
-                      Trimmed
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {lead.hasThinWall && (
+                      <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
+                        ThinWall
+                      </span>
+                    )}
+                    {lead.hasTrimmed && (
+                      <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">
+                        Trimmed
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {lead.customer ? (
                   <div className="text-sm text-gray-500 truncate mt-0.5">

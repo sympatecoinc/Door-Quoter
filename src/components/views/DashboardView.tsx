@@ -87,7 +87,7 @@ export default function DashboardView() {
       {/* Leads Section */}
       <div className="mb-8 flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Leads</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Current Leads</h1>
           <p className="text-gray-600 mt-2">Projects in quoting phase (Staging through Quote Sent)</p>
         </div>
         <button
@@ -97,35 +97,6 @@ export default function DashboardView() {
           <Plus className="w-4 h-4" />
           Add Lead
         </button>
-      </div>
-
-      {/* Leads Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center">
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <Folder className="w-6 h-6 text-blue-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Active Leads</p>
-              <p className="text-2xl font-bold text-gray-900">{data.stats.totalLeads}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center">
-            <div className="p-3 bg-amber-100 rounded-lg">
-              <DollarSign className="w-6 h-6 text-amber-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Pipeline Value</p>
-              <p className="text-2xl font-bold text-gray-900">
-                ${data.stats.leadPipelineValue.toLocaleString()}
-              </p>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Leads List */}

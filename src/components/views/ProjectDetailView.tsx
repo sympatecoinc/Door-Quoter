@@ -215,7 +215,7 @@ export default function ProjectDetailView() {
   const [swingDirection, setSwingDirection] = useState<string>('Right In')
   const [slidingDirection, setSlidingDirection] = useState<string>('Left')
   const [cornerDirection, setCornerDirection] = useState<string>('Up')
-  const [glassType, setGlassType] = useState<string>('Clear')
+  const [glassType, setGlassType] = useState<string>('')
   const [componentQuantity, setComponentQuantity] = useState<string>('1')
   const [componentValidationErrors, setComponentValidationErrors] = useState<string[]>([])
   // Hardware options for add component modal
@@ -580,6 +580,14 @@ export default function ProjectDetailView() {
       if (response.ok) {
         const data = await response.json()
         setGlassTypes(data)
+        // Set default glass type to first available if current is empty or doesn't exist in database
+        if (data.length > 0) {
+          setGlassType((current) => {
+            if (!current) return data[0].name
+            const exists = data.some((gt: any) => gt.name === current)
+            return exists ? current : data[0].name
+          })
+        }
       }
     } catch (error) {
       console.error('Error fetching glass types:', error)
@@ -1365,7 +1373,7 @@ export default function ProjectDetailView() {
       setSwingDirection('Right In')
       setSlidingDirection('Left')
       setCornerDirection('Left')
-      setGlassType('Clear')
+      setGlassType(glassTypes[0]?.name || '')
       setHardwareOptionsExpanded(false)
       setAddComponentOptions([])
       setAddComponentSelectedOptions({})
@@ -1861,7 +1869,7 @@ export default function ProjectDetailView() {
             type: panelType,
             width: widthPerComponent,
             height: height,
-            glassType: 'Clear',
+            glassType: glassTypes[0]?.name || 'N/A',
             locking: product?.productType === 'SWING_DOOR' ? 'Standard' : 'N/A',
             productId: productId,
             quantity: 1,
@@ -2040,7 +2048,7 @@ export default function ProjectDetailView() {
       setComponentValidationErrors([])
       setSwingDirection('Right In')
       setSlidingDirection('Left')
-      setGlassType('Clear')
+      setGlassType(glassTypes[0]?.name || '')
       setHardwareOptionsExpanded(false)
       setAddComponentOptions([])
       setAddComponentSelectedOptions({})
@@ -3635,7 +3643,7 @@ export default function ProjectDetailView() {
                   setComponentValidationErrors([])
                   setSwingDirection('Right In')
                   setSlidingDirection('Left')
-                  setGlassType('Clear')
+                  setGlassType(glassTypes[0]?.name || '')
                   setHardwareOptionsExpanded(false)
                   setAddComponentOptions([])
                   setAddComponentSelectedOptions({})

@@ -77,7 +77,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const categoryId = parseInt(id)
-    const { name, description } = await request.json()
+    const { name, description, excludeFromQuote } = await request.json()
 
     if (!name) {
       return NextResponse.json(
@@ -90,7 +90,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       where: { id: categoryId },
       data: {
         name,
-        description
+        description,
+        excludeFromQuote: excludeFromQuote ?? undefined
       },
       include: {
         individualOptions: true,
