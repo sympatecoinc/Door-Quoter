@@ -5,6 +5,7 @@ import { jsPDF } from 'jspdf'
 import fs from 'fs'
 import path from 'path'
 import sharp from 'sharp'
+import { downloadFile } from './gcs-storage'
 
 export interface JambKitItem {
   partNumber: string
@@ -51,15 +52,33 @@ export async function createJambKitPDF(data: JambKitData): Promise<Buffer> {
   // Add company logo in top right if available
   if (data.companyLogo) {
     try {
-      const logoPath = path.join(process.cwd(), 'uploads', 'branding', data.companyLogo)
-      if (fs.existsSync(logoPath)) {
-        const logoBuffer = fs.readFileSync(logoPath)
-        const logoExt = path.extname(data.companyLogo).toLowerCase().replace('.', '')
+      let logoBuffer: Buffer | null = null
+      let logoMimeType = 'image/png'
 
+      // Try to parse as JSON (new GCS format)
+      try {
+        const logoInfo = JSON.parse(data.companyLogo)
+        if (logoInfo.gcsPath) {
+          logoBuffer = await downloadFile(logoInfo.gcsPath)
+          logoMimeType = logoInfo.mimeType || 'image/png'
+        }
+      } catch {
+        // Legacy format - try filesystem
+        const logoPath = path.join(process.cwd(), 'uploads', 'branding', data.companyLogo)
+        if (fs.existsSync(logoPath)) {
+          logoBuffer = fs.readFileSync(logoPath)
+          const logoExt = path.extname(data.companyLogo).toLowerCase()
+          logoMimeType = logoExt === '.svg' ? 'image/svg+xml' :
+                        logoExt === '.jpg' || logoExt === '.jpeg' ? 'image/jpeg' : 'image/png'
+        }
+      }
+
+      if (logoBuffer) {
+        const logoExt = logoMimeType.split('/')[1]
         let processedLogoBuffer: Buffer
         let imageFormat: 'PNG' | 'JPEG' = 'PNG'
 
-        if (logoExt === 'svg') {
+        if (logoExt === 'svg+xml' || logoExt === 'svg') {
           processedLogoBuffer = logoBuffer
         } else {
           const metadata = await sharp(logoBuffer).metadata()
@@ -97,7 +116,7 @@ export async function createJambKitPDF(data: JambKitData): Promise<Buffer> {
 
         const logoBase64 = processedLogoBuffer.toString('base64')
         const mimeType = imageFormat === 'JPEG' ? 'image/jpeg' :
-                         (logoExt === 'svg' ? 'image/svg+xml' : 'image/png')
+                         (logoExt === 'svg' || logoExt === 'svg+xml' ? 'image/svg+xml' : 'image/png')
         const logoData = `data:${mimeType};base64,${logoBase64}`
 
         const logoX = PAGE_WIDTH - MARGIN - finalWidth
