@@ -20,6 +20,21 @@ interface QuoteItem {
   costPrice: number // Internal cost (not shown to customer)
   price: number // Customer-facing marked-up price
   elevationImages: string[]
+  planViewImages?: Array<{
+    imageData: string
+    orientation?: string
+    width?: number
+    height?: number
+    productType?: string
+    productName?: string
+  }>
+  elevationViewImages?: Array<{
+    imageData: string
+    width?: number
+    height?: number
+    productType?: string
+    productName?: string
+  }>
 }
 
 interface PricingModeOption {
@@ -350,17 +365,21 @@ export default function QuoteView() {
           // BOM Items
           if (component.bomItems.length > 0) {
             csv += 'BOM ITEMS\n'
-            csv += 'Part Number,Part Name,Part Type,Quantity,Unit Cost,Total Cost,Method,Details\n'
+            csv += 'Part Number,Part Name,Part Type,Stock Length,Cut Length,Quantity,Unit Cost,Finish Cost,Total Cost,Method,Details\n'
             for (const bom of component.bomItems) {
               const partNumber = bom.partNumber || ''
               const partName = (bom.partName || '').replace(/"/g, '""')
               const partType = bom.partType || ''
+              const stockLength = bom.stockLength ? `${bom.stockLength}"` : ''
+              const cutLength = bom.cutLength ? `${bom.cutLength.toFixed(2)}"` : ''
               const quantity = bom.quantity || 1
               const unitCost = bom.unitCost?.toFixed(2) || '0.00'
+              const finishCost = bom.finishCost?.toFixed(2) || '0.00'
               const totalCost = bom.totalCost?.toFixed(2) || '0.00'
               const method = bom.method || ''
               const details = (bom.details || '').replace(/"/g, '""')
-              csv += `"${partNumber}","${partName}","${partType}",${quantity},$${unitCost},$${totalCost},"${method}","${details}"\n`
+              const finishDetails = bom.finishDetails ? ` | ${(bom.finishDetails || '').replace(/"/g, '""')}` : ''
+              csv += `"${partNumber}","${partName}","${partType}","${stockLength}","${cutLength}",${quantity},$${unitCost},$${finishCost},$${totalCost},"${method}","${details}${finishDetails}"\n`
             }
             csv += '\n'
           }
@@ -368,7 +387,7 @@ export default function QuoteView() {
           // Option Items
           if (component.optionItems.length > 0) {
             csv += 'OPTION ITEMS\n'
-            csv += 'Category,Option Name,Part Number,Quantity,Unit Price,Total Price,Is Standard,Is Included\n'
+            csv += 'Category,Option Name,Part Number,Quantity,Unit Price,Total Price,Method,Details,Is Standard,Is Included\n'
             for (const opt of component.optionItems) {
               const category = (opt.category || '').replace(/"/g, '""')
               const optName = (opt.optionName || '').replace(/"/g, '""')
@@ -376,9 +395,11 @@ export default function QuoteView() {
               const quantity = opt.quantity || 1
               const unitPrice = opt.unitPrice?.toFixed(2) || '0.00'
               const price = opt.price?.toFixed(2) || '0.00'
+              const method = opt.method || ''
+              const details = (opt.details || '').replace(/"/g, '""')
               const isStandard = opt.isStandard ? 'Yes' : 'No'
               const isIncluded = opt.isIncluded ? 'Yes' : 'No'
-              csv += `"${category}","${optName}","${partNumber}",${quantity},$${unitPrice},$${price},${isStandard},${isIncluded}\n`
+              csv += `"${category}","${optName}","${partNumber}",${quantity},$${unitPrice},$${price},"${method}","${details}",${isStandard},${isIncluded}\n`
             }
             csv += '\n'
           }
@@ -793,19 +814,34 @@ export default function QuoteView() {
             <tbody className="divide-y divide-gray-200">
               {quoteData.quoteItems.map((item, index) => (
                 <tr key={item.openingId} className="hover:bg-gray-50 transition-colors">
-                  {/* Elevation Thumbnails - All Panels Side by Side */}
+                  {/* Elevation Thumbnails - All Panels Side by Side with Proportional Widths */}
                   <td className="py-6 px-6 w-56 border-r border-gray-200">
                     {item.elevationImages && item.elevationImages.length > 0 ? (
-                      <div className="flex items-center justify-center h-40 gap-0">
-                        {item.elevationImages.map((elevationImage, imgIndex) => (
-                          <img
-                            key={imgIndex}
-                            src={elevationImage.startsWith('data:') ? elevationImage : `data:image/png;base64,${elevationImage}`}
-                            alt={`Opening ${item.name} panel ${imgIndex + 1}`}
-                            className="h-full object-contain"
-                            style={{ width: `${100 / item.elevationImages.length}%` }}
-                          />
-                        ))}
+                      <div className="flex items-center justify-end h-40 gap-0">
+                        {(() => {
+                          // Calculate proportional widths from metadata (use elevationViewImages for elevation, planViewImages for plan)
+                          const metadataSource = item.elevationViewImages ?? item.planViewImages
+                          const widths = metadataSource?.map(img => img.width ?? 0) ?? []
+                          const totalWidth = widths.reduce((sum, w) => sum + w, 0)
+                          const hasValidWidths = totalWidth > 0 && widths.length === item.elevationImages.length
+
+                          return item.elevationImages.map((elevationImage, imgIndex) => {
+                            // Use proportional width if available, otherwise fall back to equal distribution
+                            const widthPercent = hasValidWidths
+                              ? (widths[imgIndex] / totalWidth) * 100
+                              : 100 / item.elevationImages.length
+
+                            return (
+                              <img
+                                key={imgIndex}
+                                src={elevationImage.startsWith('data:') ? elevationImage : `data:image/png;base64,${elevationImage}`}
+                                alt={`Opening ${item.name} panel ${imgIndex + 1}`}
+                                className="h-full object-contain"
+                                style={{ width: `${widthPercent}%` }}
+                              />
+                            )
+                          })
+                        })()}
                       </div>
                     ) : (
                       <div className="flex items-center justify-center h-40">

@@ -249,6 +249,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           productName?: string
         }> = []
 
+        // Array to hold elevation view images with metadata (for proportional width rendering)
+        const elevationViewImages: Array<{
+          imageData: string
+          width?: number
+          height?: number
+          productType?: string
+          productName?: string
+        }> = []
+
         if (drawingViewType === 'PLAN') {
           // Fetch plan view images for this opening
           try {
@@ -283,10 +292,49 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             console.error(`Error fetching plan views for opening ${opening.id}:`, error)
           }
         } else {
-          // Default: Get elevation images from product data
-          for (const panel of opening.panels) {
-            if (panel.componentInstance?.product?.elevationImageData) {
-              elevationImages.push(panel.componentInstance.product.elevationImageData)
+          // Default: Fetch elevation view images with metadata for proper proportional rendering
+          try {
+            const elevationResponse = await fetch(`${baseUrl}/api/drawings/elevation/${opening.id}`, {
+              method: 'GET',
+              headers: {
+                'Cookie': cookieHeader
+              }
+            })
+            if (elevationResponse.ok) {
+              const elevationData = await elevationResponse.json()
+              if (elevationData.success && elevationData.elevationImages) {
+                // Extract elevation data with width metadata for proportional display
+                for (const elevImg of elevationData.elevationImages) {
+                  if (elevImg.imageData) {
+                    // Add to legacy elevationImages for backwards compatibility
+                    elevationImages.push(elevImg.imageData)
+                    // Add to elevationViewImages with width metadata for proportional rendering
+                    // NOTE: Using separate array from planViewImages to avoid triggering wall drawing in PDF
+                    elevationViewImages.push({
+                      imageData: elevImg.imageData,
+                      width: elevImg.width,
+                      height: elevImg.height,
+                      productType: elevImg.productType,
+                      productName: elevImg.productName
+                    })
+                  }
+                }
+              }
+            } else {
+              // Fallback: Get elevation images directly from product data
+              for (const panel of opening.panels) {
+                if (panel.componentInstance?.product?.elevationImageData) {
+                  elevationImages.push(panel.componentInstance.product.elevationImageData)
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching elevation views for opening ${opening.id}:`, error)
+            // Fallback: Get elevation images directly from product data
+            for (const panel of opening.panels) {
+              if (panel.componentInstance?.product?.elevationImageData) {
+                elevationImages.push(panel.componentInstance.product.elevationImageData)
+              }
             }
           }
         }
@@ -536,6 +584,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           price: markedUpPrice, // Customer-facing price with category-specific markups
           elevationImages: elevationImages,
           planViewImages: planViewImages.length > 0 ? planViewImages : undefined, // Plan view images with metadata for proper positioning
+          elevationViewImages: elevationViewImages.length > 0 ? elevationViewImages : undefined, // Elevation view images with width metadata for proportional rendering
           // Include cost breakdown for debugging/transparency (optional)
           costBreakdown: {
             extrusion: { base: extrusionCostForMarkup, markedUp: markedUpExtrusionCost }, // Base excludes hybrid remaining

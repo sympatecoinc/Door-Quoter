@@ -103,6 +103,11 @@ export async function GET(
               changes.push('Opening prices have changed')
               break
             }
+            // Compare cost prices (internal costs before markup)
+            if (Math.abs((currentItem.costPrice || 0) - (snapshotItem.costPrice || 0)) > 0.01) {
+              changes.push('Component costs have changed')
+              break
+            }
             // Compare dimensions
             if (currentItem.dimensions !== snapshotItem.dimensions) {
               changes.push('Opening dimensions have changed')

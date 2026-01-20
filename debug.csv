@@ -1,0 +1,187 @@
+=== PROJECT PRICING DEBUG ===
+Project,"Banyan's Sliding Door"
+Status,"APPROVED"
+
+=== PRICING MODE ===
+Name,"Default (Hybrid)"
+Extrusion Markup,300%
+Hardware Markup,300%
+Glass Markup,300%
+Packaging Markup,0%
+Global Markup,0%
+Discount,0%
+Extrusion Costing,"HYBRID"
+
+=== OPENING: 001 ===
+Finish Color,"Black (Powder Coated)"
+
+--- Component: Fixed End Panel (4") (Panel 957) ---
+Dimensions,"37.125" W x 95.625" H"
+
+BOM ITEMS
+Part Number,Part Name,Part Type,Quantity,Unit Cost,Total Cost,Method,Details
+"E-12306","ThinWall Starter Channel","Extrusion",1,$10.16,$22.92,"extrusion_hybrid_split","Cut 97.63"" from 123"" stock (79.4% used) | Piece price: $10.16 | Used: 79.4% × $10.16 × 1 = $8.07 (gets markup) | Remaining: 20.6% × $10.16 × 1 = $2.10 (no markup) | Material total: $10.16"
+"JAMB-KIT-BOX","Jamb Kit Box","Packaging",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"MS-BX-38-84X120-DW","Fixed Panel and Door Box","Packaging",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"FOAM-GASKET-ROLL","Foam Gasket","Hardware",4,$0.43,$1.73,"bom_formula","Formula: height - 9 → 95.625 - 9 = 86.63 × $0.005/IN × 4 qty = $1.73"
+"48447","Glass Stop (Face)","Extrusion",2,$3.04,$26.63,"extrusion_hybrid_split","Cut 85.25"" from 99"" stock (86.1% used) | Piece price: $3.04 | Used: 86.1% × $3.04 × 2 = $5.24 (gets markup) | Remaining: 13.9% × $3.04 × 2 = $0.84 (no markup) | Material total: $6.08"
+"48447","Glass Stop (Face)","Extrusion",2,$0.99,$8.64,"extrusion_hybrid_percentage","Cut 32.13"" from 99"" stock (32.4% used, <50%) | Piece price: $3.04 | Calc: 32.4% × $3.04 × 2 qty = $1.97"
+"48448","Glass Stop (Gutter)","Extrusion",2,$1.83,$10.33,"extrusion_hybrid_percentage","Cut 32.13"" from 102"" stock (31.5% used, <50%) | Piece price: $5.81 | Calc: 31.5% × $5.81 × 2 qty = $3.66"
+"48450","4"" Web Rail Shallow","Extrusion",1,$16.32,$19.65,"extrusion_hybrid_percentage","Cut 32.13"" from 102"" stock (31.5% used, <50%) | Piece price: $51.81 | Calc: 31.5% × $51.81 × 1 qty = $16.32"
+"48601","Sliding Door Seal","Extrusion",1,$5.52,$15.79,"extrusion_hybrid_split","Cut 97.63"" from 99"" stock (98.6% used) | Piece price: $5.52 | Used: 98.6% × $5.52 × 1 = $5.44 (gets markup) | Remaining: 1.4% × $5.52 × 1 = $0.08 (no markup) | Material total: $5.52"
+"48351","Dovetail","Extrusion",1,$17.57,$27.84,"extrusion_hybrid_split","Cut 94.25"" from 99"" stock (95.2% used) | Piece price: $17.57 | Used: 95.2% × $17.57 × 1 = $16.73 (gets markup) | Remaining: 4.8% × $17.57 × 1 = $0.84 (no markup) | Material total: $17.57"
+"AD-LUG-1.04-FG","Door Lug (1.04)","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"48448","Glass Stop (Gutter)","Extrusion",2,$5.81,$32.79,"extrusion_hybrid_split","Cut 85.25"" from 102"" stock (83.6% used) | Piece price: $5.81 | Used: 83.6% × $5.81 × 2 = $9.71 (gets markup) | Remaining: 16.4% × $5.81 × 2 = $1.91 (no markup) | Material total: $11.62"
+"E-12303","Flat Stock Trim","Extrusion",2,$4.27,$16.47,"extrusion_hybrid_percentage","Cut 38.25"" from 123"" stock (31.1% used, <50%) | Piece price: $13.72 | Calc: 31.1% × $13.72 × 2 qty = $8.53"
+"48349","U-Channel Shallow","Extrusion",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-BUMBS35","Black Bumper","Hardware",10,$0.06,$0.59,"master_part_hardware","Hardware cost: $0.0594 × 10"
+"E-12307H","4"" ThinWall Web Rail","Extrusion",1,$16.17,$19.51,"extrusion_hybrid_percentage","Cut 32.13"" from 102"" stock (31.5% used, <50%) | Piece price: $51.35 | Calc: 31.5% × $51.35 × 1 qty = $16.17"
+"48468","4"" Fixed Back Stile","Extrusion",1,$54.00,$64.28,"extrusion_hybrid_split","Cut 94.25"" from 99"" stock (95.2% used) | Piece price: $54.00 | Used: 95.2% × $54.00 × 1 = $51.41 (gets markup) | Remaining: 4.8% × $54.00 × 1 = $2.59 (no markup) | Material total: $54.00"
+"E-12304","Thinwall U-Channel","Extrusion",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-TUBS071","3/8-24 Locking Nut","Hardware",4,$0.00,$0.00,"no_cost_found","No pricing method found"
+"AD-LUG-3.20-FG","Door Lug (3.20)","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-NUT1512","Hex Head Screw","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-TUBP938","Trim Sweep Pile","Hardware",1,$0.62,$0.62,"master_part_hardware","Hardware cost: $0.6186 × 1"
+"MS-BX-38-84X120-DW","Fixed Panel and Door Box","Packaging",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"HW-BLT-FAS2060","Lag Bolt","Fastener",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"HW-N&B-FAS3004","Flat Washer","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-NUT884","HexSleeve Anchor","Fastener",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"RM-PUCK-BRKT","Roller Guide Bracket 12g Steel","Hardware",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"HW-STD-MCMA604","M5x15mm Press-Fit Stud","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-TUBP020","3/8-24 Threaded Rod 35-1/16L","CutStock",2,$6.00,$12.00,"master_part_direct","MasterPart direct: $6 × 2"
+"FOAM-GASKET-ROLL","Foam Gasket","Hardware",4,$0.16,$0.64,"bom_formula","Formula: Width - 5 → 37.125 - 5 = 32.13 × $0.005/IN × 4 qty = $0.64"
+
+OPTION ITEMS
+Category,Option Name,Part Number,Quantity,Unit Price,Total Price,Is Standard,Is Included
+"Starter Channel","Starter Channel","E-12306",1,$10.16,$22.92,No,No
+
+GLASS
+Glass Type,Width Formula,Height Formula,Calc Width,Calc Height,Qty,Sqft,Price/Sqft,Total Cost
+"Clear 1/4" Tempered Glass","width -8","height -10",29.125,85.625,1,17.32,$4.00,$69.27
+
+Component BOM Total,$280.42
+Component Options Total,$22.92
+Component Glass Total,$69.27
+
+--- Component: Active Sliding Door (Panel 955) ---
+Dimensions,"39.875" W x 95.625" H"
+
+BOM ITEMS
+Part Number,Part Name,Part Type,Quantity,Unit Cost,Total Cost,Method,Details
+"48420","Whisker Strip","Extrusion",2,$1.72,$11.69,"extrusion_hybrid_percentage","Cut 39.75"" from 242"" stock (16.4% used, <50%) | Piece price: $10.47 | Calc: 16.4% × $10.47 × 2 qty = $3.44"
+"48447","Glass Stop (Face)","Extrusion",2,$0.96,$8.44,"extrusion_hybrid_percentage","Cut 31.38"" from 99"" stock (31.7% used, <50%) | Piece price: $3.04 | Calc: 31.7% × $3.04 × 2 qty = $1.93"
+"E-12305H","2"" ThinWall Web Rail","Extrusion",1,$11.17,$14.43,"extrusion_hybrid_percentage","Cut 31.38"" from 106"" stock (29.6% used, <50%) | Piece price: $37.75 | Calc: 29.6% × $37.75 × 1 qty = $11.17"
+"48448","Glass Stop (Gutter)","Extrusion",2,$5.81,$32.79,"extrusion_hybrid_split","Cut 85.25"" from 102"" stock (83.6% used) | Piece price: $5.81 | Used: 83.6% × $5.81 × 2 = $9.71 (gets markup) | Remaining: 16.4% × $5.81 × 2 = $1.91 (no markup) | Material total: $11.62"
+"48448","Glass Stop (Gutter)","Extrusion",2,$1.79,$10.08,"extrusion_hybrid_percentage","Cut 31.38"" from 102"" stock (30.8% used, <50%) | Piece price: $5.81 | Calc: 30.8% × $5.81 × 2 qty = $3.57"
+"AD-SWG-SHIM-FG","Extra-Wide Shim Jack","Hardware",3,$0.01,$0.03,"master_part_hardware","Hardware cost: $0.01 × 3"
+"DR-ASD-BUMBS35","Black Bumper","Hardware",9,$0.06,$0.53,"master_part_hardware","Hardware cost: $0.0594 × 9"
+"HW-ROLL-BUL105","MR105 Mini V Wheel Assembly","Hardware",1,$0.66,$0.66,"master_part_hardware","Hardware cost: $0.66 × 1"
+"HW-PLT-ALB0105","Albatur Suspension Plate","Hardware",2,$0.40,$0.80,"master_part_hardware","Hardware cost: $0.4 × 2"
+"E-12382H","4"" Lock Stile","Extrusion",1,$48.63,$58.90,"extrusion_hybrid_split","Cut 92.63"" from 99"" stock (93.6% used) | Piece price: $48.63 | Used: 93.6% × $48.63 × 1 = $45.50 (gets markup) | Remaining: 6.4% × $48.63 × 1 = $3.13 (no markup) | Material total: $48.63"
+"HW-SCR-FAS9097-BLK","#6 x 3/8 Flat Head Phillips Screw","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"E-12311","Roller Track","Extrusion",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-NUT2641","#10-24 x 3/8 Philips Pan Head","Hardware",8,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-TUBP938","Trim Sweep Pile","Hardware",6,$0.62,$3.71,"master_part_hardware","Hardware cost: $0.6186 × 6"
+"DR-ASD-ULTQTST","Swing Door Pile","Hardware",7,$0.15,$1.04,"master_part_hardware","Hardware cost: $0.14828 × 7"
+"DR-ASD-TUB013D","Lock Stile Pile","Hardware",6,$0.35,$2.11,"master_part_hardware","Hardware cost: $0.35181 × 6"
+"AD-ACC-TRK-CAP","Albatur 9700 Roller Track Cap","Hardware",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"AD-LUG-1.55-FG","Door Lug (1.55)","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-NUT6360","1/4-20 Threaded Rivnut Insert","Hardware",3,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-TUBS071","3/8-24 Locking Nut","Hardware",4,$0.00,$0.00,"no_cost_found","No pricing method found"
+"HW-PLG-13MM","13mm Hole Plug","Hardware",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"AD-LUG-1.94-FG","Door Lug (1.94)","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"HW-STD-MCMA604","M5x15mm Press-Fit Stud","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"HW-PLG-5MM","5mm Hole Plug","Hardware",3,$0.00,$0.00,"no_cost_found","No pricing method found"
+"RM-PUCK-BRKT","Roller Guide Bracket 12g Steel","Hardware",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-NUT2310","1/4-20 x 3/4 Flat Head Screw","Hardware",3,$0.00,$0.00,"no_cost_found","No pricing method found"
+"HW-ADR-ALB1600","Soft-Close Roller Kit","Hardware",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"48445","2"" Fixed Back Stile","Extrusion",1,$35.73,$46.00,"extrusion_hybrid_split","Cut 92.63"" from 99"" stock (93.6% used) | Piece price: $35.73 | Used: 93.6% × $35.73 × 1 = $33.43 (gets markup) | Remaining: 6.4% × $35.73 × 1 = $2.30 (no markup) | Material total: $35.73"
+"48447","Glass Stop (Face)","Extrusion",2,$3.04,$26.63,"extrusion_hybrid_split","Cut 85.25"" from 99"" stock (86.1% used) | Piece price: $3.04 | Used: 86.1% × $3.04 × 2 = $5.24 (gets markup) | Remaining: 13.9% × $3.04 × 2 = $0.84 (no markup) | Material total: $6.08"
+"FOAM-GASKET-ROLL","Foam Gasket","Hardware",2,$0.43,$0.87,"bom_formula","Formula: height - 9 → 95.625 - 9 = 86.63 × $0.005/IN × 2 qty = $0.87"
+"E-12306","ThinWall Starter Channel","Extrusion",1,$10.16,$22.92,"extrusion_hybrid_split","Cut 96.13"" from 123"" stock (78.2% used) | Piece price: $10.16 | Used: 78.2% × $10.16 × 1 = $7.94 (gets markup) | Remaining: 21.8% × $10.16 × 1 = $2.22 (no markup) | Material total: $10.16"
+"E-12154","ThinWall Door Stop","Extrusion",1,$15.33,$28.10,"extrusion_hybrid_split","Cut 96.13"" from 123"" stock (78.2% used) | Piece price: $15.33 | Used: 78.2% × $15.33 × 1 = $11.98 (gets markup) | Remaining: 21.8% × $15.33 × 1 = $3.35 (no markup) | Material total: $15.33"
+"48446","4"" Web Rail Deep","Extrusion",1,$15.61,$18.86,"extrusion_hybrid_percentage","Cut 31.38"" from 102"" stock (30.8% used, <50%) | Piece price: $50.74 | Calc: 30.8% × $50.74 × 1 qty = $15.61"
+"48347-MF","Sliding Door U-Channel","Extrusion",1,$5.62,$5.62,"extrusion_hybrid_percentage","Cut 36.50"" from 144"" stock (25.3% used, <50%) | Piece price: $22.16 | Calc: 25.3% × $22.16 × 1 qty = $5.62"
+"48445","2"" Fixed Back Stile","Extrusion",1,$35.73,$46.00,"extrusion_hybrid_split","Cut 96.13"" from 99"" stock (97.1% used) | Piece price: $35.73 | Used: 97.1% × $35.73 × 1 = $34.69 (gets markup) | Remaining: 2.9% × $35.73 × 1 = $1.04 (no markup) | Material total: $35.73"
+"DR-ASD-TUB1408","Sliding Door Lock Face Plate","Hardware",1,$5.93,$5.93,"master_part_hardware","Hardware cost: $5.93 × 1"
+"HW-SCR-MCMA572","1/4-20 Zinc 4"" Screw","Fastener",2,$0.35,$0.70,"master_part_direct","MasterPart direct: $0.35 × 2"
+"FOAM-GASKET-ROLL","Foam Gasket","Hardware",2,$0.17,$0.34,"bom_formula","Formula: width - 6.125 → 39.875 - 6.125 = 33.75 × $0.005/IN × 2 qty = $0.34"
+"HW-SPR-MCMK221","4.5"" Zinc Spring","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"door-box","Cardboard Box for Door","Packaging",2,$10.00,$20.00,"master_part_direct","MasterPart direct: $10 × 2"
+"DR-ASD-TUBP020","3/8-24 Threaded Rod 35-1/16L","CutStock",2,$6.00,$12.00,"master_part_direct","MasterPart direct: $6 × 2"
+
+OPTION ITEMS
+Category,Option Name,Part Number,Quantity,Unit Price,Total Price,Is Standard,Is Included
+"Slider Handle","72"" Locking Pull Handle","DR-ASD-MORN1829",1,$100.00,$100.00,No,No
+"Starter Channel","None","",1,$0.00,$0.00,No,No
+
+GLASS
+Glass Type,Width Formula,Height Formula,Calc Width,Calc Height,Qty,Sqft,Price/Sqft,Total Cost
+"Clear 1/4" Tempered Glass","width - 6.625","height - 9.875",33.250,85.750,1,19.8,$4.00,$79.20
+
+Component BOM Total,$379.17
+Component Options Total,$100.00
+Component Glass Total,$79.20
+
+--- Component: Fixed Panel (Panel 958) ---
+Dimensions,"18.5" W x 95.625" H"
+
+BOM ITEMS
+Part Number,Part Name,Part Type,Quantity,Unit Cost,Total Cost,Method,Details
+"48447","Glass Stop (Face)","Extrusion",2,$3.04,$26.63,"extrusion_hybrid_split","Cut 86.63"" from 99"" stock (87.5% used) | Piece price: $3.04 | Used: 87.5% × $3.04 × 2 = $5.32 (gets markup) | Remaining: 12.5% × $3.04 × 2 = $0.76 (no markup) | Material total: $6.08"
+"48448","Glass Stop (Gutter)","Extrusion",2,$5.81,$32.79,"extrusion_hybrid_split","Cut 86.63"" from 102"" stock (84.9% used) | Piece price: $5.81 | Used: 84.9% × $5.81 × 2 = $9.87 (gets markup) | Remaining: 15.1% × $5.81 × 2 = $1.75 (no markup) | Material total: $11.62"
+"48351","Dovetail","Extrusion",2,$17.57,$55.68,"extrusion_hybrid_split","Cut 95.63"" from 99"" stock (96.6% used) | Piece price: $17.57 | Used: 96.6% × $17.57 × 2 = $33.94 (gets markup) | Remaining: 3.4% × $17.57 × 2 = $1.20 (no markup) | Material total: $35.14"
+"AD-LUG-1.04-FG","Door Lug (1.04)","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"MS-BX-38-84X120-DW","Fixed Panel and Door Box","Packaging",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-BUMBS35","Black Bumper","Hardware",9,$0.06,$0.53,"master_part_hardware","Hardware cost: $0.0594 × 9"
+"E-12304","Thinwall U-Channel","Extrusion",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"48450","4"" Web Rail Shallow","Extrusion",1,$8.38,$10.09,"extrusion_hybrid_percentage","Cut 16.50"" from 102"" stock (16.2% used, <50%) | Piece price: $51.81 | Calc: 16.2% × $51.81 × 1 qty = $8.38"
+"48349","U-Channel Shallow","Extrusion",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"E-12303","Flat Stock Trim","Extrusion",2,$2.12,$8.18,"extrusion_hybrid_percentage","Cut 19.00"" from 123"" stock (15.4% used, <50%) | Piece price: $13.72 | Calc: 15.4% × $13.72 × 2 qty = $4.24"
+"48448","Glass Stop (Gutter)","Extrusion",2,$0.94,$5.30,"extrusion_hybrid_percentage","Cut 16.50"" from 102"" stock (16.2% used, <50%) | Piece price: $5.81 | Calc: 16.2% × $5.81 × 2 qty = $1.88"
+"48447","Glass Stop (Face)","Extrusion",2,$0.51,$4.44,"extrusion_hybrid_percentage","Cut 16.50"" from 99"" stock (16.7% used, <50%) | Piece price: $3.04 | Calc: 16.7% × $3.04 × 2 qty = $1.01"
+"DR-ASD-NUT884","HexSleeve Anchor","Fastener",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"AD-LUG-3.20-FG","Door Lug (3.20)","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"E-12307H","4"" ThinWall Web Rail","Extrusion",1,$8.31,$10.02,"extrusion_hybrid_percentage","Cut 16.50"" from 102"" stock (16.2% used, <50%) | Piece price: $51.35 | Calc: 16.2% × $51.35 × 1 qty = $8.31"
+"STICKER-FLAT-TRIM","Flat Trim Sticker","Hardware",1,$0.10,$0.10,"master_part_hardware","Hardware cost: $0.1 × 1"
+"HW-N&B-FAS3004","Flat Washer","Hardware",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"JAMB-KIT-BOX","Jamb Kit Box","Packaging",1,$0.00,$0.00,"no_cost_found","No pricing method found"
+"HW-N&B-FAS9152","3/8-16 Locking Nut","Hardware",4,$0.00,$0.00,"no_cost_found","No pricing method found"
+"FOAM-GASKET-ROLL","Foam Gasket","Hardware",2,$0.43,$0.87,"bom_formula","Formula: height - 9 → 95.625 - 9 = 86.63 × $0.005/IN × 2 qty = $0.87"
+"FOAM-GASKET-ROLL","Foam Gasket","Hardware",2,$0.08,$0.17,"bom_formula","Formula: width - 2 → 18.5 - 2 = 16.50 × $0.005/IN × 2 qty = $0.17"
+"HW-BLT-FAS2060","Lag Bolt","Fastener",2,$0.00,$0.00,"no_cost_found","No pricing method found"
+"DR-ASD-GRA-FGR9","Threaded Tie-Rod","CutStock",2,$0.90,$1.80,"extrusion_hybrid_percentage","Cut 18.00"" from 120"" stock (15.0% used, <50%) | Piece price: $6.00 | Calc: 15.0% × $6.00 × 2 qty = $1.80"
+
+OPTION ITEMS
+Category,Option Name,Part Number,Quantity,Unit Price,Total Price,Is Standard,Is Included
+"Starter Channel","Starter Channel","E-12306",1,$10.16,$22.92,No,No
+
+GLASS
+Glass Type,Width Formula,Height Formula,Calc Width,Calc Height,Qty,Sqft,Price/Sqft,Total Cost
+"Clear 1/4" Tempered Glass","width - 2.5","height - 9.875",16.000,85.750,1,9.53,$4.00,$38.11
+
+Component BOM Total,$156.59
+Component Options Total,$22.92
+Component Glass Total,$38.11
+
+--- OPENING COST SUMMARY ---
+Category,Base Cost,Markup %,Marked Up Cost
+Extrusion,$820.05,300%,$3199.61
+Hardware,$121.27,300%,$485.09
+Glass,$186.58,300%,$746.32
+Packaging,$20.00,0%,$20.00
+Other,$0.70,0%,$0.70
+Standard Options (no markup),$0.00,0%,$0.00
+Hybrid Remaining (no markup),$26.86,0%,$26.86
+
+Opening Total (Base),$1148.60
+Opening Total (Marked Up),$4451.72
+
+
+=== PROJECT TOTALS ===
+Subtotal (Base),$1148.60
+Subtotal (Marked Up),$4451.72
+Installation,$0.00
+Tax Rate,0.1%
+Tax Amount,$4.45
+Grand Total,$4456.17

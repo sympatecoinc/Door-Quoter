@@ -65,6 +65,15 @@ export interface PlanViewImage {
   productName?: string
 }
 
+// Elevation view image with metadata for proportional width rendering
+export interface ElevationViewImage {
+  imageData: string
+  width?: number // inches
+  height?: number // inches
+  productType?: string
+  productName?: string
+}
+
 export interface QuoteItem {
   openingId: number
   name: string
@@ -78,7 +87,8 @@ export interface QuoteItem {
   costPrice: number
   price: number
   elevationImages: string[] // For elevation view (just image data)
-  planViewImages?: PlanViewImage[] // For plan view with metadata
+  planViewImages?: PlanViewImage[] // For plan view with metadata (triggers wall drawing)
+  elevationViewImages?: ElevationViewImage[] // For elevation view with width metadata (no wall drawing)
 }
 
 export interface QuoteData {
@@ -125,6 +135,67 @@ export interface QuoteAttachment {
   displayOrder: number
   position?: string
   description?: string | null
+}
+
+/**
+ * Draws a hatched rectangle representing a wall section
+ * Uses diagonal lines at 45 degrees for standard architectural wall indication
+ */
+function drawHatchedWall(
+  pdf: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  hatchSpacing: number = 2
+): void {
+  // Draw outer rectangle
+  pdf.setDrawColor(0, 0, 0)
+  pdf.setLineWidth(0.3)
+  pdf.rect(x, y, width, height)
+
+  // Draw diagonal hatch lines at 45 degrees
+  // Lines go from lower-left to upper-right (in visual terms)
+  // In PDF coords: from (lower X, higher Y) to (higher X, lower Y)
+  pdf.setLineWidth(0.15)
+
+  // Parameter d represents offset along the diagonal
+  // Each line satisfies: (x' - x) + (y' - y) = d for points on the line
+  const totalDiagonal = width + height
+
+  for (let d = hatchSpacing; d < totalDiagonal; d += hatchSpacing) {
+    let x1: number, y1: number, x2: number, y2: number
+
+    // Find the two intersection points of the line with the rectangle
+    if (d <= width && d <= height) {
+      // Line intersects left edge and top edge
+      x1 = x
+      y1 = y + d
+      x2 = x + d
+      y2 = y
+    } else if (d <= width && d > height) {
+      // Line intersects bottom edge and top edge
+      x1 = x + (d - height)
+      y1 = y + height
+      x2 = x + d
+      y2 = y
+    } else if (d > width && d <= height) {
+      // Line intersects left edge and right edge
+      x1 = x
+      y1 = y + d
+      x2 = x + width
+      y2 = y + (d - width)
+    } else {
+      // d > width && d > height
+      // Line intersects bottom edge and right edge
+      x1 = x + (d - height)
+      y1 = y + height
+      x2 = x + width
+      y2 = y + (d - width)
+    }
+
+    pdf.line(x1, y1, x2, y2)
+  }
 }
 
 /**
@@ -754,11 +825,11 @@ async function addQuoteItemsTable(
     const badgeX = marginX + cellPadding + nameWidth + 3 // 3mm gap after dimensions
     const badgeY = contentY - 4 // Align with text baseline
 
-    // Draw price badge - dark professional style
-    pdf.setFillColor(34, 34, 34) // Near black
+    // Draw price badge - green style
+    pdf.setFillColor(22, 163, 74) // Green-600
     pdf.roundedRect(badgeX, badgeY, priceWidth, badgeHeight, 1.5, 1.5, 'F') // Subtle rounded corners
 
-    // Draw price text - white on dark, centered vertically in badge
+    // Draw price text - white on green, centered vertically in badge
     pdf.setTextColor(255, 255, 255)
     pdf.text(priceText, badgeX + priceWidth / 2, badgeY + badgeHeight / 2 + 1.2, { align: 'center' })
     pdf.setTextColor(0, 0, 0)
@@ -835,15 +906,22 @@ async function addQuoteItemsTable(
       const imageAreaX = marginX + textContentWidth + cellPadding
       const topPadding = 5 // Top padding
       const bottomPadding = 3 // Bottom padding
+      const rightPadding = 4 // Extra padding on right side
       const imageAreaY = currentY + topPadding
-      const imageAreaWidth = elevationAreaWidth - cellPadding * 2
+      const imageAreaWidth = elevationAreaWidth - cellPadding * 2 - rightPadding
       const imageAreaHeight = cardHeight - topPadding - bottomPadding
 
-      // Determine if we have plan view images with metadata
+      // Determine if we have plan view images with metadata (for wall drawing and positioning)
       const usePlanViewImages = item.planViewImages && item.planViewImages.length > 0
+      // Determine if we have elevation view images with metadata (for proportional widths, no wall drawing)
+      const useElevationViewImages = item.elevationViewImages && item.elevationViewImages.length > 0
+      // Use either metadata source for width calculations
+      const hasWidthMetadata = usePlanViewImages || useElevationViewImages
 
       // Calculate how to fit all images
-      const numImages = usePlanViewImages ? item.planViewImages!.length : item.elevationImages.length
+      const numImages = usePlanViewImages ? item.planViewImages!.length :
+                       useElevationViewImages ? item.elevationViewImages!.length :
+                       item.elevationImages.length
       const imageSpacing = 0 // No gaps between components for continuous view
 
       // ===== TWO-PASS APPROACH (like DrawingViewer) =====
@@ -869,19 +947,23 @@ async function addQuoteItemsTable(
         orientation?: string
         apiWidth?: number
         apiHeight?: number
+        wasConvertedFromSvg?: boolean // Track if this was originally an SVG
       }
       const preProcessedImages: PreProcessedImage[] = []
 
       // First pass: Process all images to get their PNG aspect ratios
       for (let imgIndex = 0; imgIndex < numImages; imgIndex++) {
-        // Get image data and optional metadata
+        // Get image data and optional metadata (plan view or elevation view)
         const planViewData = usePlanViewImages ? item.planViewImages![imgIndex] : null
-        const rawImageData = planViewData ? planViewData.imageData : item.elevationImages[imgIndex]
+        const elevationViewData = useElevationViewImages ? item.elevationViewImages![imgIndex] : null
+        const metadataSource = planViewData ?? elevationViewData
+        const rawImageData = metadataSource ? metadataSource.imageData : item.elevationImages[imgIndex]
 
         try {
           let imageFormat: 'PNG' | 'JPEG' = 'PNG'
           let imageData = rawImageData
           let imageAspectRatio: number | null = null // height / width
+          let wasConvertedFromSvg = false
 
           // Check if the image is SVG and needs conversion
           const isSvgData = rawImageData.startsWith('data:image/svg+xml') ||
@@ -907,6 +989,7 @@ async function addQuoteItemsTable(
                 mode: usePlanViewImages ? 'plan' : 'elevation'
               })
               imageData = pngData
+              wasConvertedFromSvg = true
 
               if (!imageAspectRatio) {
                 imageAspectRatio = 28 / 12
@@ -931,8 +1014,8 @@ async function addQuoteItemsTable(
             }
           } else {
             // Prefer API-provided aspect ratio for raw base64 images as well
-            if (planViewData?.width && planViewData?.height) {
-              imageAspectRatio = planViewData.height / planViewData.width
+            if (metadataSource?.width && metadataSource?.height) {
+              imageAspectRatio = metadataSource.height / metadataSource.width
             } else {
               const pngDims = getPngDimensions(rawImageData)
               if (pngDims) {
@@ -948,21 +1031,26 @@ async function addQuoteItemsTable(
             imageFormat,
             aspectRatio: imageAspectRatio,
             isPlanView,
-            orientation: planViewData?.orientation,
-            apiWidth: planViewData?.width,
-            apiHeight: planViewData?.height
+            orientation: planViewData?.orientation, // Only plan view has orientation
+            apiWidth: metadataSource?.width,
+            apiHeight: metadataSource?.height,
+            wasConvertedFromSvg
           })
         } catch (imageError) {
           console.error(`Failed to process image ${imgIndex}:`, imageError)
         }
       }
 
+      // Check if all images are PNG-only (no SVG conversions)
+      const isPngOnly = preProcessedImages.length > 0 &&
+        preProcessedImages.every(img => !img.wasConvertedFromSvg)
+
       // Second pass: Calculate uniform scale factor and apply scaling
       // For plan views, use API widths and API-based aspect ratios for consistent sizing
       let totalApiWidth = 0
       let maxActualHeight = 0
 
-      if (usePlanViewImages) {
+      if (hasWidthMetadata) {
         for (const img of preProcessedImages) {
           if (img.apiWidth) {
             totalApiWidth += img.apiWidth
@@ -977,10 +1065,15 @@ async function addQuoteItemsTable(
 
       // Calculate uniform scale factor based on actual dimensions
       // Cap at 0.7 to create consistent sizing between single and multi-panel openings
-      const rawScaleFactor = usePlanViewImages && totalApiWidth > 0 && maxActualHeight > 0
+      const rawScaleFactor = hasWidthMetadata && totalApiWidth > 0 && maxActualHeight > 0
         ? Math.min(imageAreaWidth / totalApiWidth, imageAreaHeight / maxActualHeight)
         : 1
-      const uniformScaleFactor = Math.min(rawScaleFactor, 0.7)
+      let uniformScaleFactor = Math.min(rawScaleFactor, 0.7)
+
+      // Reduce PNG-only images by 25% (they tend to be larger/unscaled)
+      if (isPngOnly) {
+        uniformScaleFactor *= 0.75
+      }
 
       // Apply scaling to create final processed images
       const processedImages: ProcessedImage[] = []
@@ -989,9 +1082,9 @@ async function addQuoteItemsTable(
         let scaledWidth: number
         let scaledHeight: number
 
-        // For plan views with API metadata, use uniform scale factor for WIDTH
+        // For images with API metadata, use uniform scale factor for WIDTH
         // and API-based aspect ratio for HEIGHT for consistent sizing
-        if (usePlanViewImages && preImg.apiWidth && preImg.aspectRatio !== null) {
+        if (hasWidthMetadata && preImg.apiWidth && preImg.aspectRatio !== null) {
           scaledWidth = preImg.apiWidth * uniformScaleFactor
           scaledHeight = scaledWidth * preImg.aspectRatio
         } else if (preImg.aspectRatio !== null) {
@@ -1096,6 +1189,44 @@ async function addQuoteItemsTable(
 
           imgX += img.scaledWidth + imageSpacing
         }
+
+        // === DRAW WALLS ON LEFT AND RIGHT SIDES ===
+        // Fixed wall dimensions for consistent appearance across all plan views
+        // 30px wide x 10px tall (converted to mm: ~7.9mm x ~2.6mm)
+        const wallLength = 7.9    // 30px width
+        const wallThickness = 2.6 // 10px height
+
+        // Calculate assembly boundaries
+        const assemblyLeftX = imageAreaX + assemblyOffsetX
+        const assemblyRightX = assemblyLeftX + totalWidth
+
+        // Determine wall Y position based on component orientation
+        // For 'bottom' orientation: components sit above baseline, wall bottom aligns with baseline
+        // For 'top' orientation: components sit below baseline, wall top aligns with baseline
+        const primaryOrientation = processedImages[0]?.orientation || 'bottom'
+        const wallY = primaryOrientation === 'bottom'
+          ? baselineY - wallThickness  // Wall bottom at baseline (component sits above)
+          : baselineY                   // Wall top at baseline (component sits below)
+
+        // Draw left wall (extends to the left of the assembly)
+        drawHatchedWall(
+          pdf,
+          assemblyLeftX - wallLength,
+          wallY,
+          wallLength,
+          wallThickness,
+          1.2 // Hatch spacing
+        )
+
+        // Draw right wall (extends to the right of the assembly)
+        drawHatchedWall(
+          pdf,
+          assemblyRightX,
+          wallY,
+          wallLength,
+          wallThickness,
+          1.2 // Hatch spacing
+        )
       } else {
         // Elevation view or mixed: center all images as a group, then place edge-to-edge
 
