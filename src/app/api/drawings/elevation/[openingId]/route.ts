@@ -4,6 +4,19 @@ import { renderSvgToPng, isSvgFile, decodeSvgData, injectHardwareImages, Hardwar
 import fs from 'fs'
 import path from 'path'
 
+// Helper function to find matching view based on direction
+function findMatchingView(views: any[], direction: string | null | undefined) {
+  if (!views?.length || !direction) return null
+  // First, try exact name match
+  const exactMatch = views.find(v => v.name === direction)
+  if (exactMatch) return exactMatch
+  // Then try case-insensitive partial match
+  const partialMatch = views.find(v => v.name.toLowerCase().includes(direction.toLowerCase()))
+  if (partialMatch) return partialMatch
+  // Fallback to first view
+  return views[0]
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ openingId: string }> }) {
   try {
     const { openingId } = await params
@@ -20,7 +33,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           include: {
             componentInstance: {
               include: {
-                product: true
+                product: {
+                  include: {
+                    planViews: {
+                      orderBy: {
+                        displayOrder: 'asc'
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -70,10 +91,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         continue
       }
 
+      // Determine matching view based on product type and direction
+      let matchedView = null
+      if (product.productType === 'FIXED_PANEL') {
+        // Fixed panels use first view (no direction)
+        matchedView = (product as any).planViews?.[0]
+      } else if (product.productType === 'SLIDING_DOOR') {
+        matchedView = findMatchingView((product as any).planViews, panel.slidingDirection)
+      } else if (product.productType === 'SWING_DOOR') {
+        matchedView = findMatchingView((product as any).planViews, panel.swingDirection)
+      }
+
+      // Get elevation image data from the matched view, or fallback to legacy single image
+      const sourceImageData = matchedView?.elevationImageData || product.elevationImageData
+      const sourceFileName = matchedView?.elevationFileName || product.elevationFileName
+
       // Handle regular components with elevation images
-      if (product.elevationImageData) {
-        let imageData = product.elevationImageData
-        const fileName = product.elevationFileName ?? undefined
+      if (sourceImageData) {
+        let imageData = sourceImageData
+        const fileName = sourceFileName ?? undefined
 
         // If SVG, render to PNG server-side (SHOPGEN approach)
         if (isSvgFile(fileName)) {

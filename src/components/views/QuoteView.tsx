@@ -787,8 +787,7 @@ export default function QuoteView() {
               <tr className="bg-black">
                 <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Elevation</th>
                 <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Opening</th>
-                <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs border-r border-gray-400 align-middle">Specifications</th>
-                <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs align-middle">Price</th>
+                <th className="text-center py-4 px-6 font-bold text-white uppercase tracking-wide text-xs align-middle">Specifications</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -839,11 +838,16 @@ export default function QuoteView() {
                   </td>
 
                   {/* Specifications (Combined with Hardware) */}
-                  <td className="py-6 px-6 min-w-0 border-r border-gray-200">
+                  <td className="py-6 px-6 min-w-0">
                     <div className="space-y-1 text-sm">
-                      <div className="whitespace-nowrap">
-                        <span className="font-medium text-gray-500 uppercase tracking-wide">DIMENSIONS </span>
-                        <span className="font-medium text-gray-900">{item.dimensions}</span>
+                      <div className="whitespace-nowrap flex items-center gap-3">
+                        <span>
+                          <span className="font-medium text-gray-500 uppercase tracking-wide">DIMENSIONS </span>
+                          <span className="font-medium text-gray-900">{item.dimensions}</span>
+                        </span>
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800">
+                          ${item.price.toLocaleString()}
+                        </span>
                       </div>
                       <div className="whitespace-nowrap">
                         <span className="font-medium text-gray-500 uppercase tracking-wide">COLOR </span>
@@ -863,13 +867,6 @@ export default function QuoteView() {
                           ))}
                         </div>
                       )}
-                    </div>
-                  </td>
-
-                  {/* Price */}
-                  <td className="py-6 px-6 text-right">
-                    <div className="text-xl font-semibold text-gray-900">
-                      ${item.price.toLocaleString()}
                     </div>
                   </td>
                 </tr>

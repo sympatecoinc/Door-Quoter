@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-// PUT update a plan view
+// PUT update a view (plan + elevation images)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; planViewId: string }> }
@@ -9,9 +9,23 @@ export async function PUT(
   try {
     const { planViewId } = await params
     const planViewIdInt = parseInt(planViewId)
-    const { name, imageData, fileName, fileType, displayOrder, orientation, referenceWidth } = await request.json()
+    const {
+      name,
+      // Plan view fields
+      imageData,
+      fileName,
+      fileType,
+      displayOrder,
+      orientation,
+      referenceWidth,
+      // Elevation view fields
+      elevationImageData,
+      elevationFileName,
+      elevationFileType
+    } = await request.json()
 
     const updateData: any = {}
+    // Plan view fields
     if (name !== undefined) updateData.name = name
     if (imageData !== undefined) updateData.imageData = imageData
     if (fileName !== undefined) updateData.fileName = fileName
@@ -19,6 +33,10 @@ export async function PUT(
     if (displayOrder !== undefined) updateData.displayOrder = displayOrder
     if (orientation !== undefined) updateData.orientation = orientation
     if (referenceWidth !== undefined) updateData.referenceWidth = referenceWidth ? parseFloat(referenceWidth) : null
+    // Elevation view fields
+    if (elevationImageData !== undefined) updateData.elevationImageData = elevationImageData || null
+    if (elevationFileName !== undefined) updateData.elevationFileName = elevationFileName || null
+    if (elevationFileType !== undefined) updateData.elevationFileType = elevationFileType || null
 
     const planView = await prisma.productPlanView.update({
       where: { id: planViewIdInt },
@@ -27,9 +45,9 @@ export async function PUT(
 
     return NextResponse.json(planView)
   } catch (error) {
-    console.error('Error updating plan view:', error)
+    console.error('Error updating view:', error)
     return NextResponse.json(
-      { error: 'Failed to update plan view' },
+      { error: 'Failed to update view' },
       { status: 500 }
     )
   }

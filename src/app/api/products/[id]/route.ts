@@ -207,6 +207,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             standardOption: true
           }
         },
+        planViews: {
+          orderBy: {
+            displayOrder: 'asc'
+          }
+        },
         pairedProduct: {
           select: {
             id: true,

@@ -459,11 +459,17 @@ interface ProductPlanView {
   id: number
   productId: number
   name: string
+  // Plan view image
   imageData: string
   fileName?: string
   fileType?: string
   orientation?: string
   referenceWidth?: number | null
+  // Elevation view image
+  elevationImageData?: string
+  elevationFileName?: string
+  elevationFileType?: string
+  // Common
   displayOrder: number
   createdAt: string
   updatedAt: string
@@ -556,6 +562,10 @@ export default function ProductDetailView({
   const [editPlanViewFile, setEditPlanViewFile] = useState<File | null>(null)
   const [editPlanViewReferenceWidth, setEditPlanViewReferenceWidth] = useState<string>('')
   const [savingPlanView, setSavingPlanView] = useState(false)
+  // Add elevation file to view form
+  const [newViewElevationFile, setNewViewElevationFile] = useState<File | null>(null)
+  const [editViewElevationFile, setEditViewElevationFile] = useState<File | null>(null)
+  // Legacy single elevation upload (for backwards compatibility)
   const [showElevationUpload, setShowElevationUpload] = useState(false)
   const [elevationFile, setElevationFile] = useState<File | null>(null)
   const [uploadingElevation, setUploadingElevation] = useState(false)
@@ -662,7 +672,7 @@ export default function ProductDetailView({
     { isOpen: showDeletePartModal, isBlocked: isDeletingPart, onClose: () => { setShowDeletePartModal(false); setDeletingPartId(null); setDeletingPartName('') } },
     { isOpen: showDeletePlanViewModal, isBlocked: isDeletingPlanView, onClose: () => { setShowDeletePlanViewModal(false); setDeletingPlanViewId(null); setDeletingPlanViewName('') } },
     { isOpen: showGlassModal, onClose: () => setShowGlassModal(false) },
-    { isOpen: showPlanViewForm, isBlocked: uploadingPlanView, onClose: () => { setShowPlanViewForm(false); setNewPlanViewName(''); setNewPlanViewFile(null) } },
+    { isOpen: showPlanViewForm, isBlocked: uploadingPlanView, onClose: () => { setShowPlanViewForm(false); setNewPlanViewName(''); setNewPlanViewFile(null); setNewViewElevationFile(null) } },
     { isOpen: showElevationUpload, isBlocked: uploadingElevation, onClose: () => { setShowElevationUpload(false); setElevationFile(null) } },
     { isOpen: showLinkCategoryForm, isBlocked: linking, onClose: () => setShowLinkCategoryForm(false) },
     { isOpen: showEditModal, isBlocked: saving, onClose: () => setShowEditModal(false) },
@@ -886,10 +896,10 @@ export default function ProductDetailView({
     e.preventDefault()
 
     const isFixedPanel = product.productType === 'FIXED_PANEL'
-    const planViewName = isFixedPanel ? 'Fixed Panel' : newPlanViewName.trim()
+    const viewName = isFixedPanel ? 'Fixed Panel' : newPlanViewName.trim()
 
-    if (!planViewName || !newPlanViewFile) {
-      alert('Please provide both a name and an image for the plan view')
+    if (!viewName || !newPlanViewFile) {
+      alert('Please provide both a name and a plan image for the view')
       return
     }
 
@@ -897,21 +907,31 @@ export default function ProductDetailView({
     try {
       const imageData = await fileToBase64(newPlanViewFile)
 
+      // Also upload elevation image if provided
+      let elevationImageData = null
+      if (newViewElevationFile) {
+        elevationImageData = await fileToBase64(newViewElevationFile)
+      }
+
       const response = await fetch(`/api/products/${product.id}/plan-views`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: planViewName,
+          name: viewName,
           imageData,
           fileName: newPlanViewFile.name,
           fileType: newPlanViewFile.type,
           orientation: newPlanViewOrientation,
-          referenceWidth: newPlanViewReferenceWidth || null
+          referenceWidth: newPlanViewReferenceWidth || null,
+          // Elevation data
+          elevationImageData,
+          elevationFileName: newViewElevationFile?.name || null,
+          elevationFileType: newViewElevationFile?.type || null
         })
       })
 
       if (response.ok) {
-        // Refresh plan views list
+        // Refresh views list
         const planViewsResponse = await fetch(`/api/products/${product.id}/plan-views`)
         if (planViewsResponse.ok) {
           const data = await planViewsResponse.json()
@@ -919,15 +939,16 @@ export default function ProductDetailView({
         }
         setNewPlanViewName('')
         setNewPlanViewFile(null)
+        setNewViewElevationFile(null)
         setNewPlanViewOrientation('bottom')
         setNewPlanViewReferenceWidth('')
         setShowPlanViewForm(false)
       } else {
-        alert('Failed to add plan view')
+        alert('Failed to add view')
       }
     } catch (error) {
-      console.error('Error adding plan view:', error)
-      alert('Error adding plan view')
+      console.error('Error adding view:', error)
+      alert('Error adding view')
     } finally {
       setUploadingPlanView(false)
     }
@@ -975,6 +996,7 @@ export default function ProductDetailView({
     setEditPlanViewOrientation(planView.orientation || 'bottom')
     setEditPlanViewReferenceWidth(planView.referenceWidth?.toString() || '')
     setEditPlanViewFile(null)
+    setEditViewElevationFile(null)
     setShowEditPlanViewModal(true)
   }
 
@@ -985,6 +1007,7 @@ export default function ProductDetailView({
     setEditPlanViewOrientation('bottom')
     setEditPlanViewReferenceWidth('')
     setEditPlanViewFile(null)
+    setEditViewElevationFile(null)
   }
 
   async function handleSavePlanView(e: React.FormEvent) {
@@ -992,27 +1015,35 @@ export default function ProductDetailView({
     if (!editingPlanView) return
 
     const isFixedPanel = product.productType === 'FIXED_PANEL'
-    const planViewName = isFixedPanel ? 'Fixed Panel' : editPlanViewName.trim()
+    const viewName = isFixedPanel ? 'Fixed Panel' : editPlanViewName.trim()
 
-    if (!planViewName) {
-      alert('Please provide a name for the plan view')
+    if (!viewName) {
+      alert('Please provide a name for the view')
       return
     }
 
     setSavingPlanView(true)
     try {
       const updateData: any = {
-        name: planViewName,
+        name: viewName,
         orientation: editPlanViewOrientation,
         referenceWidth: editPlanViewReferenceWidth || null
       }
 
-      // If a new file was selected, include the image data
+      // If a new plan file was selected, include the image data
       if (editPlanViewFile) {
         const imageData = await fileToBase64(editPlanViewFile)
         updateData.imageData = imageData
         updateData.fileName = editPlanViewFile.name
         updateData.fileType = editPlanViewFile.type
+      }
+
+      // If a new elevation file was selected, include the elevation data
+      if (editViewElevationFile) {
+        const elevationImageData = await fileToBase64(editViewElevationFile)
+        updateData.elevationImageData = elevationImageData
+        updateData.elevationFileName = editViewElevationFile.name
+        updateData.elevationFileType = editViewElevationFile.type
       }
 
       const response = await fetch(`/api/products/${product.id}/plan-views/${editingPlanView.id}`, {
@@ -1022,7 +1053,7 @@ export default function ProductDetailView({
       })
 
       if (response.ok) {
-        // Refresh plan views list
+        // Refresh views list
         const planViewsResponse = await fetch(`/api/products/${product.id}/plan-views`)
         if (planViewsResponse.ok) {
           const data = await planViewsResponse.json()
@@ -1030,11 +1061,11 @@ export default function ProductDetailView({
         }
         closeEditPlanViewModal()
       } else {
-        alert('Failed to update plan view')
+        alert('Failed to update view')
       }
     } catch (error) {
-      console.error('Error updating plan view:', error)
-      alert('Error updating plan view')
+      console.error('Error updating view:', error)
+      alert('Error updating view')
     } finally {
       setSavingPlanView(false)
     }
@@ -2146,53 +2177,21 @@ export default function ProductDetailView({
           </div>
         )}
 
-        {/* Elevation Image Section - Hidden for Frame products */}
+        {/* Views Section - Hidden for Frame products */}
         {!isFrameProduct && (
           <div className="col-span-full mt-6">
             <div className="bg-gray-50 rounded-lg p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Elevation View</h3>
-                <button
-                  onClick={() => setShowElevationUpload(true)}
-                  className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-                >
-                  <Upload className="w-4 h-4 mr-1" />
-                  Upload Elevation
-                </button>
-              </div>
-
-              {productDetails?.elevationImageData ? (
-                <div className="flex items-center space-x-4">
-                  <img
-                    src={productDetails.elevationImageData}
-                    alt="Elevation view"
-                    className="w-48 h-48 object-contain border border-gray-300 rounded bg-white"
-                  />
-                  <div className="text-sm text-gray-600">
-                    <p><strong>File:</strong> {productDetails.elevationFileName || 'Unknown'}</p>
-                  </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Views</h3>
+                  <p className="text-sm text-gray-500">Each view contains both plan and elevation images for a direction</p>
                 </div>
-              ) : (
-                <div className="text-gray-500 text-sm italic">
-                  No elevation image uploaded. Click "Upload Elevation" to add one.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Plan Views Section - Hidden for Frame products */}
-        {!isFrameProduct && (
-          <div className="col-span-full mt-6">
-            <div className="bg-gray-50 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Plan Views</h3>
                 <button
                   onClick={() => setShowPlanViewForm(true)}
                   className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
                 >
                   <Plus className="w-4 h-4 mr-1" />
-                  Add Plan View
+                  Add View
                 </button>
               </div>
 
@@ -2201,47 +2200,69 @@ export default function ProductDetailView({
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                 </div>
               ) : planViews.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {planViews.map((planView) => (
-                    <div key={planView.id} className="bg-white rounded-lg border border-gray-200 p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <h4 className="font-medium text-gray-900">{planView.name}</h4>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {planViews.map((view) => (
+                    <div key={view.id} className="bg-white rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <h4 className="font-medium text-gray-900">{view.name}</h4>
                         <div className="flex items-center space-x-1">
                           <button
-                            onClick={() => openEditPlanViewModal(planView)}
+                            onClick={() => openEditPlanViewModal(view)}
                             className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
-                            title="Edit plan view"
+                            title="Edit view"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDeletePlanView(planView.id, planView.name)}
+                            onClick={() => handleDeletePlanView(view.id, view.name)}
                             className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                            title="Delete plan view"
+                            title="Delete view"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
-                      <img
-                        src={planView.imageData}
-                        alt={planView.name}
-                        className="w-full h-48 object-contain border border-gray-300 rounded bg-gray-50"
-                      />
-                      <div className="flex items-center justify-between mt-2">
-                        {planView.fileName && (
-                          <p className="text-xs text-gray-500">{planView.fileName}</p>
-                        )}
-                        <div className="flex items-center space-x-2">
-                          {planView.fileType === 'image/png' && planView.referenceWidth && (
-                            <span className="text-xs text-blue-600">
-                              Ref: {planView.referenceWidth}"
-                            </span>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-xs font-medium text-gray-500 mb-1">Plan View</p>
+                          <img
+                            src={view.imageData}
+                            alt={`${view.name} - Plan`}
+                            className="w-full h-32 object-contain border border-gray-300 rounded bg-gray-50"
+                          />
+                          {view.fileName && (
+                            <p className="text-xs text-gray-400 mt-1 truncate">{view.fileName}</p>
                           )}
-                          <span className="text-xs text-gray-400">
-                            {planView.orientation === 'top' ? 'Align: Bottom' : 'Align: Top'}
-                          </span>
                         </div>
+                        <div>
+                          <p className="text-xs font-medium text-gray-500 mb-1">Elevation View</p>
+                          {view.elevationImageData ? (
+                            <>
+                              <img
+                                src={view.elevationImageData}
+                                alt={`${view.name} - Elevation`}
+                                className="w-full h-32 object-contain border border-gray-300 rounded bg-gray-50"
+                              />
+                              {view.elevationFileName && (
+                                <p className="text-xs text-gray-400 mt-1 truncate">{view.elevationFileName}</p>
+                              )}
+                            </>
+                          ) : (
+                            <div className="w-full h-32 border border-dashed border-gray-300 rounded bg-gray-50 flex items-center justify-center">
+                              <span className="text-xs text-gray-400">No elevation</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between mt-2">
+                        {view.fileType === 'image/png' && view.referenceWidth && (
+                          <span className="text-xs text-blue-600">
+                            Ref: {view.referenceWidth}&quot;
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-400">
+                          {view.orientation === 'top' ? 'Align: Bottom' : 'Align: Top'}
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -2249,8 +2270,21 @@ export default function ProductDetailView({
               ) : (
                 <div className="text-center py-8 text-gray-500">
                   <ImageIcon className="w-8 h-8 mx-auto mb-2" />
-                  <p>No plan views defined for this product yet.</p>
-                  <p className="text-sm mt-2">Plan views will be used as opening direction options (e.g., Right-In, Right-Out).</p>
+                  <p>No views defined for this product yet.</p>
+                  <p className="text-sm mt-2">
+                    {product.productType === 'FIXED_PANEL'
+                      ? 'Add a single view for fixed panels.'
+                      : 'Add views for each opening direction (e.g., Right In, Left Out).'}
+                  </p>
+                </div>
+              )}
+
+              {/* Legacy single elevation fallback info */}
+              {productDetails?.elevationImageData && planViews.length === 0 && (
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    <strong>Legacy:</strong> This product has a single elevation image. Add views above to include direction-specific images.
+                  </p>
                 </div>
               )}
             </div>
@@ -3659,18 +3693,20 @@ export default function ProductDetailView({
         </div>
       )}
 
-      {/* Plan View Form Modal */}
+      {/* Add View Modal */}
       {showPlanViewForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Add Plan View</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Add View</h3>
               <button
                 onClick={() => {
                   setShowPlanViewForm(false)
                   setNewPlanViewName('')
                   setNewPlanViewFile(null)
+                  setNewViewElevationFile(null)
                   setNewPlanViewOrientation('bottom')
+                  setNewPlanViewReferenceWidth('')
                 }}
                 className="p-2 hover:bg-gray-100 rounded-full"
               >
@@ -3682,7 +3718,7 @@ export default function ProductDetailView({
               {product.productType === 'FIXED_PANEL' ? (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Plan View Name
+                    View Name
                   </label>
                   <input
                     type="text"
@@ -3691,32 +3727,30 @@ export default function ProductDetailView({
                     disabled
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Fixed Panel products automatically use &quot;Fixed Panel&quot; as the plan view name.
+                    Fixed Panel products automatically use &quot;Fixed Panel&quot; as the view name.
                   </p>
                 </div>
               ) : (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Plan View Name *
+                    View Name *
                   </label>
                   <input
                     type="text"
                     value={newPlanViewName}
                     onChange={(e) => setNewPlanViewName(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                    placeholder="e.g., Right-In, Right-Out, Left-In"
+                    placeholder="e.g., Right In, Left Out"
                     required
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    This name will appear as an opening direction option when adding the product to an opening.
+                    This name will appear as a direction option when adding the product to an opening.
                   </p>
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Plan View Image (SVG/PNG) *
-                </label>
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium text-gray-900 mb-3">Plan View Image *</h4>
                 <input
                   type="file"
                   accept=".svg,image/*"
@@ -3728,14 +3762,33 @@ export default function ProductDetailView({
                   required
                 />
                 {newPlanViewFile && (
-                  <p className="text-xs text-green-600 mt-1">✓ Selected: {newPlanViewFile.name}</p>
+                  <p className="text-xs text-green-600 mt-1">Selected: {newPlanViewFile.name}</p>
                 )}
+              </div>
+
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium text-gray-900 mb-3">Elevation View Image (Optional)</h4>
+                <input
+                  type="file"
+                  accept=".svg,image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) setNewViewElevationFile(file)
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                />
+                {newViewElevationFile && (
+                  <p className="text-xs text-green-600 mt-1">Selected: {newViewElevationFile.name}</p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  The elevation image shown in shop drawings for this direction.
+                </p>
               </div>
 
               {product.productType !== 'FIXED_PANEL' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Orientation *
+                    Plan Orientation
                   </label>
                   <select
                     value={newPlanViewOrientation}
@@ -3745,9 +3798,6 @@ export default function ProductDetailView({
                     <option value="bottom">Bottom (align top of PNG with other components)</option>
                     <option value="top">Top (align bottom of PNG with other components)</option>
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Choose how this plan view aligns with other components in the opening.
-                  </p>
                 </div>
               )}
 
@@ -3766,18 +3816,19 @@ export default function ProductDetailView({
                     placeholder="e.g., 36"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    The real-world width this image represents. Used to scale PNG images on PDFs based on panel width.
+                    The real-world width this image represents. Used to scale PNG images on PDFs.
                   </p>
                 </div>
               )}
 
-              <div className="flex justify-end space-x-3 pt-4">
+              <div className="flex justify-end space-x-3 pt-4 border-t">
                 <button
                   type="button"
                   onClick={() => {
                     setShowPlanViewForm(false)
                     setNewPlanViewName('')
                     setNewPlanViewFile(null)
+                    setNewViewElevationFile(null)
                     setNewPlanViewOrientation('bottom')
                     setNewPlanViewReferenceWidth('')
                   }}
@@ -3799,7 +3850,7 @@ export default function ProductDetailView({
                   ) : (
                     <>
                       <Plus className="w-4 h-4 mr-2" />
-                      Add Plan View
+                      Add View
                     </>
                   )}
                 </button>
@@ -3848,12 +3899,12 @@ export default function ProductDetailView({
         </div>
       )}
 
-      {/* Edit Plan View Modal */}
+      {/* Edit View Modal */}
       {showEditPlanViewModal && editingPlanView && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Edit Plan View</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Edit View</h3>
               <button
                 onClick={closeEditPlanViewModal}
                 className="p-2 hover:bg-gray-100 rounded-full"
@@ -3866,7 +3917,7 @@ export default function ProductDetailView({
               {product.productType === 'FIXED_PANEL' ? (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Plan View Name
+                    View Name
                   </label>
                   <input
                     type="text"
@@ -3875,33 +3926,31 @@ export default function ProductDetailView({
                     disabled
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Fixed Panel products automatically use &quot;Fixed Panel&quot; as the plan view name.
+                    Fixed Panel products automatically use &quot;Fixed Panel&quot; as the view name.
                   </p>
                 </div>
               ) : (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Plan View Name *
+                    View Name *
                   </label>
                   <input
                     type="text"
                     value={editPlanViewName}
                     onChange={(e) => setEditPlanViewName(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                    placeholder="e.g., Right-In, Right-Out, Left-In"
+                    placeholder="e.g., Right In, Left Out"
                     required
                   />
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Plan View Image (SVG/PNG)
-                </label>
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium text-gray-900 mb-3">Plan View Image</h4>
                 <div className="mb-2">
                   <img
                     src={editPlanViewFile ? URL.createObjectURL(editPlanViewFile) : editingPlanView.imageData}
-                    alt={editingPlanView.name}
+                    alt={`${editingPlanView.name} - Plan`}
                     className="w-full h-32 object-contain border border-gray-300 rounded bg-gray-50"
                   />
                 </div>
@@ -3920,10 +3969,40 @@ export default function ProductDetailView({
                 <p className="text-xs text-gray-500 mt-1">Leave empty to keep current image</p>
               </div>
 
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium text-gray-900 mb-3">Elevation View Image</h4>
+                <div className="mb-2">
+                  {(editViewElevationFile || editingPlanView.elevationImageData) ? (
+                    <img
+                      src={editViewElevationFile ? URL.createObjectURL(editViewElevationFile) : editingPlanView.elevationImageData}
+                      alt={`${editingPlanView.name} - Elevation`}
+                      className="w-full h-32 object-contain border border-gray-300 rounded bg-gray-50"
+                    />
+                  ) : (
+                    <div className="w-full h-32 border border-dashed border-gray-300 rounded bg-gray-50 flex items-center justify-center">
+                      <span className="text-sm text-gray-400">No elevation image</span>
+                    </div>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept=".svg,image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) setEditViewElevationFile(file)
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                />
+                {editViewElevationFile && (
+                  <p className="text-xs text-green-600 mt-1">New image selected: {editViewElevationFile.name}</p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">Leave empty to keep current image</p>
+              </div>
+
               {product.productType !== 'FIXED_PANEL' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Orientation *
+                    Plan Orientation
                   </label>
                   <select
                     value={editPlanViewOrientation}
@@ -3952,12 +4031,12 @@ export default function ProductDetailView({
                     placeholder="e.g., 36"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    The real-world width this image represents. Used to scale PNG images on PDFs based on panel width.
+                    The real-world width this image represents. Used to scale PNG images on PDFs.
                   </p>
                 </div>
               )}
 
-              <div className="flex justify-end space-x-3 pt-4">
+              <div className="flex justify-end space-x-3 pt-4 border-t">
                 <button
                   type="button"
                   onClick={closeEditPlanViewModal}

@@ -22,38 +22,50 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-// POST create a new plan view for a product
+// Helper to detect file type from data URL or filename
+function detectFileType(dataUrl: string | null, fileName: string | null): string | null {
+  if (dataUrl?.startsWith('data:')) {
+    const match = dataUrl.match(/^data:([^;]+);/)
+    if (match) return match[1]
+  }
+  if (fileName) {
+    const ext = fileName.toLowerCase().split('.').pop()
+    if (ext === 'svg') return 'image/svg+xml'
+    if (ext === 'png') return 'image/png'
+    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
+  }
+  return null
+}
+
+// POST create a new view for a product (plan + elevation images)
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const productId = parseInt(id)
-    const { name, imageData, fileName, fileType, orientation, referenceWidth } = await request.json()
+    const {
+      name,
+      // Plan view fields
+      imageData,
+      fileName,
+      fileType,
+      orientation,
+      referenceWidth,
+      // Elevation view fields
+      elevationImageData,
+      elevationFileName,
+      elevationFileType
+    } = await request.json()
 
     if (!name || !imageData) {
       return NextResponse.json(
-        { error: 'Name and image data are required' },
+        { error: 'Name and plan image data are required' },
         { status: 400 }
       )
     }
 
-    // Auto-detect file type from data URL or filename if not provided
-    let detectedFileType = fileType
-    if (!detectedFileType && imageData) {
-      // Check if it's a data URL
-      if (imageData.startsWith('data:')) {
-        const match = imageData.match(/^data:([^;]+);/)
-        if (match) {
-          detectedFileType = match[1]
-        }
-      }
-      // Fallback to filename extension
-      if (!detectedFileType && fileName) {
-        const ext = fileName.toLowerCase().split('.').pop()
-        if (ext === 'svg') detectedFileType = 'image/svg+xml'
-        else if (ext === 'png') detectedFileType = 'image/png'
-        else if (ext === 'jpg' || ext === 'jpeg') detectedFileType = 'image/jpeg'
-      }
-    }
+    // Auto-detect file types
+    const detectedPlanFileType = fileType || detectFileType(imageData, fileName) || 'image/png'
+    const detectedElevationFileType = elevationFileType || detectFileType(elevationImageData, elevationFileName)
 
     // Get the current max display order for this product
     const maxOrder = await prisma.productPlanView.aggregate({
@@ -65,20 +77,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       data: {
         productId,
         name,
+        // Plan view data
         imageData,
         fileName,
-        fileType: detectedFileType || 'image/png',
+        fileType: detectedPlanFileType,
         orientation: orientation || 'bottom',
         referenceWidth: referenceWidth ? parseFloat(referenceWidth) : null,
+        // Elevation view data
+        elevationImageData: elevationImageData || null,
+        elevationFileName: elevationFileName || null,
+        elevationFileType: detectedElevationFileType || null,
         displayOrder: (maxOrder._max.displayOrder || 0) + 1
       }
     })
 
     return NextResponse.json(planView, { status: 201 })
   } catch (error) {
-    console.error('Error creating plan view:', error)
+    console.error('Error creating view:', error)
     return NextResponse.json(
-      { error: 'Failed to create plan view' },
+      { error: 'Failed to create view' },
       { status: 500 }
     )
   }

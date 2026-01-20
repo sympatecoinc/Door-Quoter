@@ -734,24 +734,6 @@ async function addQuoteItemsTable(
     pdf.setFillColor(243, 244, 246) // bg-gray-100
     pdf.roundedRect(marginX, currentY, cardWidth, cardHeight, cornerRadius, cornerRadius, 'F')
 
-    // Price badge in top right - hanging off the card edge
-    const priceText = `$${item.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
-    pdf.setFontSize(10)
-    pdf.setFont('helvetica', 'bold')
-    const priceWidth = pdf.getTextWidth(priceText) + 6 // Reduced padding for narrower badge
-    const badgeHeight = 8 // Slightly taller for better vertical centering
-    const badgeX = marginX + cardWidth - priceWidth + 2 // Hang off right edge by 2mm
-    const badgeY = currentY - 3 // Hang off top edge by 3mm
-
-    // Draw price badge background - dark gray
-    pdf.setFillColor(51, 51, 51) // #333
-    pdf.roundedRect(badgeX, badgeY, priceWidth, badgeHeight, 2, 2, 'F')
-
-    // Draw price text - centered vertically and horizontally
-    pdf.setTextColor(255, 255, 255)
-    pdf.text(priceText, badgeX + priceWidth / 2, badgeY + badgeHeight / 2 + 1.5, { align: 'center' })
-    pdf.setTextColor(0, 0, 0)
-
     let contentY = currentY + cellPadding + 4
 
     // Opening name as header with dimensions (bold, larger font)
@@ -760,6 +742,27 @@ async function addQuoteItemsTable(
     pdf.setFont('helvetica', 'bold')
     const nameWithSize = `${item.name} | ${item.dimensions}`
     pdf.text(nameWithSize, marginX + cellPadding, contentY)
+    const nameWidth = pdf.getTextWidth(nameWithSize) // Measure while still at font size 11
+
+    // Price badge - professional pill style, same font size as title for visual balance
+    const priceText = `$${item.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
+    // Keep font size 11 to match title, measure width
+    const priceTextWidth = pdf.getTextWidth(priceText)
+    const horizontalPadding = 3 // 1.5mm padding on each side
+    const priceWidth = priceTextWidth + horizontalPadding
+    const badgeHeight = 5.5
+    const badgeX = marginX + cellPadding + nameWidth + 3 // 3mm gap after dimensions
+    const badgeY = contentY - 4 // Align with text baseline
+
+    // Draw price badge - dark professional style
+    pdf.setFillColor(34, 34, 34) // Near black
+    pdf.roundedRect(badgeX, badgeY, priceWidth, badgeHeight, 1.5, 1.5, 'F') // Subtle rounded corners
+
+    // Draw price text - white on dark, centered vertically in badge
+    pdf.setTextColor(255, 255, 255)
+    pdf.text(priceText, badgeX + priceWidth / 2, badgeY + badgeHeight / 2 + 1.2, { align: 'center' })
+    pdf.setTextColor(0, 0, 0)
+
     contentY += 5
 
     // Opening type (description - e.g., "1 Sliding Door") with direction after
@@ -830,9 +833,11 @@ async function addQuoteItemsTable(
 
     if (hasImages) {
       const imageAreaX = marginX + textContentWidth + cellPadding
-      const imageAreaY = currentY + 8 // Start below the price badge
+      const topPadding = 5 // Top padding
+      const bottomPadding = 3 // Bottom padding
+      const imageAreaY = currentY + topPadding
       const imageAreaWidth = elevationAreaWidth - cellPadding * 2
-      const imageAreaHeight = cardHeight - 10 // Maintain image visibility with smaller card
+      const imageAreaHeight = cardHeight - topPadding - bottomPadding
 
       // Determine if we have plan view images with metadata
       const usePlanViewImages = item.planViewImages && item.planViewImages.length > 0

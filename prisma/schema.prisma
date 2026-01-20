@@ -633,20 +633,27 @@ model ComponentLibrary {
   @@map("ComponentLibrary")
 }
 
-// Product Plan Views - Multiple named plan views per product for swing directions
+// Product Views - Multiple named views per product for swing/sliding directions
+// Each view contains both plan and elevation images
 model ProductPlanView {
-  id           Int      @id @default(autoincrement())
-  productId    Int
-  name         String   // e.g., "Right-In", "Right-Out", "Left-In", "Left-Out"
-  imageData    String   // Base64 encoded plan view image
-  fileName     String?  // Original filename
-  fileType     String   @default("image/png") // MIME type of the uploaded file
-  orientation  String   @default("bottom") // "bottom" (align top) or "top" (align bottom)
-  referenceWidth Float? // Real-world width (in inches) the image depicts, for PNG scaling
-  displayOrder Int      @default(0) // Order for display in UI
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id                 Int      @id @default(autoincrement())
+  productId          Int
+  name               String   // e.g., "Right In", "Left Out", "Fixed Panel"
+  // Plan view image
+  imageData          String   // Base64 encoded plan view image
+  fileName           String?  // Original plan filename
+  fileType           String   @default("image/png") // MIME type of the plan file
+  orientation        String   @default("bottom") // "bottom" (align top) or "top" (align bottom)
+  referenceWidth     Float?   // Real-world width (in inches) the image depicts, for PNG scaling
+  // Elevation view image
+  elevationImageData String?  // Base64 encoded elevation view image
+  elevationFileName  String?  // Original elevation filename
+  elevationFileType  String?  // MIME type of the elevation file
+  // Common fields
+  displayOrder       Int      @default(0) // Order for display in UI
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  product            Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("ProductPlanViews")
 }
@@ -967,26 +974,6 @@ model GlobalSetting {
   updatedAt   DateTime @updatedAt
 
   @@map("GlobalSettings")
-}
-
-// Tolerance Settings - Default tolerances for finished openings by opening type
-model ToleranceSettings {
-  id                          Int      @id @default(autoincrement())
-  name                        String   @default("default")
-
-  // ThinWall Tolerances (total inches to deduct)
-  thinwallWidthTolerance      Float    @default(1.0)   // Total inches to deduct from width
-  thinwallHeightTolerance     Float    @default(1.5)   // Total inches to deduct from height
-
-  // Framed Tolerances (total inches to deduct)
-  framedWidthTolerance        Float    @default(0.5)   // Total inches to deduct from width
-  framedHeightTolerance       Float    @default(0.75)  // Total inches to deduct from height
-
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @updatedAt
-
-  @@unique([name])
-  @@map("ToleranceSettings")
 }
 
 // Bin Location - Physical storage locations for inventory

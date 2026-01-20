@@ -51,3 +51,4 @@ next-env.d.ts
 
 # ClickUp API credentials
 /scripts/clickup-helper.js
+backups/

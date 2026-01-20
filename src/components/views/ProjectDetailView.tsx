@@ -3131,7 +3131,7 @@ export default function ProjectDetailView() {
                       Specify Dimensions
                     </label>
                     <p className="text-xs text-gray-500 mt-1">
-                      Enable to enter opening dimensions and apply tolerances
+                      Enable to enter opening dimensions
                     </p>
                   </div>
                   <button
@@ -3188,7 +3188,7 @@ export default function ProjectDetailView() {
 
                   {/* Tolerance Note */}
                   <p className="text-xs text-gray-500">
-                    Tolerances are automatically applied based on opening type. Adjust defaults in Quote Settings.
+                    Tolerances are automatically applied based on Components added to the opening.
                   </p>
                 </div>
               )}
@@ -3614,7 +3614,11 @@ export default function ProjectDetailView() {
                 const isFrameProduct = selectedProduct?.productType === 'FRAME'
                 const showGlassType = selectedProduct?.productType !== 'FRAME'
                 const hasDirection = ['SWING_DOOR', 'SLIDING_DOOR', 'CORNER_90'].includes(selectedProduct?.productType || '')
-                const planViewOptions = selectedProduct?.planViews || []
+                // Get unique direction options from both plan views and elevation views
+                const planViewNames = selectedProduct?.planViews?.map((v: any) => v.name) || []
+                const elevationViewNames = selectedProduct?.elevationViews?.map((v: any) => v.name) || []
+                const uniqueDirectionNames = [...new Set([...planViewNames, ...elevationViewNames])]
+                const planViewOptions = uniqueDirectionNames.map((name, idx) => ({ id: idx, name }))
                 const hasPlanViews = planViewOptions.length > 0
                 // All options (mandatory and non-mandatory) shown in wizard flow, with required first
                 const allOptions = [...addComponentOptions].sort((a: any, b: any) => {

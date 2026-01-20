@@ -11,52 +11,9 @@ export function isToleranceEligible(productType: string): boolean {
 }
 
 /**
- * Get global tolerance defaults from ToleranceSettings
- */
-export async function getGlobalToleranceDefaults(): Promise<{
-  thinwallWidthTolerance: number
-  thinwallHeightTolerance: number
-  framedWidthTolerance: number
-  framedHeightTolerance: number
-}> {
-  const settings = await prisma.toleranceSettings.findFirst({
-    where: { name: 'default' }
-  })
-
-  return {
-    thinwallWidthTolerance: settings?.thinwallWidthTolerance ?? 1.0,
-    thinwallHeightTolerance: settings?.thinwallHeightTolerance ?? 1.5,
-    framedWidthTolerance: settings?.framedWidthTolerance ?? 0.5,
-    framedHeightTolerance: settings?.framedHeightTolerance ?? 0.75
-  }
-}
-
-/**
- * Get tolerances for an opening type from global defaults
- */
-export async function getDefaultTolerances(openingType: string | null): Promise<{
-  widthTolerance: number
-  heightTolerance: number
-}> {
-  const defaults = await getGlobalToleranceDefaults()
-
-  if (openingType === 'FRAMED') {
-    return {
-      widthTolerance: defaults.framedWidthTolerance,
-      heightTolerance: defaults.framedHeightTolerance
-    }
-  }
-
-  // Default to THINWALL tolerances
-  return {
-    widthTolerance: defaults.thinwallWidthTolerance,
-    heightTolerance: defaults.thinwallHeightTolerance
-  }
-}
-
-/**
  * Calculate and apply tolerances to an opening from a product
  * Returns the new tolerance values and product ID, or null if no change needed
+ * Tolerances are now applied at the product level only - no global defaults
  */
 export async function calculateProductTolerances(
   opening: {
@@ -97,24 +54,9 @@ export async function calculateProductTolerances(
     return null
   }
 
-  // If product has custom tolerances, use them; otherwise use opening type defaults
-  let widthTolerance: number
-  let heightTolerance: number
-
-  if (product.widthTolerance !== null && product.heightTolerance !== null) {
-    widthTolerance = product.widthTolerance
-    heightTolerance = product.heightTolerance
-  } else if (product.widthTolerance !== null || product.heightTolerance !== null) {
-    // If only one is set, get defaults for the other
-    const defaults = await getDefaultTolerances(opening.openingType)
-    widthTolerance = product.widthTolerance ?? defaults.widthTolerance
-    heightTolerance = product.heightTolerance ?? defaults.heightTolerance
-  } else {
-    // Product has no custom tolerances, use defaults (but still claim the tolerance slot)
-    const defaults = await getDefaultTolerances(opening.openingType)
-    widthTolerance = defaults.widthTolerance
-    heightTolerance = defaults.heightTolerance
-  }
+  // Use product tolerances, defaulting to 0 if not set
+  const widthTolerance = product.widthTolerance ?? 0
+  const heightTolerance = product.heightTolerance ?? 0
 
   const finishedWidth = opening.roughWidth !== null
     ? opening.roughWidth - widthTolerance
@@ -134,7 +76,7 @@ export async function calculateProductTolerances(
 
 /**
  * Recalculate tolerances after a product is removed from an opening
- * Finds the next eligible product or reverts to defaults
+ * Finds the next eligible product or uses 0 tolerances if none remain
  */
 export async function recalculateTolerancesAfterDeletion(
   openingId: number
@@ -165,14 +107,14 @@ export async function recalculateTolerancesAfterDeletion(
     return null
   }
 
-  // Find the first remaining tolerance-eligible product with custom tolerances
+  // Find the first remaining tolerance-eligible product
   let nextToleranceProduct: { id: number; widthTolerance: number | null; heightTolerance: number | null } | null = null
 
   for (const panel of opening.panels) {
     if (panel.componentInstance?.product) {
       const product = panel.componentInstance.product
       if (isToleranceEligible(product.productType)) {
-        // Found an eligible product - use it even if it has no custom tolerances
+        // Found an eligible product
         nextToleranceProduct = {
           id: product.id,
           widthTolerance: product.widthTolerance,
@@ -190,19 +132,13 @@ export async function recalculateTolerancesAfterDeletion(
 
   if (nextToleranceProduct) {
     toleranceProductId = nextToleranceProduct.id
-    if (nextToleranceProduct.widthTolerance !== null && nextToleranceProduct.heightTolerance !== null) {
-      widthTolerance = nextToleranceProduct.widthTolerance
-      heightTolerance = nextToleranceProduct.heightTolerance
-    } else {
-      const defaults = await getDefaultTolerances(opening.openingType)
-      widthTolerance = nextToleranceProduct.widthTolerance ?? defaults.widthTolerance
-      heightTolerance = nextToleranceProduct.heightTolerance ?? defaults.heightTolerance
-    }
+    // Use product tolerances, defaulting to 0 if not set
+    widthTolerance = nextToleranceProduct.widthTolerance ?? 0
+    heightTolerance = nextToleranceProduct.heightTolerance ?? 0
   } else {
-    // No eligible products remain, use opening type defaults
-    const defaults = await getDefaultTolerances(opening.openingType)
-    widthTolerance = defaults.widthTolerance
-    heightTolerance = defaults.heightTolerance
+    // No eligible products remain, use 0 tolerances
+    widthTolerance = 0
+    heightTolerance = 0
   }
 
   const finishedWidth = opening.roughWidth !== null
