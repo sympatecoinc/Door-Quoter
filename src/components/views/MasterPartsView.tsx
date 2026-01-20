@@ -18,6 +18,7 @@ interface MasterPart {
   cost?: number
   weightPerUnit?: number
   weightPerFoot?: number
+  perimeterInches?: number
   partType: string
   isOption?: boolean
   isMillFinish?: boolean
@@ -253,6 +254,7 @@ export default function MasterPartsView() {
   const [description, setDescription] = useState('')
   const [unit, setUnit] = useState('')
   const [weightPerUnit, setWeightPerUnit] = useState('')
+  const [perimeterInches, setPerimeterInches] = useState('')
   const [partType, setPartType] = useState('')
   const [isOption, setIsOption] = useState(false)
   const [isMillFinish, setIsMillFinish] = useState(false)
@@ -463,6 +465,7 @@ export default function MasterPartsView() {
     setDescription('')
     setUnit('')
     setWeightPerUnit('')
+    setPerimeterInches('')
     setPartType('')
     setIsOption(false)
     setIsMillFinish(false)
@@ -489,6 +492,7 @@ export default function MasterPartsView() {
           unit: (partType === 'Extrusion' || partType === 'CutStock') ? 'IN' : unit,
           weightPerUnit: weightPerUnit ? parseFloat(weightPerUnit) : null,
           weightPerFoot: weightPerUnit ? parseFloat(weightPerUnit) : null,
+          perimeterInches: partType === 'Extrusion' && perimeterInches ? parseFloat(perimeterInches) : null,
           partType,
           isOption: (partType === 'Hardware' || partType === 'Extrusion' || partType === 'CutStock') ? isOption : false,
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
@@ -534,6 +538,7 @@ export default function MasterPartsView() {
           unit: (partType === 'Extrusion' || partType === 'CutStock') ? 'IN' : unit,
           weightPerUnit: weightPerUnit ? parseFloat(weightPerUnit) : null,
           weightPerFoot: weightPerUnit ? parseFloat(weightPerUnit) : null,
+          perimeterInches: partType === 'Extrusion' && perimeterInches ? parseFloat(perimeterInches) : null,
           partType,
           isOption: (partType === 'Hardware' || partType === 'Extrusion' || partType === 'CutStock') ? isOption : false,
           isMillFinish: partType === 'Extrusion' ? isMillFinish : false,
@@ -711,6 +716,7 @@ export default function MasterPartsView() {
     setUnit(part.unit || '')
     // For hardware/fastener/packaging use weightPerUnit, for extrusions use weightPerFoot
     setWeightPerUnit(((part.partType === 'Hardware' || part.partType === 'Fastener' || part.partType === 'Packaging') ? part.weightPerUnit : part.weightPerFoot)?.toString() || '')
+    setPerimeterInches(part.perimeterInches?.toString() || '')
     setPartType(part.partType)
     setIsOption(part.isOption || false)
     setIsMillFinish(part.isMillFinish || false)
@@ -2444,6 +2450,22 @@ export default function MasterPartsView() {
                         placeholder="e.g., 2.5"
                       />
                       <p className="mt-1 text-xs text-gray-500">Weight in pounds per linear foot</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Perimeter (inches)
+                          <span className="text-xs text-gray-500 ml-1">(For finish surface area)</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={perimeterInches}
+                          onChange={(e) => setPerimeterInches(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="e.g., 6.5"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">Cross-section perimeter for finish cost calculation</p>
                       </div>
 
                       {/* Is Mill Finish checkbox for extrusions */}

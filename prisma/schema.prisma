@@ -357,6 +357,7 @@ model MasterPart {
   salePrice               Float?             // Fixed sale price - bypasses all markup calculations when set
   weightPerUnit           Float?             // Weight in ounces for Hardware parts
   weightPerFoot           Float?             // Weight in ounces per linear foot for Extrusion parts
+  perimeterInches         Float?             // Perimeter in inches for surface area finish pricing
   customPricePerLb        Float?             // Per-extrusion override for material price per pound (null = use global)
   partType                String             @default("Hardware")
   isMillFinish            Boolean            @default(false) // If true (for Extrusions), no finish codes (-BL, -C2, -AL) will be appended to part numbers
@@ -834,12 +835,12 @@ model ProductQuoteDocument {
   @@map("ProductQuoteDocuments")
 }
 
-// Extrusion Finish Pricing - Global settings for finish costs per foot
+// Extrusion Finish Pricing - Global settings for finish costs per square foot
 model ExtrusionFinishPricing {
   id                Int                @id @default(autoincrement())
   finishType        String             @unique // e.g., "Mill Finish", "Powder Coated", "Anodized"
   finishCode        String?            // Part number suffix code (e.g., "BL", "C2", "AL")
-  costPerFoot       Float              @default(0) // Additional cost per foot of extrusion
+  costPerSqFt       Float              @default(0) // Cost per square foot of surface
   isActive          Boolean            @default(true)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt

@@ -422,7 +422,7 @@ export interface ExtrusionFinishPricing {
   id: number
   finishType: string
   finishCode: string | null
-  costPerFoot: number
+  costPerSqFt: number
   isActive: boolean
   createdAt: Date
   updatedAt: Date
@@ -460,13 +460,14 @@ export interface MasterPart {
   cost: number | null
   salePrice?: number | null
   weightPerFoot?: number | null
+  perimeterInches?: number | null
   customPricePerLb?: number | null
   isMillFinish?: boolean
 }
 
 // Extrusion Variant Group - Groups variants by extrusion profile
 export interface ExtrusionVariantGroup {
-  masterPart: Pick<MasterPart, 'id' | 'partNumber' | 'baseName' | 'description' | 'partType' | 'weightPerFoot' | 'customPricePerLb' | 'isMillFinish'>
+  masterPart: Pick<MasterPart, 'id' | 'partNumber' | 'baseName' | 'description' | 'partType' | 'weightPerFoot' | 'perimeterInches' | 'customPricePerLb' | 'isMillFinish'>
   variants: ExtrusionVariantDisplay[]
   lengths: number[]
   finishes: FinishOption[]

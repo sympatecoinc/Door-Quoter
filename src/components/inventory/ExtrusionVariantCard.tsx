@@ -42,12 +42,17 @@ function calculateBasePricePerFoot(
   return weightPerFoot * pricePerLb
 }
 
-// Calculate finish price per foot (base + finish cost)
+// Calculate finish price per foot (base + finish cost based on surface area)
+// finishCostPerSqFt is applied to the surface area (perimeter × length)
+// So finish cost per linear foot = perimeterFeet × costPerSqFt
 function calculateFinishPrice(
   basePricePerFoot: number | null,
-  finishCostPerFoot: number
+  finishCostPerSqFt: number,
+  perimeterInches: number | null | undefined
 ): number | null {
   if (basePricePerFoot === null) return null
+  const perimeterFeet = (perimeterInches || 0) / 12
+  const finishCostPerFoot = perimeterFeet * finishCostPerSqFt
   return basePricePerFoot + finishCostPerFoot
 }
 
@@ -164,8 +169,8 @@ export default function ExtrusionVariantCard({
                 {finishes.map(finish => {
                   // Get the finish pricing for this finish
                   const fp = finish.id ? finishPricingMap.get(finish.id) : null
-                  const finishCost = fp?.costPerFoot ?? 0
-                  const totalPricePerFoot = calculateFinishPrice(basePricePerFoot, finishCost)
+                  const finishCost = fp?.costPerSqFt ?? 0
+                  const totalPricePerFoot = calculateFinishPrice(basePricePerFoot, finishCost, masterPart.perimeterInches)
 
                   return (
                     <th

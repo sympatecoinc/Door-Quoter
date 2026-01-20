@@ -6,8 +6,8 @@ async function seedFinishTypes() {
   console.log('Seeding finish types...')
 
   const finishTypes = [
-    { finishType: 'Powder Coated', costPerFoot: 2.50, isActive: true },
-    { finishType: 'Anodized', costPerFoot: 1.75, isActive: true },
+    { finishType: 'Powder Coated', costPerSqFt: 2.50, isActive: true },
+    { finishType: 'Anodized', costPerSqFt: 1.75, isActive: true },
   ]
 
   for (const finish of finishTypes) {
@@ -21,7 +21,7 @@ async function seedFinishTypes() {
       await prisma.extrusionFinishPricing.create({
         data: finish
       })
-      console.log(`✓ Created ${finish.finishType} at $${finish.costPerFoot}/ft`)
+      console.log(`✓ Created ${finish.finishType} at $${finish.costPerSqFt}/ft`)
     }
   }
 

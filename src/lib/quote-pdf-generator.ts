@@ -1228,7 +1228,7 @@ async function addQuoteItemsTable(
           1.2 // Hatch spacing
         )
       } else {
-        // Elevation view or mixed: center all images as a group, then place edge-to-edge
+        // Elevation view or mixed: right-align all images as a group, then place edge-to-edge
 
         // Calculate total scaled width of all images
         const totalScaledWidth = processedImages.reduce((sum, img) => sum + img.scaledWidth, 0)
@@ -1236,8 +1236,8 @@ async function addQuoteItemsTable(
         // Calculate the maximum height for vertical centering
         const maxScaledHeight = Math.max(...processedImages.map(img => img.scaledHeight))
 
-        // Start position to center the entire group horizontally
-        let imgX = imageAreaX + (imageAreaWidth - totalScaledWidth) / 2
+        // Start position to right-align the entire group horizontally
+        let imgX = imageAreaX + imageAreaWidth - totalScaledWidth
 
         // Vertical centering offset
         const groupOffsetY = (imageAreaHeight - maxScaledHeight) / 2

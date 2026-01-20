@@ -24,7 +24,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { finishType, finishCode, costPerFoot, isActive } = body
+    const { finishType, finishCode, costPerSqFt, isActive } = body
 
     if (!finishType) {
       return NextResponse.json(
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       data: {
         finishType,
         finishCode: finishCode || null,
-        costPerFoot: costPerFoot || 0,
+        costPerSqFt: costPerSqFt || 0,
         isActive: isActive !== undefined ? isActive : true
       }
     })

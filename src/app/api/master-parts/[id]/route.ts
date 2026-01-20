@@ -43,7 +43,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
     }
 
-    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, customPricePerLb, partType, isOption, addFinishToPartNumber, appendDirectionToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, perimeterInches, customPricePerLb, partType, isOption, addFinishToPartNumber, appendDirectionToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({
@@ -95,6 +95,7 @@ export async function PUT(
         cost: (partType === 'Extrusion') ? null : (cost ? parseFloat(cost) : null),
         weightPerUnit: ((partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') && weightPerUnit) ? parseFloat(weightPerUnit) : null,
         weightPerFoot: (partType === 'Extrusion' && weightPerFoot) ? parseFloat(weightPerFoot) : null,
+        perimeterInches: (partType === 'Extrusion' && perimeterInches !== undefined) ? (perimeterInches ? parseFloat(perimeterInches) : null) : undefined,
         customPricePerLb: (partType === 'Extrusion' && customPricePerLb !== undefined) ? (customPricePerLb ? parseFloat(customPricePerLb) : null) : undefined,
         partType: partType || 'Hardware',
         isOption: (partType === 'Hardware' || partType === 'Extrusion' || partType === 'CutStock') ? (isOption || false) : false,

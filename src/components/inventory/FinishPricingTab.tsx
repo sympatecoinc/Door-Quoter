@@ -34,13 +34,13 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
   const [editingFinishId, setEditingFinishId] = useState<number | null>(null)
   const [editingFinishType, setEditingFinishType] = useState('')
   const [editingFinishCode, setEditingFinishCode] = useState('')
-  const [editingCostPerFoot, setEditingCostPerFoot] = useState('')
+  const [editingCostPerSqFt, setEditingCostPerSqFt] = useState('')
 
   // Add Finish Form State
   const [showAddFinish, setShowAddFinish] = useState(false)
   const [newFinishType, setNewFinishType] = useState('')
   const [newFinishCode, setNewFinishCode] = useState('')
-  const [newCostPerFoot, setNewCostPerFoot] = useState('')
+  const [newCostPerSqFt, setNewCostPerSqFt] = useState('')
   const [addingFinish, setAddingFinish] = useState(false)
 
   // Delete confirmation
@@ -129,8 +129,8 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
       return
     }
 
-    if (!newCostPerFoot.trim() || isNaN(parseFloat(newCostPerFoot))) {
-      showError('Please enter a valid cost per foot')
+    if (!newCostPerSqFt.trim() || isNaN(parseFloat(newCostPerSqFt))) {
+      showError('Please enter a valid cost per sq ft')
       return
     }
 
@@ -142,7 +142,7 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
         body: JSON.stringify({
           finishType: newFinishType,
           finishCode: newFinishCode.trim(),
-          costPerFoot: parseFloat(newCostPerFoot)
+          costPerSqFt: parseFloat(newCostPerSqFt)
         })
       })
 
@@ -151,7 +151,7 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
         setShowAddFinish(false)
         setNewFinishType('')
         setNewFinishCode('')
-        setNewCostPerFoot('')
+        setNewCostPerSqFt('')
         showSuccess('Finish type added successfully!')
       } else {
         const error = await response.json()
@@ -174,7 +174,7 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
         body: JSON.stringify({
           finishType: editingFinishType,
           finishCode: editingFinishCode.trim() || null,
-          costPerFoot: parseFloat(editingCostPerFoot) || 0
+          costPerSqFt: parseFloat(editingCostPerSqFt) || 0
         })
       })
 
@@ -220,7 +220,7 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
     setEditingFinishId(finish.id)
     setEditingFinishType(finish.finishType)
     setEditingFinishCode(finish.finishCode || '')
-    setEditingCostPerFoot(finish.costPerFoot.toString())
+    setEditingCostPerSqFt(finish.costPerSqFt.toString())
   }
 
   function confirmDeleteFinish(id: number, name: string) {
@@ -301,11 +301,11 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
               <p className="mt-1">
                 Base Price = Weight Per Foot × Material Price Per Lb
               </p>
-              <p>
-                Color Price = Base Price + Finish Cost Per Foot
+              <p className="mt-1">
+                Finish Cost = (Perimeter ÷ 12) × Length × Cost Per Sq Ft
               </p>
               <p className="mt-2 text-blue-600">
-                Individual extrusions can override this global price if needed.
+                Finish is calculated based on surface area (perimeter × length). Set perimeter in Master Parts for each extrusion.
               </p>
             </div>
           </div>
@@ -318,7 +318,7 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
           <div>
             <h2 className="text-xl font-semibold text-gray-900">Finish Pricing</h2>
             <p className="text-sm text-gray-600 mt-1">
-              Additional cost per foot for different extrusion finishes
+              Additional cost per sq ft for different extrusion finishes
             </p>
           </div>
         </div>
@@ -330,7 +330,7 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Finish Type</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Finish Code</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost Per Foot</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost Per Sq Ft</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -354,7 +354,7 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
                       Finish Code
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Cost Per Foot
+                      Cost Per Sq Ft
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
@@ -401,12 +401,12 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
                             <input
                               type="number"
                               step="0.01"
-                              value={editingCostPerFoot}
-                              onChange={(e) => setEditingCostPerFoot(e.target.value)}
+                              value={editingCostPerSqFt}
+                              onChange={(e) => setEditingCostPerSqFt(e.target.value)}
                               className="w-full px-2 py-1 border border-gray-300 rounded text-gray-900"
                             />
                           ) : (
-                            <span className="text-sm text-gray-900">${finish.costPerFoot.toFixed(2)}</span>
+                            <span className="text-sm text-gray-900">${finish.costPerSqFt.toFixed(2)}</span>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -477,12 +477,12 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
                     <p className="text-xs text-gray-500 mt-1">Part number suffix</p>
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-700 mb-1">Cost Per Foot ($) *</label>
+                    <label className="block text-xs text-gray-700 mb-1">Cost Per Sq Ft ($) *</label>
                     <input
                       type="number"
                       step="0.01"
-                      value={newCostPerFoot}
-                      onChange={(e) => setNewCostPerFoot(e.target.value)}
+                      value={newCostPerSqFt}
+                      onChange={(e) => setNewCostPerSqFt(e.target.value)}
                       placeholder="0.00"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
                       required
@@ -495,7 +495,7 @@ export default function FinishPricingTab({ showSuccess, showError }: FinishPrici
                       setShowAddFinish(false)
                       setNewFinishType('')
                       setNewFinishCode('')
-                      setNewCostPerFoot('')
+                      setNewCostPerSqFt('')
                     }}
                     className="px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
                   >

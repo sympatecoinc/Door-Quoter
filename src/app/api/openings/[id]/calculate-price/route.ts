@@ -491,13 +491,17 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
                       where: { finishType: finishColor, isActive: true }
                     })
 
-                    if (finishPricing && finishPricing.costPerFoot > 0) {
-                      const cutLengthFeet = requiredLength / 12
-                      const finishCostPerPiece = cutLengthFeet * finishPricing.costPerFoot
+                    if (finishPricing && finishPricing.costPerSqFt > 0) {
+                      const finishLengthFeet = requiredLength / 12
+                      const perimeterFeet = (masterPart.perimeterInches || 0) / 12
+                      const surfaceSqFt = perimeterFeet * finishLengthFeet
+                      const finishCostPerPiece = surfaceSqFt * finishPricing.costPerSqFt
                       const totalFinishCost = finishCostPerPiece * (bom.quantity || 1)
 
                       breakdown.finishCost = totalFinishCost
-                      breakdown.finishDetails = `${finishColor} finish: ${cutLengthFeet.toFixed(2)}' × $${finishPricing.costPerFoot}/ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
+                      breakdown.finishDetails = perimeterFeet > 0
+                        ? `${finishColor}: ${perimeterFeet.toFixed(3)}' perim × ${finishLengthFeet.toFixed(2)}' = ${surfaceSqFt.toFixed(2)} sq ft × $${finishPricing.costPerSqFt}/sq ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
+                        : `${finishColor}: No perimeter defined, finish cost = $0.00`
                       cost += totalFinishCost
                       breakdown.totalCost = cost
                     }
@@ -555,16 +559,20 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
                     where: { finishType: finishColor, isActive: true }
                   })
 
-                  if (finishPricing && finishPricing.costPerFoot > 0) {
+                  if (finishPricing && finishPricing.costPerSqFt > 0) {
                     // Use full stock length when ≥50% used, cut length when <50%
                     const finishLengthInches = usagePercentage >= 0.5 ? bestRule.stockLength : requiredLength
                     const finishLengthFeet = finishLengthInches / 12
-                    const finishCostPerPiece = finishLengthFeet * finishPricing.costPerFoot
+                    const perimeterFeet = (masterPart.perimeterInches || 0) / 12
+                    const surfaceSqFt = perimeterFeet * finishLengthFeet
+                    const finishCostPerPiece = surfaceSqFt * finishPricing.costPerSqFt
                     const totalFinishCost = finishCostPerPiece * (bom.quantity || 1)
 
                     const finishType = usagePercentage >= 0.5 ? 'full stock' : 'cut length'
                     breakdown.finishCost = totalFinishCost
-                    breakdown.finishDetails = `${finishColor} finish (${finishType}): ${finishLengthFeet.toFixed(2)}' × $${finishPricing.costPerFoot}/ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
+                    breakdown.finishDetails = perimeterFeet > 0
+                      ? `${finishColor} (${finishType}): ${perimeterFeet.toFixed(3)}' perim × ${finishLengthFeet.toFixed(2)}' = ${surfaceSqFt.toFixed(2)} sq ft × $${finishPricing.costPerSqFt}/sq ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
+                      : `${finishColor}: No perimeter defined, finish cost = $0.00`
                     cost += totalFinishCost
                     breakdown.totalCost = cost
                   }
@@ -606,15 +614,19 @@ async function calculateBOMItemPrice(bom: any, componentWidth: number, component
                   where: { finishType: finishColor, isActive: true }
                 })
 
-                if (finishPricing && finishPricing.costPerFoot > 0) {
+                if (finishPricing && finishPricing.costPerSqFt > 0) {
                   // Use full stock length for finish cost (follows same threshold as material)
                   const finishLengthInches = bestRule.stockLength || requiredLength
                   const finishLengthFeet = finishLengthInches / 12
-                  const finishCostPerPiece = finishLengthFeet * finishPricing.costPerFoot
+                  const perimeterFeet = (masterPart.perimeterInches || 0) / 12
+                  const surfaceSqFt = perimeterFeet * finishLengthFeet
+                  const finishCostPerPiece = surfaceSqFt * finishPricing.costPerSqFt
                   const totalFinishCost = finishCostPerPiece * (bom.quantity || 1)
 
                   breakdown.finishCost = totalFinishCost
-                  breakdown.finishDetails = `${finishColor} finish (full stock): ${finishLengthFeet.toFixed(2)}' × $${finishPricing.costPerFoot}/ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
+                  breakdown.finishDetails = perimeterFeet > 0
+                    ? `${finishColor} (full stock): ${perimeterFeet.toFixed(3)}' perim × ${finishLengthFeet.toFixed(2)}' = ${surfaceSqFt.toFixed(2)} sq ft × $${finishPricing.costPerSqFt}/sq ft × ${bom.quantity || 1} = $${totalFinishCost.toFixed(2)}`
+                    : `${finishColor}: No perimeter defined, finish cost = $0.00`
                   cost += totalFinishCost
                   breakdown.totalCost = cost
                 }

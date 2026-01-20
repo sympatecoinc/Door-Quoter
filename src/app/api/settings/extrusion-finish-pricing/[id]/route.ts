@@ -18,14 +18,14 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { finishType, finishCode, costPerFoot, isActive } = body
+    const { finishType, finishCode, costPerSqFt, isActive } = body
 
     const finishPricing = await prisma.extrusionFinishPricing.update({
       where: { id },
       data: {
         ...(finishType !== undefined && { finishType }),
         ...(finishCode !== undefined && { finishCode: finishCode || null }),
-        ...(costPerFoot !== undefined && { costPerFoot }),
+        ...(costPerSqFt !== undefined && { costPerSqFt }),
         ...(isActive !== undefined && { isActive })
       }
     })

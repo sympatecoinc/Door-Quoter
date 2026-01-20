@@ -3114,7 +3114,7 @@ export default function ProjectDetailView() {
                 >
                   {finishTypes.map((finish) => (
                     <option key={finish.id} value={finish.finishType}>
-                      {finish.finishType} {finish.costPerFoot > 0 ? `(+$${finish.costPerFoot.toFixed(2)}/ft)` : ''}
+                      {finish.finishType} {finish.costPerSqFt > 0 ? `(+$${finish.costPerSqFt.toFixed(2)}/sq ft)` : ''}
                     </option>
                   ))}
                 </select>

@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, customPricePerLb, partType, isOption, addFinishToPartNumber, appendDirectionToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, perimeterInches, customPricePerLb, partType, isOption, addFinishToPartNumber, appendDirectionToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({
@@ -144,6 +144,7 @@ export async function POST(request: NextRequest) {
         cost: (partType === 'Extrusion') ? null : (cost ? parseFloat(cost) : null),
         weightPerUnit: ((partType === 'Hardware' || partType === 'Fastener' || partType === 'Packaging') && weightPerUnit) ? parseFloat(weightPerUnit) : null,
         weightPerFoot: (partType === 'Extrusion' && weightPerFoot) ? parseFloat(weightPerFoot) : null,
+        perimeterInches: (partType === 'Extrusion' && perimeterInches) ? parseFloat(perimeterInches) : null,
         customPricePerLb: (partType === 'Extrusion' && customPricePerLb) ? parseFloat(customPricePerLb) : null,
         partType: partType || 'Hardware',
         isOption: (partType === 'Hardware' || partType === 'Extrusion' || partType === 'CutStock') ? (isOption || false) : false,
