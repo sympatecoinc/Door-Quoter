@@ -396,6 +396,13 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
   let logoActualHeight = 0
 
   // Right side: Company logo above the date
+  if (!quoteData.companyLogo) {
+    // Debug: Show if companyLogo is not set
+    pdf.setFontSize(6)
+    pdf.setTextColor(255, 0, 0)
+    pdf.text('No companyLogo in data', pageWidth - 60, headerY)
+    pdf.setTextColor(0, 0, 0)
+  }
   if (quoteData.companyLogo) {
     try {
       // Parse the logo data - it's now stored as JSON with GCS path
@@ -430,6 +437,14 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
         } else {
           console.log('[PDF Logo] Legacy file not found at:', logoPath)
         }
+      }
+
+      if (!logoBuffer) {
+        // Debug: Add visible text if logo failed to load
+        pdf.setFontSize(6)
+        pdf.setTextColor(255, 0, 0)
+        pdf.text('Logo load failed', pageWidth - 60, headerY)
+        pdf.setTextColor(0, 0, 0)
       }
 
       if (logoBuffer) {
@@ -507,6 +522,12 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
       }
     } catch (error) {
       console.log('[PDF Logo] ERROR adding company logo to PDF:', error)
+      // Debug: Show error in PDF
+      pdf.setFontSize(6)
+      pdf.setTextColor(255, 0, 0)
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      pdf.text(`Logo error: ${errorMsg.substring(0, 50)}`, pageWidth - 80, headerY)
+      pdf.setTextColor(0, 0, 0)
     }
   }
 
