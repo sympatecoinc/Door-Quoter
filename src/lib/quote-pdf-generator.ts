@@ -8,7 +8,7 @@ import fs from 'fs'
 import path from 'path'
 import sharp from 'sharp'
 import { renderSvgToPng, decodeSvgData } from './svg-renderer'
-import { downloadFile, fileExists } from './gcs-storage'
+import { downloadFile } from './gcs-storage'
 
 /**
  * Extracts width and height from PNG image data (base64 or buffer)
@@ -402,19 +402,23 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
       let logoBuffer: Buffer | null = null
       let logoMimeType = 'image/png'
 
+      console.log('[PDF Logo] Starting logo processing, companyLogo:', quoteData.companyLogo.substring(0, 100))
+
       try {
         const logoInfo = JSON.parse(quoteData.companyLogo)
+        console.log('[PDF Logo] Parsed logo info:', JSON.stringify(logoInfo))
+
         if (logoInfo.gcsPath) {
-          // New GCS storage format - check if file exists first
-          const exists = await fileExists(logoInfo.gcsPath)
-          if (exists) {
-            logoBuffer = await downloadFile(logoInfo.gcsPath)
-            logoMimeType = logoInfo.mimeType || 'image/png'
-          } else {
-            console.error(`Logo file not found in storage: ${logoInfo.gcsPath}. Please re-upload the logo in Settings > Branding.`)
-          }
+          // Download directly from GCS (same as UI endpoint does)
+          console.log('[PDF Logo] Downloading from GCS path:', logoInfo.gcsPath)
+          logoBuffer = await downloadFile(logoInfo.gcsPath)
+          logoMimeType = logoInfo.mimeType || 'image/png'
+          console.log('[PDF Logo] Downloaded successfully, buffer size:', logoBuffer.length, 'mimeType:', logoMimeType)
+        } else {
+          console.log('[PDF Logo] No gcsPath in logoInfo')
         }
       } catch (parseError) {
+        console.log('[PDF Logo] JSON parse failed, trying legacy filesystem path. Error:', parseError)
         // Legacy format - try filesystem (will be removed after migration)
         const logoPath = path.join(process.cwd(), 'uploads', 'branding', quoteData.companyLogo)
         if (fs.existsSync(logoPath)) {
@@ -422,13 +426,16 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
           const logoExt = path.extname(quoteData.companyLogo).toLowerCase()
           logoMimeType = logoExt === '.svg' ? 'image/svg+xml' :
                         logoExt === '.jpg' || logoExt === '.jpeg' ? 'image/jpeg' : 'image/png'
+          console.log('[PDF Logo] Loaded from filesystem, buffer size:', logoBuffer.length)
         } else {
-          console.error(`Logo file not found: ${logoPath}. Please re-upload the logo in Settings > Branding.`)
+          console.log('[PDF Logo] Legacy file not found at:', logoPath)
         }
       }
 
       if (logoBuffer) {
+        console.log('[PDF Logo] Processing logo buffer, size:', logoBuffer.length)
         const logoExt = logoMimeType.split('/')[1]
+        console.log('[PDF Logo] Logo extension:', logoExt)
 
         // Resize logo to reasonable dimensions for PDF (max 600px width for good print quality)
         // This dramatically reduces file size while maintaining visual quality
@@ -437,33 +444,40 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
 
         if (logoExt === 'svg+xml' || logoExt === 'svg') {
           // SVG logos don't need resizing
+          console.log('[PDF Logo] SVG detected, skipping resize')
           processedLogoBuffer = logoBuffer
         } else {
           // Resize raster images (PNG, JPG) to max 600px width, maintaining aspect ratio
           // Convert to JPEG for better compression (unless it has transparency)
+          console.log('[PDF Logo] Getting sharp metadata...')
           const metadata = await sharp(logoBuffer).metadata()
+          console.log('[PDF Logo] Metadata:', JSON.stringify(metadata))
           const hasAlpha = metadata.channels === 4
 
           if (hasAlpha) {
             // Keep PNG for images with transparency, but resize
+            console.log('[PDF Logo] Has alpha, resizing as PNG...')
             processedLogoBuffer = await sharp(logoBuffer)
               .resize(600, 200, { fit: 'inside', withoutEnlargement: true })
               .png({ compressionLevel: 9 })
               .toBuffer()
           } else {
             // Convert to JPEG for smaller size
+            console.log('[PDF Logo] No alpha, converting to JPEG...')
             processedLogoBuffer = await sharp(logoBuffer)
               .resize(600, 200, { fit: 'inside', withoutEnlargement: true })
               .jpeg({ quality: 85 })
               .toBuffer()
             imageFormat = 'JPEG'
           }
+          console.log('[PDF Logo] Processed buffer size:', processedLogoBuffer.length)
         }
 
         // Get actual dimensions after processing to calculate aspect ratio
         const processedMetadata = await sharp(processedLogoBuffer).metadata()
         const imgWidth = processedMetadata.width || 600
         const imgHeight = processedMetadata.height || 200
+        console.log('[PDF Logo] Final dimensions:', imgWidth, 'x', imgHeight)
 
         // Calculate scaled dimensions preserving aspect ratio
         const aspectRatio = imgWidth / imgHeight
@@ -480,15 +494,19 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
         const finalMimeType = imageFormat === 'JPEG' ? 'image/jpeg' :
                          (logoExt === 'svg+xml' || logoExt === 'svg' ? 'image/svg+xml' : 'image/png')
         const logoData = `data:${finalMimeType};base64,${logoBase64}`
+        console.log('[PDF Logo] Adding image to PDF, format:', imageFormat, 'dimensions:', finalWidth, 'x', finalHeight)
 
         // Position logo in top right, above where date will be
         const logoX = pageWidth - 20 - finalWidth
         pdf.addImage(logoData, imageFormat,
           logoX, headerY, finalWidth, finalHeight, undefined, 'SLOW')
         logoActualHeight = finalHeight
+        console.log('[PDF Logo] Successfully added logo to PDF')
+      } else {
+        console.log('[PDF Logo] No logo buffer available')
       }
     } catch (error) {
-      console.error('Error adding company logo to PDF:', error)
+      console.log('[PDF Logo] ERROR adding company logo to PDF:', error)
     }
   }
 
