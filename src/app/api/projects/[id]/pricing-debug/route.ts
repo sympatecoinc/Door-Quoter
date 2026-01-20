@@ -24,30 +24,16 @@ function evaluateFormula(formula: string, variables: Record<string, number>): nu
 }
 
 // Function to find the best stock length rule for extrusions
-function findBestStockLengthRule(rules: any[], requiredLength: number, componentWidth?: number, componentHeight?: number): any | null {
+function findBestStockLengthRule(rules: any[], requiredLength: number): any | null {
+  // Filter to active rules where the cut length fits in the stock
   const matchingRules = rules.filter(rule => {
-    // Check if rule fits the required cut length (must fit within stock)
-    const fitsStock = rule.stockLength >= requiredLength
-
-    // Check dimension constraints (minHeight/maxHeight refer to opening dimensions, not cut length)
-    const matchesHeight = (rule.minHeight === null || rule.minHeight === undefined || (componentHeight && componentHeight >= rule.minHeight)) &&
-                         (rule.maxHeight === null || rule.maxHeight === undefined || (componentHeight && componentHeight <= rule.maxHeight))
-    const matchesWidth = (rule.minWidth === null || rule.minWidth === undefined || (componentWidth && componentWidth >= rule.minWidth)) &&
-                        (rule.maxWidth === null || rule.maxWidth === undefined || (componentWidth && componentWidth <= rule.maxWidth))
-
-    return fitsStock && matchesHeight && matchesWidth && rule.isActive
+    return rule.isActive && rule.stockLength >= requiredLength
   })
 
   if (matchingRules.length === 0) return null
 
-  // Sort by specificity (more constraints = more specific) and smallest stock that fits
-  const bestRule = matchingRules.sort((a, b) => {
-    const aSpecificity = (a.minHeight !== null ? 1 : 0) + (a.maxHeight !== null ? 1 : 0) + (a.minWidth !== null ? 1 : 0) + (a.maxWidth !== null ? 1 : 0)
-    const bSpecificity = (b.minHeight !== null ? 1 : 0) + (b.maxHeight !== null ? 1 : 0) + (b.minWidth !== null ? 1 : 0) + (b.maxWidth !== null ? 1 : 0)
-    if (bSpecificity !== aSpecificity) return bSpecificity - aSpecificity
-    // Prefer smaller stock length for efficiency
-    return a.stockLength - b.stockLength
-  })[0]
+  // Pick the smallest stock that fits (minimizes waste)
+  const bestRule = matchingRules.sort((a, b) => a.stockLength - b.stockLength)[0]
 
   return bestRule
 }
@@ -277,7 +263,7 @@ async function calculateBOMItemPrice(
         // CutStock: Use MasterPart.cost from inventory with hybrid percentage-based costing
         if (masterPart.partType === 'CutStock' && masterPart.stockLengthRules.length > 0) {
           const requiredLength = calculateRequiredPartLength(bom, variables)
-          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength, componentWidth, componentHeight)
+          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
 
           if (bestRule) {
             // Use MasterPart.cost from inventory (NOT weight-based), fallback to StockLengthRule basePrice
@@ -333,7 +319,7 @@ async function calculateBOMItemPrice(
         // Extrusions: stock length rules
         if (masterPart.partType === 'Extrusion' && masterPart.stockLengthRules.length > 0) {
           const requiredLength = calculateRequiredPartLength(bom, variables)
-          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength, componentWidth, componentHeight)
+          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
 
           if (bestRule) {
             const isExcludedPart = excludedPartNumbers?.some(excludedPart => {
