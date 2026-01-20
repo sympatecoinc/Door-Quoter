@@ -106,8 +106,8 @@ export async function GET(request: NextRequest) {
             rule.piecesPerUnit?.toString() || '',
             rule.basePrice?.toString() || '',
             rule.weightPerFoot?.toString() || '',
-            rule.basePriceBlack?.toString() || '',
-            rule.basePriceClear?.toString() || '',
+            (rule as any).basePriceBlack?.toString() || '',
+            (rule as any).basePriceClear?.toString() || '',
             rule.formula || '',
             '', '' // Pricing rule fields (empty for stock rules)
           ].map(v => escapeCsvValue(v)).join(','))

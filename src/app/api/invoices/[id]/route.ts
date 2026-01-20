@@ -213,7 +213,7 @@ export async function PUT(
           qbWarning = 'Customer not synced to QuickBooks.'
         } else {
           // Get current QB invoice for sync token
-          const qbCurrentInvoice = await fetchQBInvoice(realmId, currentInvoice.quickbooksId)
+          const qbCurrentInvoice = await fetchQBInvoice(realmId, currentInvoice.quickbooksId!)
 
           // Convert lines to QB format
           const qbLines = updatedInvoice.lines.map(line => localInvoiceLineToQB(line))
@@ -315,8 +315,8 @@ export async function DELETE(
         const realmId = await getStoredRealmId()
         if (realmId) {
           // Get current sync token
-          const qbInvoice = await fetchQBInvoice(realmId, invoice.quickbooksId)
-          await voidQBInvoice(realmId, invoice.quickbooksId, qbInvoice.SyncToken)
+          const qbInvoice = await fetchQBInvoice(realmId, invoice.quickbooksId!)
+          await voidQBInvoice(realmId, invoice.quickbooksId!, qbInvoice.SyncToken)
         }
       } catch (qbError) {
         console.error('QuickBooks void error:', qbError)

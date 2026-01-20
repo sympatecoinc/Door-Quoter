@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
     let nextDisplayOrder = (maxOrderPanel?.displayOrder ?? -1) + 1
 
     // Create multiple panels if quantity > 1
-    const panels = []
+    const panels: any[] = []
     for (let i = 0; i < panelCount; i++) {
       const panel = await prisma.panel.create({
         data: {

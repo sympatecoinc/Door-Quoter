@@ -243,7 +243,7 @@ export async function POST(request: NextRequest) {
     let qbWarning: string | null = null
     if (pushToQuickBooks) {
       try {
-        const { getStoredRealmId, createQBInvoice, localInvoiceToQB, localInvoiceLineToQB, QBInvoiceLine } = await import('@/lib/quickbooks')
+        const { getStoredRealmId, createQBInvoice, localInvoiceToQB, localInvoiceLineToQB } = await import('@/lib/quickbooks')
         const realmId = await getStoredRealmId()
         if (!realmId) {
           qbWarning = 'QuickBooks not connected. Invoice saved locally only.'

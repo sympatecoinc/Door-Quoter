@@ -208,7 +208,7 @@ export default function InvoiceList({ onInvoiceSelect, onEdit, onRefresh, refres
                   </td>
                   <td className="px-4 py-3 text-center">
                     {invoice.quickbooksId ? (
-                      <Cloud className="w-4 h-4 text-green-500 inline" title="Synced with QuickBooks" />
+                      <span title="Synced with QuickBooks"><Cloud className="w-4 h-4 text-green-500 inline" /></span>
                     ) : (
                       <span className="text-gray-300">-</span>
                     )}

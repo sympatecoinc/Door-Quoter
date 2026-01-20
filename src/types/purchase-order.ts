@@ -106,6 +106,7 @@ export interface PurchaseOrder {
   shipAddrCity?: string | null
   shipAddrState?: string | null
   shipAddrPostalCode?: string | null
+  shipAddrZip?: string | null
   shipAddrCountry?: string | null
   subtotal: number
   taxAmount: number

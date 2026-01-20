@@ -77,7 +77,7 @@ export async function GET(
         line2: purchaseOrder.shipAddrLine2,
         city: purchaseOrder.shipAddrCity,
         state: purchaseOrder.shipAddrState,
-        zip: purchaseOrder.shipAddrZip,
+        zip: (purchaseOrder as any).shipAddrZip ?? purchaseOrder.shipAddrPostalCode,
         country: purchaseOrder.shipAddrCountry
       } : undefined,
       lines: purchaseOrder.lines.map(line => ({

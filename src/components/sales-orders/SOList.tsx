@@ -200,15 +200,15 @@ export default function SOList({ onSOSelect, onEdit, onRefresh, refreshKey }: SO
                     {formatCurrency(so.totalAmount)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm">
-                    {so.balance > 0 ? (
-                      <span className="text-yellow-600">{formatCurrency(so.balance)}</span>
+                    {(so.balance ?? 0) > 0 ? (
+                      <span className="text-yellow-600">{formatCurrency(so.balance ?? 0)}</span>
                     ) : (
                       <span className="text-green-600">Paid</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-center">
                     {so.quickbooksId ? (
-                      <Cloud className="w-4 h-4 text-green-500 inline" title="Synced with QuickBooks" />
+                      <span title="Synced with QuickBooks"><Cloud className="w-4 h-4 text-green-500 inline" /></span>
                     ) : (
                       <span className="text-gray-300">-</span>
                     )}

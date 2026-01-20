@@ -1,3 +1,5 @@
+import { BinLocation } from './bin-location'
+
 export enum ProjectStatus {
   STAGING = 'STAGING',
   APPROVED = 'APPROVED',
@@ -211,6 +213,10 @@ export interface Panel {
   glassType: string
   locking: string
   swingDirection: string
+  slidingDirection?: string
+  displayOrder?: number
+  isCorner?: boolean
+  cornerDirection?: string
   createdAt: Date
   updatedAt: Date
 }

@@ -2,18 +2,31 @@ import { Storage } from '@google-cloud/storage'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 
-const bucketName = process.env.GCS_BUCKET_NAME || ''
-const useGCS = !!bucketName
 const LOCAL_UPLOAD_DIR = path.join(process.cwd(), 'uploads')
 
-// Only initialize GCS storage if bucket name is configured
-const storage = useGCS ? new Storage() : null
+// Runtime checks - these evaluate at request time, not build time
+function getBucketName(): string {
+  return process.env.GCS_BUCKET_NAME || ''
+}
+
+function shouldUseGCS(): boolean {
+  return !!process.env.GCS_BUCKET_NAME
+}
+
+// Lazy-initialized storage instance
+let _storage: Storage | null = null
+function getStorage(): Storage {
+  if (!_storage) {
+    _storage = new Storage()
+  }
+  return _storage
+}
 
 function getBucket() {
-  if (!useGCS || !storage) {
+  if (!shouldUseGCS()) {
     throw new Error('GCS_BUCKET_NAME environment variable is not set')
   }
-  return storage.bucket(bucketName)
+  return getStorage().bucket(getBucketName())
 }
 
 // Helper to get content type from file extension
@@ -40,7 +53,7 @@ export async function uploadFile(
   destination: string,
   contentType: string
 ): Promise<string> {
-  if (useGCS) {
+  if (shouldUseGCS()) {
     const bucket = getBucket()
     const file = bucket.file(destination)
 
@@ -62,7 +75,7 @@ export async function uploadFile(
 }
 
 export async function downloadFile(filePath: string): Promise<Buffer> {
-  if (useGCS) {
+  if (shouldUseGCS()) {
     const bucket = getBucket()
     const file = bucket.file(filePath)
 
@@ -76,7 +89,7 @@ export async function downloadFile(filePath: string): Promise<Buffer> {
 }
 
 export async function deleteFile(filePath: string): Promise<void> {
-  if (useGCS) {
+  if (shouldUseGCS()) {
     const bucket = getBucket()
     const file = bucket.file(filePath)
 
@@ -103,7 +116,7 @@ export async function deleteFile(filePath: string): Promise<void> {
 }
 
 export async function fileExists(filePath: string): Promise<boolean> {
-  if (useGCS) {
+  if (shouldUseGCS()) {
     const bucket = getBucket()
     const file = bucket.file(filePath)
 
@@ -122,7 +135,7 @@ export async function fileExists(filePath: string): Promise<boolean> {
 }
 
 export async function getFileMetadata(filePath: string): Promise<{ contentType: string; size: number } | null> {
-  if (useGCS) {
+  if (shouldUseGCS()) {
     const bucket = getBucket()
     const file = bucket.file(filePath)
 

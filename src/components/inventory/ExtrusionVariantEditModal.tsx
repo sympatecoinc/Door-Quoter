@@ -38,7 +38,7 @@ export default function ExtrusionVariantEditModal({
     if (variant) {
       setFormData({
         qtyOnHand: variant.qtyOnHand ?? 0,
-        binLocation: variant.binLocation ?? '',
+        binLocation: variant.binLocationRef?.name ?? '',
         reorderPoint: variant.reorderPoint?.toString() ?? '',
         notes: variant.notes ?? '',
         pricePerPiece: variant.pricePerPiece?.toString() ?? ''
@@ -59,11 +59,11 @@ export default function ExtrusionVariantEditModal({
     try {
       await onSave(variant.id, {
         qtyOnHand: Number(formData.qtyOnHand),
-        binLocation: formData.binLocation || null,
+        binLocationLegacy: formData.binLocation || null,
         reorderPoint: formData.reorderPoint ? Number(formData.reorderPoint) : null,
         notes: formData.notes || null,
         pricePerPiece: formData.pricePerPiece ? Number(formData.pricePerPiece) : null
-      })
+      } as any)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')

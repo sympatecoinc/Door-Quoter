@@ -195,7 +195,7 @@ export async function POST(request: Request) {
         stockLength,
         finishPricingId: finishPricingId || null,
         qtyOnHand,
-        binLocation,
+        binLocationId: binLocation ? parseInt(binLocation) : null,
         reorderPoint,
         reorderQty,
         pricePerPiece,

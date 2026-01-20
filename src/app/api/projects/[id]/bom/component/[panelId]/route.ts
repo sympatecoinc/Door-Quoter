@@ -311,7 +311,7 @@ export async function GET(
                   partName: individualOption.name,
                   partType: 'Option',
                   quantity: 1,
-                  cutLength: isIncluded ? 'Included' : `$${individualOption.price.toFixed(2)}`,
+                  cutLength: isIncluded ? 'Included' : `$${((individualOption as any).price ?? 0).toFixed(2)}`,
                   unit: 'EA',
                   description: `${productSubOption.category.name}: ${individualOption.name}`,
                   color: 'N/A'

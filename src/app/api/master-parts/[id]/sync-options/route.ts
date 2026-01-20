@@ -51,8 +51,7 @@ export async function POST(
         where: { id: option.id },
         data: {
           name: masterPart.baseName,
-          description: `${masterPart.partNumber} - ${masterPart.baseName}`,
-          price: masterPart.cost || 0
+          description: `${masterPart.partNumber} - ${masterPart.baseName}`
         },
         include: {
           category: true

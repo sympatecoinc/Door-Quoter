@@ -121,7 +121,7 @@ export async function PUT(
           masterPartId_stockLength_finishPricingId: {
             masterPartId: oldRule.masterPartId,
             stockLength: oldRule.stockLength!,
-            finishPricingId: null
+            finishPricingId: null as any
           }
         }
       })
@@ -133,7 +133,7 @@ export async function PUT(
             masterPartId_stockLength_finishPricingId: {
               masterPartId: masterPartIdValue,
               stockLength: newStockLength,
-              finishPricingId: null
+              finishPricingId: null as any
             }
           }
         })
@@ -152,7 +152,7 @@ export async function PUT(
           masterPartId_stockLength_finishPricingId: {
             masterPartId: masterPartIdValue,
             stockLength: newStockLength,
-            finishPricingId: null
+            finishPricingId: null as any
           }
         }
       })

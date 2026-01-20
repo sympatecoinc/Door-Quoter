@@ -222,7 +222,7 @@ export async function syncSinglePOFromQB(
           },
           statusHistory: {
             create: {
-              fromStatus: null,
+              fromStatus: null as any,
               toStatus: localStatus,
               notes: 'Synced from QuickBooks webhook'
             }

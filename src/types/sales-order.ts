@@ -25,6 +25,8 @@ export interface SalesOrderLine {
 export interface SalesOrder {
   id: number
   orderNumber: string
+  docNumber?: string | null
+  quickbooksId?: string | null
   customerId: number
   customer: {
     id: number
@@ -59,6 +61,7 @@ export interface SalesOrder {
   subtotal: number
   taxAmount: number
   totalAmount: number
+  balance?: number | null
   customerMemo?: string | null
   privateNote?: string | null
   createdById?: number | null

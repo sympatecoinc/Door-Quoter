@@ -151,7 +151,6 @@ export async function PUT(
               data: {
                 name: updatedPart.baseName,
                 description: `${updatedPart.partNumber} - ${updatedPart.baseName}`,
-                price: updatedPart.cost || 0,
                 partNumber: updatedPart.partNumber,
                 addFinishToPartNumber: updatedPart.addFinishToPartNumber || false,
                 addToPackingList: updatedPart.addToPackingList || false

@@ -114,7 +114,7 @@ export async function POST(
 
     // Create the sales order
     const salesOrder = await prisma.salesOrder.create({
-      data: {
+      data: ({
         orderNumber,
         customerId: project.customerId ?? undefined,
         projectId: project.id,
@@ -140,7 +140,7 @@ export async function POST(
         lines: {
           create: lines
         }
-      },
+      }) as any,
       include: {
         customer: {
           select: {
