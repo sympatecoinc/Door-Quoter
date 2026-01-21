@@ -842,8 +842,32 @@ export async function calculateOpeningCosts(
     const processedCategories = new Set<string>()
 
     for (const [categoryId, optionId] of Object.entries(selections)) {
-      if (!optionId || categoryId.includes('_qty')) continue
+      // Skip quantity fields
+      if (categoryId.includes('_qty')) continue
+
+      // Mark category as processed BEFORE checking null - this prevents
+      // unprocessed categories loop from adding standard option costs
       processedCategories.add(categoryId)
+
+      // Handle null/"none" selection - user explicitly selected "None"
+      // This should NOT fall back to standard option (that's what unprocessed categories are for)
+      if (optionId === null || optionId === 'none') {
+        // User explicitly selected "None" - add $0 entry and continue
+        const productSubOption = product.productSubOptions?.find((pso: any) =>
+          pso.category?.id?.toString() === categoryId
+        )
+        if (productSubOption) {
+          componentBreakdown.optionCosts.push({
+            categoryName: productSubOption.category?.name || categoryId,
+            optionName: 'None',
+            price: 0,
+            isStandard: false,
+            isIncluded: false,
+            linkedPartsCost: 0
+          })
+        }
+        continue
+      }
 
       const productSubOption = product.productSubOptions?.find((pso: any) =>
         pso.category?.id?.toString() === categoryId
@@ -852,49 +876,6 @@ export async function calculateOpeningCosts(
 
       const category = productSubOption.category
       const standardOptionId = productSubOption.standardOptionId
-
-      // Handle "none" selection
-      if (optionId === 'none') {
-        const standardOption = category.individualOptions?.find((io: any) => io.id === standardOptionId)
-        if (standardOption) {
-          const optionBom = standardOption.isCutListItem
-            ? product.productBOMs?.find((b: any) => b.optionId === standardOption.id)
-            : null
-          const quantity = optionBom?.quantity || 1
-
-          const priceResult = await calculateOptionPrice(
-            standardOption,
-            optionBom,
-            quantity,
-            effectiveWidth,
-            effectiveHeight,
-            extrusionCostingMethod,
-            excludedPartNumbers,
-            opening.finishColor,
-            globalMaterialPricePerLb
-          )
-
-          componentBreakdown.optionCosts.push({
-            categoryName: category.name,
-            optionName: standardOption.name,
-            price: priceResult.totalPrice,
-            isStandard: true,
-            isIncluded: false,
-            linkedPartsCost: priceResult.linkedPartsCost
-          })
-
-          componentBreakdown.totalOptionCost += priceResult.totalPrice
-          componentCost += priceResult.totalPrice
-          costBreakdown.totalStandardOptionCost += priceResult.totalPrice
-
-          if (priceResult.isExtrusion) {
-            costBreakdown.totalExtrusionCost += priceResult.totalPrice
-          } else {
-            costBreakdown.totalHardwareCost += priceResult.totalPrice
-          }
-        }
-        continue
-      }
 
       // Option selected
       const selectedOption = category.individualOptions?.find((io: any) =>

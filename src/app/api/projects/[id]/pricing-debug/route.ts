@@ -23,19 +23,31 @@ function evaluateFormula(formula: string, variables: Record<string, number>): nu
   }
 }
 
-// Function to find the best stock length rule for extrusions
-function findBestStockLengthRule(rules: any[], requiredLength: number): any | null {
-  // Filter to active rules where the cut length fits in the stock
+// Function to find the best stock length rule for extrusions (matching pricing-calculator.ts)
+function findBestStockLengthRule(
+  rules: any[],
+  requiredLength: number,
+  componentWidth?: number,
+  componentHeight?: number
+): any | null {
   const matchingRules = rules.filter(rule => {
-    return rule.isActive && rule.stockLength >= requiredLength
+    const fitsStock = rule.stockLength >= requiredLength
+    const matchesHeight = (rule.minHeight === null || rule.minHeight === undefined || (componentHeight && componentHeight >= rule.minHeight)) &&
+                         (rule.maxHeight === null || rule.maxHeight === undefined || (componentHeight && componentHeight <= rule.maxHeight))
+    const matchesWidth = (rule.minWidth === null || rule.minWidth === undefined || (componentWidth && componentWidth >= rule.minWidth)) &&
+                        (rule.maxWidth === null || rule.maxWidth === undefined || (componentWidth && componentWidth <= rule.maxWidth))
+    return fitsStock && matchesHeight && matchesWidth && rule.isActive
   })
 
   if (matchingRules.length === 0) return null
 
-  // Pick the smallest stock that fits (minimizes waste)
-  const bestRule = matchingRules.sort((a, b) => a.stockLength - b.stockLength)[0]
-
-  return bestRule
+  // Sort by specificity (rules with more dimension constraints are preferred), then by stock length
+  return matchingRules.sort((a, b) => {
+    const aSpecificity = (a.minHeight !== null ? 1 : 0) + (a.maxHeight !== null ? 1 : 0) + (a.minWidth !== null ? 1 : 0) + (a.maxWidth !== null ? 1 : 0)
+    const bSpecificity = (b.minHeight !== null ? 1 : 0) + (b.maxHeight !== null ? 1 : 0) + (b.minWidth !== null ? 1 : 0) + (b.maxWidth !== null ? 1 : 0)
+    if (bSpecificity !== aSpecificity) return bSpecificity - aSpecificity
+    return a.stockLength - b.stockLength
+  })[0]
 }
 
 function calculateRequiredPartLength(bom: any, variables: any): number {
@@ -263,7 +275,7 @@ async function calculateBOMItemPrice(
         // CutStock: Use MasterPart.cost from inventory with hybrid percentage-based costing
         if (masterPart.partType === 'CutStock' && masterPart.stockLengthRules.length > 0) {
           const requiredLength = calculateRequiredPartLength(bom, variables)
-          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
+          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength, componentWidth, componentHeight)
 
           if (bestRule) {
             // Use MasterPart.cost from inventory (NOT weight-based), fallback to StockLengthRule basePrice
@@ -319,7 +331,7 @@ async function calculateBOMItemPrice(
         // Extrusions: stock length rules
         if (masterPart.partType === 'Extrusion' && masterPart.stockLengthRules.length > 0) {
           const requiredLength = calculateRequiredPartLength(bom, variables)
-          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
+          const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength, componentWidth, componentHeight)
 
           if (bestRule) {
             const isExcludedPart = excludedPartNumbers?.some(excludedPart => {
@@ -672,6 +684,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           } catch (e) {}
         }
 
+        // Build set of selected option IDs for BOM filtering (matching pricing-calculator.ts)
+        const selectedOptionIds = new Set<number>()
+        for (const [, optionId] of Object.entries(selections)) {
+          if (optionId && typeof optionId === 'string' && !optionId.includes('_qty')) {
+            selectedOptionIds.add(parseInt(optionId))
+          }
+        }
+
         // Build option quantity map for RANGE mode
         const optionQuantityMap = new Map<number, number>()
         for (const productSubOption of product.productSubOptions) {
@@ -688,12 +708,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           }
         }
 
-        // Process BOM items
+        // Process BOM items (matching pricing-calculator.ts logic)
         for (const bom of product.productBOMs) {
-          // Skip ALL option-linked BOM items - they will be handled in the options section
-          // This ensures options are priced separately from base BOM items
-          if (bom.optionId) {
-            continue
+          // Skip option-linked BOMs if option not selected (matching pricing-calculator.ts)
+          if (bom.optionId && !selectedOptionIds.has(bom.optionId)) continue
+
+          // Skip null-option BOMs if another option in same category is selected (matching pricing-calculator.ts)
+          if (!bom.optionId && (bom as any).option === null) {
+            const category = product.productSubOptions?.find((pso: any) =>
+              pso.category?.individualOptions?.some((io: any) => io.id === bom.optionId)
+            )
+            if (category) {
+              const categoryId = category.category.id.toString()
+              const selectedInCategory = selections[categoryId]
+              if (selectedInCategory && selectedInCategory !== bom.optionId?.toString()) continue
+            }
           }
 
           let bomWithQuantity = bom
@@ -720,10 +749,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             hybridRemainingCost += (breakdown as any).hybridBreakdown.remainingPortionCost
           }
 
-          // Track by category (CutStock is treated as Extrusion for pricing purposes)
+          // Track by category (CutStock is treated as Extrusion, Fastener is treated as Hardware for pricing purposes)
           if (breakdown.partType === 'Extrusion' || breakdown.partType === 'CutStock') {
             openingData.costSummary.extrusion.base += cost
-          } else if (breakdown.partType === 'Hardware') {
+          } else if (breakdown.partType === 'Hardware' || breakdown.partType === 'Fastener') {
             openingData.costSummary.hardware.base += cost
           } else if (breakdown.partType === 'Glass') {
             openingData.costSummary.glass.base += cost
@@ -976,7 +1005,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             })
 
             if (glassType && product.glassWidthFormula && product.glassHeightFormula) {
-              const variables = { width: panel.width, height: panel.height }
+              const variables = { width: effectiveWidth, height: effectiveHeight }
               const glassWidth = evaluateFormula(product.glassWidthFormula, variables)
               const glassHeight = evaluateFormula(product.glassHeightFormula, variables)
               const glassQuantity = product.glassQuantityFormula
