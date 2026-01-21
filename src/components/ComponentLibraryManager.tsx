@@ -598,7 +598,7 @@ export default function ComponentLibraryManager() {
       {/* Image Viewer Modal */}
       {viewingImage && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-8"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-8"
           onClick={() => setViewingImage(null)}
         >
           <div

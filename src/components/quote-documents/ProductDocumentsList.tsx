@@ -239,7 +239,7 @@ export default function ProductDocumentsList({ onDocumentsChange }: ProductDocum
       {/* Preview Modal */}
       {previewDoc && (
         <div
-          className="fixed top-0 left-0 right-0 bottom-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 overflow-hidden"
+          className="fixed top-0 left-0 right-0 bottom-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-hidden"
           onClick={closePreview}
         >
           <div

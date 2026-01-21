@@ -263,12 +263,14 @@ export async function GET(
             })
             if (masterPartForDirection?.appendDirectionToPartNumber) {
               // Get direction from panel's swingDirection or slidingDirection
-              const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+              // Check for both empty string AND 'None' since sliding doors may have empty swingDirection
+              const direction = (panel.swingDirection && panel.swingDirection !== 'None') ? panel.swingDirection : panel.slidingDirection
               if (direction && direction !== 'None') {
-                // Convert direction to short code (e.g., "Right-In" -> "RI", "Left" -> "L")
+                // Convert direction to abbreviation (first letter of each word, e.g., "Right Sliding" -> "RS")
                 const directionCode = direction
-                  .replace(/-/g, '')  // Remove hyphens
+                  .replace(/-/g, ' ')  // Replace hyphens with spaces
                   .split(' ')
+                  .filter((word: string) => word.length > 0)
                   .map((word: string) => word.charAt(0).toUpperCase())
                   .join('')
                 fullPartNumber = `${fullPartNumber}-${directionCode}`
@@ -407,13 +409,9 @@ export async function GET(
 
               // Apply direction suffix if applicable
               if (gtp.masterPart.appendDirectionToPartNumber) {
-                const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                const direction = (panel.swingDirection && panel.swingDirection !== 'None') ? panel.swingDirection : panel.slidingDirection
                 if (direction && direction !== 'None') {
-                  const directionCode = direction
-                    .replace(/-/g, '')
-                    .split(' ')
-                    .map((word: string) => word.charAt(0).toUpperCase())
-                    .join('')
+                  const directionCode = direction.replace(/-/g, ' ').split(' ').filter((w: string) => w.length > 0).map((w: string) => w.charAt(0).toUpperCase()).join('')
                   fullPartNumber = `${fullPartNumber}-${directionCode}`
                 }
               }
@@ -541,13 +539,9 @@ export async function GET(
                         select: { appendDirectionToPartNumber: true }
                       })
                       if (masterPartForDir?.appendDirectionToPartNumber) {
-                        const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                        const direction = (panel.swingDirection && panel.swingDirection !== 'None') ? panel.swingDirection : panel.slidingDirection
                         if (direction && direction !== 'None') {
-                          const directionCode = direction
-                            .replace(/-/g, '')
-                            .split(' ')
-                            .map((word: string) => word.charAt(0).toUpperCase())
-                            .join('')
+                          const directionCode = direction.replace(/-/g, ' ').split(' ').filter((w: string) => w.length > 0).map((w: string) => w.charAt(0).toUpperCase()).join('')
                           partNumber = `${partNumber}-${directionCode}`
                         }
                       }
@@ -671,13 +665,9 @@ export async function GET(
                       select: { appendDirectionToPartNumber: true }
                     })
                     if (masterPartForDir?.appendDirectionToPartNumber) {
-                      const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                      const direction = (panel.swingDirection && panel.swingDirection !== 'None') ? panel.swingDirection : panel.slidingDirection
                       if (direction && direction !== 'None') {
-                        const directionCode = direction
-                          .replace(/-/g, '')
-                          .split(' ')
-                          .map((word: string) => word.charAt(0).toUpperCase())
-                          .join('')
+                        const directionCode = direction.replace(/-/g, ' ').split(' ').filter((w: string) => w.length > 0).map((w: string) => w.charAt(0).toUpperCase()).join('')
                         partNumber = `${partNumber}-${directionCode}`
                       }
                     }
@@ -765,13 +755,9 @@ export async function GET(
 
                     // Apply direction suffix if applicable
                     if (linkedPart.masterPart.appendDirectionToPartNumber) {
-                      const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                      const direction = (panel.swingDirection && panel.swingDirection !== 'None') ? panel.swingDirection : panel.slidingDirection
                       if (direction && direction !== 'None') {
-                        const directionCode = direction
-                          .replace(/-/g, '')
-                          .split(' ')
-                          .map((word: string) => word.charAt(0).toUpperCase())
-                          .join('')
+                        const directionCode = direction.replace(/-/g, ' ').split(' ').filter((w: string) => w.length > 0).map((w: string) => w.charAt(0).toUpperCase()).join('')
                         linkedPartNumber = `${linkedPartNumber}-${directionCode}`
                       }
                     }
@@ -884,13 +870,9 @@ export async function GET(
                     select: { appendDirectionToPartNumber: true }
                   })
                   if (masterPartForDir?.appendDirectionToPartNumber) {
-                    const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                    const direction = (panel.swingDirection && panel.swingDirection !== 'None') ? panel.swingDirection : panel.slidingDirection
                     if (direction && direction !== 'None') {
-                      const directionCode = direction
-                        .replace(/-/g, '')
-                        .split(' ')
-                        .map((word: string) => word.charAt(0).toUpperCase())
-                        .join('')
+                      const directionCode = direction.replace(/-/g, ' ').split(' ').filter((w: string) => w.length > 0).map((w: string) => w.charAt(0).toUpperCase()).join('')
                       partNumber = `${partNumber}-${directionCode}`
                     }
                   }
@@ -957,13 +939,9 @@ export async function GET(
 
                   // Apply direction suffix if applicable
                   if (linkedPart.masterPart.appendDirectionToPartNumber) {
-                    const direction = panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+                    const direction = (panel.swingDirection && panel.swingDirection !== 'None') ? panel.swingDirection : panel.slidingDirection
                     if (direction && direction !== 'None') {
-                      const directionCode = direction
-                        .replace(/-/g, '')
-                        .split(' ')
-                        .map((word: string) => word.charAt(0).toUpperCase())
-                        .join('')
+                      const directionCode = direction.replace(/-/g, ' ').split(' ').filter((w: string) => w.length > 0).map((w: string) => w.charAt(0).toUpperCase()).join('')
                       linkedPartNumber = `${linkedPartNumber}-${directionCode}`
                     }
                   }

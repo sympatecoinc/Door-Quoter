@@ -53,6 +53,7 @@ export async function GET(
                         description: true,
                         type: true,
                         productType: true,
+                        productCategory: true,
                         archived: true,
                         glassWidthFormula: true,
                         glassHeightFormula: true,

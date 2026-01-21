@@ -326,7 +326,7 @@ export async function GET(
         } else {
           // For other product types (e.g., CORNER_90), use fallback logic
           const panelDirection =
-            panel.swingDirection !== 'None' ? panel.swingDirection : panel.slidingDirection
+            (panel.swingDirection && panel.swingDirection !== 'None') ? panel.swingDirection : panel.slidingDirection
           matchingPlanView = product.planViews.find((pv: any) => pv.name === panelDirection)
           if (!matchingPlanView && product.planViews.length > 0) {
             matchingPlanView = product.planViews[0]

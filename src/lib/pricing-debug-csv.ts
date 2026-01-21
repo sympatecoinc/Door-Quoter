@@ -50,12 +50,13 @@ export function generatePricingDebugCSV(data: any): string {
           const cutLength = bom.cutLength ? `${bom.cutLength.toFixed(2)}in` : ''
           const quantity = bom.quantity || 1
           const unitCost = bom.unitCost?.toFixed(2) || '0.00'
-          const finishCost = bom.finishCost?.toFixed(2) || '0.00'
+          // Finish cost per unit (total finish cost divided by quantity)
+          const finishCostPerUnit = bom.finishCost ? (bom.finishCost / quantity).toFixed(2) : '0.00'
           const totalCost = bom.totalCost?.toFixed(2) || '0.00'
           const method = bom.method || ''
           const details = (bom.details || '').replace(/"/g, '""')
           const finishDetails = (bom.finishDetails || '').replace(/"/g, '""')
-          csv += `"${partNumber}","${partName}","${partType}","${stockLength}","${cutLength}",${quantity},$${unitCost},$${finishCost},$${totalCost},"${method}","${details}","${finishDetails}"\n`
+          csv += `"${partNumber}","${partName}","${partType}","${stockLength}","${cutLength}",${quantity},$${unitCost},$${finishCostPerUnit},$${totalCost},"${method}","${details}","${finishDetails}"\n`
         }
         csv += '\n'
       }

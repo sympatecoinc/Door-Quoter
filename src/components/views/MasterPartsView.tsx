@@ -340,6 +340,7 @@ export default function MasterPartsView() {
   const [deleteItemId, setDeleteItemId] = useState<number | null>(null)
   const [deleteItemName, setDeleteItemName] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
+  const [linkedProductsInfo, setLinkedProductsInfo] = useState<{ count: number; names: string } | null>(null)
 
   // Bulk Selection State
   const [selectedPartIds, setSelectedPartIds] = useState<Set<number>>(new Set())
@@ -574,7 +575,7 @@ export default function MasterPartsView() {
     setShowDeleteModal(true)
   }
 
-  async function handleConfirmDelete() {
+  async function handleConfirmDelete(forceUnlink: boolean = false) {
     if (!deleteItemId) return
 
     setIsDeleting(true)
@@ -605,7 +606,7 @@ export default function MasterPartsView() {
           errorMessage = 'Error deleting glass type'
           break
         case 'category':
-          url = `/api/categories/${deleteItemId}`
+          url = `/api/categories/${deleteItemId}${forceUnlink ? '?forceUnlink=true' : ''}`
           successMessage = 'Category deleted successfully!'
           errorMessage = 'Cannot delete category that is linked to products'
           break
@@ -633,18 +634,34 @@ export default function MasterPartsView() {
             break
         }
         showSuccess(successMessage)
+        setShowDeleteModal(false)
+        setDeleteItemId(null)
+        setDeleteItemName('')
+        setLinkedProductsInfo(null)
       } else {
         const errorData = await response.json().catch(() => ({}))
-        showError(errorData.error || errorMessage)
+
+        // Check if this is a category with linked products
+        if (deleteModalType === 'category' && errorData.linkedCount && errorData.linkedCount > 0) {
+          setLinkedProductsInfo({ count: errorData.linkedCount, names: errorData.linkedProducts })
+          // Don't close modal - show the unlink option
+        } else {
+          showError(errorData.error || errorMessage)
+          setShowDeleteModal(false)
+          setDeleteItemId(null)
+          setDeleteItemName('')
+          setLinkedProductsInfo(null)
+        }
       }
     } catch (error) {
       console.error('Error deleting item:', error)
       showError('Error deleting item')
-    } finally {
-      setIsDeleting(false)
       setShowDeleteModal(false)
       setDeleteItemId(null)
       setDeleteItemName('')
+      setLinkedProductsInfo(null)
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -3174,16 +3191,32 @@ export default function MasterPartsView() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
             <h3 className="text-xl font-semibold text-gray-900 mb-4">
-              Delete {deleteModalType === 'masterPart' ? 'Master Part' :
-                     deleteModalType === 'stockRule' ? 'Stock Length Rule' :
-                     deleteModalType === 'pricingRule' ? 'Pricing Rule' :
-                     deleteModalType === 'glassType' ? 'Glass Type' :
-                     deleteModalType === 'finish' ? 'Finish Type' : 'Category'}
+              {linkedProductsInfo ? 'Category Linked to Products' : (
+                <>Delete {deleteModalType === 'masterPart' ? 'Master Part' :
+                       deleteModalType === 'stockRule' ? 'Stock Length Rule' :
+                       deleteModalType === 'pricingRule' ? 'Pricing Rule' :
+                       deleteModalType === 'glassType' ? 'Glass Type' :
+                       deleteModalType === 'finish' ? 'Finish Type' : 'Category'}</>
+              )}
             </h3>
 
-            <p className="text-sm text-gray-600 mb-6">
-              Are you sure you want to delete "<strong>{deleteItemName}</strong>"? This action cannot be undone.
-            </p>
+            {linkedProductsInfo ? (
+              <div className="mb-6">
+                <p className="text-sm text-gray-600 mb-3">
+                  This category is linked to <strong>{linkedProductsInfo.count}</strong> product(s):
+                </p>
+                <p className="text-sm text-gray-700 bg-gray-100 p-2 rounded mb-3 max-h-24 overflow-y-auto">
+                  {linkedProductsInfo.names}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Would you like to unlink from all products and delete the category anyway?
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-600 mb-6">
+                Are you sure you want to delete "<strong>{deleteItemName}</strong>"? This action cannot be undone.
+              </p>
+            )}
 
             <div className="flex justify-end space-x-3">
               <button
@@ -3191,19 +3224,30 @@ export default function MasterPartsView() {
                   setShowDeleteModal(false)
                   setDeleteItemId(null)
                   setDeleteItemName('')
+                  setLinkedProductsInfo(null)
                 }}
                 disabled={isDeleting}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
               >
                 Cancel
               </button>
-              <button
-                onClick={handleConfirmDelete}
-                disabled={isDeleting}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-              >
-                {isDeleting ? 'Deleting...' : 'Delete'}
-              </button>
+              {linkedProductsInfo ? (
+                <button
+                  onClick={() => handleConfirmDelete(true)}
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {isDeleting ? 'Deleting...' : 'Unlink & Delete'}
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleConfirmDelete(false)}
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete'}
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -67,6 +67,7 @@ interface Panel {
       name: string
       type: string
       productType: string
+      productCategory?: string
       minWidth?: number | null
       maxWidth?: number | null
       minHeight?: number | null
@@ -161,6 +162,7 @@ export default function ProjectDetailView() {
   const [deletingComponentId, setDeletingComponentId] = useState<number | null>(null)
   const [deletingComponentName, setDeletingComponentName] = useState('')
   const [isDeletingComponent, setIsDeletingComponent] = useState(false)
+  const [pendingDeletePanelId, setPendingDeletePanelId] = useState<number | null>(null)
   const [showEditOpeningModal, setShowEditOpeningModal] = useState(false)
   const [editingOpeningId, setEditingOpeningId] = useState<number | null>(null)
   const [editingOpeningName, setEditingOpeningName] = useState('')
@@ -176,10 +178,11 @@ export default function ProjectDetailView() {
     heightDiff: number
     newWidth: number
     newHeight: number
+    totalComponentWidth: number
     panels: { id: number; name: string; width: number; height: number }[]
   } | null>(null)
-  const [redistributionMethod, setRedistributionMethod] = useState<'equal' | 'single'>('equal')
-  const [selectedPanelForResize, setSelectedPanelForResize] = useState<number | null>(null)
+  const [redistributionMethod, setRedistributionMethod] = useState<'none' | 'selected'>('none')
+  const [selectedPanelsForResize, setSelectedPanelsForResize] = useState<number[]>([])
   const [isUpdatingOpening, setIsUpdatingOpening] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showAddOpening, setShowAddOpening] = useState(false)
@@ -208,11 +211,6 @@ export default function ProjectDetailView() {
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
   const [componentWidth, setComponentWidth] = useState<string>('')
   const [componentHeight, setComponentHeight] = useState<string>('')
-  const [widthDivisor, setWidthDivisor] = useState<string>('1')
-  // Divide remaining space state
-  const [showDivideSpace, setShowDivideSpace] = useState(false)
-  const [divideComponentCount, setDivideComponentCount] = useState(2)
-  const [divideProducts, setDivideProducts] = useState<(number | null)[]>([null, null])
   const [swingDirection, setSwingDirection] = useState<string>('')
   const [slidingDirection, setSlidingDirection] = useState<string>('')
   const [cornerDirection, setCornerDirection] = useState<string>('')
@@ -227,6 +225,24 @@ export default function ProjectDetailView() {
   // Wizard step tracking for add component modal
   const [addComponentStep, setAddComponentStep] = useState<'product' | 'dimensions' | 'direction' | 'glassType' | 'options' | 'ready'>('product')
   const [currentMandatoryOptionIndex, setCurrentMandatoryOptionIndex] = useState<number>(0)
+  // Multi-panel mode state
+  const [addComponentMode, setAddComponentMode] = useState<'single' | 'multiple' | null>(null)
+  const [multiPanelCount, setMultiPanelCount] = useState<number>(2)
+  const [multiPanelCountInput, setMultiPanelCountInput] = useState<string>('2')
+  const [currentPanelIndex, setCurrentPanelIndex] = useState<number>(0)
+  const [multiPanelConfigs, setMultiPanelConfigs] = useState<{
+    index: number
+    width: number
+    height: number
+    glassType: string
+    selectedOptions: Record<number, number | null>
+    optionQuantities: Record<string, number>
+    variantSelections: Record<string, number>
+    isConfigured: boolean
+  }[]>([])
+  const [firstPanelOptionsComplete, setFirstPanelOptionsComplete] = useState<boolean>(false)
+  const [showApplyToRemaining, setShowApplyToRemaining] = useState<boolean>(false)
+  const [excludedOptionsFromApply, setExcludedOptionsFromApply] = useState<Set<number>>(new Set())
   const [showComponentEdit, setShowComponentEdit] = useState(false)
   const [selectedComponentId, setSelectedComponentId] = useState<number | null>(null)
   const [componentOptions, setComponentOptions] = useState<any[]>([])
@@ -280,6 +296,43 @@ export default function ProjectDetailView() {
   const [showQuoteAcceptedConfirm, setShowQuoteAcceptedConfirm] = useState(false)
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
   const [pendingActionDescription, setPendingActionDescription] = useState('')
+
+  // Tolerance-eligible product types for opening size calculations
+  const TOLERANCE_ELIGIBLE_TYPES = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL']
+
+  // Helper to calculate effective finished dimensions for an opening
+  // Uses existing finishedWidth/finishedHeight if set, otherwise calculates from rough dimensions and product tolerances
+  function getEffectiveFinishedDimensions(
+    opening: Opening | undefined,
+    selectedProduct: any | undefined
+  ): { width: number | null; height: number | null } {
+    if (!opening) {
+      return { width: null, height: null }
+    }
+
+    // If already has finished dimensions, use them
+    if (opening.finishedWidth && opening.finishedHeight) {
+      return { width: opening.finishedWidth, height: opening.finishedHeight }
+    }
+
+    // For finished openings without calculated dimensions yet
+    // (first tolerance-eligible product being added)
+    if (opening.isFinishedOpening && opening.roughWidth && opening.roughHeight) {
+      // If a tolerance-eligible product is selected, use its tolerances
+      if (selectedProduct && TOLERANCE_ELIGIBLE_TYPES.includes(selectedProduct.productType)) {
+        const widthTolerance = selectedProduct.widthTolerance || 0
+        const heightTolerance = selectedProduct.heightTolerance || 0
+        return {
+          width: opening.roughWidth - widthTolerance,
+          height: opening.roughHeight - heightTolerance
+        }
+      }
+      // If no product selected or not tolerance-eligible, use rough dimensions (0 tolerance)
+      return { width: opening.roughWidth, height: opening.roughHeight }
+    }
+
+    return { width: null, height: null }
+  }
 
   // Handle back navigation
   const handleBack = () => {
@@ -1152,6 +1205,12 @@ export default function ProjectDetailView() {
         const currentFinishedWidth = opening.finishedWidth || 0
         const currentFinishedHeight = opening.finishedHeight || 0
 
+        // Calculate total component width
+        const totalComponentWidth = resizablePanels.reduce((sum, p) => sum + p.width, 0)
+
+        // Determine if components exceed new opening width (requires adjustment)
+        const componentsExceedOpening = totalComponentWidth > newFinishedWidth + 0.001
+
         // Show redistribution modal
         setSizeRedistributionData({
           openingId: editingOpeningId,
@@ -1159,6 +1218,7 @@ export default function ProjectDetailView() {
           heightDiff: newFinishedHeight - currentFinishedHeight,
           newWidth: newFinishedWidth,
           newHeight: newFinishedHeight,
+          totalComponentWidth,
           panels: resizablePanels.map((p, idx) => ({
             id: p.id,
             name: p.componentInstance?.product?.name || `Panel ${idx + 1}`,
@@ -1166,8 +1226,9 @@ export default function ProjectDetailView() {
             height: p.height
           }))
         })
-        setRedistributionMethod('equal')
-        setSelectedPanelForResize(resizablePanels[0]?.id || null)
+        // If components exceed opening, force 'selected' mode - user must choose what to shrink
+        setRedistributionMethod(componentsExceedOpening ? 'selected' : 'none')
+        setSelectedPanelsForResize([])
         setShowSizeRedistributionModal(true)
         return
       }
@@ -1233,32 +1294,27 @@ export default function ProjectDetailView() {
       // Calculate new panel dimensions
       const panelUpdates: { id: number; width: number; height: number }[] = []
 
-      if (redistributionMethod === 'equal') {
-        // Split width difference equally among all panels
-        const widthPerPanel = widthDiff / panels.length
+      if (redistributionMethod === 'none') {
+        // Keep widths as-is, only update heights (leave a gap)
         for (const panel of panels) {
           panelUpdates.push({
             id: panel.id,
-            width: panel.width + widthPerPanel,
+            width: panel.width, // Keep original width
             height: newHeight // All panels get the new height
           })
         }
       } else {
-        // Apply width difference to single selected panel
+        // Distribute width difference evenly among selected panels
+        const widthPerSelectedPanel = selectedPanelsForResize.length > 0
+          ? widthDiff / selectedPanelsForResize.length
+          : 0
         for (const panel of panels) {
-          if (panel.id === selectedPanelForResize) {
-            panelUpdates.push({
-              id: panel.id,
-              width: panel.width + widthDiff,
-              height: newHeight
-            })
-          } else {
-            panelUpdates.push({
-              id: panel.id,
-              width: panel.width,
-              height: newHeight // Still update height for all
-            })
-          }
+          const isSelected = selectedPanelsForResize.includes(panel.id)
+          panelUpdates.push({
+            id: panel.id,
+            width: isSelected ? panel.width + widthPerSelectedPanel : panel.width,
+            height: newHeight // All panels get the new height
+          })
         }
       }
 
@@ -1287,8 +1343,8 @@ export default function ProjectDetailView() {
       // Close modals and reset state
       setShowSizeRedistributionModal(false)
       setSizeRedistributionData(null)
-      setRedistributionMethod('equal')
-      setSelectedPanelForResize(null)
+      setRedistributionMethod('none')
+      setSelectedPanelsForResize([])
     } catch (error) {
       console.error('Error applying redistribution:', error)
       showError('Error resizing components')
@@ -1451,9 +1507,6 @@ export default function ProjectDetailView() {
       setSelectedProductId(null)
       setComponentWidth('')
       setComponentQuantity('1')
-      setWidthDivisor('1')
-      setShowDivideSpace(false)
-      setDivideProducts([null, null])
       setComponentValidationErrors([])
       setSwingDirection('Right In')
       setSlidingDirection('Left')
@@ -1512,8 +1565,11 @@ export default function ProjectDetailView() {
     const opening = project?.openings.find(o => o.id === selectedOpeningId)
     const selectedProduct = products.find(p => p.id === selectedProductId)
 
-    // Skip validation if not a finished opening
-    if (!opening?.isFinishedOpening || !opening.finishedWidth || !opening.finishedHeight) {
+    // Get effective finished dimensions (uses product tolerances if finishedWidth/Height not yet calculated)
+    const effectiveDimensions = getEffectiveFinishedDimensions(opening, selectedProduct)
+
+    // Skip validation if not a finished opening or no effective dimensions
+    if (!opening?.isFinishedOpening || !effectiveDimensions.width || !effectiveDimensions.height) {
       setComponentValidationErrors([])
       return true
     }
@@ -1531,8 +1587,8 @@ export default function ProjectDetailView() {
     const errors: string[] = []
 
     // Height validation
-    if (height > opening.finishedHeight) {
-      errors.push(`Height (${height}") exceeds opening finished height (${opening.finishedHeight}")`)
+    if (height > effectiveDimensions.height) {
+      errors.push(`Height (${height}") exceeds opening finished height (${effectiveDimensions.height}")`)
     }
 
     // Width validation - sum of all panels
@@ -1543,9 +1599,9 @@ export default function ProjectDetailView() {
     const existingWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
     const totalWidth = existingWidth + (width * quantity)
 
-    if (totalWidth > opening.finishedWidth) {
-      const available = opening.finishedWidth - existingWidth
-      errors.push(`Total width (${totalWidth.toFixed(3)}") exceeds opening (${opening.finishedWidth}"). Available: ${available.toFixed(3)}"`)
+    if (totalWidth > effectiveDimensions.width) {
+      const available = effectiveDimensions.width - existingWidth
+      errors.push(`Total width (${totalWidth.toFixed(3)}") exceeds opening (${effectiveDimensions.width}"). Available: ${available.toFixed(3)}"`)
     }
 
     // Product min/max constraints
@@ -1571,8 +1627,11 @@ export default function ProjectDetailView() {
     const opening = project?.openings.find(o => o.id === selectedOpeningId)
     const selectedProduct = products.find(p => p.id === selectedProductId)
 
-    if (!opening?.isFinishedOpening || !opening.finishedWidth || !opening.finishedHeight) {
-      showError('Auto-size only works for Finished Openings')
+    // Get effective finished dimensions (uses product tolerances if finishedWidth/Height not yet calculated)
+    const effectiveDimensions = getEffectiveFinishedDimensions(opening, selectedProduct)
+
+    if (!opening?.isFinishedOpening || !effectiveDimensions.width || !effectiveDimensions.height) {
+      showError('Auto-size only works for Finished Openings with dimensions set')
       return
     }
 
@@ -1582,11 +1641,11 @@ export default function ProjectDetailView() {
       p.componentInstance?.product?.productType !== 'FRAME'
     )
     const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
-    let availableWidth = opening.finishedWidth - usedWidth
-    let finalHeight = opening.finishedHeight
+    let availableWidth = effectiveDimensions.width - usedWidth
+    let finalHeight = effectiveDimensions.height
 
     if (availableWidth <= 0) {
-      showError(`No space available - existing components use ${usedWidth.toFixed(3)}" of ${opening.finishedWidth}" opening width`)
+      showError(`No space available - existing components use ${usedWidth.toFixed(3)}" of ${effectiveDimensions.width}" opening width`)
       return
     }
 
@@ -1616,13 +1675,15 @@ export default function ProjectDetailView() {
   }
 
   // Calculate auto width without setting state (helper function)
-  function calculateAutoWidth(divisorOverride?: number): { width: number | null, error?: string } {
+  function calculateAutoWidth(): { width: number | null, error?: string } {
     const opening = project?.openings.find(o => o.id === selectedOpeningId)
     const selectedProduct = products.find(p => p.id === selectedProductId)
-    const divisor = Math.max(1, divisorOverride ?? (parseInt(widthDivisor) || 1))
 
-    if (!opening?.isFinishedOpening || !opening.finishedWidth) {
-      return { width: null, error: 'Auto width only works for Finished Openings' }
+    // Get effective finished dimensions (uses product tolerances if finishedWidth/Height not yet calculated)
+    const effectiveDimensions = getEffectiveFinishedDimensions(opening, selectedProduct)
+
+    if (!opening?.isFinishedOpening || !effectiveDimensions.width) {
+      return { width: null, error: 'Auto width only works for Finished Openings with dimensions set' }
     }
 
     // Calculate existing panel widths (exclude corners and frames)
@@ -1631,31 +1692,27 @@ export default function ProjectDetailView() {
       p.componentInstance?.product?.productType !== 'FRAME'
     )
     const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
-    const totalAvailableWidth = opening.finishedWidth - usedWidth
+    let availableWidth = effectiveDimensions.width - usedWidth
 
-    if (totalAvailableWidth <= 0) {
-      return { width: null, error: `No space available - existing components use ${usedWidth.toFixed(3)}" of ${opening.finishedWidth}" opening width` }
+    if (availableWidth <= 0) {
+      return { width: null, error: `No space available - existing components use ${usedWidth.toFixed(3)}" of ${effectiveDimensions.width}" opening width` }
     }
 
-    // Divide available width by divisor
-    let widthPerComponent = totalAvailableWidth / divisor
-
-    // Apply product constraints to the divided width
-    if (selectedProduct?.minWidth && widthPerComponent < selectedProduct.minWidth) {
-      return { width: null, error: `Divided width (${widthPerComponent.toFixed(3)}") is less than product minimum (${selectedProduct.minWidth}")` }
+    // Apply product constraints
+    if (selectedProduct?.minWidth && availableWidth < selectedProduct.minWidth) {
+      return { width: null, error: `Available width (${availableWidth.toFixed(3)}") is less than product minimum (${selectedProduct.minWidth}")` }
     }
 
-    if (selectedProduct?.maxWidth && widthPerComponent > selectedProduct.maxWidth) {
-      widthPerComponent = selectedProduct.maxWidth
+    if (selectedProduct?.maxWidth && availableWidth > selectedProduct.maxWidth) {
+      availableWidth = selectedProduct.maxWidth
     }
 
-    return { width: widthPerComponent }
+    return { width: availableWidth }
   }
 
-  // Auto-fill width only to remaining available space (with optional divisor for splitting between components)
+  // Auto-fill width only to remaining available space
   function handleAutoWidth() {
-    const divisor = Math.max(1, parseInt(widthDivisor) || 1)
-    const result = calculateAutoWidth(divisor)
+    const result = calculateAutoWidth()
 
     if (result.error) {
       showError(result.error)
@@ -1664,26 +1721,7 @@ export default function ProjectDetailView() {
 
     if (result.width !== null) {
       setComponentWidth(result.width.toFixed(3))
-      if (divisor > 1) {
-        showSuccess(`Width auto-filled: ${result.width.toFixed(3)}" (divided by ${divisor})`)
-      } else {
-        showSuccess(`Width auto-filled: ${result.width.toFixed(3)}"`)
-      }
-    }
-  }
-
-  // Handle divisor change - auto-calculate width and sync quantity
-  function handleDivisorChange(newDivisor: string) {
-    const divisorValue = Math.max(1, parseInt(newDivisor) || 1)
-    setWidthDivisor(newDivisor)
-
-    // Sync quantity with divisor
-    setComponentQuantity(divisorValue.toString())
-
-    // Auto-calculate width based on new divisor
-    const result = calculateAutoWidth(divisorValue)
-    if (result.width !== null) {
-      setComponentWidth(result.width.toFixed(3))
+      showSuccess(`Width auto-filled: ${result.width.toFixed(3)}"`)
     }
   }
 
@@ -1692,12 +1730,15 @@ export default function ProjectDetailView() {
     const opening = project?.openings.find(o => o.id === selectedOpeningId)
     const selectedProduct = products.find(p => p.id === selectedProductId)
 
-    if (!opening?.isFinishedOpening || !opening.finishedHeight) {
-      showError('Auto height only works for Finished Openings')
+    // Get effective finished dimensions (uses product tolerances if finishedWidth/Height not yet calculated)
+    const effectiveDimensions = getEffectiveFinishedDimensions(opening, selectedProduct)
+
+    if (!opening?.isFinishedOpening || !effectiveDimensions.height) {
+      showError('Auto height only works for Finished Openings with dimensions set')
       return
     }
 
-    let finalHeight = opening.finishedHeight
+    let finalHeight = effectiveDimensions.height
 
     // Apply product constraints
     if (selectedProduct?.minHeight && finalHeight < selectedProduct.minHeight) {
@@ -1899,122 +1940,6 @@ export default function ProjectDetailView() {
     showSuccess(`Height auto-filled: ${finalHeight.toFixed(3)}"`)
   }
 
-  // Handle dividing remaining space between N products
-  async function handleDivideRemainingSpace() {
-    const selectedProducts = divideProducts.filter((p): p is number => p !== null)
-    if (!selectedOpeningId || selectedProducts.length === 0) return
-
-    const opening = project?.openings.find(o => o.id === selectedOpeningId)
-    if (!opening?.isFinishedOpening || !opening.finishedWidth) {
-      showError('Divide remaining space only works for finished openings')
-      return
-    }
-
-    // Calculate remaining width
-    const existingPanels = opening.panels.filter(p =>
-      p.componentInstance?.product?.productType !== 'CORNER_90' &&
-      p.componentInstance?.product?.productType !== 'FRAME'
-    )
-    const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
-    const remainingWidth = opening.finishedWidth - usedWidth
-
-    if (remainingWidth <= 0) {
-      showError('No remaining space to divide')
-      return
-    }
-
-    const widthPerComponent = remainingWidth / selectedProducts.length
-
-    // Get height from existing panels or opening
-    const nonFramePanels = opening.panels.filter(p =>
-      p.componentInstance?.product?.productType !== 'FRAME'
-    )
-    const height = nonFramePanels[0]?.height || opening.finishedHeight || 0
-
-    if (height <= 0) {
-      showError('Unable to determine component height')
-      return
-    }
-
-    try {
-      // Create panels with their component instances for each selected product
-      for (const productId of selectedProducts) {
-        const product = products.find(p => p.id === productId)
-
-        // Determine panel type based on product type
-        let panelType = 'Fixed Panel'
-        if (product?.productType === 'SWING_DOOR') panelType = 'Swing Door'
-        else if (product?.productType === 'SLIDING_DOOR') panelType = 'Sliding Door'
-        else if (product?.productType === 'FIXED_PANEL') panelType = 'Fixed Panel'
-
-        // Step 1: Create the panel
-        const panelResponse = await fetch('/api/panels', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            openingId: selectedOpeningId,
-            type: panelType,
-            width: widthPerComponent,
-            height: height,
-            glassType: glassTypes[0]?.name || 'N/A',
-            locking: product?.productType === 'SWING_DOOR' ? 'Standard' : 'N/A',
-            productId: productId,
-            quantity: 1,
-            swingDirection: product?.productType === 'SWING_DOOR' ? 'Right In' : undefined,
-            slidingDirection: product?.productType === 'SLIDING_DOOR' ? 'Left' : undefined,
-            skipValidation: true // We already calculated the exact remaining space
-          })
-        })
-
-        if (!panelResponse.ok) {
-          const error = await panelResponse.json()
-          throw new Error(error.error || 'Failed to add component')
-        }
-
-        const panelsData = await panelResponse.json()
-
-        // Step 2: Create component instance for each panel (links panel to product)
-        for (const panelData of panelsData) {
-          const componentResponse = await fetch('/api/component-instances', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              panelId: panelData.id,
-              productId: productId,
-              subOptionSelections: {}
-            })
-          })
-
-          if (!componentResponse.ok) {
-            console.error('Error creating component instance for panel:', panelData.id)
-          }
-        }
-      }
-
-      // Recalculate opening price
-      if (selectedOpeningId) {
-        try {
-          await fetch(`/api/openings/${selectedOpeningId}/calculate-price`, {
-            method: 'POST'
-          })
-        } catch (error) {
-          console.error('Error recalculating opening price:', error)
-        }
-      }
-
-      // Refresh project data
-      await fetchProject()
-
-      // Reset state
-      setShowDivideSpace(false)
-      setDivideProducts([null, null])
-
-      showSuccess('Both components added successfully!')
-    } catch (error: any) {
-      showError(error.message || 'Failed to add components')
-    }
-  }
-
   async function handleAddComponent() {
     if (!selectedOpeningId || !selectedProductId) return
 
@@ -2130,9 +2055,6 @@ export default function ProjectDetailView() {
       setComponentWidth('')
       setComponentHeight('')
       setComponentQuantity('1')
-      setWidthDivisor('1')
-      setShowDivideSpace(false)
-      setDivideProducts([null, null])
       setComponentValidationErrors([])
       setSwingDirection('Right In')
       setSlidingDirection('Left')
@@ -2159,6 +2081,114 @@ export default function ProjectDetailView() {
     } catch (error) {
       console.error('Error adding component:', error)
       alert('Error adding component')
+    }
+  }
+
+  // Handler for adding multiple panels at once
+  async function handleAddMultiplePanels() {
+    if (!selectedOpeningId || !selectedProductId || multiPanelConfigs.length === 0) return
+
+    try {
+      // Loop through all panel configs and create each panel
+      for (const config of multiPanelConfigs) {
+        // Create panel
+        const panelResponse = await fetch('/api/panels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            openingId: selectedOpeningId,
+            type: 'Component',
+            width: config.width,
+            height: config.height,
+            glassType: config.glassType || glassType,
+            locking: 'N/A',
+            swingDirection: '',
+            slidingDirection: '',
+            isCorner: false,
+            cornerDirection: '',
+            quantity: 1,
+            productId: selectedProductId,
+            skipValidation: true
+          })
+        })
+
+        if (!panelResponse.ok) {
+          const errorData = await panelResponse.json()
+          showError(errorData.error || `Failed to add panel ${config.index + 1}`)
+          continue
+        }
+
+        const panelsData = await panelResponse.json()
+
+        // Create component instance for the panel
+        const mergedSelections = {
+          ...config.selectedOptions,
+          ...config.optionQuantities
+        }
+
+        for (const panelData of panelsData) {
+          const componentResponse = await fetch('/api/component-instances', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              panelId: panelData.id,
+              productId: selectedProductId,
+              subOptionSelections: mergedSelections,
+              variantSelections: config.variantSelections
+            })
+          })
+
+          if (!componentResponse.ok) {
+            console.error('Error creating component instance for panel:', panelData.id)
+          }
+        }
+      }
+
+      // Reset form and close modal
+      setShowAddComponent(false)
+      setSelectedOpeningId(null)
+      setSelectedProductId(null)
+      setComponentWidth('')
+      setComponentHeight('')
+      setComponentQuantity('1')
+      setComponentValidationErrors([])
+      setSwingDirection('')
+      setSlidingDirection('')
+      setCornerDirection('')
+      setGlassType('')
+      setHardwareOptionsExpanded(false)
+      setAddComponentOptions([])
+      setAddComponentSelectedOptions({})
+      setAddComponentOptionQuantities({})
+      setVariantSelections({})
+      // Reset multi-panel state
+      setAddComponentMode(null)
+      setMultiPanelCount(2)
+      setMultiPanelCountInput('2')
+      setCurrentPanelIndex(0)
+      setMultiPanelConfigs([])
+      setFirstPanelOptionsComplete(false)
+      setShowApplyToRemaining(false)
+      setExcludedOptionsFromApply(new Set())
+      setAddComponentStep('product')
+
+      // Recalculate opening price
+      if (selectedOpeningId) {
+        try {
+          await fetch(`/api/openings/${selectedOpeningId}/calculate-price`, {
+            method: 'POST'
+          })
+        } catch (error) {
+          console.error('Error recalculating opening price:', error)
+        }
+      }
+
+      // Silent refresh to preserve scroll position
+      await refreshProject()
+      showSuccess(`Successfully added ${multiPanelConfigs.length} panels`)
+    } catch (error) {
+      console.error('Error adding multiple panels:', error)
+      showError('Error adding panels')
     }
   }
 
@@ -2241,6 +2271,37 @@ export default function ProjectDetailView() {
 
     if (!requireQuoteAcceptedConfirmation(proceedWithDeleteComponent, 'delete a component')) {
       proceedWithDeleteComponent()
+    }
+  }
+
+  async function confirmInlineDeleteComponent(panelId: number) {
+    setIsDeletingComponent(true)
+    try {
+      const panel = project?.openings.flatMap(o => o.panels).find(p => p.id === panelId)
+      const openingId = panel?.openingId || project?.openings.find(o => o.panels.some(p => p.id === panelId))?.id
+
+      const response = await fetch(`/api/panels/${panelId}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        if (openingId) {
+          try {
+            await fetch(`/api/openings/${openingId}/calculate-price`, {
+              method: 'POST'
+            })
+          } catch (error) {
+            console.error('Error recalculating opening price:', error)
+          }
+        }
+        await refreshProject()
+        setPendingDeletePanelId(null)
+      }
+    } catch (error) {
+      console.error('Error deleting component:', error)
+      showError('Error deleting component')
+    } finally {
+      setIsDeletingComponent(false)
     }
   }
 
@@ -2831,15 +2892,20 @@ export default function ProjectDetailView() {
                 <div className="mb-3">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1">
+                      <div
+                        className="flex items-center gap-1 cursor-pointer hover:bg-gray-50 rounded-lg px-2 py-1 -ml-2 transition-colors"
+                        onClick={() => handleShowEditOpeningModal(opening)}
+                        title="Click to edit opening settings"
+                      >
                         <h3 className="font-bold text-gray-900">{opening.name}</h3>
-                        <button
-                          onClick={() => handleShowEditOpeningModal(opening)}
-                          className="p-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
-                          title="Edit opening name and finish"
-                        >
-                          <Settings className="w-5 h-5" />
-                        </button>
+                        <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${opening.openingType === 'FRAMED' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                          {opening.openingType === 'FRAMED' ? 'Trimmed' : 'Thinwall'}
+                        </span>
+                        {opening.finishColor && (
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                            Finish: <span className="font-medium text-gray-700">{opening.finishColor}</span>
+                          </span>
+                        )}
                       </div>
                       <span className="px-2 py-1 text-sm font-bold rounded border bg-green-600 text-white border-green-600">
                         ${opening.price.toLocaleString()}
@@ -2874,14 +2940,6 @@ export default function ProjectDetailView() {
                       <span>
 {`Framed Opening Size: ${opening.roughWidth}" W × ${opening.roughHeight}" H (${opening.openingType === 'THINWALL' ? 'Finished' : 'Rough'})`}
                       </span>
-                    )}
-                    {opening.finishColor && (
-                      <>
-                        {opening.roughWidth && opening.roughHeight && <span>•</span>}
-                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                          Finish: <span className="font-medium text-gray-700">{opening.finishColor}</span>
-                        </span>
-                      </>
                     )}
                   </div>
                 </div>
@@ -2924,14 +2982,13 @@ export default function ProjectDetailView() {
                                 {panel.componentInstance!.product.name}
                                 {panel.isCorner && ` (${panel.cornerDirection})`}
                               </div>
-                              <div className="flex items-center gap-2 text-xs">
-                                <span className="text-gray-600">{panel.componentInstance!.product.type}</span>
-                                {panel.isCorner && (
+                              {panel.isCorner && (
+                                <div className="flex items-center gap-2 text-xs">
                                   <span className="px-2 py-1 rounded-full bg-orange-100 text-orange-700">
                                     ⊥ {panel.cornerDirection}
                                   </span>
-                                )}
-                              </div>
+                                </div>
+                              )}
                               <div className="text-gray-500 text-xs">
                                 {panel.isCorner ? (
                                   <span className="text-orange-600 font-medium">
@@ -3011,20 +3068,24 @@ export default function ProjectDetailView() {
                                 })()}
                               </div>
                             </div>
-                            <div className="flex items-center space-x-1">
+                            <div className="relative flex items-center justify-end" style={{ minWidth: pendingDeletePanelId === panel.id ? '54px' : '20px', transition: 'min-width 150ms' }}>
                               <button
-                                onClick={() => handleEditComponent(panel.componentInstance!.id)}
-                                className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                title="Edit Options"
-                              >
-                                <Settings className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteComponent(panel.id, panel.componentInstance!.product.name)}
-                                className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                onClick={() => setPendingDeletePanelId(panel.id)}
+                                className={`w-5 h-5 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded-full transition-all duration-150 ${
+                                  pendingDeletePanelId === panel.id ? 'absolute right-full mr-1 opacity-0 scale-75' : 'opacity-100 scale-100'
+                                }`}
                                 title="Delete Component"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <X className="w-3 h-3 text-gray-500" strokeWidth={3} />
+                              </button>
+                              <button
+                                onClick={() => confirmInlineDeleteComponent(panel.id)}
+                                disabled={isDeletingComponent}
+                                className={`px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700 hover:bg-red-200 transition-all duration-150 whitespace-nowrap ${
+                                  pendingDeletePanelId === panel.id ? 'opacity-100 scale-100' : 'opacity-0 scale-75 absolute pointer-events-none'
+                                }`}
+                              >
+                                {isDeletingComponent ? '...' : 'Confirm'}
                               </button>
                             </div>
                           </div>
@@ -3237,9 +3298,94 @@ export default function ProjectDetailView() {
             <h2 className="text-xl font-bold text-gray-900 mb-4 flex-shrink-0">Add Component</h2>
             <div className="overflow-y-auto flex-1 pr-2">
             <div className="space-y-4">
-              {/* Step 1: Product Selection - only show when on product step */}
-              {addComponentStep === 'product' && (
+              {/* Step 1: Mode Selection Tiles - show when on product step with no mode selected */}
+              {addComponentStep === 'product' && addComponentMode === null && (
                 <div>
+                  <p className="text-sm text-gray-600 mb-4">Choose how to add components:</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Single Component Tile */}
+                    <button
+                      type="button"
+                      onClick={() => setAddComponentMode('single')}
+                      className="p-6 border-2 border-blue-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all text-left group"
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200">
+                          <Plus className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <span className="text-lg font-semibold text-gray-900">Add Component</span>
+                      </div>
+                      <p className="text-sm text-gray-500">Add a single component with full configuration options</p>
+                    </button>
+
+                    {/* Multiple Panels Tile - only show if FIXED_PANEL products exist */}
+                    {products.some(p => p.productType === 'FIXED_PANEL') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddComponentMode('multiple')
+                          // Auto-select the first FIXED_PANEL product
+                          const fixedPanelProduct = products.find(p => p.productType === 'FIXED_PANEL')
+                          if (fixedPanelProduct) {
+                            setSelectedProductId(fixedPanelProduct.id)
+                            // Load hardware options for the selected product
+                            if (fixedPanelProduct.productSubOptions && fixedPanelProduct.productSubOptions.length > 0) {
+                              setAddComponentOptions(fixedPanelProduct.productSubOptions)
+                              const preselected: Record<number, number | null> = {}
+                              const preselectedVariants: Record<string, number> = {}
+                              for (const pso of fixedPanelProduct.productSubOptions) {
+                                if (pso.standardOptionId) {
+                                  preselected[pso.category.id] = pso.standardOptionId
+                                  const standardOption = pso.category.individualOptions?.find(
+                                    (opt: any) => opt.id === pso.standardOptionId
+                                  )
+                                  if (standardOption?.variants?.length > 0) {
+                                    const defaultVariant = standardOption.variants.find((v: any) => v.isDefault)
+                                    if (defaultVariant) {
+                                      preselectedVariants[String(pso.standardOptionId)] = defaultVariant.id
+                                    }
+                                  }
+                                }
+                              }
+                              setAddComponentSelectedOptions(preselected)
+                              setVariantSelections(preselectedVariants)
+                            }
+                          }
+                        }}
+                        className="p-6 border-2 border-green-200 rounded-xl hover:border-green-400 hover:bg-green-50 transition-all text-left group"
+                      >
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200">
+                            <Copy className="w-5 h-5 text-green-600" />
+                          </div>
+                          <span className="text-lg font-semibold text-gray-900">Add Multiple Panels</span>
+                        </div>
+                        <p className="text-sm text-gray-500">Quickly add multiple fixed panels with shared options</p>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Single Component Mode - Product Selection */}
+              {addComponentStep === 'product' && addComponentMode === 'single' && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddComponentMode(null)
+                      setSelectedProductId(null)
+                      setAddComponentOptions([])
+                      setAddComponentSelectedOptions({})
+                      setVariantSelections({})
+                    }}
+                    className="mb-4 text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Back to selection
+                  </button>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Select Product</label>
                   <Listbox
                     value={selectedProductId || null}
@@ -3321,39 +3467,6 @@ export default function ProjectDetailView() {
                       </ListboxOptions>
                     </div>
                   </Listbox>
-                  {/* Quantity field - show for non-corner/non-frame products on product step */}
-                  {selectedProductId && (() => {
-                    const selectedProduct = products.find(p => p.id === selectedProductId)
-                    const isCornerProduct = selectedProduct?.productType === 'CORNER_90'
-                    const isFrameProduct = selectedProduct?.productType === 'FRAME'
-
-                    if (isCornerProduct || isFrameProduct) return null
-
-                    return (
-                      <div className="mt-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
-                        <input
-                          type="number"
-                          value={componentQuantity}
-                          onChange={(e) => setComponentQuantity(e.target.value)}
-                          placeholder="Enter quantity"
-                          step="1"
-                          min="1"
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
-                            componentQuantity && parseInt(componentQuantity) <= 0
-                              ? 'border-red-300 bg-red-50'
-                              : 'border-gray-300'
-                          }`}
-                        />
-                        {componentQuantity && parseInt(componentQuantity) <= 0 && (
-                          <p className="text-red-500 text-xs mt-1">Quantity must be at least 1</p>
-                        )}
-                        <p className="text-xs text-gray-500 mt-1">
-                          Number of identical components to add
-                        </p>
-                      </div>
-                    )
-                  })()}
                   {/* Next button - only show when product is selected */}
                   {selectedProductId && (
                     <div className="flex justify-end pt-4">
@@ -3371,11 +3484,343 @@ export default function ProjectDetailView() {
                   )}
                 </div>
               )}
+
+              {/* Multiple Panels Mode - Product Selection */}
+              {addComponentStep === 'product' && addComponentMode === 'multiple' && (() => {
+                const currentOpening = project?.openings.find(o => o.id === selectedOpeningId)
+                const isFinishedOpening = !!(currentOpening?.isFinishedOpening && currentOpening?.finishedWidth)
+                const existingPanels = currentOpening?.panels.filter(p =>
+                  p.componentInstance?.product?.productType !== 'CORNER_90' &&
+                  p.componentInstance?.product?.productType !== 'FRAME'
+                ) || []
+                const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
+                const remainingWidth = (currentOpening?.finishedWidth || 0) - usedWidth
+                const widthPerPanel = multiPanelCount > 0 ? remainingWidth / multiPanelCount : 0
+                const fixedPanelProducts = products.filter(p => p.productType === 'FIXED_PANEL')
+
+                return (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddComponentMode(null)
+                        setSelectedProductId(null)
+                        setAddComponentOptions([])
+                        setAddComponentSelectedOptions({})
+                        setVariantSelections({})
+                        setMultiPanelCount(2)
+                        setMultiPanelCountInput('2')
+                        setMultiPanelConfigs([])
+                      }}
+                      className="mb-4 text-sm text-green-600 hover:text-green-800 flex items-center gap-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      Back to selection
+                    </button>
+
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Copy className="w-5 h-5 text-green-600" />
+                        <span className="font-medium text-green-800">Add Multiple Fixed Panels</span>
+                      </div>
+                      <p className="text-sm text-green-700">Configure options once, apply to all panels</p>
+                    </div>
+
+                    {/* Product Selection - Fixed Panels Only */}
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Fixed Panel Product</label>
+                      <Listbox
+                        value={selectedProductId || null}
+                        onChange={(productId: number | null) => {
+                          if (!productId) return
+                          setSelectedProductId(productId)
+                          const product = products.find(p => p.id === productId)
+                          if (product?.productSubOptions && product.productSubOptions.length > 0) {
+                            setAddComponentOptions(product.productSubOptions)
+                            const preselected: Record<number, number | null> = {}
+                            const preselectedVariants: Record<string, number> = {}
+                            for (const pso of product.productSubOptions) {
+                              if (pso.standardOptionId) {
+                                preselected[pso.category.id] = pso.standardOptionId
+                                const standardOption = pso.category.individualOptions?.find(
+                                  (opt: any) => opt.id === pso.standardOptionId
+                                )
+                                if (standardOption?.variants?.length > 0) {
+                                  const defaultVariant = standardOption.variants.find((v: any) => v.isDefault)
+                                  if (defaultVariant) {
+                                    preselectedVariants[String(pso.standardOptionId)] = defaultVariant.id
+                                  }
+                                }
+                              }
+                            }
+                            setAddComponentSelectedOptions(preselected)
+                            setVariantSelections(preselectedVariants)
+                          }
+                          setGlassType('')
+                          setCurrentMandatoryOptionIndex(0)
+                        }}
+                      >
+                        <div className="relative">
+                          <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900 bg-white text-left flex items-center justify-between">
+                            {(() => {
+                              const selectedProduct = products.find(p => p.id === selectedProductId)
+                              if (selectedProduct) {
+                                return <span>{selectedProduct.name}</span>
+                              }
+                              return <span className="text-gray-500">Select fixed panel product...</span>
+                            })()}
+                            <ChevronDown className="w-4 h-4 text-gray-400" />
+                          </ListboxButton>
+                          <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                            {fixedPanelProducts.map((product) => (
+                              <ListboxOption
+                                key={product.id}
+                                value={product.id}
+                                className="cursor-pointer select-none px-3 py-2 hover:bg-green-50 data-[selected]:bg-green-100 flex items-center justify-between"
+                              >
+                                {({ selected }) => (
+                                  <>
+                                    <span>{product.name}</span>
+                                    {selected && <Check className="w-4 h-4 text-green-600" />}
+                                  </>
+                                )}
+                              </ListboxOption>
+                            ))}
+                          </ListboxOptions>
+                        </div>
+                      </Listbox>
+                    </div>
+
+                    {/* Number of Panels */}
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Number of Panels</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={multiPanelCountInput}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          // Allow empty or digits only
+                          if (value !== '' && !/^\d+$/.test(value)) return
+                          setMultiPanelCountInput(value)
+                          // Update actual count if valid
+                          if (value !== '') {
+                            const count = parseInt(value)
+                            if (!isNaN(count) && count >= 1 && count <= 10) {
+                              setMultiPanelCount(count)
+                              // Reset configs when count changes
+                              setMultiPanelConfigs([])
+                              setCurrentPanelIndex(0)
+                              setFirstPanelOptionsComplete(false)
+                            }
+                          }
+                        }}
+                        onBlur={() => {
+                          // Clamp value on blur
+                          const count = parseInt(multiPanelCountInput) || 2
+                          const clamped = Math.max(2, Math.min(10, count))
+                          setMultiPanelCount(clamped)
+                          setMultiPanelCountInput(String(clamped))
+                          if (clamped !== multiPanelCount) {
+                            setMultiPanelConfigs([])
+                            setCurrentPanelIndex(0)
+                            setFirstPanelOptionsComplete(false)
+                          }
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Between 2 and 10 panels</p>
+                    </div>
+
+                    {/* Opening Size Info */}
+                    {isFinishedOpening ? (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <h4 className="text-sm font-medium text-blue-800 mb-2">Opening Width Breakdown</h4>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between text-blue-700">
+                            <span>Total opening width:</span>
+                            <span className="font-medium">{currentOpening?.finishedWidth}"</span>
+                          </div>
+                          <div className="flex justify-between text-blue-700">
+                            <span>Used by existing panels:</span>
+                            <span className="font-medium">{usedWidth.toFixed(2)}"</span>
+                          </div>
+                          <div className="flex justify-between text-blue-800 font-medium border-t border-blue-200 pt-1 mt-1">
+                            <span>Remaining width:</span>
+                            <span>{remainingWidth.toFixed(2)}"</span>
+                          </div>
+                          {remainingWidth > 0 && multiPanelCount > 0 && (
+                            <div className="flex justify-between text-green-700 bg-green-100 -mx-4 px-4 py-2 mt-2 rounded-b-lg">
+                              <span>Width per panel ({multiPanelCount} panels):</span>
+                              <span className="font-medium">{widthPerPanel.toFixed(2)}"</span>
+                            </div>
+                          )}
+                          {remainingWidth <= 0 && (
+                            <p className="text-red-600 text-xs mt-2">No remaining space available for new panels</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                        <p className="text-sm text-amber-800">
+                          Opening size not determined. You'll specify dimensions in the next step.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Next button */}
+                    {selectedProductId && (
+                      <div className="flex justify-end pt-4">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Initialize multi-panel configs
+                            const opening = project?.openings.find(o => o.id === selectedOpeningId)
+                            const existingNonFramePanels = opening?.panels.filter(p =>
+                              p.componentInstance?.product?.productType !== 'CORNER_90' &&
+                              p.componentInstance?.product?.productType !== 'FRAME'
+                            ) || []
+                            const usedW = existingNonFramePanels.reduce((sum, p) => sum + (p.width || 0), 0)
+                            const remainingW = (opening?.finishedWidth || 0) - usedW
+                            const wPerPanel = multiPanelCount > 0 ? remainingW / multiPanelCount : 0
+                            const defaultHeight = existingNonFramePanels.length > 0
+                              ? Math.max(...existingNonFramePanels.map(p => p.height || 0))
+                              : (opening?.finishedHeight || 0)
+
+                            const configs = Array.from({ length: multiPanelCount }, (_, i) => ({
+                              index: i,
+                              width: opening?.isFinishedOpening && opening?.finishedWidth ? wPerPanel : 0,
+                              height: defaultHeight,
+                              glassType: '',
+                              selectedOptions: { ...addComponentSelectedOptions },
+                              optionQuantities: { ...addComponentOptionQuantities },
+                              variantSelections: { ...variantSelections },
+                              isConfigured: false
+                            }))
+                            setMultiPanelConfigs(configs)
+                            setCurrentPanelIndex(0)
+                            setAddComponentStep('dimensions')
+                          }}
+                          disabled={remainingWidth <= 0 && isFinishedOpening}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          Next
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
               {/* Dimensions - Hide for corner and frame components, and hide when past dimensions step */}
               {addComponentStep === 'dimensions' && (() => {
                 const selectedProduct = products.find(p => p.id === selectedProductId)
                 const isCornerProduct = selectedProduct?.productType === 'CORNER_90'
                 const isFrameProduct = selectedProduct?.productType === 'FRAME'
+
+                // Multi-panel mode dimensions view
+                if (addComponentMode === 'multiple') {
+                  const opening = project?.openings.find(o => o.id === selectedOpeningId)
+                  const isFinishedOpening = !!(opening?.isFinishedOpening && opening?.finishedWidth)
+
+                  return (
+                    <div className="space-y-4">
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Copy className="w-5 h-5 text-green-600" />
+                          <span className="font-medium text-green-800">Panel Dimensions</span>
+                          <span className="text-sm text-green-600">({multiPanelCount} panels)</span>
+                        </div>
+
+                        {isFinishedOpening ? (
+                          <div className="space-y-3">
+                            <p className="text-sm text-green-700 mb-3">
+                              Dimensions auto-calculated from opening size. Each panel will be equal width.
+                            </p>
+                            <div className="bg-white rounded-lg border border-green-200 divide-y divide-green-100">
+                              {multiPanelConfigs.map((config, idx) => (
+                                <div key={idx} className="flex justify-between items-center px-4 py-2">
+                                  <span className="text-sm font-medium text-gray-700">Panel {idx + 1}</span>
+                                  <span className="text-sm text-gray-600">
+                                    {config.width.toFixed(2)}" W × {config.height.toFixed(2)}" H
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            <p className="text-sm text-amber-700 bg-amber-50 p-3 rounded-lg border border-amber-200">
+                              Opening size not determined. Enter dimensions for the panels below.
+                            </p>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Width (all panels)</label>
+                                <input
+                                  type="number"
+                                  value={multiPanelConfigs[0]?.width || ''}
+                                  onChange={(e) => {
+                                    const newWidth = parseFloat(e.target.value) || 0
+                                    setMultiPanelConfigs(prev => prev.map(c => ({ ...c, width: newWidth })))
+                                  }}
+                                  placeholder="Enter width"
+                                  step="0.01"
+                                  min="0"
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Height (all panels)</label>
+                                <input
+                                  type="number"
+                                  value={multiPanelConfigs[0]?.height || ''}
+                                  onChange={(e) => {
+                                    const newHeight = parseFloat(e.target.value) || 0
+                                    setMultiPanelConfigs(prev => prev.map(c => ({ ...c, height: newHeight })))
+                                  }}
+                                  placeholder="Enter height"
+                                  step="0.01"
+                                  min="0"
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Navigation buttons for multi-panel mode */}
+                      <div className="flex justify-between pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setAddComponentStep('product')}
+                          className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                          Back
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAddComponentStep('glassType')}
+                          disabled={!multiPanelConfigs.every(c => c.width > 0 && c.height > 0)}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          Next
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  )
+                }
 
                 if (isCornerProduct) {
                   return (
@@ -3511,97 +3956,6 @@ export default function ProjectDetailView() {
                         )}
                       </div>
                     </div>
-                    {/* Divide Remaining Space - only show for finished openings */}
-                    {showAutoButtons && (
-                      <div className="mt-4 border-t border-gray-200 pt-4">
-                        <button
-                          type="button"
-                          onClick={() => setShowDivideSpace(!showDivideSpace)}
-                          className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
-                        >
-                          <span className={`transform transition-transform ${showDivideSpace ? 'rotate-90' : ''}`}>▶</span>
-                          Divide Remaining Space
-                        </button>
-                        {showDivideSpace && (() => {
-                          const opening = project?.openings.find(o => o.id === selectedOpeningId)
-                          const existingPanels = opening?.panels.filter(p =>
-                            p.componentInstance?.product?.productType !== 'CORNER_90' &&
-                            p.componentInstance?.product?.productType !== 'FRAME'
-                          ) || []
-                          const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
-                          const remainingWidth = (opening?.finishedWidth || 0) - usedWidth
-                          const selectedProducts = divideProducts.filter(p => p !== null)
-                          const widthPerComponent = remainingWidth > 0 && selectedProducts.length > 0 ? remainingWidth / selectedProducts.length : 0
-                          const allProductsSelected = selectedProducts.length === divideComponentCount
-
-                          return (
-                            <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-3">
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-700">Remaining width:</span>
-                                <span className="text-sm font-medium text-gray-900">{remainingWidth.toFixed(2)}"</span>
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">Number of Components</label>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max="10"
-                                  value={divideComponentCount}
-                                  onChange={(e) => {
-                                    const count = Math.max(1, Math.min(10, parseInt(e.target.value) || 1))
-                                    setDivideComponentCount(count)
-                                    // Resize the products array to match count
-                                    setDivideProducts(prev => {
-                                      const newProducts = [...prev]
-                                      while (newProducts.length < count) newProducts.push(null)
-                                      return newProducts.slice(0, count)
-                                    })
-                                  }}
-                                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                {Array.from({ length: divideComponentCount }).map((_, index) => (
-                                  <div key={index}>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Product {index + 1}</label>
-                                    <select
-                                      value={divideProducts[index] || ''}
-                                      onChange={(e) => {
-                                        const newProducts = [...divideProducts]
-                                        newProducts[index] = parseInt(e.target.value) || null
-                                        setDivideProducts(newProducts)
-                                      }}
-                                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-                                    >
-                                      <option value="">Select product...</option>
-                                      {products.filter(p => p.productType !== 'CORNER_90' && p.productType !== 'FRAME').map(p => (
-                                        <option key={p.id} value={p.id}>{p.name}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                ))}
-                              </div>
-                              {selectedProducts.length > 0 && remainingWidth > 0 && (
-                                <p className="text-xs text-gray-600">
-                                  Each component: <span className="font-medium">{widthPerComponent.toFixed(2)}"</span> wide
-                                </p>
-                              )}
-                              {remainingWidth <= 0 && (
-                                <p className="text-xs text-red-600">No remaining space to divide</p>
-                              )}
-                              <button
-                                type="button"
-                                onClick={handleDivideRemainingSpace}
-                                disabled={!allProductsSelected || remainingWidth <= 0}
-                                className="w-full px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                Add {divideComponentCount} Component{divideComponentCount > 1 ? 's' : ''}
-                              </button>
-                            </div>
-                          )
-                        })()}
-                      </div>
-                    )}
                   </div>
                 )
               })()}
@@ -3775,8 +4129,8 @@ export default function ProjectDetailView() {
 
                 return (
                   <>
-                    {/* Step: Dimensions - Show Back/Next buttons for all products */}
-                    {addComponentStep === 'dimensions' && (
+                    {/* Step: Dimensions - Show Back/Next buttons for single mode only (multi-panel has its own) */}
+                    {addComponentStep === 'dimensions' && addComponentMode !== 'multiple' && (
                       <div className="flex justify-between pt-2">
                         <button
                           type="button"
@@ -3866,8 +4220,89 @@ export default function ProjectDetailView() {
                       </div>
                     )}
 
-                    {/* Step 3: Glass Type */}
-                    {addComponentStep === 'glassType' && needsGlassType && (
+                    {/* Glass Type for Multi-Panel Mode */}
+                    {addComponentStep === 'glassType' && addComponentMode === 'multiple' && (
+                      <div className="p-4 bg-green-50 rounded-lg border border-green-200 space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-green-600 text-white text-sm font-medium">2</span>
+                          <h4 className="text-sm font-semibold text-gray-800">Glass Type (All Panels)</h4>
+                        </div>
+                        <p className="text-sm text-green-700">Select glass type for all {multiPanelCount} panels</p>
+                        <Listbox
+                          value={glassType || null}
+                          onChange={(value: string | null) => {
+                            setGlassType(value || '')
+                            // Update all panel configs with the selected glass type
+                            setMultiPanelConfigs(prev => prev.map(c => ({ ...c, glassType: value || '' })))
+                          }}
+                        >
+                          <div className="relative">
+                            <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900 bg-white text-left flex items-center justify-between">
+                              {(() => {
+                                const selectedGlassType = glassTypes.find(t => t.name === glassType)
+                                if (selectedGlassType) {
+                                  return <span>{selectedGlassType.name} (${selectedGlassType.pricePerSqFt}/sqft)</span>
+                                }
+                                return <span className="text-gray-500">Select glass type...</span>
+                              })()}
+                              <ChevronDown className="w-4 h-4 text-gray-400" />
+                            </ListboxButton>
+                            <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                              {glassTypes.map((type) => (
+                                <ListboxOption
+                                  key={type.id}
+                                  value={type.name}
+                                  className="cursor-pointer select-none px-3 py-2 hover:bg-green-50 data-[selected]:bg-green-100 flex items-center justify-between"
+                                >
+                                  {({ selected }) => (
+                                    <>
+                                      <span>{type.name} (${type.pricePerSqFt}/sqft)</span>
+                                      {selected && <Check className="w-4 h-4 text-green-600" />}
+                                    </>
+                                  )}
+                                </ListboxOption>
+                              ))}
+                            </ListboxOptions>
+                          </div>
+                        </Listbox>
+                        <div className="flex justify-between pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setAddComponentStep('dimensions')}
+                            className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                            Back
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Move to options step if there are options, otherwise to ready
+                              if (addComponentOptions.length > 0) {
+                                setCurrentPanelIndex(0)
+                                setCurrentMandatoryOptionIndex(0)
+                                setFirstPanelOptionsComplete(false)
+                                setAddComponentStep('options')
+                              } else {
+                                setAddComponentStep('ready')
+                              }
+                            }}
+                            disabled={glassType === ''}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          >
+                            {addComponentOptions.length > 0 ? 'Configure Options' : 'Review'}
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step 3: Glass Type (Single Mode) */}
+                    {addComponentStep === 'glassType' && addComponentMode !== 'multiple' && needsGlassType && (
                       <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-4">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-medium">{needsDirection ? '3' : '2'}</span>
@@ -3932,8 +4367,134 @@ export default function ProjectDetailView() {
                       </div>
                     )}
 
+                    {/* Multi-Panel Options - Apply to Remaining Dialog */}
+                    {addComponentStep === 'options' && addComponentMode === 'multiple' && showApplyToRemaining && (
+                      <div className="p-4 bg-green-50 rounded-lg border border-green-200 space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Copy className="w-5 h-5 text-green-600" />
+                          <h4 className="text-sm font-semibold text-green-800">Apply Options to Remaining Panels?</h4>
+                        </div>
+                        <p className="text-sm text-green-700">
+                          You've configured Panel 1. Apply these options to the remaining {multiPanelCount - 1} panel{multiPanelCount > 2 ? 's' : ''}?
+                        </p>
+
+                        {/* Option categories to exclude */}
+                        {addComponentOptions.length > 0 && (
+                          <div className="bg-white rounded-lg border border-green-200 p-3">
+                            <p className="text-xs font-medium text-gray-700 mb-2">Exclude these options (will need to configure individually):</p>
+                            <div className="space-y-2">
+                              {addComponentOptions.map((opt: any) => (
+                                <label key={opt.category.id} className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={excludedOptionsFromApply.has(opt.category.id)}
+                                    onChange={(e) => {
+                                      const newExcluded = new Set(excludedOptionsFromApply)
+                                      if (e.target.checked) {
+                                        newExcluded.add(opt.category.id)
+                                      } else {
+                                        newExcluded.delete(opt.category.id)
+                                      }
+                                      setExcludedOptionsFromApply(newExcluded)
+                                    }}
+                                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                  />
+                                  {opt.category.name}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex gap-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Apply current options to all remaining panels (minus excluded)
+                              setMultiPanelConfigs(prev => prev.map((config, idx) => {
+                                if (idx === 0) return config // First panel already configured
+                                const newOptions: Record<number, number | null> = {}
+                                const newQuantities: Record<string, number> = {}
+                                const newVariants: Record<string, number> = {}
+
+                                // Copy options not in excluded list
+                                for (const [key, value] of Object.entries(addComponentSelectedOptions)) {
+                                  if (!excludedOptionsFromApply.has(Number(key))) {
+                                    newOptions[Number(key)] = value
+                                  }
+                                }
+                                for (const [key, value] of Object.entries(addComponentOptionQuantities)) {
+                                  const categoryId = parseInt(key.replace('_qty', ''))
+                                  if (!excludedOptionsFromApply.has(categoryId)) {
+                                    newQuantities[key] = value
+                                  }
+                                }
+                                for (const [key, value] of Object.entries(variantSelections)) {
+                                  newVariants[key] = value
+                                }
+
+                                return {
+                                  ...config,
+                                  glassType,
+                                  selectedOptions: newOptions,
+                                  optionQuantities: newQuantities,
+                                  variantSelections: newVariants,
+                                  isConfigured: true
+                                }
+                              }))
+                              // Also update first panel
+                              setMultiPanelConfigs(prev => {
+                                const updated = [...prev]
+                                updated[0] = {
+                                  ...updated[0],
+                                  glassType,
+                                  selectedOptions: { ...addComponentSelectedOptions },
+                                  optionQuantities: { ...addComponentOptionQuantities },
+                                  variantSelections: { ...variantSelections },
+                                  isConfigured: true
+                                }
+                                return updated
+                              })
+                              setShowApplyToRemaining(false)
+                              setAddComponentStep('ready')
+                            }}
+                            className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2"
+                          >
+                            <Check className="w-4 h-4" />
+                            Apply to All Remaining
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Save first panel config and move to panel 2
+                              setMultiPanelConfigs(prev => {
+                                const updated = [...prev]
+                                updated[0] = {
+                                  ...updated[0],
+                                  glassType,
+                                  selectedOptions: { ...addComponentSelectedOptions },
+                                  optionQuantities: { ...addComponentOptionQuantities },
+                                  variantSelections: { ...variantSelections },
+                                  isConfigured: true
+                                }
+                                return updated
+                              })
+                              setShowApplyToRemaining(false)
+                              setCurrentPanelIndex(1)
+                              setCurrentMandatoryOptionIndex(0)
+                              // Pre-populate with first panel's options (for easier modification)
+                              // Keep current selections as they are
+                            }}
+                            className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                          >
+                            Configure Each Individually
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Step 4+: Hardware Options (one at a time) */}
-                    {addComponentStep === 'options' && currentOption && (() => {
+                    {addComponentStep === 'options' && currentOption && !showApplyToRemaining && (() => {
                       const selectedOptionId = addComponentSelectedOptions[currentOption.category.id]
                       const optionBom = selectedProduct?.productBOMs?.find(
                         (bom: any) => bom.optionId === selectedOptionId
@@ -3948,11 +4509,38 @@ export default function ProjectDetailView() {
                       const optionVariants = selectedIndividualOption?.variants || []
                       const hasVariants = optionVariants.length > 0
 
+                      // Multi-panel indicator
+                      const isMultiPanelMode = addComponentMode === 'multiple'
+
                       return (
-                        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-4">
+                        <div className={`p-4 rounded-lg border space-y-4 ${isMultiPanelMode ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
+                          {/* Multi-panel progress indicator */}
+                          {isMultiPanelMode && (
+                            <div className="flex items-center justify-between pb-2 border-b border-green-200 mb-2">
+                              <div className="flex items-center gap-2">
+                                <Copy className="w-4 h-4 text-green-600" />
+                                <span className="text-sm font-medium text-green-800">
+                                  Configure Panel {currentPanelIndex + 1} of {multiPanelCount}
+                                </span>
+                              </div>
+                              <div className="flex gap-1">
+                                {Array.from({ length: multiPanelCount }).map((_, idx) => (
+                                  <div
+                                    key={idx}
+                                    className={`w-2 h-2 rounded-full ${
+                                      idx < currentPanelIndex ? 'bg-green-500' :
+                                      idx === currentPanelIndex ? 'bg-green-600 ring-2 ring-green-300' :
+                                      'bg-green-200'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
-                              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-medium">
+                              <span className={`flex items-center justify-center w-6 h-6 rounded-full text-white text-sm font-medium ${isMultiPanelMode ? 'bg-green-600' : 'bg-blue-600'}`}>
                                 {(needsDirection ? 1 : 0) + (needsGlassType ? 1 : 0) + 2 + currentMandatoryOptionIndex}
                               </span>
                               <h4 className="text-sm font-semibold text-gray-800">{currentOption.category.name}</h4>
@@ -4167,7 +4755,16 @@ export default function ProjectDetailView() {
                           <div className="flex justify-between pt-2">
                             <button
                               type="button"
-                              onClick={goToPreviousStep}
+                              onClick={() => {
+                                // Multi-panel back button handling
+                                if (isMultiPanelMode && currentMandatoryOptionIndex === 0 && currentPanelIndex > 0) {
+                                  // Go back to previous panel's last option
+                                  setCurrentPanelIndex(currentPanelIndex - 1)
+                                  setCurrentMandatoryOptionIndex(allOptions.length - 1)
+                                } else {
+                                  goToPreviousStep()
+                                }
+                              }}
                               className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
                             >
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -4177,14 +4774,67 @@ export default function ProjectDetailView() {
                             </button>
                             <button
                               type="button"
-                              onClick={goToNextStep}
+                              onClick={() => {
+                                // Multi-panel next button handling
+                                if (isMultiPanelMode) {
+                                  if (currentMandatoryOptionIndex < allOptions.length - 1) {
+                                    // More options to configure for this panel
+                                    setCurrentMandatoryOptionIndex(currentMandatoryOptionIndex + 1)
+                                  } else {
+                                    // Finished all options for this panel
+                                    if (currentPanelIndex === 0) {
+                                      // First panel done - show Apply to Remaining dialog
+                                      setFirstPanelOptionsComplete(true)
+                                      setShowApplyToRemaining(true)
+                                    } else if (currentPanelIndex < multiPanelCount - 1) {
+                                      // Save current panel config and move to next panel
+                                      setMultiPanelConfigs(prev => {
+                                        const updated = [...prev]
+                                        updated[currentPanelIndex] = {
+                                          ...updated[currentPanelIndex],
+                                          glassType,
+                                          selectedOptions: { ...addComponentSelectedOptions },
+                                          optionQuantities: { ...addComponentOptionQuantities },
+                                          variantSelections: { ...variantSelections },
+                                          isConfigured: true
+                                        }
+                                        return updated
+                                      })
+                                      setCurrentPanelIndex(currentPanelIndex + 1)
+                                      setCurrentMandatoryOptionIndex(0)
+                                    } else {
+                                      // Last panel done - save and go to ready
+                                      setMultiPanelConfigs(prev => {
+                                        const updated = [...prev]
+                                        updated[currentPanelIndex] = {
+                                          ...updated[currentPanelIndex],
+                                          glassType,
+                                          selectedOptions: { ...addComponentSelectedOptions },
+                                          optionQuantities: { ...addComponentOptionQuantities },
+                                          variantSelections: { ...variantSelections },
+                                          isConfigured: true
+                                        }
+                                        return updated
+                                      })
+                                      setAddComponentStep('ready')
+                                    }
+                                  }
+                                } else {
+                                  goToNextStep()
+                                }
+                              }}
                               disabled={
                                 (currentOption.isMandatory && addComponentSelectedOptions[currentOption.category.id] === undefined) ||
                                 (hasVariants && !variantSelections[String(selectedOptionId)])
                               }
-                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                              className={`px-4 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${
+                                isMultiPanelMode ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+                              }`}
                             >
-                              {currentMandatoryOptionIndex < allOptions.length - 1 ? 'Next' : 'Finish'}
+                              {currentMandatoryOptionIndex < allOptions.length - 1 ? 'Next' :
+                                isMultiPanelMode && currentPanelIndex === 0 ? 'Continue' :
+                                isMultiPanelMode && currentPanelIndex < multiPanelCount - 1 ? `Panel ${currentPanelIndex + 2}` :
+                                'Finish'}
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                               </svg>
@@ -4194,8 +4844,58 @@ export default function ProjectDetailView() {
                       )
                     })()}
 
-                    {/* Ready step - show summary and Edit button */}
-                    {addComponentStep === 'ready' && (
+                    {/* Ready step - Multi-panel mode summary */}
+                    {addComponentStep === 'ready' && addComponentMode === 'multiple' && (
+                      <div className="p-4 bg-green-50 rounded-lg border border-green-200 space-y-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Copy className="w-5 h-5 text-green-600" />
+                          <h4 className="text-sm font-semibold text-green-800">Ready to Add {multiPanelCount} Panels</h4>
+                        </div>
+                        <div className="text-sm text-gray-700 space-y-2">
+                          <p>Product: <span className="font-medium">{selectedProduct?.name}</span></p>
+                          <p>Glass Type: <span className="font-medium">{glassType}</span></p>
+
+                          {/* Panel breakdown */}
+                          <div className="mt-3">
+                            <p className="font-medium mb-2">Panel Summary:</p>
+                            <div className="bg-white rounded-lg border border-green-200 divide-y divide-green-100 max-h-48 overflow-y-auto">
+                              {multiPanelConfigs.map((config, idx) => (
+                                <div key={idx} className="px-3 py-2">
+                                  <div className="flex justify-between items-center">
+                                    <span className="font-medium text-gray-800">Panel {idx + 1}</span>
+                                    <span className="text-gray-600 text-xs">
+                                      {config.width.toFixed(2)}" W × {config.height.toFixed(2)}" H
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex justify-start pt-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Go back to product step to restart
+                              setAddComponentStep('product')
+                              setCurrentPanelIndex(0)
+                              setCurrentMandatoryOptionIndex(0)
+                              setFirstPanelOptionsComplete(false)
+                              setShowApplyToRemaining(false)
+                            }}
+                            className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                            Edit
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Ready step - Single mode summary */}
+                    {addComponentStep === 'ready' && addComponentMode !== 'multiple' && (
                       <div className="p-4 bg-green-50 rounded-lg border border-green-200 space-y-3">
                         <div className="flex items-center gap-2 mb-2">
                           <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -4206,10 +4906,7 @@ export default function ProjectDetailView() {
                         <div className="text-sm text-gray-700 space-y-1">
                           <p>Product: <span className="font-medium">{selectedProduct?.name}</span></p>
                           {!isCornerProduct && !isFrameProduct && (
-                            <>
-                              <p>Size: <span className="font-medium">{componentWidth}" W × {componentHeight}" H</span></p>
-                              <p>Quantity: <span className="font-medium">{componentQuantity}</span></p>
-                            </>
+                            <p>Size: <span className="font-medium">{componentWidth}" W × {componentHeight}" H</span></p>
                           )}
                           {needsDirection && getCurrentDirection() && (
                             <p>Direction: <span className="font-medium">{getCurrentDirection()}</span></p>
@@ -4288,9 +4985,6 @@ export default function ProjectDetailView() {
                   setComponentWidth('')
                   setComponentHeight('')
                   setComponentQuantity('1')
-                  setWidthDivisor('1')
-                  setShowDivideSpace(false)
-                  setDivideProducts([null, null])
                   setComponentValidationErrors([])
                   setSwingDirection('')
                   setSlidingDirection('')
@@ -4303,14 +4997,32 @@ export default function ProjectDetailView() {
                   // Reset wizard state
                   setAddComponentStep('product')
                   setCurrentMandatoryOptionIndex(0)
+                  // Reset multi-panel state
+                  setAddComponentMode(null)
+                  setMultiPanelCount(2)
+                  setMultiPanelCountInput('2')
+                  setCurrentPanelIndex(0)
+                  setMultiPanelConfigs([])
+                  setFirstPanelOptionsComplete(false)
+                  setShowApplyToRemaining(false)
+                  setExcludedOptionsFromApply(new Set())
                 }}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
-                onClick={handleAddComponent}
+                onClick={addComponentMode === 'multiple' ? handleAddMultiplePanels : handleAddComponent}
                 disabled={(() => {
+                  // Multi-panel mode validation
+                  if (addComponentMode === 'multiple') {
+                    if (addComponentStep !== 'ready') return true
+                    if (multiPanelConfigs.length === 0) return true
+                    if (!multiPanelConfigs.every(c => c.width > 0 && c.height > 0)) return true
+                    return false
+                  }
+
+                  // Single mode validation (existing logic)
                   if (!selectedProductId) return true
                   const selectedProduct = products.find(p => p.id === selectedProductId)
                   const isCorner = selectedProduct?.productType === 'CORNER_90'
@@ -4338,9 +5050,13 @@ export default function ProjectDetailView() {
                          !quantityValue || quantityValue <= 0 ||
                          hasValidationErrors
                 })()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className={`px-4 py-2 text-white rounded-lg disabled:opacity-50 ${
+                  addComponentMode === 'multiple'
+                    ? 'bg-green-600 hover:bg-green-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
-                Add Component
+                {addComponentMode === 'multiple' ? `Add ${multiPanelCount} Panels` : 'Add Component'}
               </button>
             </div>
           </div>
@@ -5469,33 +6185,46 @@ export default function ProjectDetailView() {
               )}
             </div>
 
-            <div className="flex justify-end space-x-2 mt-6">
+            <div className="flex justify-between items-center mt-6">
               <button
                 onClick={() => {
                   setShowEditOpeningModal(false)
-                  setEditingOpeningId(null)
-                  setEditingOpeningName('')
-                  setEditingOpeningFinishColor('')
-                  setEditingOpeningRoughWidth('')
-                  setEditingOpeningRoughHeight('')
-                  setEditingOpeningIsFinished(false)
-                  setEditingOpeningType('THINWALL')
+                  handleShowDeleteModal(editingOpeningId!, editingOpeningName)
                 }}
                 disabled={isUpdatingOpening}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                className="px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50 flex items-center"
               >
-                Cancel
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Opening
               </button>
-              <button
-                onClick={handleUpdateOpening}
-                disabled={isUpdatingOpening || !editingOpeningName.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-              >
-                {isUpdatingOpening && (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                )}
-                {isUpdatingOpening ? 'Updating...' : 'Update Opening'}
-              </button>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => {
+                    setShowEditOpeningModal(false)
+                    setEditingOpeningId(null)
+                    setEditingOpeningName('')
+                    setEditingOpeningFinishColor('')
+                    setEditingOpeningRoughWidth('')
+                    setEditingOpeningRoughHeight('')
+                    setEditingOpeningIsFinished(false)
+                    setEditingOpeningType('THINWALL')
+                  }}
+                  disabled={isUpdatingOpening}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpdateOpening}
+                  disabled={isUpdatingOpening || !editingOpeningName.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {isUpdatingOpening && (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  )}
+                  {isUpdatingOpening ? 'Updating...' : 'Update Opening'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -5535,10 +6264,59 @@ export default function ProjectDetailView() {
             <div className="space-y-4 mb-6">
               <h4 className="text-sm font-medium text-gray-700">Width Adjustment Method</h4>
 
-              {/* Equal Distribution Option */}
+              {/* Warning if components exceed opening */}
+              {sizeRedistributionData.totalComponentWidth > sizeRedistributionData.newWidth + 0.001 && (
+                <div className="bg-amber-50 border border-amber-300 rounded-lg p-3">
+                  <p className="text-sm text-amber-800 font-medium">
+                    Components ({sizeRedistributionData.totalComponentWidth.toFixed(3)}") exceed the new opening width ({sizeRedistributionData.newWidth.toFixed(3)}").
+                  </p>
+                  <p className="text-sm text-amber-700 mt-1">
+                    You must select which components to reduce in size.
+                  </p>
+                </div>
+              )}
+
+              {/* Do Nothing Option */}
+              {(() => {
+                const componentsExceedOpening = sizeRedistributionData.totalComponentWidth > sizeRedistributionData.newWidth + 0.001
+                return (
+                  <label
+                    className={`flex items-start p-4 border-2 rounded-lg transition-all ${
+                      componentsExceedOpening
+                        ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-60'
+                        : redistributionMethod === 'none'
+                          ? 'border-blue-500 bg-blue-50 cursor-pointer'
+                          : 'border-gray-200 hover:border-gray-300 cursor-pointer'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="redistribution"
+                      value="none"
+                      checked={redistributionMethod === 'none'}
+                      onChange={() => !componentsExceedOpening && setRedistributionMethod('none')}
+                      disabled={componentsExceedOpening}
+                      className="mt-1 mr-3"
+                    />
+                    <div className="flex-1">
+                      <div className={`font-medium ${componentsExceedOpening ? 'text-gray-500' : 'text-gray-900'}`}>
+                        Do Nothing
+                      </div>
+                      <p className={`text-sm mt-1 ${componentsExceedOpening ? 'text-gray-400' : 'text-gray-600'}`}>
+                        {componentsExceedOpening
+                          ? 'Not available - components would not fit in the opening.'
+                          : 'Keep component widths as-is. This may leave a gap in the opening.'
+                        }
+                      </p>
+                    </div>
+                  </label>
+                )
+              })()}
+
+              {/* Adjust Selected Components Option */}
               <label
                 className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                  redistributionMethod === 'equal'
+                  redistributionMethod === 'selected'
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
@@ -5546,78 +6324,78 @@ export default function ProjectDetailView() {
                 <input
                   type="radio"
                   name="redistribution"
-                  value="equal"
-                  checked={redistributionMethod === 'equal'}
-                  onChange={() => setRedistributionMethod('equal')}
+                  value="selected"
+                  checked={redistributionMethod === 'selected'}
+                  onChange={() => setRedistributionMethod('selected')}
                   className="mt-1 mr-3"
                 />
                 <div className="flex-1">
-                  <div className="font-medium text-gray-900">Split Equally</div>
+                  <div className="font-medium text-gray-900">Adjust Selected Components</div>
                   <p className="text-sm text-gray-600 mt-1">
-                    Distribute the {Math.abs(sizeRedistributionData.widthDiff).toFixed(3)}" width change equally across all {sizeRedistributionData.panels.length} component{sizeRedistributionData.panels.length > 1 ? 's' : ''}.
+                    The {sizeRedistributionData.widthDiff >= 0 ? 'added' : 'reduced'} {Math.abs(sizeRedistributionData.widthDiff).toFixed(3)}" will be distributed evenly between the selected components.
                   </p>
-                  {redistributionMethod === 'equal' && sizeRedistributionData.panels.length > 0 && (
-                    <div className="mt-3 p-3 bg-white rounded border border-blue-200">
-                      <div className="text-xs font-medium text-gray-500 mb-2">Preview:</div>
-                      <div className="space-y-1">
-                        {sizeRedistributionData.panels.map((panel, idx) => {
-                          const newWidth = panel.width + (sizeRedistributionData.widthDiff / sizeRedistributionData.panels.length)
+                  {redistributionMethod === 'selected' && (
+                    <div className="mt-3 space-y-3">
+                      {/* Component Checkboxes */}
+                      <div className="space-y-2">
+                        {sizeRedistributionData.panels.map((panel) => {
+                          const isChecked = selectedPanelsForResize.includes(panel.id)
                           return (
-                            <div key={panel.id} className="flex justify-between text-sm">
-                              <span className="text-gray-700">{panel.name}</span>
-                              <span className="text-gray-500">
-                                {panel.width.toFixed(3)}" → <span className="font-medium text-gray-900">{newWidth.toFixed(3)}"</span>
-                              </span>
-                            </div>
+                            <label
+                              key={panel.id}
+                              className={`flex items-center p-3 border rounded-lg cursor-pointer transition-all ${
+                                isChecked
+                                  ? 'border-blue-400 bg-blue-50'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedPanelsForResize([...selectedPanelsForResize, panel.id])
+                                  } else {
+                                    setSelectedPanelsForResize(selectedPanelsForResize.filter(id => id !== panel.id))
+                                  }
+                                }}
+                                className="mr-3 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                              <span className="flex-1 text-sm text-gray-900">{panel.name}</span>
+                              <span className="text-sm text-gray-500">{panel.width.toFixed(3)}" wide</span>
+                            </label>
                           )
                         })}
                       </div>
-                    </div>
-                  )}
-                </div>
-              </label>
-
-              {/* Single Panel Option */}
-              <label
-                className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                  redistributionMethod === 'single'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="redistribution"
-                  value="single"
-                  checked={redistributionMethod === 'single'}
-                  onChange={() => setRedistributionMethod('single')}
-                  className="mt-1 mr-3"
-                />
-                <div className="flex-1">
-                  <div className="font-medium text-gray-900">Adjust Single Component</div>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Apply the entire width change to one specific component.
-                  </p>
-                  {redistributionMethod === 'single' && (
-                    <div className="mt-3 space-y-3">
-                      <select
-                        value={selectedPanelForResize || ''}
-                        onChange={(e) => setSelectedPanelForResize(parseInt(e.target.value))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-                      >
-                        {sizeRedistributionData.panels.map((panel) => (
-                          <option key={panel.id} value={panel.id}>
-                            {panel.name} (currently {panel.width.toFixed(3)}" wide)
-                          </option>
-                        ))}
-                      </select>
-                      {selectedPanelForResize && (
+                      {/* Select All / Clear All buttons */}
+                      <div className="flex space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPanelsForResize(sizeRedistributionData.panels.map(p => p.id))}
+                          className="text-xs text-blue-600 hover:text-blue-800"
+                        >
+                          Select All
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPanelsForResize([])}
+                          className="text-xs text-blue-600 hover:text-blue-800"
+                        >
+                          Clear All
+                        </button>
+                      </div>
+                      {/* Preview */}
+                      {selectedPanelsForResize.length > 0 && (
                         <div className="p-3 bg-white rounded border border-blue-200">
                           <div className="text-xs font-medium text-gray-500 mb-2">Preview:</div>
                           <div className="space-y-1">
                             {sizeRedistributionData.panels.map((panel) => {
-                              const isSelected = panel.id === selectedPanelForResize
-                              const newWidth = isSelected ? panel.width + sizeRedistributionData.widthDiff : panel.width
+                              const isSelected = selectedPanelsForResize.includes(panel.id)
+                              const widthChange = isSelected
+                                ? sizeRedistributionData.widthDiff / selectedPanelsForResize.length
+                                : 0
+                              const newWidth = panel.width + widthChange
                               return (
                                 <div key={panel.id} className={`flex justify-between text-sm ${isSelected ? 'font-medium' : ''}`}>
                                   <span className={isSelected ? 'text-blue-700' : 'text-gray-700'}>
@@ -5653,8 +6431,8 @@ export default function ProjectDetailView() {
                 onClick={() => {
                   setShowSizeRedistributionModal(false)
                   setSizeRedistributionData(null)
-                  setRedistributionMethod('equal')
-                  setSelectedPanelForResize(null)
+                  setRedistributionMethod('none')
+                  setSelectedPanelsForResize([])
                 }}
                 disabled={isUpdatingOpening}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
@@ -5663,7 +6441,7 @@ export default function ProjectDetailView() {
               </button>
               <button
                 onClick={handleApplyRedistribution}
-                disabled={isUpdatingOpening || (redistributionMethod === 'single' && !selectedPanelForResize)}
+                disabled={isUpdatingOpening || (redistributionMethod === 'selected' && selectedPanelsForResize.length === 0)}
                 className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center font-medium"
               >
                 {isUpdatingOpening && (

@@ -1033,11 +1033,17 @@ function CategoriesTab({ categories, onSelectCategory, onRefresh }: {
     }
   }
 
-  async function handleDeleteCategory(categoryId: number, categoryName: string) {
-    if (!confirm(`Are you sure you want to delete the category "${categoryName}"? This will also delete all its options.`)) return
+  async function handleDeleteCategory(categoryId: number, categoryName: string, forceUnlink: boolean = false) {
+    if (!forceUnlink) {
+      if (!confirm(`Are you sure you want to delete the category "${categoryName}"? This will also delete all its options.`)) return
+    }
 
     try {
-      const response = await fetch(`/api/categories/${categoryId}`, {
+      const url = forceUnlink
+        ? `/api/categories/${categoryId}?forceUnlink=true`
+        : `/api/categories/${categoryId}`
+
+      const response = await fetch(url, {
         method: 'DELETE'
       })
 
@@ -1046,7 +1052,22 @@ function CategoriesTab({ categories, onSelectCategory, onRefresh }: {
         alert('Category deleted successfully!')
       } else {
         const errorData = await response.json()
-        alert(errorData.error || 'Failed to delete category')
+
+        // Check if the error is about linked products
+        if (errorData.linkedCount && errorData.linkedCount > 0) {
+          const shouldForceDelete = confirm(
+            `This category is linked to ${errorData.linkedCount} product(s): ${errorData.linkedProducts}\n\n` +
+            `Would you like to unlink from all products and delete the category anyway?\n\n` +
+            `Click OK to "Unlink & Delete" or Cancel to keep the category.`
+          )
+
+          if (shouldForceDelete) {
+            // Retry with forceUnlink
+            handleDeleteCategory(categoryId, categoryName, true)
+          }
+        } else {
+          alert(errorData.error || 'Failed to delete category')
+        }
       }
     } catch (error) {
       console.error('Error deleting category:', error)

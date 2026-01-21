@@ -118,17 +118,34 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const { id } = await params
     const categoryId = parseInt(id)
+    const { searchParams } = new URL(request.url)
+    const forceUnlink = searchParams.get('forceUnlink') === 'true'
 
     // Check if category has linked products
     const productLinks = await prisma.productSubOption.findMany({
-      where: { categoryId: categoryId }
+      where: { categoryId: categoryId },
+      include: {
+        product: { select: { name: true } }
+      }
     })
 
-    if (productLinks.length > 0) {
+    if (productLinks.length > 0 && !forceUnlink) {
+      const productNames = productLinks.map(link => link.product.name).join(', ')
       return NextResponse.json(
-        { error: 'Cannot delete category that is linked to products. Unlink from products first.' },
+        {
+          error: 'Cannot delete category that is linked to products.',
+          linkedProducts: productNames,
+          linkedCount: productLinks.length
+        },
         { status: 400 }
       )
+    }
+
+    // If forceUnlink is true, remove all product links first
+    if (productLinks.length > 0 && forceUnlink) {
+      await prisma.productSubOption.deleteMany({
+        where: { categoryId: categoryId }
+      })
     }
 
     // Delete the category (individual options will be deleted due to cascade)

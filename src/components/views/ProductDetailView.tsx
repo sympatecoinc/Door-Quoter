@@ -19,6 +19,17 @@ function debounce(func: (...args: any[]) => void, wait: number) {
   }
 }
 
+// Helper function to generate direction abbreviation (first letter of each word)
+function getDirectionAbbreviation(name: string): string {
+  if (!name || name.trim() === '') return ''
+  return name
+    .replace(/-/g, ' ')  // Treat hyphens as spaces
+    .split(' ')
+    .filter(word => word.length > 0)
+    .map(word => word.charAt(0).toUpperCase())
+    .join('')
+}
+
 // Helper function to render formula with variable highlighting
 function renderFormulaWithHighlights(formula: string) {
   if (!formula) return null
@@ -3746,6 +3757,17 @@ export default function ProductDetailView({
                   <p className="text-xs text-gray-500 mt-1">
                     This name will appear as a direction option when adding the product to an opening.
                   </p>
+                  {newPlanViewName.trim() && (
+                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-xs text-blue-700">
+                        <span className="font-medium">BOM Abbreviation:</span>{' '}
+                        <span className="font-mono font-bold text-blue-900">{getDirectionAbbreviation(newPlanViewName)}</span>
+                      </p>
+                      <p className="text-xs text-blue-600 mt-1">
+                        Parts with &quot;Add direction to part number&quot; enabled will append this code (e.g., RM-PUCK-BRKT-{getDirectionAbbreviation(newPlanViewName)})
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -3942,6 +3964,17 @@ export default function ProductDetailView({
                     placeholder="e.g., Right In, Left Out"
                     required
                   />
+                  {editPlanViewName.trim() && (
+                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-xs text-blue-700">
+                        <span className="font-medium">BOM Abbreviation:</span>{' '}
+                        <span className="font-mono font-bold text-blue-900">{getDirectionAbbreviation(editPlanViewName)}</span>
+                      </p>
+                      <p className="text-xs text-blue-600 mt-1">
+                        Parts with &quot;Add direction to part number&quot; enabled will append this code
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
