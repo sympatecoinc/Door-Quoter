@@ -40,6 +40,7 @@ interface Opening {
   finishedHeight?: number
   isFinishedOpening?: boolean
   openingType?: 'THINWALL' | 'FRAMED'
+  toleranceProductId?: number | null  // If set, tolerances have been applied to this opening
   price: number
   multiplier: number
   priceCalculatedAt?: string | null
@@ -136,7 +137,7 @@ function smartIncrementName(baseName: string, index: number): string {
 }
 
 export default function ProjectDetailView() {
-  const { selectedProjectId, setSelectedProjectId, selectedCustomerId, customerDetailView, setCurrentMenu, autoOpenAddOpening, setAutoOpenAddOpening, cameFromSalesDashboard, setCameFromSalesDashboard } = useAppStore()
+  const { selectedProjectId, setSelectedProjectId, selectedCustomerId, customerDetailView, setCurrentMenu, autoOpenAddOpening, setAutoOpenAddOpening, cameFromSalesDashboard, setCameFromSalesDashboard, salesLeadId, setShowSalesLeadView } = useAppStore()
   const { toasts, removeToast, showSuccess, showError } = useToast()
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
@@ -301,7 +302,8 @@ export default function ProjectDetailView() {
   const TOLERANCE_ELIGIBLE_TYPES = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL']
 
   // Helper to calculate effective finished dimensions for an opening
-  // Uses existing finishedWidth/finishedHeight if set, otherwise calculates from rough dimensions and product tolerances
+  // Uses existing finishedWidth/finishedHeight if tolerances have been applied,
+  // otherwise calculates from rough dimensions and selected product tolerances
   function getEffectiveFinishedDimensions(
     opening: Opening | undefined,
     selectedProduct: any | undefined
@@ -310,15 +312,16 @@ export default function ProjectDetailView() {
       return { width: null, height: null }
     }
 
-    // If already has finished dimensions, use them
-    if (opening.finishedWidth && opening.finishedHeight) {
+    // If tolerances have already been applied to this opening (toleranceProductId is set),
+    // use the stored finished dimensions
+    if (opening.toleranceProductId && opening.finishedWidth && opening.finishedHeight) {
       return { width: opening.finishedWidth, height: opening.finishedHeight }
     }
 
-    // For finished openings without calculated dimensions yet
+    // For finished openings where tolerances haven't been applied yet
     // (first tolerance-eligible product being added)
     if (opening.isFinishedOpening && opening.roughWidth && opening.roughHeight) {
-      // If a tolerance-eligible product is selected, use its tolerances
+      // If a tolerance-eligible product is selected, use its tolerances to calculate effective dimensions
       if (selectedProduct && TOLERANCE_ELIGIBLE_TYPES.includes(selectedProduct.productType)) {
         const widthTolerance = selectedProduct.widthTolerance || 0
         const heightTolerance = selectedProduct.heightTolerance || 0
@@ -337,10 +340,14 @@ export default function ProjectDetailView() {
   // Handle back navigation
   const handleBack = () => {
     setSelectedProjectId(null)
-    // If we came from sales dashboard, go back to dashboard
+    // If we came from sales dashboard, go back to dashboard and reopen the sales lead view
     if (cameFromSalesDashboard) {
       setCameFromSalesDashboard(false)
       setCurrentMenu('dashboard')
+      // Reopen the sales lead view for the project we were editing
+      if (salesLeadId) {
+        setShowSalesLeadView(true)
+      }
     }
     // If we came from customer detail view, go back to dashboard (which shows customer detail)
     else if (selectedCustomerId && customerDetailView) {
@@ -393,6 +400,28 @@ export default function ProjectDetailView() {
     { isOpen: showBOM, onClose: () => setShowBOM(false) },
     { isOpen: showEditModal, isBlocked: saving, onClose: () => setShowEditModal(false) },
   ])
+
+  // Click outside to dismiss pending delete confirmation
+  useEffect(() => {
+    if (pendingDeletePanelId === null) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      // Don't dismiss if clicking on a confirm button
+      if (target.closest('[data-delete-confirm]')) return
+      setPendingDeletePanelId(null)
+    }
+
+    // Small delay to avoid dismissing immediately on the same click
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside)
+    }, 0)
+
+    return () => {
+      clearTimeout(timeoutId)
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [pendingDeletePanelId])
 
   // Cmd+N to add new opening
   const anyModalOpen = showAddOpening || showAddComponent || showEditModal || showBOM || showDrawingViewer ||
@@ -1532,8 +1561,9 @@ export default function ProjectDetailView() {
         setComponentHeight(existingHeight.toString())
       } else {
         // First panel in opening (or only Frame panels)
-        // If finished opening with set height, auto-populate with finished height
-        if (opening?.isFinishedOpening && opening.finishedHeight) {
+        // Only auto-populate height if tolerances have already been applied to the opening
+        // If tolerances haven't been applied yet, leave blank - user should use "Auto" after selecting product
+        if (opening?.isFinishedOpening && opening.finishedHeight && opening.toleranceProductId) {
           setComponentHeight(opening.finishedHeight.toString())
         } else {
           setComponentHeight('')
@@ -2880,15 +2910,10 @@ export default function ProjectDetailView() {
       </div>
 
       {/* Openings Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">Openings</h2>
-        </div>
-
-        {project.openings.length > 0 ? (
+      {project.openings.length > 0 ? (
           <div className="space-y-4">
             {project.openings.map((opening) => (
-              <div key={opening.id} className="border border-gray-200 rounded-lg p-4">
+              <div key={opening.id} className="bg-white border border-gray-200 rounded-lg p-4">
                 <div className="mb-3">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-3">
@@ -3068,11 +3093,16 @@ export default function ProjectDetailView() {
                                 })()}
                               </div>
                             </div>
-                            <div className="relative flex items-center justify-end" style={{ minWidth: pendingDeletePanelId === panel.id ? '54px' : '20px', transition: 'min-width 150ms' }}>
+                            <div
+                              className="relative"
+                              style={{ minWidth: pendingDeletePanelId === panel.id ? '54px' : '20px', transition: 'min-width 200ms ease-out' }}
+                              data-delete-confirm
+                            >
                               <button
                                 onClick={() => setPendingDeletePanelId(panel.id)}
-                                className={`w-5 h-5 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded-full transition-all duration-150 ${
-                                  pendingDeletePanelId === panel.id ? 'absolute right-full mr-1 opacity-0 scale-75' : 'opacity-100 scale-100'
+                                data-delete-confirm
+                                className={`absolute top-0 right-0 w-5 h-5 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded-full transition-all duration-200 ease-out ${
+                                  pendingDeletePanelId === panel.id ? 'opacity-0 scale-75 pointer-events-none' : 'opacity-100 scale-100'
                                 }`}
                                 title="Delete Component"
                               >
@@ -3081,8 +3111,9 @@ export default function ProjectDetailView() {
                               <button
                                 onClick={() => confirmInlineDeleteComponent(panel.id)}
                                 disabled={isDeletingComponent}
-                                className={`px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700 hover:bg-red-200 transition-all duration-150 whitespace-nowrap ${
-                                  pendingDeletePanelId === panel.id ? 'opacity-100 scale-100' : 'opacity-0 scale-75 absolute pointer-events-none'
+                                data-delete-confirm
+                                className={`absolute top-0 right-0 px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700 hover:bg-red-200 transition-all duration-200 ease-out whitespace-nowrap ${
+                                  pendingDeletePanelId === panel.id ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'
                                 }`}
                               >
                                 {isDeletingComponent ? '...' : 'Confirm'}
@@ -3105,12 +3136,11 @@ export default function ProjectDetailView() {
               </div>
             ))}
           </div>
-        ) : (
-          <div className="text-center py-12 text-gray-500">
-            No openings added yet. Create your first opening to get started!
-          </div>
-        )}
-      </div>
+      ) : (
+        <div className="text-center py-12 text-gray-500">
+          No openings added yet. Create your first opening to get started!
+        </div>
+      )}
 
       {/* Add Opening Modal */}
       {showAddOpening && (
@@ -3423,9 +3453,63 @@ export default function ProjectDetailView() {
                         setVariantSelections({})
                       }
 
-                      // Pre-fill width from product defaultWidth if available
-                      if (product?.defaultWidth && product.productType !== 'CORNER_90' && product.productType !== 'FRAME') {
-                        setComponentWidth(product.defaultWidth.toString())
+                      // Auto-calculate width and height based on opening dimensions and product tolerances
+                      if (product && product.productType !== 'CORNER_90' && product.productType !== 'FRAME') {
+                        const opening = project?.openings.find(o => o.id === selectedOpeningId)
+
+                        // Calculate effective dimensions with product tolerances
+                        const effectiveDims = getEffectiveFinishedDimensions(opening, product)
+
+                        // Get existing panels to calculate remaining space
+                        const nonFramePanels = opening?.panels?.filter(p =>
+                          p.componentInstance?.product?.productType !== 'FRAME' &&
+                          p.componentInstance?.product?.productType !== 'CORNER_90'
+                        ) || []
+
+                        // Calculate remaining width
+                        const usedWidth = nonFramePanels.reduce((sum, p) => sum + (p.width || 0), 0)
+                        const remainingWidth = (effectiveDims.width || 0) - usedWidth
+
+                        // Auto-calculate width: use remaining space or defaultWidth, whichever is smaller
+                        if (opening?.isFinishedOpening && effectiveDims.width) {
+                          let finalWidth = remainingWidth
+                          // If product has defaultWidth and it's smaller than remaining, use defaultWidth
+                          if (product.defaultWidth && product.defaultWidth < remainingWidth) {
+                            finalWidth = product.defaultWidth
+                          }
+                          // Apply product maxWidth constraint
+                          if (product.maxWidth && finalWidth > product.maxWidth) {
+                            finalWidth = product.maxWidth
+                          }
+                          // Apply product minWidth constraint
+                          if (product.minWidth && finalWidth < product.minWidth) {
+                            finalWidth = product.minWidth
+                          }
+                          if (finalWidth > 0) {
+                            setComponentWidth(finalWidth.toString())
+                          }
+                        } else if (product.defaultWidth) {
+                          // Non-finished opening: just use defaultWidth
+                          setComponentWidth(product.defaultWidth.toString())
+                        }
+
+                        // Auto-calculate height
+                        if (opening?.isFinishedOpening && opening.roughHeight) {
+                          if (nonFramePanels.length > 0) {
+                            // Use existing panel height for consistency
+                            setComponentHeight(nonFramePanels[0].height.toString())
+                          } else if (effectiveDims.height) {
+                            // First panel - use effective height with product tolerances
+                            let finalHeight = effectiveDims.height
+                            if (product.maxHeight && finalHeight > product.maxHeight) {
+                              finalHeight = product.maxHeight
+                            }
+                            if (product.minHeight && finalHeight < product.minHeight) {
+                              finalHeight = product.minHeight
+                            }
+                            setComponentHeight(finalHeight.toString())
+                          }
+                        }
                       }
 
                       // Reset direction selections when product changes (no default selection)
@@ -3679,20 +3763,43 @@ export default function ProjectDetailView() {
                           onClick={() => {
                             // Initialize multi-panel configs
                             const opening = project?.openings.find(o => o.id === selectedOpeningId)
+                            const selectedProduct = products.find(p => p.id === selectedProductId)
                             const existingNonFramePanels = opening?.panels.filter(p =>
                               p.componentInstance?.product?.productType !== 'CORNER_90' &&
                               p.componentInstance?.product?.productType !== 'FRAME'
                             ) || []
+
+                            // Calculate effective dimensions with product tolerances
+                            const effectiveDims = getEffectiveFinishedDimensions(opening, selectedProduct)
+
                             const usedW = existingNonFramePanels.reduce((sum, p) => sum + (p.width || 0), 0)
-                            const remainingW = (opening?.finishedWidth || 0) - usedW
-                            const wPerPanel = multiPanelCount > 0 ? remainingW / multiPanelCount : 0
-                            const defaultHeight = existingNonFramePanels.length > 0
+                            const remainingW = (effectiveDims.width || 0) - usedW
+                            let wPerPanel = multiPanelCount > 0 ? remainingW / multiPanelCount : 0
+
+                            // Apply product width constraints to per-panel width
+                            if (selectedProduct?.maxWidth && wPerPanel > selectedProduct.maxWidth) {
+                              wPerPanel = selectedProduct.maxWidth
+                            }
+                            if (selectedProduct?.minWidth && wPerPanel < selectedProduct.minWidth) {
+                              wPerPanel = selectedProduct.minWidth
+                            }
+
+                            // Calculate height: use existing panel height or effective finished height with tolerances
+                            let defaultHeight = existingNonFramePanels.length > 0
                               ? Math.max(...existingNonFramePanels.map(p => p.height || 0))
-                              : (opening?.finishedHeight || 0)
+                              : (effectiveDims.height || 0)
+
+                            // Apply product height constraints
+                            if (selectedProduct?.maxHeight && defaultHeight > selectedProduct.maxHeight) {
+                              defaultHeight = selectedProduct.maxHeight
+                            }
+                            if (selectedProduct?.minHeight && defaultHeight < selectedProduct.minHeight) {
+                              defaultHeight = selectedProduct.minHeight
+                            }
 
                             const configs = Array.from({ length: multiPanelCount }, (_, i) => ({
                               index: i,
-                              width: opening?.isFinishedOpening && opening?.finishedWidth ? wPerPanel : 0,
+                              width: opening?.isFinishedOpening && effectiveDims.width ? wPerPanel : 0,
                               height: defaultHeight,
                               glassType: '',
                               selectedOptions: { ...addComponentSelectedOptions },
@@ -6192,10 +6299,10 @@ export default function ProjectDetailView() {
                   handleShowDeleteModal(editingOpeningId!, editingOpeningName)
                 }}
                 disabled={isUpdatingOpening}
-                className="px-4 py-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50 flex items-center"
+                className="p-2 text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                title="Delete Opening"
               >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete Opening
+                <Trash2 className="w-5 h-5" />
               </button>
               <div className="flex space-x-2">
                 <button
