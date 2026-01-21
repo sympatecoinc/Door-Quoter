@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-
-// Statuses where pricing should be recalculated on quote load
-// These are "pre-quote-sent" statuses where changes can still be made
-const RECALCULATE_PRICING_STATUSES = ['STAGING', 'APPROVED', 'REVISE']
+import { calculateOpeningCosts, getGlobalMaterialPricePerLb } from '@/lib/pricing-calculator'
 
 // Helper to convert panel directions to abbreviations
 function convertDirectionToAbbreviation(direction: string, panelType: string): string {
@@ -165,47 +162,42 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       )
     }
 
-    // Recalculate pricing for all openings if project is in a pre-quote-sent status
-    // This ensures pricing rules changes are reflected when viewing the quote
-    if (RECALCULATE_PRICING_STATUSES.includes(project.status)) {
-      // Get the base URL for internal API calls
-      const protocol = request.headers.get('x-forwarded-proto') || 'http'
-      const host = request.headers.get('host') || 'localhost:3000'
-      const baseUrl = `${protocol}://${host}`
+    // Always calculate pricing fresh using the shared pricing calculator
+    // This ensures consistency between quote display and debug output
+    const globalMaterialPricePerLb = await getGlobalMaterialPricePerLb()
 
-      // Forward cookies from the original request for authentication
-      const cookieHeader = request.headers.get('cookie') || ''
-
-      // Recalculate price for each opening
-      const recalculationPromises = project.openings.map(async (opening) => {
-        try {
-          const response = await fetch(`${baseUrl}/api/openings/${opening.id}/calculate-price`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Cookie': cookieHeader
+    // Calculate costs for each opening directly (no internal API calls)
+    const openingCostBreakdowns = new Map<number, Awaited<ReturnType<typeof calculateOpeningCosts>>>()
+    for (const opening of project.openings) {
+      try {
+        const costBreakdown = await calculateOpeningCosts(
+          {
+            id: opening.id,
+            finishColor: opening.finishColor,
+            panels: opening.panels,
+            project: {
+              excludedPartNumbers: project.excludedPartNumbers,
+              extrusionCostingMethod: project.extrusionCostingMethod,
+              pricingMode: project.pricingMode
             }
-          })
-          if (response.ok) {
-            const data = await response.json()
-            // Update the opening object with the new price and cost breakdown for use in this request
-            ;(opening as any).price = data.calculatedPrice
-            ;(opening as any).standardOptionCost = data.breakdown?.totalStandardOptionCost || 0
-            ;(opening as any).hybridRemainingCost = data.breakdown?.totalHybridRemainingCost || 0
-            ;(opening as any).extrusionCost = data.breakdown?.totalExtrusionCost || 0
-            ;(opening as any).hardwareCost = data.breakdown?.totalHardwareCost || 0
-            ;(opening as any).glassCost = data.breakdown?.totalGlassCost || 0
-            ;(opening as any).packagingCost = data.breakdown?.totalPackagingCost || 0
-            ;(opening as any).otherCost = data.breakdown?.totalOtherCost || 0
-          } else {
-            console.error(`Failed to recalculate price for opening ${opening.id}: ${response.status}`)
-          }
-        } catch (error) {
-          console.error(`Error recalculating price for opening ${opening.id}:`, error)
-        }
-      })
+          },
+          globalMaterialPricePerLb
+        )
+        openingCostBreakdowns.set(opening.id, costBreakdown)
 
-      await Promise.all(recalculationPromises)
+        // Update the opening object with calculated costs for use in this request
+        ;(opening as any).price = costBreakdown.totalPrice
+        ;(opening as any).standardOptionCost = costBreakdown.totalStandardOptionCost
+        ;(opening as any).hybridRemainingCost = costBreakdown.totalHybridRemainingCost
+        ;(opening as any).extrusionCost = costBreakdown.totalExtrusionCost
+        ;(opening as any).hardwareCost = costBreakdown.totalHardwareCost
+        ;(opening as any).glassCost = costBreakdown.totalGlassCost
+        ;(opening as any).packagingCost = costBreakdown.totalPackagingCost
+        ;(opening as any).otherCost = costBreakdown.totalOtherCost
+      } catch (error) {
+        console.error(`Error calculating costs for opening ${opening.id}:`, error)
+        // Use stored values as fallback if calculation fails
+      }
     }
 
     // Store pricing mode for later use in component-specific markup calculations
