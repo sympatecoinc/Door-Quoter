@@ -1,3 +1,7 @@
+---
+allowed-tools: Bash
+---
+
 # Kill Dev Ports
 
 Kill all processes running on ports 3000-3010.

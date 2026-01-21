@@ -1,3 +1,7 @@
+---
+allowed-tools: Bash, Read, Glob, Grep
+---
+
 # Database Sync - Staging Only
 
 Synchronize database schema from local dev to the staging Cloud SQL database.

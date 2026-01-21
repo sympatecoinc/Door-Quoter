@@ -149,56 +149,17 @@ export async function POST(request: NextRequest) {
       openingData.roughHeight = finalRoughHeight
     }
 
-    // Calculate finished dimensions for finished openings
-    if (isFinishedOpening && finalRoughWidth !== null && finalRoughHeight !== null) {
-      // Get tolerances - use overrides if provided, otherwise fetch defaults
-      let widthTol = widthToleranceTotal !== undefined && widthToleranceTotal !== null
-        ? parseFloat(widthToleranceTotal)
-        : null
-      let heightTol = heightToleranceTotal !== undefined && heightToleranceTotal !== null
-        ? parseFloat(heightToleranceTotal)
-        : null
-
-      // If no overrides, get defaults based on opening type
-      if (widthTol === null || heightTol === null) {
-        const toleranceSettings = await prisma.toleranceSettings.findFirst({
-          where: { name: 'default' }
-        })
-
-        const defaults = toleranceSettings || {
-          thinwallWidthTolerance: 1.0,
-          thinwallHeightTolerance: 1.5,
-          framedWidthTolerance: 0.5,
-          framedHeightTolerance: 0.75
-        }
-
-        if (widthTol === null) {
-          widthTol = openingType === 'FRAMED'
-            ? defaults.framedWidthTolerance
-            : defaults.thinwallWidthTolerance
-        }
-        if (heightTol === null) {
-          heightTol = openingType === 'FRAMED'
-            ? defaults.framedHeightTolerance
-            : defaults.thinwallHeightTolerance
-        }
-      }
-
-      // Calculate finished dimensions (rough - tolerance)
-      openingData.finishedWidth = finalRoughWidth - widthTol
-      openingData.finishedHeight = finalRoughHeight - heightTol
-    } else {
-      // Non-finished opening: use provided values or copy from rough
-      if (finishedWidth && finishedWidth !== '') {
-        openingData.finishedWidth = parseFloat(finishedWidth)
-      } else if (finalRoughWidth !== null) {
-        openingData.finishedWidth = finalRoughWidth
-      }
-      if (finishedHeight && finishedHeight !== '') {
-        openingData.finishedHeight = parseFloat(finishedHeight)
-      } else if (finalRoughHeight !== null) {
-        openingData.finishedHeight = finalRoughHeight
-      }
+    // Set finished dimensions - use provided values or copy from rough
+    // Tolerances will be applied when the first component is added to the opening
+    if (finishedWidth && finishedWidth !== '') {
+      openingData.finishedWidth = parseFloat(finishedWidth)
+    } else if (finalRoughWidth !== null) {
+      openingData.finishedWidth = finalRoughWidth
+    }
+    if (finishedHeight && finishedHeight !== '') {
+      openingData.finishedHeight = parseFloat(finishedHeight)
+    } else if (finalRoughHeight !== null) {
+      openingData.finishedHeight = finalRoughHeight
     }
 
     const opening = await prisma.opening.create({
