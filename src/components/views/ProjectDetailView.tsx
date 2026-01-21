@@ -2963,7 +2963,7 @@ export default function ProjectDetailView() {
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     {opening.roughWidth && opening.roughHeight && (
                       <span>
-{`Framed Opening Size: ${opening.roughWidth}" W × ${opening.roughHeight}" H (${opening.openingType === 'THINWALL' ? 'Finished' : 'Rough'})`}
+{`${opening.openingType === 'THINWALL' ? 'Finished' : 'Rough'} Opening Size: ${opening.roughWidth}" W × ${opening.roughHeight}" H`}
                       </span>
                     )}
                   </div>
@@ -3020,7 +3020,7 @@ export default function ProjectDetailView() {
                                     Directional corner - no dimensions
                                   </span>
                                 ) : (
-                                  `${panel.width}" W × ${panel.height}" H`
+                                  `${Number(panel.width).toFixed(3)}" W × ${Number(panel.height).toFixed(3)}" H`
                                 )}
                               </div>
                               {/* Glass Type Display */}
@@ -5932,7 +5932,7 @@ export default function ProjectDetailView() {
                                       <div>
                                         <h4 className="font-medium text-blue-900">{component.productName}</h4>
                                         <p className="text-sm text-blue-700">
-                                          {component.panelWidth}" W × {component.panelHeight}" H
+                                          {Number(component.panelWidth).toFixed(3)}" W × {Number(component.panelHeight).toFixed(3)}" H
                                         </p>
                                       </div>
                                       <div className="flex items-center space-x-3">

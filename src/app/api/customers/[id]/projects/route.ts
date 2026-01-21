@@ -33,13 +33,36 @@ export async function GET(
       include: {
         openings: {
           orderBy: { id: 'asc' },
-          select: { id: true, name: true, price: true }
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            roughWidth: true,
+            roughHeight: true,
+            _count: {
+              select: { panels: true }
+            }
+          }
         }
       },
       orderBy: { createdAt: 'desc' }
     })
 
-    return NextResponse.json(projects)
+    // Transform to include panel count at opening level
+    const projectsWithPanelCount = projects.map(project => ({
+      ...project,
+      openings: project.openings.map(opening => ({
+        id: opening.id,
+        name: opening.name,
+        price: opening.price,
+        roughWidth: opening.roughWidth,
+        roughHeight: opening.roughHeight,
+        panelCount: opening._count.panels
+      })),
+      totalPanelCount: project.openings.reduce((sum, o) => sum + o._count.panels, 0)
+    }))
+
+    return NextResponse.json(projectsWithPanelCount)
   } catch (error) {
     console.error('Error fetching customer projects:', error)
     return NextResponse.json(

@@ -8,7 +8,8 @@ const LEAD_STATUSES = [
   ProjectStatus.STAGING,
   ProjectStatus.APPROVED,
   ProjectStatus.REVISE,
-  ProjectStatus.QUOTE_SENT
+  ProjectStatus.QUOTE_SENT,
+  ProjectStatus.ARCHIVE
 ]
 
 // Project phase statuses (post-acceptance / "Won")

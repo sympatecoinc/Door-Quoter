@@ -102,6 +102,9 @@ export default function CategoryDetailView({
   const [newLinkedPartId, setNewLinkedPartId] = useState<number | null>(null)
   const [newLinkedPartQty, setNewLinkedPartQty] = useState('1')
   const [newLinkedPartVariantId, setNewLinkedPartVariantId] = useState<number | null>(null)
+  const [editingLinkedPartId, setEditingLinkedPartId] = useState<number | null>(null)
+  const [editingLinkedPartQty, setEditingLinkedPartQty] = useState('')
+  const [savingLinkedPart, setSavingLinkedPart] = useState(false)
 
   // Variant state
   const [variants, setVariants] = useState<OptionVariant[]>([])
@@ -629,6 +632,48 @@ export default function CategoryDetailView({
     }
   }
 
+  // Start editing a linked part
+  function startEditLinkedPart(lp: LinkedPart) {
+    setEditingLinkedPartId(lp.id)
+    setEditingLinkedPartQty(lp.quantity?.toString() || '1')
+  }
+
+  // Cancel editing
+  function cancelEditLinkedPart() {
+    setEditingLinkedPartId(null)
+    setEditingLinkedPartQty('')
+  }
+
+  // Save edited linked part
+  async function handleUpdateLinkedPart() {
+    if (!selectedOptionForLinkedParts || !editingLinkedPartId) return
+
+    setSavingLinkedPart(true)
+    try {
+      const response = await fetch(`/api/options/${selectedOptionForLinkedParts.id}/parts`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          partId: editingLinkedPartId,
+          quantity: parseFloat(editingLinkedPartQty) || 1
+        })
+      })
+
+      if (response.ok) {
+        await fetchLinkedParts(selectedOptionForLinkedParts.id)
+        cancelEditLinkedPart()
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to update linked part')
+      }
+    } catch (error) {
+      console.error('Error updating linked part:', error)
+      alert('Error updating linked part')
+    } finally {
+      setSavingLinkedPart(false)
+    }
+  }
+
   // Filter master parts for linked parts dropdown
   const filteredLinkedMasterParts = allMasterParts.filter(part => {
     // Exclude parts already linked to the same variant (allow same part on different variants)
@@ -1153,8 +1198,8 @@ export default function CategoryDetailView({
                 />
               </div>
 
-              {/* Show in Product BOM - Only for extrusions */}
-              {editingOption.masterPartType === 'Extrusion' && (
+              {/* Show in Product BOM - For extrusions and cut stock parts */}
+              {(editingOption.masterPartType === 'Extrusion' || editingOption.masterPartType === 'CutStock') && (
                 <div className="border-t pt-4 mt-4">
                   <label className="flex items-center justify-between">
                     <div>
@@ -1356,20 +1401,66 @@ export default function CategoryDetailView({
                       <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">All Variants</h4>
                       <div className="space-y-2">
                         {linkedParts.filter(lp => lp.variantId === null).map((lp) => (
-                          <div key={lp.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div className="flex-1">
-                              <p className="font-medium text-gray-900">{lp.masterPart.baseName}</p>
-                              <p className="text-xs text-gray-500">
-                                Part #: {lp.masterPart.partNumber} | Qty: {lp.quantity}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => handleDeleteLinkedPart(lp.id)}
-                              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                              title="Remove linked part"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                          <div key={lp.id} className="p-3 bg-gray-50 rounded-lg">
+                            {editingLinkedPartId === lp.id ? (
+                              <div className="space-y-3">
+                                <p className="font-medium text-gray-900">{lp.masterPart.baseName}</p>
+                                <p className="text-xs text-gray-500">Part #: {lp.masterPart.partNumber} | {lp.masterPart.unit || 'EA'}</p>
+                                <div className="flex gap-2">
+                                  <div className="flex-1">
+                                    <label className="block text-xs text-gray-600 mb-1">Quantity</label>
+                                    <input
+                                      type="number"
+                                      value={editingLinkedPartQty}
+                                      onChange={(e) => setEditingLinkedPartQty(e.target.value)}
+                                      min="0.01"
+                                      step="0.01"
+                                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={handleUpdateLinkedPart}
+                                    disabled={savingLinkedPart}
+                                    className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
+                                  >
+                                    {savingLinkedPart ? 'Saving...' : 'Save'}
+                                  </button>
+                                  <button
+                                    onClick={cancelEditLinkedPart}
+                                    className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <p className="font-medium text-gray-900">{lp.masterPart.baseName}</p>
+                                  <p className="text-xs text-gray-500">
+                                    Part #: {lp.masterPart.partNumber} | {lp.masterPart.unit || 'EA'} | Qty: {lp.quantity}
+                                  </p>
+                                </div>
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={() => startEditLinkedPart(lp)}
+                                    className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                                    title="Edit linked part"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteLinkedPart(lp.id)}
+                                    className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                    title="Remove linked part"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -1387,20 +1478,66 @@ export default function CategoryDetailView({
                         </h4>
                         <div className="space-y-2">
                           {variantParts.map((lp) => (
-                            <div key={lp.id} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
-                              <div className="flex-1">
-                                <p className="font-medium text-gray-900">{lp.masterPart.baseName}</p>
-                                <p className="text-xs text-gray-500">
-                                  Part #: {lp.masterPart.partNumber} | Qty: {lp.quantity}
-                                </p>
-                              </div>
-                              <button
-                                onClick={() => handleDeleteLinkedPart(lp.id)}
-                                className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                                title="Remove linked part"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                            <div key={lp.id} className="p-3 bg-purple-50 rounded-lg">
+                              {editingLinkedPartId === lp.id ? (
+                                <div className="space-y-3">
+                                  <p className="font-medium text-gray-900">{lp.masterPart.baseName}</p>
+                                  <p className="text-xs text-gray-500">Part #: {lp.masterPart.partNumber} | {lp.masterPart.unit || 'EA'}</p>
+                                  <div className="flex gap-2">
+                                    <div className="flex-1">
+                                      <label className="block text-xs text-gray-600 mb-1">Quantity</label>
+                                      <input
+                                        type="number"
+                                        value={editingLinkedPartQty}
+                                        onChange={(e) => setEditingLinkedPartQty(e.target.value)}
+                                        min="0.01"
+                                        step="0.01"
+                                        className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={handleUpdateLinkedPart}
+                                      disabled={savingLinkedPart}
+                                      className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
+                                    >
+                                      {savingLinkedPart ? 'Saving...' : 'Save'}
+                                    </button>
+                                    <button
+                                      onClick={cancelEditLinkedPart}
+                                      className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <p className="font-medium text-gray-900">{lp.masterPart.baseName}</p>
+                                    <p className="text-xs text-gray-500">
+                                      Part #: {lp.masterPart.partNumber} | {lp.masterPart.unit || 'EA'} | Qty: {lp.quantity}
+                                    </p>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={() => startEditLinkedPart(lp)}
+                                      className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                                      title="Edit linked part"
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteLinkedPart(lp.id)}
+                                      className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                      title="Remove linked part"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1447,39 +1584,42 @@ export default function CategoryDetailView({
                 </div>
 
                 {newLinkedPartId && (
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
-                      <input
-                        type="number"
-                        value={newLinkedPartQty}
-                        onChange={(e) => setNewLinkedPartQty(e.target.value)}
-                        min="0.01"
-                        step="0.01"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                      />
-                    </div>
-                    {variants.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
                       <div className="flex-1">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Variant</label>
-                        <select
-                          value={newLinkedPartVariantId ?? ''}
-                          onChange={(e) => setNewLinkedPartVariantId(e.target.value ? parseInt(e.target.value) : null)}
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                        <input
+                          type="number"
+                          value={newLinkedPartQty}
+                          onChange={(e) => setNewLinkedPartQty(e.target.value)}
+                          min="0.01"
+                          step="0.01"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        >
-                          <option value="">All Variants</option>
-                          {variants.map((v) => (
-                            <option key={v.id} value={v.id}>{v.name}{v.isDefault ? ' (Default)' : ''}</option>
-                          ))}
-                        </select>
+                        />
                       </div>
-                    )}
+                      {variants.length > 0 && (
+                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Variant</label>
+                          <select
+                            value={newLinkedPartVariantId ?? ''}
+                            onChange={(e) => setNewLinkedPartVariantId(e.target.value ? parseInt(e.target.value) : null)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                          >
+                            <option value="">All Variants</option>
+                            {variants.map((v) => (
+                              <option key={v.id} value={v.id}>{v.name}{v.isDefault ? ' (Default)' : ''}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
                     <button
                       onClick={handleAddLinkedPart}
                       disabled={addingLinkedPart}
-                      className="mt-6 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
                     >
-                      {addingLinkedPart ? 'Adding...' : 'Add'}
+                      {addingLinkedPart ? 'Adding...' : 'Add Linked Part'}
                     </button>
                   </div>
                 )}

@@ -742,7 +742,21 @@ export async function GET(
                   })
 
                   for (const linkedPart of applicableLinkedParts) {
-                    const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
+                    const partUnit = linkedPart.masterPart.unit || 'EA'
+
+                    // Check if this linked part has a ProductBOM entry with a formula
+                    // If so, skip it here - it will be handled by the optionParts section below
+                    const linkedPartBom = product.productBOMs?.find((bom: any) =>
+                      bom.optionId === individualOption.id && bom.partNumber === linkedPart.masterPart.partNumber
+                    )
+                    if (linkedPartBom) {
+                      // Skip - this part will be processed in the optionParts section with its formula
+                      continue
+                    }
+
+                    // Linked parts without formulas use fixed quantity
+                    let linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
+                    let linkedCutLength: number | null = null
 
                     // Build part number with finish code if applicable
                     let linkedPartNumber = linkedPart.masterPart.partNumber
@@ -772,16 +786,80 @@ export async function GET(
                       partName: linkedPart.masterPart.baseName,
                       partType: linkedPart.masterPart.partType || 'Hardware',
                       quantity: linkedQuantity,
-                      cutLength: null,
+                      cutLength: linkedCutLength,
                       stockLength: null,
                       percentOfStock: null,
-                      unit: linkedPart.masterPart.unit || 'EA',
+                      unit: partUnit,
                       description: `Linked: ${individualOption.name}${linkedPart.variant ? ` (${linkedPart.variant.name})` : ''}`,
                       color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
                       addToPackingList: linkedPart.masterPart.addToPackingList,
-                      isLinkedPart: true
+                      isLinkedPart: true,
+                      calculatedLength: linkedCutLength
                     })
                   }
+                }
+
+                // Process additional ProductBOM entries for this option (parts with formulas at product level)
+                const optionParts = product.productBOMs?.filter((bom: any) =>
+                  bom.optionId === individualOption.id && bom.partNumber && bom.partNumber !== individualOption.partNumber
+                ) || []
+
+                for (const optionPart of optionParts) {
+                  const partUnit = optionPart.unit || 'EA'
+                  let partQuantity: number
+                  let partCutLength: number | null = null
+
+                  if (optionPart.formula && (partUnit === 'LF' || partUnit === 'IN')) {
+                    // Evaluate formula for LF/IN parts
+                    const formulaVariables = {
+                      width: effectiveWidth,
+                      height: effectiveHeight,
+                      Width: effectiveWidth,
+                      Height: effectiveHeight,
+                      quantity: optionQuantity
+                    }
+                    let calculatedLength = evaluateFormula(optionPart.formula, formulaVariables)
+
+                    // Convert to feet if unit is LF
+                    if (partUnit === 'LF') {
+                      calculatedLength = calculatedLength / 12
+                    }
+
+                    partCutLength = calculatedLength
+                    partQuantity = calculatedLength * optionQuantity
+                  } else {
+                    partQuantity = (optionPart.quantity || 1) * optionQuantity
+                  }
+
+                  // Build part number with finish code if applicable
+                  let optionPartNumber = optionPart.partNumber
+                  if (optionPart.addFinishToPartNumber && opening.finishColor) {
+                    const finishCode = await getFinishCode(opening.finishColor)
+                    if (finishCode) {
+                      optionPartNumber = `${optionPartNumber}${finishCode}`
+                    }
+                  }
+
+                  bomItems.push({
+                    openingName: opening.name,
+                    panelId: panel.id,
+                    productName: product.name,
+                    panelWidth: effectiveWidth,
+                    panelHeight: effectiveHeight,
+                    partNumber: optionPartNumber,
+                    partName: optionPart.partName,
+                    partType: optionPart.partType || 'Hardware',
+                    quantity: partQuantity,
+                    cutLength: partCutLength,
+                    stockLength: null,
+                    percentOfStock: null,
+                    unit: partUnit,
+                    description: `${individualOption.name} - ${optionPart.partName}`,
+                    color: optionPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
+                    addToPackingList: optionPart.addToPackingList,
+                    isOptionPart: true,
+                    calculatedLength: partCutLength
+                  })
                 }
               }
             }
@@ -928,13 +1006,62 @@ export async function GET(
                 for (const linkedPart of applicableLinkedParts) {
                   const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
 
+                  // Look up ProductBOM entry for this linked part to get formula
+                  const linkedPartBom = product.productBOMs?.find((bom: any) =>
+                    bom.optionId === standardOption.id && bom.partNumber === linkedPart.masterPart.partNumber
+                  )
+
+                  // Calculate cut length if formula exists
+                  let linkedCutLength: number | null = null
+                  let linkedStockLength: number | null = null
+                  let linkedPercentOfStock: number | null = null
+                  let linkedIsMillFinish = false
+                  let linkedBinLocation: string | null = null
+
+                  if (linkedPartBom?.formula) {
+                    linkedCutLength = evaluateFormula(linkedPartBom.formula, {
+                      width: effectiveWidth,
+                      height: effectiveHeight,
+                      Width: effectiveWidth,
+                      Height: effectiveHeight
+                    })
+
+                    // Look up stock length for extrusions/CutStock
+                    if (linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') {
+                      const stockInfo = await findStockLength(
+                        linkedPart.masterPart.partNumber,
+                        { formula: linkedPartBom.formula, partType: linkedPart.masterPart.partType },
+                        { width: effectiveWidth, height: effectiveHeight }
+                      )
+                      linkedStockLength = stockInfo.stockLength
+                      linkedIsMillFinish = stockInfo.isMillFinish
+                      linkedBinLocation = stockInfo.binLocation
+
+                      if (linkedCutLength && linkedStockLength && linkedStockLength > 0) {
+                        linkedPercentOfStock = (linkedCutLength / linkedStockLength) * 100
+                      }
+                    }
+                  }
+
                   // Build part number with finish code if applicable
                   let linkedPartNumber = linkedPart.masterPart.partNumber
-                  if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+
+                  // For extrusions, apply finish code based on isMillFinish
+                  if ((linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') && opening.finishColor && !linkedIsMillFinish) {
                     const finishCode = await getFinishCode(opening.finishColor)
                     if (finishCode) {
                       linkedPartNumber = `${linkedPartNumber}${finishCode}`
                     }
+                  } else if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+                    const finishCode = await getFinishCode(opening.finishColor)
+                    if (finishCode) {
+                      linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                    }
+                  }
+
+                  // Append stock length for extrusions
+                  if (linkedStockLength) {
+                    linkedPartNumber = `${linkedPartNumber}-${linkedStockLength}`
                   }
 
                   // Apply direction suffix if applicable
@@ -956,14 +1083,16 @@ export async function GET(
                     partName: linkedPart.masterPart.baseName,
                     partType: linkedPart.masterPart.partType || 'Hardware',
                     quantity: linkedQuantity,
-                    cutLength: null,
-                    stockLength: null,
-                    percentOfStock: null,
+                    cutLength: linkedCutLength,
+                    stockLength: linkedStockLength,
+                    percentOfStock: linkedPercentOfStock,
                     unit: linkedPart.masterPart.unit || 'EA',
                     description: `Linked: ${standardOption.name}${linkedPart.variant ? ` (${linkedPart.variant.name})` : ''}`,
                     color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
                     addToPackingList: linkedPart.masterPart.addToPackingList,
-                    isLinkedPart: true
+                    isLinkedPart: true,
+                    isMilled: linkedPartBom?.isMilled !== false,
+                    binLocation: linkedBinLocation
                   })
                 }
               }

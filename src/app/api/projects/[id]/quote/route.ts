@@ -162,6 +162,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       )
     }
 
+    // Validate project has openings
+    if (project.openings.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot generate quote: Project has no openings' },
+        { status: 400 }
+      )
+    }
+
+    // Validate project has at least one panel (product) across all openings
+    const totalPanels = project.openings.reduce((sum, opening) => sum + opening.panels.length, 0)
+    if (totalPanels === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot generate quote: No products have been added to the openings' },
+        { status: 400 }
+      )
+    }
+
     // Always calculate pricing fresh using the shared pricing calculator
     // This ensures consistency between quote display and debug output
     const globalMaterialPricePerLb = await getGlobalMaterialPricePerLb()

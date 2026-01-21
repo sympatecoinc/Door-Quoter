@@ -616,6 +616,14 @@ export default function ProductDetailView({
   const [optionBomIsMachined, setOptionBomIsMachined] = useState(false)
   const [savingOptionBom, setSavingOptionBom] = useState(false)
 
+  // Option Parts Formula Modal State (for setting formulas on linked parts at product level)
+  const [optionPartsModalOpen, setOptionPartsModalOpen] = useState(false)
+  const [editingOptionParts, setEditingOptionParts] = useState<any>(null)
+  const [eligibleLinkedParts, setEligibleLinkedParts] = useState<any[]>([])
+  const [loadingLinkedParts, setLoadingLinkedParts] = useState(false)
+  const [partFormulas, setPartFormulas] = useState<Record<string, string>>({})
+  const [savingOptionPart, setSavingOptionPart] = useState(false)
+
   // Determine if this is a Frame product (hide certain sections)
   const isFrameProduct = (productDetails?.productType || product?.productType) === 'FRAME'
 
@@ -1502,6 +1510,94 @@ export default function ProductDetailView({
 
   function toggleCategoryExpand(categoryId: number) {
     setExpandedCategory(expandedCategory === categoryId ? null : categoryId)
+  }
+
+  // Option Parts Formula Management (setting formulas on linked parts at product level)
+  async function openOptionPartsModal(option: any) {
+    setEditingOptionParts(option)
+    setEligibleLinkedParts([])
+    setPartFormulas({})
+    setLoadingLinkedParts(true)
+    setOptionPartsModalOpen(true)
+
+    try {
+      // Fetch linked parts for this option
+      const response = await fetch(`/api/options/${option.id}/parts`)
+      if (response.ok) {
+        const linkedParts = await response.json()
+        // Filter to only parts with LF, IN, or FT units (eligible for formulas)
+        const eligible = linkedParts.filter((lp: any) =>
+          lp.masterPart?.unit === 'LF' || lp.masterPart?.unit === 'IN' || lp.masterPart?.unit === 'FT'
+        )
+        setEligibleLinkedParts(eligible)
+
+        // Load existing formulas from ProductBOM
+        const formulas: Record<string, string> = {}
+        for (const lp of eligible) {
+          const existingBom = productDetails?.productBOMs?.find((b: any) =>
+            b.optionId === option.id && b.partNumber === lp.masterPart.partNumber
+          )
+          if (existingBom?.formula) {
+            formulas[lp.masterPart.partNumber] = existingBom.formula
+          }
+        }
+        setPartFormulas(formulas)
+      }
+    } catch (error) {
+      console.error('Error fetching linked parts:', error)
+      showError('Failed to load linked parts')
+    } finally {
+      setLoadingLinkedParts(false)
+    }
+  }
+
+  async function handleSavePartFormula(linkedPart: any) {
+    const formula = partFormulas[linkedPart.masterPart.partNumber] || ''
+
+    setSavingOptionPart(true)
+    try {
+      // Check if ProductBOM entry already exists
+      const existingBom = productDetails?.productBOMs?.find((b: any) =>
+        b.optionId === editingOptionParts.id && b.partNumber === linkedPart.masterPart.partNumber
+      )
+
+      const method = existingBom ? 'PUT' : 'POST'
+      const response = await fetch('/api/product-boms', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: existingBom?.id,
+          productId: product.id,
+          optionId: editingOptionParts.id,
+          partType: linkedPart.masterPart.partType || 'Hardware',
+          partName: linkedPart.masterPart.baseName,
+          partNumber: linkedPart.masterPart.partNumber,
+          formula: formula || null,
+          quantity: linkedPart.quantity || 1,
+          unit: linkedPart.masterPart.unit || 'EA',
+          addFinishToPartNumber: linkedPart.masterPart.addFinishToPartNumber || false,
+          addToPackingList: linkedPart.masterPart.addToPackingList || false
+        })
+      })
+
+      if (response.ok) {
+        // Refresh product details
+        const detailsResponse = await fetch(`/api/products/${product.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setProductDetails(data)
+        }
+        showSuccess('Formula saved!')
+      } else {
+        const errorData = await response.json()
+        showError(errorData.error || 'Failed to save formula')
+      }
+    } catch (error) {
+      console.error('Error saving formula:', error)
+      showError('Failed to save formula')
+    } finally {
+      setSavingOptionPart(false)
+    }
   }
 
   async function handleAddPart(e: React.FormEvent) {
@@ -2484,6 +2580,20 @@ export default function ProductDetailView({
                                                     Configure
                                                   </button>
                                                 )}
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    openOptionPartsModal(option)
+                                                  }}
+                                                  className="px-3 py-1 text-xs rounded-lg bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
+                                                >
+                                                  Formulas {(() => {
+                                                    const count = productDetails?.productBOMs?.filter((b: any) =>
+                                                      b.optionId === option.id && b.partType !== 'Extrusion' && b.formula
+                                                    ).length || 0
+                                                    return count > 0 ? `(${count})` : ''
+                                                  })()}
+                                                </button>
                                                 <button
                                                   onClick={(e) => {
                                                     e.stopPropagation()
@@ -3534,6 +3644,100 @@ export default function ProductDetailView({
                   {savingOptionBom ? 'Saving...' : 'Save'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Option Parts Formula Modal */}
+      {optionPartsModalOpen && editingOptionParts && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold text-gray-900 mb-2">
+              Part Formulas for {editingOptionParts.name}
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Set cut length formulas for linked parts when this option is used with {product.name}.
+            </p>
+
+            {loadingLinkedParts ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+              </div>
+            ) : eligibleLinkedParts.length > 0 ? (
+              <div className="space-y-4">
+                {eligibleLinkedParts.map((lp: any) => (
+                  <div key={lp.id} className="p-4 bg-purple-50 rounded-lg">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-medium text-gray-900">{lp.masterPart.baseName}</p>
+                        <p className="text-xs text-gray-500">
+                          Part #: {lp.masterPart.partNumber} | Unit: {lp.masterPart.unit}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Cut Length Formula
+                        </label>
+                        <input
+                          type="text"
+                          value={partFormulas[lp.masterPart.partNumber] || ''}
+                          onChange={(e) => setPartFormulas(prev => ({
+                            ...prev,
+                            [lp.masterPart.partNumber]: e.target.value
+                          }))}
+                          placeholder="e.g., height, width * 2, height - 4"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                      <button
+                        onClick={() => handleSavePartFormula(lp)}
+                        disabled={savingOptionPart}
+                        className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                    </div>
+
+                    {partFormulas[lp.masterPart.partNumber] && (
+                      <p className="text-xs text-purple-600 mt-2">
+                        Preview (36&quot;x96&quot;): {(() => {
+                          try {
+                            const f = partFormulas[lp.masterPart.partNumber].toLowerCase()
+                              .replace(/width/g, '36').replace(/height/g, '96')
+                            const result = eval(f)
+                            return lp.masterPart.unit === 'LF'
+                              ? `${(result / 12).toFixed(2)} ft`
+                              : `${result.toFixed(2)} ${lp.masterPart.unit.toLowerCase()}`
+                          } catch { return 'Invalid formula' }
+                        })()}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <p className="mb-2">No eligible linked parts found.</p>
+                <p className="text-sm">
+                  Link parts with LF, IN, or FT units to this option in the Category settings first.
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-4 mt-4 border-t">
+              <button
+                onClick={() => {
+                  setOptionPartsModalOpen(false)
+                  setEditingOptionParts(null)
+                }}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

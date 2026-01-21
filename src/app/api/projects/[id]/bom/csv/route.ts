@@ -594,13 +594,60 @@ export async function GET(
                     for (const linkedPart of applicableLinkedParts) {
                       const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
 
+                      // Look up ProductBOM entry for this linked part to get formula
+                      const linkedPartBom = product.productBOMs?.find((bom: any) =>
+                        bom.optionId === standardOption.id && bom.partNumber === linkedPart.masterPart.partNumber
+                      )
+
+                      // Calculate cut length if formula exists
+                      let linkedCutLength: number | null = null
+                      let linkedPercentOfStock = ''
+                      let linkedStockLength: number | null = null
+                      let linkedIsMillFinish = false
+
+                      if (linkedPartBom?.formula) {
+                        linkedCutLength = evaluateFormula(linkedPartBom.formula, {
+                          width: panel.width || 0,
+                          height: panel.height || 0,
+                          Width: panel.width || 0,
+                          Height: panel.height || 0
+                        })
+
+                        // Look up stock length for extrusions/CutStock
+                        if (linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') {
+                          const stockInfo = await findStockLength(
+                            linkedPart.masterPart.partNumber,
+                            { formula: linkedPartBom.formula, partType: linkedPart.masterPart.partType },
+                            { width: panel.width || 0, height: panel.height || 0 }
+                          )
+                          linkedStockLength = stockInfo.stockLength
+                          linkedIsMillFinish = stockInfo.isMillFinish
+
+                          if (linkedCutLength && linkedStockLength && linkedStockLength > 0) {
+                            linkedPercentOfStock = ((linkedCutLength / linkedStockLength) * 100).toFixed(1) + '%'
+                          }
+                        }
+                      }
+
                       // Build part number with finish code if applicable
                       let linkedPartNumber = linkedPart.masterPart.partNumber
-                      if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+
+                      // For extrusions, apply finish code based on isMillFinish
+                      if ((linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') && opening.finishColor && !linkedIsMillFinish) {
                         const finishCode = await getFinishCode(opening.finishColor)
                         if (finishCode) {
                           linkedPartNumber = `${linkedPartNumber}${finishCode}`
                         }
+                      } else if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+                        const finishCode = await getFinishCode(opening.finishColor)
+                        if (finishCode) {
+                          linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                        }
+                      }
+
+                      // Append stock length for extrusions
+                      if (linkedStockLength) {
+                        linkedPartNumber = `${linkedPartNumber}-${linkedStockLength}`
                       }
 
                       // Apply direction suffix if applicable
@@ -621,12 +668,13 @@ export async function GET(
                         partName: linkedPart.masterPart.baseName,
                         partType: linkedPart.masterPart.partType || 'Hardware',
                         quantity: linkedQuantity,
-                        cutLength: '',
-                        percentOfStock: '',
-                        isMilled: true,
+                        cutLength: linkedCutLength ? linkedCutLength.toFixed(3) : '',
+                        percentOfStock: linkedPercentOfStock,
+                        isMilled: linkedPartBom?.isMilled !== false,
                         unit: linkedPart.masterPart.unit || 'EA',
                         description: `Linked: ${standardOption.name}${linkedPart.variant ? ` (${linkedPart.variant.name})` : ''}`,
-                        color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A'
+                        color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
+                        isLinkedPart: true
                       })
                     }
                   }
@@ -785,13 +833,60 @@ export async function GET(
                   for (const linkedPart of applicableLinkedParts) {
                     const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
 
+                    // Look up ProductBOM entry for this linked part to get formula
+                    const linkedPartBom = product.productBOMs?.find((bom: any) =>
+                      bom.optionId === individualOption.id && bom.partNumber === linkedPart.masterPart.partNumber
+                    )
+
+                    // Calculate cut length if formula exists
+                    let linkedCutLength: number | null = null
+                    let linkedPercentOfStock = ''
+                    let linkedStockLength: number | null = null
+                    let linkedIsMillFinish = false
+
+                    if (linkedPartBom?.formula) {
+                      linkedCutLength = evaluateFormula(linkedPartBom.formula, {
+                        width: panel.width || 0,
+                        height: panel.height || 0,
+                        Width: panel.width || 0,
+                        Height: panel.height || 0
+                      })
+
+                      // Look up stock length for extrusions/CutStock
+                      if (linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') {
+                        const stockInfo = await findStockLength(
+                          linkedPart.masterPart.partNumber,
+                          { formula: linkedPartBom.formula, partType: linkedPart.masterPart.partType },
+                          { width: panel.width || 0, height: panel.height || 0 }
+                        )
+                        linkedStockLength = stockInfo.stockLength
+                        linkedIsMillFinish = stockInfo.isMillFinish
+
+                        if (linkedCutLength && linkedStockLength && linkedStockLength > 0) {
+                          linkedPercentOfStock = ((linkedCutLength / linkedStockLength) * 100).toFixed(1) + '%'
+                        }
+                      }
+                    }
+
                     // Build part number with finish code if applicable
                     let linkedPartNumber = linkedPart.masterPart.partNumber
-                    if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+
+                    // For extrusions, apply finish code based on isMillFinish
+                    if ((linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') && opening.finishColor && !linkedIsMillFinish) {
                       const finishCode = await getFinishCode(opening.finishColor)
                       if (finishCode) {
                         linkedPartNumber = `${linkedPartNumber}${finishCode}`
                       }
+                    } else if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+                      const finishCode = await getFinishCode(opening.finishColor)
+                      if (finishCode) {
+                        linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                      }
+                    }
+
+                    // Append stock length for extrusions
+                    if (linkedStockLength) {
+                      linkedPartNumber = `${linkedPartNumber}-${linkedStockLength}`
                     }
 
                     // Apply direction suffix if applicable
@@ -812,12 +907,13 @@ export async function GET(
                       partName: linkedPart.masterPart.baseName,
                       partType: linkedPart.masterPart.partType || 'Hardware',
                       quantity: linkedQuantity,
-                      cutLength: '',
-                      percentOfStock: '',
-                      isMilled: true,
+                      cutLength: linkedCutLength ? linkedCutLength.toFixed(3) : '',
+                      percentOfStock: linkedPercentOfStock,
+                      isMilled: linkedPartBom?.isMilled !== false,
                       unit: linkedPart.masterPart.unit || 'EA',
                       description: `Linked: ${individualOption.name}${linkedPart.variant ? ` (${linkedPart.variant.name})` : ''}`,
-                      color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A'
+                      color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
+                      isLinkedPart: true
                     })
                   }
                 }
@@ -956,13 +1052,60 @@ export async function GET(
                 for (const linkedPart of applicableLinkedParts) {
                   const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
 
+                  // Look up ProductBOM entry for this linked part to get formula
+                  const linkedPartBom = product.productBOMs?.find((bom: any) =>
+                    bom.optionId === standardOption.id && bom.partNumber === linkedPart.masterPart.partNumber
+                  )
+
+                  // Calculate cut length if formula exists
+                  let linkedCutLength: number | null = null
+                  let linkedPercentOfStock = ''
+                  let linkedStockLength: number | null = null
+                  let linkedIsMillFinish = false
+
+                  if (linkedPartBom?.formula) {
+                    linkedCutLength = evaluateFormula(linkedPartBom.formula, {
+                      width: panel.width || 0,
+                      height: panel.height || 0,
+                      Width: panel.width || 0,
+                      Height: panel.height || 0
+                    })
+
+                    // Look up stock length for extrusions/CutStock
+                    if (linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') {
+                      const stockInfo = await findStockLength(
+                        linkedPart.masterPart.partNumber,
+                        { formula: linkedPartBom.formula, partType: linkedPart.masterPart.partType },
+                        { width: panel.width || 0, height: panel.height || 0 }
+                      )
+                      linkedStockLength = stockInfo.stockLength
+                      linkedIsMillFinish = stockInfo.isMillFinish
+
+                      if (linkedCutLength && linkedStockLength && linkedStockLength > 0) {
+                        linkedPercentOfStock = ((linkedCutLength / linkedStockLength) * 100).toFixed(1) + '%'
+                      }
+                    }
+                  }
+
                   // Build part number with finish code if applicable
                   let linkedPartNumber = linkedPart.masterPart.partNumber
-                  if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+
+                  // For extrusions, apply finish code based on isMillFinish
+                  if ((linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') && opening.finishColor && !linkedIsMillFinish) {
                     const finishCode = await getFinishCode(opening.finishColor)
                     if (finishCode) {
                       linkedPartNumber = `${linkedPartNumber}${finishCode}`
                     }
+                  } else if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
+                    const finishCode = await getFinishCode(opening.finishColor)
+                    if (finishCode) {
+                      linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                    }
+                  }
+
+                  // Append stock length for extrusions
+                  if (linkedStockLength) {
+                    linkedPartNumber = `${linkedPartNumber}-${linkedStockLength}`
                   }
 
                   // Apply direction suffix if applicable
@@ -983,12 +1126,13 @@ export async function GET(
                     partName: linkedPart.masterPart.baseName,
                     partType: linkedPart.masterPart.partType || 'Hardware',
                     quantity: linkedQuantity,
-                    cutLength: '',
-                    percentOfStock: '',
-                    isMilled: true,
+                    cutLength: linkedCutLength ? linkedCutLength.toFixed(3) : '',
+                    percentOfStock: linkedPercentOfStock,
+                    isMilled: linkedPartBom?.isMilled !== false,
                     unit: linkedPart.masterPart.unit || 'EA',
                     description: `Linked: ${standardOption.name}${linkedPart.variant ? ` (${linkedPart.variant.name})` : ''}`,
-                    color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A'
+                    color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
+                    isLinkedPart: true
                   })
                 }
               }
@@ -1059,12 +1203,12 @@ export async function GET(
           const quantity = componentGroup.panels.length
 
           // Filter BOM items for this specific component configuration
-          // Glass items have color 'N/A' so exclude them from color matching
+          // Glass items and linked parts may have color 'N/A' so exclude them from color matching
           const componentBomItems = sortedBomItems.filter(item =>
             item.productName === componentGroup.productName &&
             item.panelWidth === componentGroup.width &&
             item.panelHeight === componentGroup.height &&
-            (item.partType === 'Glass' || item.color === (componentGroup.finishColor || 'N/A'))
+            (item.partType === 'Glass' || item.isLinkedPart === true || item.color === (componentGroup.finishColor || 'N/A'))
           )
 
           // Remove duplicates - include cutLength to distinguish same parts with different cuts

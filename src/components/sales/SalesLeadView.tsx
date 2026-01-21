@@ -76,8 +76,11 @@ export default function SalesLeadView() {
     }
   }, [showSalesLeadView, fetchLeads])
 
-  // Filter leads based on search
+  // Filter leads based on search (exclude archived)
   const filteredLeads = leads.filter(lead => {
+    // Exclude archived leads
+    if (lead.status === ProjectStatus.ARCHIVE) return false
+
     const searchLower = searchTerm.toLowerCase()
     return lead.name.toLowerCase().includes(searchLower) ||
       lead.customer?.companyName.toLowerCase().includes(searchLower) ||

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Folder, DollarSign, LayoutGrid, Plus } from 'lucide-react'
-import { ProjectStatus } from '@/types'
+import { ProjectStatus, LEAD_FILTER_STATUSES, STATUS_CONFIG } from '@/types'
 import StatusBadge from '@/components/projects/StatusBadge'
 import { useAppStore } from '@/stores/appStore'
 import SalesLeadView from '@/components/sales/SalesLeadView'
@@ -63,6 +63,24 @@ export default function DashboardView() {
   })
   const [loading, setLoading] = useState(true)
   const [showAddLeadModal, setShowAddLeadModal] = useState(false)
+  const [statusFilters, setStatusFilters] = useState<ProjectStatus[]>([])
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
+
+  // Filter leads based on selected status filters (excluding Archive by default)
+  const filteredLeads = data.recentLeads.filter(lead => {
+    if (statusFilters.length === 0) {
+      return lead.status !== ProjectStatus.ARCHIVE
+    }
+    return statusFilters.includes(lead.status as ProjectStatus)
+  })
+
+  const toggleStatusFilter = (status: ProjectStatus) => {
+    setStatusFilters(prev =>
+      prev.includes(status)
+        ? prev.filter(s => s !== status)
+        : [...prev, status]
+    )
+  }
 
   const fetchDashboardData = async () => {
     try {
@@ -87,7 +105,50 @@ export default function DashboardView() {
       {/* Leads Section */}
       <div className="mb-8 flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Current Leads</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold text-gray-900">Current Leads</h1>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setFiltersExpanded(!filtersExpanded)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${
+                  filtersExpanded || statusFilters.length > 0
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Filter {statusFilters.length > 0 && `(${statusFilters.length})`}
+              </button>
+              {filtersExpanded && (
+                <>
+                  {LEAD_FILTER_STATUSES.map((status) => {
+                    const isActive = statusFilters.includes(status)
+                    const config = STATUS_CONFIG[status]
+                    return (
+                      <button
+                        key={status}
+                        onClick={() => toggleStatusFilter(status)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${
+                          isActive
+                            ? `${config.bgColor} ${config.textColor}`
+                            : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+                        }`}
+                      >
+                        {config.label}
+                      </button>
+                    )
+                  })}
+                  {statusFilters.length > 0 && (
+                    <button
+                      onClick={() => setStatusFilters([])}
+                      className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
           <p className="text-gray-600 mt-2">Projects in quoting phase (Staging through Quote Sent)</p>
         </div>
         <button
@@ -121,9 +182,9 @@ export default function DashboardView() {
                 </div>
               ))}
             </div>
-          ) : data.recentLeads.length > 0 ? (
+          ) : filteredLeads.length > 0 ? (
             <div className="space-y-4">
-              {data.recentLeads.map((lead) => (
+              {filteredLeads.map((lead) => (
                 <button
                   key={lead.id}
                   onClick={() => openSalesLead(lead.id, 'leads')}

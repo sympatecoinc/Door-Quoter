@@ -79,10 +79,10 @@ export const STATUS_CONFIG: Record<ProjectStatus, {
     textColor: 'text-teal-800'
   },
   [ProjectStatus.ARCHIVE]: {
-    label: 'Archive',
-    color: 'slate',
-    bgColor: 'bg-slate-100',
-    textColor: 'text-slate-800'
+    label: 'Archived',
+    color: 'red',
+    bgColor: 'bg-red-100',
+    textColor: 'text-red-800'
   }
 }
 

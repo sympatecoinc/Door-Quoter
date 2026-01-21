@@ -106,13 +106,12 @@ export async function POST(
     }
 
     // Check if this part is already linked to this option with this variant
-    const existingPart = await prisma.optionLinkedPart.findUnique({
+    // Use findFirst instead of findUnique because Prisma composite keys don't handle null well
+    const existingPart = await prisma.optionLinkedPart.findFirst({
       where: {
-        optionId_masterPartId_variantId: {
-          optionId,
-          masterPartId,
-          variantId: variantId || null
-        }
+        optionId,
+        masterPartId,
+        variantId: variantId || null
       }
     })
 

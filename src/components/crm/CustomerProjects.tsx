@@ -17,12 +17,14 @@ interface Project {
   dueDate?: string
   taxRate?: number
   pricingModeId?: number | null
+  totalPanelCount: number
   openings: {
     id: number
     name: string
     price: number
     roughWidth: number
     roughHeight: number
+    panelCount: number
   }[]
 }
 
@@ -900,26 +902,32 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                         <Briefcase className="w-4 h-4 mr-1" />
                         View Openings
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleViewQuote(project.id)
-                        }}
-                        className="flex items-center px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg border border-green-200"
-                      >
-                        <FileText className="w-4 h-4 mr-1" />
-                        View Quote
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleShowBOM(project.id, project.name)
-                        }}
-                        className="flex items-center px-3 py-1.5 text-sm text-purple-600 hover:bg-purple-50 rounded-lg border border-purple-200"
-                      >
-                        <List className="w-4 h-4 mr-1" />
-                        View BOM
-                      </button>
+                      {project.totalPanelCount > 0 ? (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleViewQuote(project.id)
+                            }}
+                            className="flex items-center px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg border border-green-200"
+                          >
+                            <FileText className="w-4 h-4 mr-1" />
+                            View Quote
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleShowBOM(project.id, project.name)
+                            }}
+                            className="flex items-center px-3 py-1.5 text-sm text-purple-600 hover:bg-purple-50 rounded-lg border border-purple-200"
+                          >
+                            <List className="w-4 h-4 mr-1" />
+                            View BOM
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">Add products to openings to generate quote</span>
+                      )}
                     </>
                   )}
                 </div>
@@ -1326,7 +1334,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                                       <div>
                                         <h4 className="font-medium text-blue-900">{component.productName}</h4>
                                         <p className="text-sm text-blue-700">
-                                          {component.panelWidth}" W × {component.panelHeight}" H
+                                          {Number(component.panelWidth).toFixed(3)}" W × {Number(component.panelHeight).toFixed(3)}" H
                                         </p>
                                       </div>
                                       <div className="flex items-center space-x-3">

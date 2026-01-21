@@ -233,9 +233,14 @@ export default function LeadDetailPanel({
       if (response.ok) {
         await fetchLead()
 
+        // If archiving, close the detail panel and refresh the list
+        if (pendingStatus === ProjectStatus.ARCHIVE) {
+          onLeadUpdated()
+          onClose()
+        }
         // If changing between lead and project categories, switch the view mode
         // The mode change triggers a refetch via useEffect, so don't call onLeadUpdated
-        if (wasLeadStatus && willBeProjectStatus && onStatusCategoryChange) {
+        else if (wasLeadStatus && willBeProjectStatus && onStatusCategoryChange) {
           onStatusCategoryChange('projects')
         } else if (wasProjectStatus && willBeLeadStatus && onStatusCategoryChange) {
           onStatusCategoryChange('leads')
@@ -412,6 +417,18 @@ export default function LeadDetailPanel({
                         {STATUS_CONFIG[status].label}
                       </button>
                     ))}
+                    <div className="border-t border-gray-100 my-1" />
+                    <button
+                      onClick={() => initiateStatusChange(ProjectStatus.ARCHIVE)}
+                      className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                        lead.status === ProjectStatus.ARCHIVE ? 'bg-blue-50' : ''
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full ${STATUS_CONFIG[ProjectStatus.ARCHIVE].bgColor}`}
+                      />
+                      {STATUS_CONFIG[ProjectStatus.ARCHIVE].label}
+                    </button>
                   </div>
                 )}
               </div>
