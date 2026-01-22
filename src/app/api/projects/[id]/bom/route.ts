@@ -807,7 +807,17 @@ export async function GET(
                 ) || []
 
                 for (const optionPart of optionParts) {
-                  const partUnit = optionPart.unit || 'EA'
+                  // Get unit from ProductBOM, or look up from MasterPart if not set
+                  let partUnit = optionPart.unit
+                  if (!partUnit && optionPart.partNumber) {
+                    const masterPartForUnit = await prisma.masterPart.findUnique({
+                      where: { partNumber: optionPart.partNumber },
+                      select: { unit: true }
+                    })
+                    partUnit = masterPartForUnit?.unit || 'EA'
+                  } else {
+                    partUnit = partUnit || 'EA'
+                  }
                   let partQuantity: number
                   let partCutLength: number | null = null
 
@@ -1007,6 +1017,9 @@ export async function GET(
 
                 for (const linkedPart of applicableLinkedParts) {
                   const linkedQuantity = (linkedPart.quantity || 1) * optionQuantity
+                  const partUnit = linkedPart.masterPart.unit || 'EA'
+                  let linkedCalculatedLength: number | null = null
+                  let actualLinkedQuantity = linkedQuantity  // default to fixed quantity
 
                   // Look up ProductBOM entry for this linked part to get formula
                   const linkedPartBom = product.productBOMs?.find((bom: any) =>
@@ -1027,6 +1040,19 @@ export async function GET(
                       Width: effectiveWidth,
                       Height: effectiveHeight
                     })
+
+                    // Handle LF/IN units - convert and use as quantity
+                    if (partUnit === 'LF' || partUnit === 'IN') {
+                      linkedCalculatedLength = linkedCutLength
+                      // Convert inches to feet if unit is LF
+                      if (partUnit === 'LF' && linkedCalculatedLength !== null) {
+                        linkedCalculatedLength = linkedCalculatedLength / 12
+                        linkedCutLength = linkedCalculatedLength
+                      }
+                      actualLinkedQuantity = linkedCalculatedLength !== null
+                        ? linkedCalculatedLength * optionQuantity
+                        : linkedQuantity
+                    }
 
                     // Look up stock length for extrusions/CutStock
                     if (linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') {
@@ -1084,11 +1110,12 @@ export async function GET(
                     partNumber: linkedPartNumber,
                     partName: linkedPart.masterPart.baseName,
                     partType: linkedPart.masterPart.partType || 'Hardware',
-                    quantity: linkedQuantity,
+                    quantity: actualLinkedQuantity,
                     cutLength: linkedCutLength,
+                    calculatedLength: linkedCalculatedLength,
                     stockLength: linkedStockLength,
                     percentOfStock: linkedPercentOfStock,
-                    unit: linkedPart.masterPart.unit || 'EA',
+                    unit: partUnit,
                     description: `Linked: ${standardOption.name}${linkedPart.variant ? ` (${linkedPart.variant.name})` : ''}`,
                     color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
                     addToPackingList: linkedPart.masterPart.addToPackingList,
