@@ -128,15 +128,12 @@ export function aggregateBomItems(bomItems: BomItem[]): AggregatedBomItem[] {
 
   for (const item of bomItems) {
     // For glass, group by part number AND dimensions to get separate rows per size
-    // For hardware/fastener with length formulas (LF/IN units), group by part number AND calculated length
+    // For LF/IN hardware/fastener, group by part number only (aggregate all lengths)
     let key = item.partNumber
     if (item.partType === 'Glass' && item.glassWidth && item.glassHeight) {
       key = `${item.partNumber}|${item.glassWidth.toFixed(3)}x${item.glassHeight.toFixed(3)}`
-    } else if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
-               (item.unit === 'LF' || item.unit === 'IN') &&
-               item.calculatedLength) {
-      key = `${item.partNumber}|${item.calculatedLength.toFixed(3)}`
     }
+    // LF/IN parts now use just partNumber as key, so all lengths are aggregated together
 
     if (!aggregated[key]) {
       // For Hardware/Fastener with LF/IN units, store the specific calculated length
@@ -575,9 +572,9 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
       sizeStr = uniqueCuts.join('; ')
     } else if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
                (item.unit === 'LF' || item.unit === 'IN') &&
-               item.calculatedLength) {
-      // For hardware/fastener with length formulas, show the cut length
-      sizeStr = `${item.calculatedLength.toFixed(3)}"`
+               item.totalCalculatedLength) {
+      // For hardware/fastener with length formulas, show the total aggregated length
+      sizeStr = `${item.totalCalculatedLength.toFixed(3)}"`
     }
 
     // Determine pieces value

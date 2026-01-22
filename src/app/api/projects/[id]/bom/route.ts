@@ -794,6 +794,8 @@ export async function GET(
                       color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
                       addToPackingList: linkedPart.masterPart.addToPackingList,
                       isLinkedPart: true,
+                      includeOnPickList: linkedPart.masterPart.includeOnPickList || false,
+                      includeInJambKit: linkedPart.masterPart.includeInJambKit || false,
                       calculatedLength: linkedCutLength
                     })
                   }
@@ -1091,6 +1093,8 @@ export async function GET(
                     color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
                     addToPackingList: linkedPart.masterPart.addToPackingList,
                     isLinkedPart: true,
+                    includeOnPickList: linkedPart.masterPart.includeOnPickList || false,
+                    includeInJambKit: linkedPart.masterPart.includeInJambKit || false,
                     isMilled: linkedPartBom?.isMilled !== false,
                     binLocation: linkedBinLocation
                   })
@@ -1346,9 +1350,10 @@ export async function GET(
 
     // If picklist mode is requested, return pick list data (hardware items with includeOnPickList=true)
     if (picklist) {
-      // Filter to only hardware items with includeOnPickList flag
+      // Filter to items with includeOnPickList flag (Hardware, Extrusion, Fastener, or linked parts)
       const pickListItems = filteredBomItems.filter(item =>
-        item.partType === 'Hardware' && item.includeOnPickList === true
+        (item.partType === 'Hardware' || item.partType === 'Extrusion' || item.partType === 'Fastener' || item.isLinkedPart === true) &&
+        item.includeOnPickList === true
       )
 
       // Group by product name
@@ -1441,9 +1446,9 @@ export async function GET(
 
     // If jambkit mode is requested, return jamb kit items grouped by opening
     if (jambkit) {
-      // Filter to items with includeInJambKit flag (Hardware, Extrusion, or Fastener)
+      // Filter to items with includeInJambKit flag (Hardware, Extrusion, Fastener, or linked parts)
       const jambKitItems = filteredBomItems.filter(item =>
-        (item.partType === 'Hardware' || item.partType === 'Extrusion' || item.partType === 'Fastener') &&
+        (item.partType === 'Hardware' || item.partType === 'Extrusion' || item.partType === 'Fastener' || item.isLinkedPart === true) &&
         item.includeInJambKit === true
       )
 
