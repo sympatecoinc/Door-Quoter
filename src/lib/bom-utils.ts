@@ -98,6 +98,8 @@ export interface BomItem {
   calculatedLength?: number | null
   glassWidth?: number | null
   glassHeight?: number | null
+  isLinkedPart?: boolean
+  isOptionPart?: boolean
   glassArea?: number | null
 }
 
@@ -164,7 +166,14 @@ export function aggregateBomItems(bomItems: BomItem[]): AggregatedBomItem[] {
       }
     }
 
-    aggregated[key].totalQuantity += item.quantity || 1
+    // For LF/IN Hardware/Fastener, quantity represents total length (not piece count),
+    // so we don't add it to totalQuantity - we use totalCalculatedLength instead
+    const isLengthBasedItem = (item.partType === 'Hardware' || item.partType === 'Fastener') &&
+                              (item.unit === 'LF' || item.unit === 'IN') &&
+                              item.calculatedLength
+    if (!isLengthBasedItem) {
+      aggregated[key].totalQuantity += item.quantity || 1
+    }
 
     // For extrusions and CutStock, collect cut lengths
     if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.cutLength) {
@@ -188,10 +197,14 @@ export function aggregateBomItems(bomItems: BomItem[]): AggregatedBomItem[] {
     if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
         (item.unit === 'LF' || item.unit === 'IN') &&
         item.calculatedLength) {
-      for (let i = 0; i < (item.quantity || 1); i++) {
-        aggregated[key].calculatedLengths.push(item.calculatedLength)
+      aggregated[key].calculatedLengths.push(item.calculatedLength)
+      // For linked parts and option parts, quantity already represents total length (calculatedLength × optionQuantity)
+      // For regular BOM parts, quantity is piece count, so multiply by calculatedLength
+      if (item.isLinkedPart || item.isOptionPart) {
+        aggregated[key].totalCalculatedLength += item.quantity || 0
+      } else {
+        aggregated[key].totalCalculatedLength += (item.calculatedLength * (item.quantity || 1))
       }
-      aggregated[key].totalCalculatedLength += (item.calculatedLength * (item.quantity || 1))
     }
   }
 
@@ -570,12 +583,8 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
       // For extrusions, show unique cut lengths
       const uniqueCuts = [...new Set(item.cutLengths.map((l: number) => l.toFixed(3)))]
       sizeStr = uniqueCuts.join('; ')
-    } else if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
-               (item.unit === 'LF' || item.unit === 'IN') &&
-               item.totalCalculatedLength) {
-      // For hardware/fastener with length formulas, show the total aggregated length
-      sizeStr = `${item.totalCalculatedLength.toFixed(3)}"`
     }
+    // For LF/IN items, leave sizeStr empty - totals are shown only in Pieces column
 
     // Determine pieces value
     let piecesValue: string | number = item.totalQuantity

@@ -5329,16 +5329,16 @@ export default function ProjectDetailView() {
                         <p className="text-xs text-gray-500 mb-2">{option.category.description}</p>
                       )}
                       <div className="flex gap-2">
-                        <select
-                          value={selectedOptions[option.category.id] === null ? 'none' : (selectedOptions[option.category.id] || '')}
-                          onChange={(e) => {
-                            const newValue = e.target.value === 'none' ? null : (e.target.value ? parseInt(e.target.value) : undefined)
+                        <Listbox
+                          value={selectedOptions[option.category.id] === null ? 'none' : (selectedOptions[option.category.id] || null)}
+                          onChange={(newValue: number | string | null) => {
+                            const processedValue = newValue === 'none' ? null : (typeof newValue === 'number' ? newValue : undefined)
                             setSelectedOptions({
                               ...selectedOptions,
-                              [option.category.id]: newValue
+                              [option.category.id]: processedValue
                             })
                             // If unselecting an option, remove it from included list and clear variant selection
-                            if (!newValue && selectedOptions[option.category.id]) {
+                            if (!processedValue && selectedOptions[option.category.id]) {
                               setIncludedOptions(includedOptions.filter(id => id !== selectedOptions[option.category.id]))
                               // Clear variant selection for the old option
                               const newVariantSelections = { ...variantSelections }
@@ -5346,20 +5346,20 @@ export default function ProjectDetailView() {
                               setVariantSelections(newVariantSelections)
                             }
                             // If selecting a new option, set default variant if available
-                            if (newValue) {
-                              const newIndividualOption = option.category.individualOptions?.find((opt: any) => opt.id === newValue)
+                            if (processedValue) {
+                              const newIndividualOption = option.category.individualOptions?.find((opt: any) => opt.id === processedValue)
                               const newVariants = newIndividualOption?.variants || []
                               if (newVariants.length > 0) {
                                 const defaultVariant = newVariants.find((v: any) => v.isDefault) || newVariants[0]
                                 setVariantSelections({
                                   ...variantSelections,
-                                  [String(newValue)]: defaultVariant.id
+                                  [String(processedValue)]: defaultVariant.id
                                 })
                               }
                             }
                             // Check if new option has RANGE mode and set default quantity
                             const newOptionBom = editComponentProductBOMs?.find(
-                              (bom: any) => bom.optionId === newValue
+                              (bom: any) => bom.optionId === processedValue
                             )
                             if (newOptionBom?.quantityMode === 'RANGE') {
                               setEditComponentOptionQuantities({
@@ -5373,58 +5373,156 @@ export default function ProjectDetailView() {
                               setEditComponentOptionQuantities(newQuantities)
                             }
                           }}
-                          className={`${isRangeMode || hasVariants ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900`}
                         >
-                          <option value="">None</option>
-                          <option value="none">None (No hardware)</option>
-                          {option.category.individualOptions?.map((individualOption: any) => (
-                            <option key={individualOption.id} value={individualOption.id}>
-                              {individualOption.name}
-                              {option.standardOptionId === individualOption.id && ' \u2605'}
-                              {individualOption.variants?.length > 0 && ' \u2726'}
-                            </option>
-                          ))}
-                        </select>
+                          <div className={`${isRangeMode || hasVariants ? 'flex-1' : 'w-full'} relative`}>
+                            <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
+                              {(() => {
+                                if (selectedOptions[option.category.id] === null) {
+                                  return <span className="text-gray-700">None (No hardware)</span>
+                                }
+                                const selectedOpt = option.category.individualOptions?.find((opt: any) => opt.id === selectedOptions[option.category.id])
+                                if (selectedOpt) {
+                                  return (
+                                    <span className="flex items-center gap-2">
+                                      {selectedOpt.name}
+                                      {selectedOpt.id === option.standardOptionId && (
+                                        <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded font-medium">Standard</span>
+                                      )}
+                                    </span>
+                                  )
+                                }
+                                return <span className="text-gray-500">Select {option.category.name}...</span>
+                              })()}
+                              <ChevronDown className="w-4 h-4 text-gray-400" />
+                            </ListboxButton>
+                            <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                              <ListboxOption
+                                value="none"
+                                className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
+                              >
+                                {({ selected }) => (
+                                  <>
+                                    <span>None (No hardware)</span>
+                                    {selected && <Check className="w-4 h-4 text-blue-600" />}
+                                  </>
+                                )}
+                              </ListboxOption>
+                              {option.category.individualOptions?.map((opt: any) => (
+                                <ListboxOption
+                                  key={opt.id}
+                                  value={opt.id}
+                                  className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
+                                >
+                                  {({ selected }) => (
+                                    <>
+                                      <span className="flex items-center gap-2">
+                                        {opt.name}
+                                        {opt.id === option.standardOptionId && (
+                                          <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded font-medium">Standard</span>
+                                        )}
+                                      </span>
+                                      {selected && <Check className="w-4 h-4 text-blue-600" />}
+                                    </>
+                                  )}
+                                </ListboxOption>
+                              ))}
+                            </ListboxOptions>
+                          </div>
+                        </Listbox>
                         {hasVariants && (
-                          <select
-                            value={variantSelections[String(selectedOptionIdNum)] || ''}
-                            onChange={(e) => {
-                              setVariantSelections({
-                                ...variantSelections,
-                                [String(selectedOptionIdNum)]: parseInt(e.target.value)
-                              })
+                          <Listbox
+                            value={variantSelections[String(selectedOptionIdNum)] || null}
+                            onChange={(value: number | null) => {
+                              if (value === null) {
+                                const newVariantSelections = { ...variantSelections }
+                                delete newVariantSelections[String(selectedOptionIdNum)]
+                                setVariantSelections(newVariantSelections)
+                              } else {
+                                setVariantSelections({
+                                  ...variantSelections,
+                                  [String(selectedOptionIdNum)]: value
+                                })
+                              }
                             }}
-                            className="w-32 px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-900 bg-purple-50"
-                            title="Select variant"
                           >
-                            {optionVariants.map((variant: any) => (
-                              <option key={variant.id} value={variant.id}>
-                                {variant.name}{variant.isDefault ? ' *' : ''}
-                              </option>
-                            ))}
-                          </select>
+                            <div className="relative w-40">
+                              <ListboxButton className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-900 bg-purple-50 text-left flex items-center justify-between">
+                                {(() => {
+                                  const selectedVariant = optionVariants.find((v: any) => v.id === variantSelections[String(selectedOptionIdNum)])
+                                  if (selectedVariant) {
+                                    return (
+                                      <span className="flex items-center gap-2">
+                                        {selectedVariant.name}
+                                        {selectedVariant.isDefault && (
+                                          <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
+                                        )}
+                                      </span>
+                                    )
+                                  }
+                                  return <span className="text-gray-500">Choose Variant...</span>
+                                })()}
+                                <ChevronDown className="w-4 h-4 text-purple-400" />
+                              </ListboxButton>
+                              <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-purple-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                                {optionVariants.map((variant: any) => (
+                                  <ListboxOption
+                                    key={variant.id}
+                                    value={variant.id}
+                                    className="cursor-pointer select-none px-3 py-2 hover:bg-purple-50 data-[selected]:bg-purple-100 flex items-center justify-between"
+                                  >
+                                    {({ selected }) => (
+                                      <>
+                                        <span className="flex items-center gap-2">
+                                          {variant.name}
+                                          {variant.isDefault && (
+                                            <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
+                                          )}
+                                        </span>
+                                        {selected && <Check className="w-4 h-4 text-purple-600" />}
+                                      </>
+                                    )}
+                                  </ListboxOption>
+                                ))}
+                              </ListboxOptions>
+                            </div>
+                          </Listbox>
                         )}
                         {isRangeMode && (
-                          <select
+                          <Listbox
                             value={editComponentOptionQuantities[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}
-                            onChange={(e) => {
+                            onChange={(value: number) => {
                               setEditComponentOptionQuantities({
                                 ...editComponentOptionQuantities,
-                                [quantityKey]: parseInt(e.target.value)
+                                [quantityKey]: value
                               })
                             }}
-                            className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                            title="Select quantity"
                           >
-                            {Array.from(
-                              { length: (optionBom.maxQuantity || 4) - (optionBom.minQuantity || 0) + 1 },
-                              (_, i) => (optionBom.minQuantity || 0) + i
-                            ).map((qty) => (
-                              <option key={qty} value={qty}>
-                                {qty}
-                              </option>
-                            ))}
-                          </select>
+                            <div className="relative w-20">
+                              <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
+                                <span>{editComponentOptionQuantities[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}</span>
+                                <ChevronDown className="w-4 h-4 text-gray-400" />
+                              </ListboxButton>
+                              <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                                {Array.from(
+                                  { length: (optionBom.maxQuantity || 4) - (optionBom.minQuantity || 0) + 1 },
+                                  (_, i) => (optionBom.minQuantity || 0) + i
+                                ).map((qty) => (
+                                  <ListboxOption
+                                    key={qty}
+                                    value={qty}
+                                    className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
+                                  >
+                                    {({ selected }) => (
+                                      <>
+                                        <span>{qty}</span>
+                                        {selected && <Check className="w-4 h-4 text-blue-600" />}
+                                      </>
+                                    )}
+                                  </ListboxOption>
+                                ))}
+                              </ListboxOptions>
+                            </div>
+                          </Listbox>
                         )}
                       </div>
                     </div>

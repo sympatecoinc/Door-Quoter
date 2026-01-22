@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Loader2, Download } from 'lucide-react'
+import { X, Loader2, Download, ChevronRight } from 'lucide-react'
 
 interface UniqueComponent {
   hash: string
@@ -20,6 +20,9 @@ interface BomDownloadModalProps {
   onClose: () => void
   showError: (message: string) => void
   showSuccess: (message: string) => void
+  // Configure mode - don't download, just pass selection back
+  onConfigure?: (config: { projectId: number; projectName: string; selectedHashes: string[] }) => void
+  hasMoreModals?: boolean  // If true, shows "Next" instead of "Finish"
 }
 
 export default function BomDownloadModal({
@@ -27,12 +30,17 @@ export default function BomDownloadModal({
   projectName,
   onClose,
   showError,
-  showSuccess
+  showSuccess,
+  onConfigure,
+  hasMoreModals
 }: BomDownloadModalProps) {
   const [loading, setLoading] = useState(true)
   const [uniqueComponents, setUniqueComponents] = useState<UniqueComponent[]>([])
   const [selectedHashes, setSelectedHashes] = useState<Set<string>>(new Set())
   const [downloading, setDownloading] = useState(false)
+
+  // Configure mode: don't download, just collect selections
+  const isConfigureMode = !!onConfigure
 
   useEffect(() => {
     fetchUniqueBoms()
@@ -77,12 +85,23 @@ export default function BomDownloadModal({
     setSelectedHashes(new Set())
   }
 
-  async function handleDownload() {
+  async function handleAction() {
     if (selectedHashes.size === 0) {
       showError('Please select at least one BOM')
       return
     }
 
+    // In configure mode, just pass the selection back
+    if (isConfigureMode) {
+      onConfigure({
+        projectId,
+        projectName,
+        selectedHashes: Array.from(selectedHashes)
+      })
+      return
+    }
+
+    // Direct download mode (when not in bulk/configure flow)
     setDownloading(true)
     try {
       const selectedParam = Array.from(selectedHashes).join('|')
@@ -122,6 +141,29 @@ export default function BomDownloadModal({
     }
   }
 
+  function getButtonText() {
+    if (downloading) return null // Will show spinner
+    if (isConfigureMode) {
+      return hasMoreModals ? (
+        <>
+          Next
+          <ChevronRight className="w-4 h-4 ml-1" />
+        </>
+      ) : (
+        <>
+          <Download className="w-4 h-4 mr-2" />
+          Download All
+        </>
+      )
+    }
+    return (
+      <>
+        <Download className="w-4 h-4 mr-2" />
+        Download ZIP
+      </>
+    )
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6">
@@ -137,7 +179,7 @@ export default function BomDownloadModal({
           </button>
         </div>
         <p className="text-sm text-gray-600 mb-4">
-          Select the unique component BOMs you want to include in the ZIP download.
+          Select the unique component BOMs you want to include{isConfigureMode ? '.' : ' in the ZIP download.'}
         </p>
 
         {loading ? (
@@ -212,16 +254,13 @@ export default function BomDownloadModal({
             Cancel
           </button>
           <button
-            onClick={handleDownload}
+            onClick={handleAction}
             disabled={selectedHashes.size === 0 || loading || downloading}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
           >
             {downloading ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Download className="w-4 h-4 mr-2" />
-            )}
-            Download ZIP
+            ) : getButtonText()}
           </button>
         </div>
       </div>
