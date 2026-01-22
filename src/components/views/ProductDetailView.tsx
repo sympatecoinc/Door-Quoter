@@ -616,13 +616,10 @@ export default function ProductDetailView({
   const [optionBomIsMachined, setOptionBomIsMachined] = useState(false)
   const [savingOptionBom, setSavingOptionBom] = useState(false)
 
-  // Option Parts Formula Modal State (for setting formulas on linked parts at product level)
-  const [optionPartsModalOpen, setOptionPartsModalOpen] = useState(false)
-  const [editingOptionParts, setEditingOptionParts] = useState<any>(null)
+  // Linked Parts State (used in unified Configure modal)
   const [eligibleLinkedParts, setEligibleLinkedParts] = useState<any[]>([])
   const [loadingLinkedParts, setLoadingLinkedParts] = useState(false)
   const [partFormulas, setPartFormulas] = useState<Record<string, string>>({})
-  const [savingOptionPart, setSavingOptionPart] = useState(false)
 
   // Determine if this is a Frame product (hide certain sections)
   const isFrameProduct = (productDetails?.productType || product?.productType) === 'FRAME'
@@ -1432,7 +1429,7 @@ export default function ProductDetailView({
     }
   }
 
-  function openOptionBomModal(option: any, existingBom: any) {
+  async function openOptionBomModal(option: any, existingBom: any) {
     setEditingOptionBom({ option, existingBom })
     setOptionBomFormula(existingBom?.formula || '')
     setOptionBomQuantity(existingBom?.quantity?.toString() || '1')
@@ -1442,90 +1439,16 @@ export default function ProductDetailView({
     setOptionBomDefaultQuantity(existingBom?.defaultQuantity?.toString() || '')
     setOptionBomIsMachined(existingBom?.isMilled ?? false)
     setOptionBomModalOpen(true)
-  }
 
-  async function handleSaveOptionBom() {
-    if (!editingOptionBom?.option) return
-
-    // Validate RANGE mode
-    if (optionBomQuantityMode === 'RANGE') {
-      if (!optionBomMinQuantity || !optionBomMaxQuantity) {
-        showError('RANGE mode requires min and max quantity values')
-        return
-      }
-      const min = parseFloat(optionBomMinQuantity)
-      const max = parseFloat(optionBomMaxQuantity)
-      if (min >= max) {
-        showError('Min quantity must be less than max quantity')
-        return
-      }
-    }
-
-    setSavingOptionBom(true)
-    try {
-      const method = editingOptionBom.existingBom ? 'PUT' : 'POST'
-
-      const response = await fetch('/api/product-boms', {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: editingOptionBom.existingBom?.id,
-          productId: product.id,
-          optionId: editingOptionBom.option.id,
-          partType: 'Extrusion',
-          partName: editingOptionBom.option.name,
-          partNumber: editingOptionBom.option.partNumber,
-          formula: optionBomFormula,
-          quantity: parseFloat(optionBomQuantity) || 1,
-          unit: 'IN',
-          quantityMode: optionBomQuantityMode,
-          minQuantity: optionBomQuantityMode === 'RANGE' ? parseFloat(optionBomMinQuantity) : null,
-          maxQuantity: optionBomQuantityMode === 'RANGE' ? parseFloat(optionBomMaxQuantity) : null,
-          defaultQuantity: optionBomQuantityMode === 'RANGE' && optionBomDefaultQuantity ? parseFloat(optionBomDefaultQuantity) : null,
-          isMilled: optionBomIsMachined
-        })
-      })
-
-      if (response.ok) {
-        // Refresh product details
-        const detailsResponse = await fetch(`/api/products/${product.id}`)
-        if (detailsResponse.ok) {
-          const data = await detailsResponse.json()
-          setProductDetails(data)
-        }
-        setOptionBomModalOpen(false)
-        setEditingOptionBom(null)
-        showSuccess('Option BOM saved!')
-      } else {
-        const errorData = await response.json()
-        showError(errorData.error || 'Failed to save option BOM')
-      }
-    } catch (error) {
-      console.error('Error saving option BOM:', error)
-      showError('Failed to save option BOM')
-    } finally {
-      setSavingOptionBom(false)
-    }
-  }
-
-  function toggleCategoryExpand(categoryId: number) {
-    setExpandedCategory(expandedCategory === categoryId ? null : categoryId)
-  }
-
-  // Option Parts Formula Management (setting formulas on linked parts at product level)
-  async function openOptionPartsModal(option: any) {
-    setEditingOptionParts(option)
+    // Also load linked parts for formula editing
     setEligibleLinkedParts([])
     setPartFormulas({})
     setLoadingLinkedParts(true)
-    setOptionPartsModalOpen(true)
 
     try {
-      // Fetch linked parts for this option
       const response = await fetch(`/api/options/${option.id}/parts`)
       if (response.ok) {
         const linkedParts = await response.json()
-        // Filter to only parts with LF, IN, or FT units (eligible for formulas)
         const eligible = linkedParts.filter((lp: any) =>
           lp.masterPart?.unit === 'LF' || lp.masterPart?.unit === 'IN' || lp.masterPart?.unit === 'FT'
         )
@@ -1534,70 +1457,160 @@ export default function ProductDetailView({
         // Load existing formulas from ProductBOM
         const formulas: Record<string, string> = {}
         for (const lp of eligible) {
-          const existingBom = productDetails?.productBOMs?.find((b: any) =>
+          const existingPartBom = productDetails?.productBOMs?.find((b: any) =>
             b.optionId === option.id && b.partNumber === lp.masterPart.partNumber
           )
-          if (existingBom?.formula) {
-            formulas[lp.masterPart.partNumber] = existingBom.formula
+          if (existingPartBom?.formula) {
+            formulas[lp.masterPart.partNumber] = existingPartBom.formula
           }
         }
         setPartFormulas(formulas)
       }
     } catch (error) {
       console.error('Error fetching linked parts:', error)
-      showError('Failed to load linked parts')
     } finally {
       setLoadingLinkedParts(false)
     }
   }
 
-  async function handleSavePartFormula(linkedPart: any) {
-    const formula = partFormulas[linkedPart.masterPart.partNumber] || ''
+  async function handleSaveAllOptionSettings() {
+    if (!editingOptionBom?.option) return
 
-    setSavingOptionPart(true)
+    const option = editingOptionBom.option
+    const isCutListItem = option.isCutListItem
+
+    // Validate extrusion settings if this is a cut list item with a formula
+    if (isCutListItem && optionBomFormula) {
+      if (optionBomQuantityMode === 'RANGE') {
+        if (!optionBomMinQuantity || !optionBomMaxQuantity) {
+          showError('RANGE mode requires min and max quantity values')
+          return
+        }
+        const min = parseFloat(optionBomMinQuantity)
+        const max = parseFloat(optionBomMaxQuantity)
+        if (min >= max) {
+          showError('Min quantity must be less than max quantity')
+          return
+        }
+      } else if (!optionBomQuantity) {
+        showError('Quantity is required for fixed quantity mode')
+        return
+      }
+    }
+
+    setSavingOptionBom(true)
     try {
-      // Check if ProductBOM entry already exists
-      const existingBom = productDetails?.productBOMs?.find((b: any) =>
-        b.optionId === editingOptionParts.id && b.partNumber === linkedPart.masterPart.partNumber
-      )
+      const savePromises: Promise<Response>[] = []
 
-      const method = existingBom ? 'PUT' : 'POST'
-      const response = await fetch('/api/product-boms', {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: existingBom?.id,
-          productId: product.id,
-          optionId: editingOptionParts.id,
-          partType: linkedPart.masterPart.partType || 'Hardware',
-          partName: linkedPart.masterPart.baseName,
-          partNumber: linkedPart.masterPart.partNumber,
-          formula: formula || null,
-          quantity: linkedPart.quantity || 1,
-          unit: linkedPart.masterPart.unit || 'EA',
-          addFinishToPartNumber: linkedPart.masterPart.addFinishToPartNumber || false,
-          addToPackingList: linkedPart.masterPart.addToPackingList || false
-        })
-      })
+      // Save extrusion settings if this is a cut list item and has a formula
+      if (isCutListItem && optionBomFormula) {
+        const method = editingOptionBom.existingBom ? 'PUT' : 'POST'
+        savePromises.push(
+          fetch('/api/product-boms', {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: editingOptionBom.existingBom?.id,
+              productId: product.id,
+              optionId: option.id,
+              partType: 'Extrusion',
+              partName: option.name,
+              partNumber: option.partNumber,
+              formula: optionBomFormula,
+              quantity: parseFloat(optionBomQuantity) || 1,
+              unit: 'IN',
+              quantityMode: optionBomQuantityMode,
+              minQuantity: optionBomQuantityMode === 'RANGE' ? parseFloat(optionBomMinQuantity) : null,
+              maxQuantity: optionBomQuantityMode === 'RANGE' ? parseFloat(optionBomMaxQuantity) : null,
+              defaultQuantity: optionBomQuantityMode === 'RANGE' && optionBomDefaultQuantity ? parseFloat(optionBomDefaultQuantity) : null,
+              isMilled: optionBomIsMachined
+            })
+          })
+        )
+      }
 
-      if (response.ok) {
-        // Refresh product details
+      // Save all linked part formulas
+      for (const lp of eligibleLinkedParts) {
+        const formula = partFormulas[lp.masterPart.partNumber]
+        if (formula !== undefined) {
+          // Check if ProductBOM entry already exists
+          const existingBom = productDetails?.productBOMs?.find((b: any) =>
+            b.optionId === option.id && b.partNumber === lp.masterPart.partNumber
+          )
+
+          const method = existingBom ? 'PUT' : 'POST'
+          savePromises.push(
+            fetch('/api/product-boms', {
+              method,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: existingBom?.id,
+                productId: product.id,
+                optionId: option.id,
+                partType: lp.masterPart.partType || 'Hardware',
+                partName: lp.masterPart.baseName,
+                partNumber: lp.masterPart.partNumber,
+                formula: formula || null,
+                quantity: lp.quantity || 1,
+                unit: lp.masterPart.unit || 'EA',
+                addFinishToPartNumber: lp.masterPart.addFinishToPartNumber || false,
+                addToPackingList: lp.masterPart.addToPackingList || false
+              })
+            })
+          )
+        }
+      }
+
+      if (savePromises.length === 0) {
+        showError('No changes to save')
+        setSavingOptionBom(false)
+        return
+      }
+
+      // Execute all saves in parallel
+      const responses = await Promise.all(savePromises)
+      const allOk = responses.every(r => r.ok)
+
+      if (allOk) {
+        // Refresh product details once after all saves
         const detailsResponse = await fetch(`/api/products/${product.id}`)
         if (detailsResponse.ok) {
           const data = await detailsResponse.json()
           setProductDetails(data)
+          // Update the existingBom reference with the saved data
+          const savedBom = data.productBOMs?.find((b: any) =>
+            b.optionId === option.id && b.partType === 'Extrusion'
+          )
+          if (savedBom) {
+            setEditingOptionBom((prev: any) => ({ ...prev, existingBom: savedBom }))
+          }
         }
-        showSuccess('Formula saved!')
+        showSuccess('All settings saved!')
+        // Close modal after successful save
+        setOptionBomModalOpen(false)
+        setEditingOptionBom(null)
+        setOptionBomFormula('')
+        setOptionBomQuantity('1')
+        setOptionBomQuantityMode('FIXED')
+        setOptionBomMinQuantity('')
+        setOptionBomMaxQuantity('')
+        setOptionBomDefaultQuantity('')
+        setOptionBomIsMachined(false)
+        setEligibleLinkedParts([])
+        setPartFormulas({})
       } else {
-        const errorData = await response.json()
-        showError(errorData.error || 'Failed to save formula')
+        showError('Some settings failed to save')
       }
     } catch (error) {
-      console.error('Error saving formula:', error)
-      showError('Failed to save formula')
+      console.error('Error saving option settings:', error)
+      showError('Failed to save settings')
     } finally {
-      setSavingOptionPart(false)
+      setSavingOptionBom(false)
     }
+  }
+
+  function toggleCategoryExpand(categoryId: number) {
+    setExpandedCategory(expandedCategory === categoryId ? null : categoryId)
   }
 
   async function handleAddPart(e: React.FormEvent) {
@@ -2569,25 +2582,18 @@ export default function ProductDetailView({
                                                 )}
                                               </div>
                                               <div className="flex flex-col gap-1 ml-2">
-                                                {option.isCutListItem && (
-                                                  <button
-                                                    onClick={(e) => {
-                                                      e.stopPropagation()
-                                                      openOptionBomModal(option, optionBom)
-                                                    }}
-                                                    className="px-3 py-1 text-xs rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
-                                                  >
-                                                    Configure
-                                                  </button>
-                                                )}
                                                 <button
                                                   onClick={(e) => {
                                                     e.stopPropagation()
-                                                    openOptionPartsModal(option)
+                                                    openOptionBomModal(option, optionBom)
                                                   }}
-                                                  className="px-3 py-1 text-xs rounded-lg bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
+                                                  className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                                                    option.isCutListItem
+                                                      ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                                                      : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                                  }`}
                                                 >
-                                                  Formulas {(() => {
+                                                  Configure {(() => {
                                                     const count = productDetails?.productBOMs?.filter((b: any) =>
                                                       b.optionId === option.id && b.partType !== 'Extrusion' && b.formula
                                                     ).length || 0
@@ -3500,244 +3506,224 @@ export default function ProductDetailView({
         </div>
       )}
 
-      {/* Option BOM Modal */}
+      {/* Option BOM Modal (Combined with Linked Parts Formulas) */}
       {optionBomModalOpen && editingOptionBom && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold text-gray-900 mb-4">
               Configure BOM for {editingOptionBom.option?.name}
             </h2>
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Part Number</label>
-                <input
-                  type="text"
-                  value={editingOptionBom.option?.partNumber || 'No part number'}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cut Length Formula *</label>
-                <FormulaInput
-                  value={optionBomFormula}
-                  onChange={setOptionBomFormula}
-                  placeholder="e.g., height - 8, width / 2"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Variables: width, height
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Quantity Mode</label>
-                <select
-                  value={optionBomQuantityMode}
-                  onChange={(e) => setOptionBomQuantityMode(e.target.value as 'FIXED' | 'RANGE')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                >
-                  <option value="FIXED">Fixed Quantity</option>
-                  <option value="RANGE">User Selectable Range</option>
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  {optionBomQuantityMode === 'FIXED'
-                    ? 'Quantity is fixed when adding component to opening'
-                    : 'User can select quantity from a range when adding component'}
-                </p>
-              </div>
+              {/* Extrusion Configuration Section */}
+              {editingOptionBom.option?.isCutListItem && (
+                <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
+                  <h3 className="text-sm font-semibold text-orange-800 mb-3">Extrusion Settings</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Part Number</label>
+                      <input
+                        type="text"
+                        value={editingOptionBom.option?.partNumber || 'No part number'}
+                        disabled
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cut Length Formula *</label>
+                      <FormulaInput
+                        value={optionBomFormula}
+                        onChange={setOptionBomFormula}
+                        placeholder="e.g., height - 8, width / 2"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Variables: width, height
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Quantity Mode</label>
+                      <select
+                        value={optionBomQuantityMode}
+                        onChange={(e) => setOptionBomQuantityMode(e.target.value as 'FIXED' | 'RANGE')}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 text-sm"
+                      >
+                        <option value="FIXED">Fixed Quantity</option>
+                        <option value="RANGE">User Selectable Range</option>
+                      </select>
+                    </div>
 
-              {optionBomQuantityMode === 'FIXED' ? (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={optionBomQuantity}
-                    onChange={(e) => setOptionBomQuantity(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                    placeholder="e.g., 2"
-                  />
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Min *</label>
+                    {optionBomQuantityMode === 'FIXED' ? (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={optionBomQuantity}
+                          onChange={(e) => setOptionBomQuantity(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 text-sm"
+                          placeholder="e.g., 2"
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Min *</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={optionBomMinQuantity}
+                              onChange={(e) => setOptionBomMinQuantity(e.target.value)}
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 text-sm"
+                              placeholder="0"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Max *</label>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={optionBomMaxQuantity}
+                              onChange={(e) => setOptionBomMaxQuantity(e.target.value)}
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 text-sm"
+                              placeholder="4"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Default</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={optionBomDefaultQuantity}
+                              onChange={(e) => setOptionBomDefaultQuantity(e.target.value)}
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 text-sm"
+                              placeholder="2"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          User will select from {optionBomMinQuantity || '0'} to {optionBomMaxQuantity || '?'} when adding to opening
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center">
                       <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={optionBomMinQuantity}
-                        onChange={(e) => setOptionBomMinQuantity(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        placeholder="0"
+                        type="checkbox"
+                        id="optionBomIsMachined"
+                        checked={optionBomIsMachined}
+                        onChange={(e) => setOptionBomIsMachined(e.target.checked)}
+                        className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Max *</label>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={optionBomMaxQuantity}
-                        onChange={(e) => setOptionBomMaxQuantity(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        placeholder="4"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Default</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={optionBomDefaultQuantity}
-                        onChange={(e) => setOptionBomDefaultQuantity(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        placeholder="2"
-                      />
+                      <label htmlFor="optionBomIsMachined" className="text-sm font-medium text-gray-700">
+                        Machined
+                      </label>
+                      <span className="ml-2 text-xs text-gray-500">
+                        (Requires machining)
+                      </span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500">
-                    User will select from {optionBomMinQuantity || '0'} to {optionBomMaxQuantity || '?'} when adding to opening
-                  </p>
                 </div>
               )}
 
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="optionBomIsMachined"
-                  checked={optionBomIsMachined}
-                  onChange={(e) => setOptionBomIsMachined(e.target.checked)}
-                  className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="optionBomIsMachined" className="text-sm font-medium text-gray-700">
-                  Machined
-                </label>
-                <span className="ml-2 text-xs text-gray-500">
-                  (This extrusion requires machining)
-                </span>
+              {/* Linked Parts Formulas Section */}
+              <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                <h3 className="text-sm font-semibold text-purple-800 mb-2">Linked Parts Cut Formulas</h3>
+                <p className="text-xs text-gray-600 mb-3">
+                  Set cut length formulas for linked parts when this option is used with {product.name}.
+                </p>
+
+                {loadingLinkedParts ? (
+                  <div className="flex justify-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+                  </div>
+                ) : eligibleLinkedParts.length > 0 ? (
+                  <div className="space-y-3">
+                    {eligibleLinkedParts.map((lp: any) => (
+                      <div key={lp.id} className="p-3 bg-white rounded-lg border border-purple-100">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{lp.masterPart.baseName}</p>
+                            <p className="text-xs text-gray-500">
+                              Part #: {lp.masterPart.partNumber} | Unit: {lp.masterPart.unit}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">
+                            Cut Length Formula
+                          </label>
+                          <input
+                            type="text"
+                            value={partFormulas[lp.masterPart.partNumber] || ''}
+                            onChange={(e) => setPartFormulas(prev => ({
+                              ...prev,
+                              [lp.masterPart.partNumber]: e.target.value
+                            }))}
+                            placeholder="e.g., height, width * 2, height - 4"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+
+                        {partFormulas[lp.masterPart.partNumber] && (
+                          <p className="text-xs text-purple-600 mt-2">
+                            Preview (36&quot;x96&quot;): {(() => {
+                              try {
+                                const f = partFormulas[lp.masterPart.partNumber].toLowerCase()
+                                  .replace(/width/g, '36').replace(/height/g, '96')
+                                const result = eval(f)
+                                return lp.masterPart.unit === 'LF'
+                                  ? `${(result / 12).toFixed(2)} ft`
+                                  : `${result.toFixed(2)} ${lp.masterPart.unit.toLowerCase()}`
+                              } catch { return 'Invalid formula' }
+                            })()}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-gray-500 text-sm">
+                    <p>No eligible linked parts found.</p>
+                    <p className="text-xs mt-1">
+                      Link parts with LF, IN, or FT units to this option in Category settings.
+                    </p>
+                  </div>
+                )}
               </div>
 
-              <div className="flex justify-end space-x-3 pt-4">
+              <div className="flex justify-end gap-3 pt-4 border-t">
                 <button
                   type="button"
                   onClick={() => {
                     setOptionBomModalOpen(false)
                     setEditingOptionBom(null)
+                    setOptionBomFormula('')
+                    setOptionBomQuantity('1')
+                    setOptionBomQuantityMode('FIXED')
+                    setOptionBomMinQuantity('')
+                    setOptionBomMaxQuantity('')
+                    setOptionBomDefaultQuantity('')
+                    setOptionBomIsMachined(false)
+                    setEligibleLinkedParts([])
+                    setPartFormulas({})
                   }}
-                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={handleSaveOptionBom}
-                  disabled={
-                    savingOptionBom ||
-                    !optionBomFormula ||
-                    (optionBomQuantityMode === 'FIXED' && !optionBomQuantity) ||
-                    (optionBomQuantityMode === 'RANGE' && (!optionBomMinQuantity || !optionBomMaxQuantity))
-                  }
-                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                  onClick={handleSaveAllOptionSettings}
+                  disabled={savingOptionBom || loadingLinkedParts}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {savingOptionBom ? 'Saving...' : 'Save'}
+                  {savingOptionBom ? 'Saving...' : 'Save All'}
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Option Parts Formula Modal */}
-      {optionPartsModalOpen && editingOptionParts && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold text-gray-900 mb-2">
-              Part Formulas for {editingOptionParts.name}
-            </h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Set cut length formulas for linked parts when this option is used with {product.name}.
-            </p>
-
-            {loadingLinkedParts ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-              </div>
-            ) : eligibleLinkedParts.length > 0 ? (
-              <div className="space-y-4">
-                {eligibleLinkedParts.map((lp: any) => (
-                  <div key={lp.id} className="p-4 bg-purple-50 rounded-lg">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <p className="font-medium text-gray-900">{lp.masterPart.baseName}</p>
-                        <p className="text-xs text-gray-500">
-                          Part #: {lp.masterPart.partNumber} | Unit: {lp.masterPart.unit}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 items-end">
-                      <div className="flex-1">
-                        <label className="block text-xs text-gray-600 mb-1">
-                          Cut Length Formula
-                        </label>
-                        <input
-                          type="text"
-                          value={partFormulas[lp.masterPart.partNumber] || ''}
-                          onChange={(e) => setPartFormulas(prev => ({
-                            ...prev,
-                            [lp.masterPart.partNumber]: e.target.value
-                          }))}
-                          placeholder="e.g., height, width * 2, height - 4"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-                        />
-                      </div>
-                      <button
-                        onClick={() => handleSavePartFormula(lp)}
-                        disabled={savingOptionPart}
-                        className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50"
-                      >
-                        Save
-                      </button>
-                    </div>
-
-                    {partFormulas[lp.masterPart.partNumber] && (
-                      <p className="text-xs text-purple-600 mt-2">
-                        Preview (36&quot;x96&quot;): {(() => {
-                          try {
-                            const f = partFormulas[lp.masterPart.partNumber].toLowerCase()
-                              .replace(/width/g, '36').replace(/height/g, '96')
-                            const result = eval(f)
-                            return lp.masterPart.unit === 'LF'
-                              ? `${(result / 12).toFixed(2)} ft`
-                              : `${result.toFixed(2)} ${lp.masterPart.unit.toLowerCase()}`
-                          } catch { return 'Invalid formula' }
-                        })()}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <p className="mb-2">No eligible linked parts found.</p>
-                <p className="text-sm">
-                  Link parts with LF, IN, or FT units to this option in the Category settings first.
-                </p>
-              </div>
-            )}
-
-            <div className="flex justify-end pt-4 mt-4 border-t">
-              <button
-                onClick={() => {
-                  setOptionPartsModalOpen(false)
-                  setEditingOptionParts(null)
-                }}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>
