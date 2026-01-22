@@ -378,6 +378,7 @@ model MasterPart {
 
   // Inventory Management Fields
   qtyOnHand               Float?     @default(0)     // Current quantity in stock
+  qtyReserved             Float      @default(0)     // Quantity reserved for confirmed SOs
   binLocationLegacy       String?    @map("binLocation") // DEPRECATED: Legacy bin location string (kept for migration)
   binLocationId           Int?                        // Physical bin/location reference
   binLocationRef          BinLocation? @relation(fields: [binLocationId], references: [id], onDelete: SetNull)
@@ -394,6 +395,9 @@ model MasterPart {
 
   // Option linked parts - parts added when an option is selected
   optionLinkedParts       OptionLinkedPart[]
+
+  // Sales Order Parts - parts reserved/picked for sales orders
+  salesOrderParts         SalesOrderPart[]
 
   @@map("MasterParts")
 }
@@ -784,6 +788,7 @@ model User {
 
   // SO Relations
   createdSOs        SalesOrder[]      @relation("SOCreatedBy")
+  pickedParts       SalesOrderPart[]  @relation("PartPickedBy")
 
   // Invoice Relations
   createdInvoices   Invoice[]         @relation("InvoiceCreatedBy")
@@ -1294,9 +1299,61 @@ model SalesOrder {
 
   // Relations
   lines                 SalesOrderLine[]
+  parts                 SalesOrderPart[]  // Parts breakdown with fulfillment status
   invoices              Invoice[]  // Invoices generated from this SO
 
   @@map("SalesOrders")
+}
+
+// Sales Order Part Status enum
+enum SOPartStatus {
+  PENDING     @map("Pending")
+  RESERVED    @map("Reserved")
+  PICKED      @map("Picked")
+  PACKED      @map("Packed")
+  SHIPPED     @map("Shipped")
+  CANCELLED   @map("Cancelled")
+}
+
+// Sales Order Part - Individual parts breakdown from project BOM with fulfillment tracking
+model SalesOrderPart {
+  id              Int           @id @default(autoincrement())
+  salesOrderId    Int
+  salesOrder      SalesOrder    @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+
+  // Part reference
+  masterPartId    Int?
+  masterPart      MasterPart?   @relation(fields: [masterPartId], references: [id], onDelete: SetNull)
+  partNumber      String        // Full part number (with finish code, stock length)
+  partName        String
+  partType        String        // Extrusion, Hardware, Glass, Option, etc.
+
+  // Quantity & dimensions
+  quantity        Float         @default(1)
+  unit            String        @default("EA")
+  cutLength       Float?        // For extrusions
+
+  // Source tracking
+  openingName     String?
+  productName     String?
+
+  // Fulfillment status
+  status          SOPartStatus  @default(PENDING)
+  qtyPicked       Float         @default(0)
+  qtyPacked       Float         @default(0)
+  qtyShipped      Float         @default(0)
+
+  // Timestamps
+  pickedAt        DateTime?
+  packedAt        DateTime?
+  shippedAt       DateTime?
+  pickedById      Int?
+  pickedBy        User?         @relation("PartPickedBy", fields: [pickedById], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@map("SalesOrderParts")
 }
 
 // Sales Order Line Item

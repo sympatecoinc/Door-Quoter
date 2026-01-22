@@ -1,7 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Save, Package } from 'lucide-react'
+
+interface BinLocation {
+  id: number
+  code: string
+  name: string
+  isActive: boolean
+}
 
 interface Vendor {
   id: number
@@ -19,6 +26,7 @@ interface InventoryPart {
   cost?: number | null
   salePrice?: number | null
   qtyOnHand?: number | null
+  qtyReserved?: number | null
   binLocation?: string | null
   reorderPoint?: number | null
   reorderQty?: number | null
@@ -44,6 +52,26 @@ export default function InventoryEditModal({ part, vendors, onClose, onSave }: P
   const [vendorId, setVendorId] = useState(part.vendorId?.toString() ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [binLocations, setBinLocations] = useState<BinLocation[]>([])
+  const [loadingBinLocations, setLoadingBinLocations] = useState(true)
+
+  // Fetch bin locations on mount
+  useEffect(() => {
+    async function fetchBinLocations() {
+      try {
+        const response = await fetch('/api/bin-locations?limit=100&isActive=true')
+        if (response.ok) {
+          const data = await response.json()
+          setBinLocations(data.binLocations || [])
+        }
+      } catch (err) {
+        console.error('Failed to fetch bin locations:', err)
+      } finally {
+        setLoadingBinLocations(false)
+      }
+    }
+    fetchBinLocations()
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -106,12 +134,57 @@ export default function InventoryEditModal({ part, vendors, onClose, onSave }: P
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          {/* Part Info (Read-only) */}
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <div className="text-sm text-gray-600 mb-1">Part Name</div>
-            <div className="font-medium text-gray-900">{part.baseName}</div>
-            <div className="text-sm text-gray-500 mt-1">Type: {part.partType} | Unit: {part.unit ?? 'N/A'}</div>
-          </div>
+          {/* Part Info with Quantity */}
+          {(() => {
+            const qty = parseFloat(qtyOnHand) || 0
+            const reorder = parseFloat(reorderPoint) || 0
+            let bgColor = 'bg-gray-50'
+
+            if (reorder > 0) {
+              if (qty < reorder) {
+                bgColor = 'bg-red-100'
+              } else if (qty <= reorder * 1.2) {
+                bgColor = 'bg-yellow-100'
+              } else {
+                bgColor = 'bg-green-100'
+              }
+            }
+
+            const reserved = part.qtyReserved ?? 0
+            const available = Math.max(0, qty - reserved)
+
+            return (
+              <div className={`p-3 rounded-lg ${bgColor}`}>
+                <div className="flex justify-between items-center gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-gray-600 mb-1">Part Name</div>
+                    <div className="font-medium text-gray-900">{part.baseName}</div>
+                    <div className="text-sm text-gray-500 mt-1">Type: {part.partType} | Unit: {part.unit ?? 'N/A'}</div>
+                  </div>
+                  <div className="text-right flex-shrink-0 mr-[15px]">
+                    <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">On Hand</div>
+                    <input
+                      type="number"
+                      step="any"
+                      value={qtyOnHand}
+                      onChange={(e) => setQtyOnHand(e.target.value)}
+                      className="w-24 text-3xl font-bold text-gray-900 text-right bg-transparent border-none outline-none focus:ring-0 p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-text"
+                    />
+                  </div>
+                </div>
+                {reserved > 0 && (
+                  <div className="flex justify-end gap-6 mt-2 pt-2 border-t border-gray-200/50 text-sm">
+                    <div className="text-blue-600">
+                      <span className="text-gray-500">Reserved:</span> {reserved}
+                    </div>
+                    <div className={available > 0 ? 'text-green-600' : 'text-red-600'}>
+                      <span className="text-gray-500">Available:</span> {available}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
@@ -156,33 +229,23 @@ export default function InventoryEditModal({ part, vendors, onClose, onSave }: P
             </div>
           </div>
 
-          {/* Quantity On Hand */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Quantity On Hand
-            </label>
-            <input
-              type="number"
-              step="any"
-              value={qtyOnHand}
-              onChange={(e) => setQtyOnHand(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
           {/* Bin Location */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Bin Location <span className="text-gray-400 font-normal">(optional)</span>
             </label>
-            <input
-              type="text"
+            <select
               value={binLocation}
               onChange={(e) => setBinLocation(e.target.value)}
-              placeholder="e.g., A1-01"
+              disabled={loadingBinLocations}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <p className="text-xs text-gray-500 mt-1">Physical storage location code</p>
+            >
+              <option value="">{loadingBinLocations ? 'Loading...' : 'No bin location'}</option>
+              {binLocations.map(bin => (
+                <option key={bin.id} value={bin.code}>{bin.code} - {bin.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">Physical storage location</p>
           </div>
 
           {/* Reorder Point & Quantity (side by side) */}

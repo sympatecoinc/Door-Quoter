@@ -448,6 +448,9 @@ export async function PUT(
         updateData.customerId = newCustomerId
       }
 
+      // Note: Sales Orders are now created manually from the "Pending from Quotes" tab
+      // to allow users to review accepted quotes before creating SOs
+
       const project = await tx.project.update({
         where: { id: projectId },
         data: updateData,

@@ -23,6 +23,7 @@ interface InventoryPart {
   unit?: string | null
   cost?: number | null
   qtyOnHand?: number | null
+  qtyReserved?: number | null
   binLocation?: string | null
   reorderPoint?: number | null
   reorderQty?: number | null
@@ -429,17 +430,22 @@ export default function InventoryView() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty On Hand</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">On Hand</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reserved</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Available</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bin Location</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reorder Point</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vendor</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {parts.map(part => (
-                    <tr key={part.id} className="hover:bg-gray-50">
+                    <tr
+                      key={part.id}
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => setEditingPart(part)}
+                    >
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{part.partNumber}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{part.baseName}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{part.partType}</td>
@@ -450,14 +456,28 @@ export default function InventoryView() {
                         <input
                           type="number"
                           value={part.qtyOnHand ?? 0}
+                          onClick={(e) => e.stopPropagation()}
                           onChange={(e) => handleInlineUpdate(part.id, 'qtyOnHand', parseFloat(e.target.value) || 0)}
                           className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
+                      </td>
+                      <td className="px-4 py-3 text-sm text-blue-600">
+                        {(part.qtyReserved ?? 0) > 0 ? part.qtyReserved : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-medium">
+                        {(() => {
+                          const onHand = part.qtyOnHand ?? 0
+                          const reserved = part.qtyReserved ?? 0
+                          const available = Math.max(0, onHand - reserved)
+                          const colorClass = available > 0 ? 'text-green-600' : 'text-red-600'
+                          return <span className={colorClass}>{available}</span>
+                        })()}
                       </td>
                       <td className="px-4 py-3">
                         <input
                           type="text"
                           value={part.binLocation ?? ''}
+                          onClick={(e) => e.stopPropagation()}
                           onChange={(e) => handleInlineUpdate(part.id, 'binLocation', e.target.value || null)}
                           placeholder="—"
                           className="w-24 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -471,14 +491,6 @@ export default function InventoryView() {
                       </td>
                       <td className="px-4 py-3">
                         {getStockStatusBadge(part.stockStatus)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => setEditingPart(part)}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                        >
-                          Edit
-                        </button>
                       </td>
                     </tr>
                   ))}

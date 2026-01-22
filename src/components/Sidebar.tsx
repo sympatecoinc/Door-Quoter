@@ -58,6 +58,7 @@ export default function Sidebar() {
   const [projects, setProjects] = useState<Project[]>([])
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [inventoryNotificationCount, setInventoryNotificationCount] = useState(0)
+  const [pendingQuotesCount, setPendingQuotesCount] = useState(0)
   const [companyLogo, setCompanyLogo] = useState<string | null>(null)
 
   useEffect(() => {
@@ -69,6 +70,7 @@ export default function Sidebar() {
   useEffect(() => {
     fetchCurrentUser()
     fetchInventoryNotificationCount()
+    fetchPendingQuotesCount()
     fetchBranding()
   }, [])
 
@@ -89,6 +91,9 @@ export default function Sidebar() {
     if (currentMenu !== 'inventory') {
       fetchInventoryNotificationCount()
     }
+    if (currentMenu !== 'salesOrders') {
+      fetchPendingQuotesCount()
+    }
   }, [currentMenu])
 
   // Refresh notification count when triggered (e.g., after creating a master part)
@@ -107,6 +112,18 @@ export default function Sidebar() {
       }
     } catch (error) {
       console.error('Error fetching notification count:', error)
+    }
+  }
+
+  async function fetchPendingQuotesCount() {
+    try {
+      const response = await fetch('/api/projects/pending-quotes')
+      if (response.ok) {
+        const data = await response.json()
+        setPendingQuotesCount(data.pendingQuotes?.length || 0)
+      }
+    } catch (error) {
+      console.error('Error fetching pending quotes count:', error)
     }
   }
 
@@ -171,7 +188,8 @@ export default function Sidebar() {
         {visibleMenuItems.map((item) => {
           const Icon = item.icon
           const isActive = currentMenu === item.id
-          const showBadge = item.id === 'inventory' && inventoryNotificationCount > 0
+          const showInventoryBadge = item.id === 'inventory' && inventoryNotificationCount > 0
+          const showSalesOrdersBadge = item.id === 'salesOrders' && pendingQuotesCount > 0
 
           return (
             <button
@@ -185,9 +203,14 @@ export default function Sidebar() {
             >
               <Icon className="w-5 h-5 mr-3" />
               <span className="flex-1">{item.label}</span>
-              {showBadge && (
+              {showInventoryBadge && (
                 <span className="bg-red-100 text-red-700 rounded-full px-2 py-0.5 text-xs font-medium">
                   {inventoryNotificationCount}
+                </span>
+              )}
+              {showSalesOrdersBadge && (
+                <span className="bg-red-100 text-red-700 rounded-full px-2 py-0.5 text-xs font-medium">
+                  {pendingQuotesCount}
                 </span>
               )}
             </button>

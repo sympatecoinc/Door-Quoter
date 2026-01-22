@@ -8,7 +8,7 @@ import SOForm from '@/components/sales-orders/SOForm'
 import SOStatsWidget from '@/components/sales-orders/SOStatsWidget'
 import PendingQuotesList from '@/components/sales-orders/PendingQuotesList'
 import { SalesOrder } from '@/types/sales-order'
-import { Plus, CheckCircle, AlertCircle, X, FileText, ClipboardList } from 'lucide-react'
+import { Plus, CheckCircle, AlertCircle, AlertTriangle, X, FileText, ClipboardList } from 'lucide-react'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 
 type TabType = 'pending' | 'orders'
@@ -20,8 +20,25 @@ export default function SalesOrdersView() {
   const [showForm, setShowForm] = useState(false)
   const [editingSO, setEditingSO] = useState<SalesOrder | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+  const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'warning', message: string } | null>(null)
   const [prefilledProjectId, setPrefilledProjectId] = useState<number | null>(null)
+  const [pendingCount, setPendingCount] = useState(0)
+
+  // Fetch pending quotes count
+  useEffect(() => {
+    async function fetchPendingCount() {
+      try {
+        const response = await fetch('/api/projects/pending-quotes')
+        if (response.ok) {
+          const data = await response.json()
+          setPendingCount(data.pendingQuotes?.length || 0)
+        }
+      } catch (error) {
+        console.error('Error fetching pending quotes count:', error)
+      }
+    }
+    fetchPendingCount()
+  }, [refreshKey])
 
   // Auto-hide notifications
   useEffect(() => {
@@ -104,10 +121,18 @@ export default function SalesOrdersView() {
         throw new Error(data.error || 'Failed to create invoice')
       }
 
-      setNotification({
-        type: 'success',
-        message: `Invoice ${data.invoice.invoiceNumber} created${data.invoice.quickbooksId ? ' and synced to QuickBooks' : ''}`
-      })
+      // Check if there's a warning (e.g., QB sync failed)
+      if (data.warning) {
+        setNotification({
+          type: 'warning',
+          message: `Invoice ${data.invoice.invoiceNumber} created locally. ${data.warning}`
+        })
+      } else {
+        setNotification({
+          type: 'success',
+          message: `Invoice ${data.invoice.invoiceNumber} created and synced to QuickBooks`
+        })
+      }
       setRefreshKey(prev => prev + 1)
     } catch (error) {
       setNotification({
@@ -126,11 +151,15 @@ export default function SalesOrdersView() {
           <div className={`mx-6 mt-6 p-4 rounded-lg flex items-center justify-between ${
             notification.type === 'success'
               ? 'bg-green-50 text-green-800 border border-green-200'
+              : notification.type === 'warning'
+              ? 'bg-amber-50 text-amber-800 border border-amber-200'
               : 'bg-red-50 text-red-800 border border-red-200'
           }`}>
             <div className="flex items-center gap-2">
               {notification.type === 'success'
                 ? <CheckCircle className="w-5 h-5" />
+                : notification.type === 'warning'
+                ? <AlertTriangle className="w-5 h-5" />
                 : <AlertCircle className="w-5 h-5" />
               }
               <span>{notification.message}</span>
@@ -171,11 +200,15 @@ export default function SalesOrdersView() {
         <div className={`mb-4 p-4 rounded-lg flex items-center justify-between ${
           notification.type === 'success'
             ? 'bg-green-50 text-green-800 border border-green-200'
+            : notification.type === 'warning'
+            ? 'bg-amber-50 text-amber-800 border border-amber-200'
             : 'bg-red-50 text-red-800 border border-red-200'
         }`}>
           <div className="flex items-center gap-2">
             {notification.type === 'success'
               ? <CheckCircle className="w-5 h-5" />
+              : notification.type === 'warning'
+              ? <AlertTriangle className="w-5 h-5" />
               : <AlertCircle className="w-5 h-5" />
             }
             <span>{notification.message}</span>
@@ -215,17 +248,6 @@ export default function SalesOrdersView() {
       <div className="border-b border-gray-200 mb-6">
         <nav className="flex gap-4" aria-label="Tabs">
           <button
-            onClick={() => setActiveTab('pending')}
-            className={`flex items-center gap-2 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'pending'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            Pending from Quotes
-          </button>
-          <button
             onClick={() => setActiveTab('orders')}
             className={`flex items-center gap-2 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
               activeTab === 'orders'
@@ -235,6 +257,22 @@ export default function SalesOrdersView() {
           >
             <ClipboardList className="w-4 h-4" />
             Sales Orders
+          </button>
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`flex items-center gap-2 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'pending'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            Pending from Quotes
+            {pendingCount > 0 && (
+              <span className="bg-red-100 text-red-700 rounded-full px-2 py-0.5 text-xs font-medium">
+                {pendingCount}
+              </span>
+            )}
           </button>
         </nav>
       </div>

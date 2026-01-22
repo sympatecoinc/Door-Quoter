@@ -1,15 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { PurchaseOrder, PurchaseOrderLine, QuickBooksItem } from '@/types/purchase-order'
+import { PurchaseOrder, PurchaseOrderLine } from '@/types/purchase-order'
 import { Vendor } from '@/types'
 import {
   X,
   Plus,
   Trash2,
-  Search,
-  Building,
-  Package,
   Save,
   Loader2
 } from 'lucide-react'
@@ -20,9 +17,20 @@ interface POFormProps {
   onSave: (po?: PurchaseOrder, warning?: string) => void
 }
 
+interface InventoryItem {
+  id: number
+  partNumber: string
+  baseName: string
+  description?: string | null
+  unitCost?: number | null
+  partType?: string | null
+  vendor?: { id: number; displayName: string } | null
+}
+
 interface LineItemFormData {
   id?: number
   quickbooksItemId?: number | null
+  masterPartId?: number | null
   description: string
   quantity: number
   unitPrice: number
@@ -32,7 +40,7 @@ export default function POForm({ purchaseOrder, onClose, onSave }: POFormProps) 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [vendors, setVendors] = useState<Vendor[]>([])
-  const [items, setItems] = useState<QuickBooksItem[]>([])
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
   const [searchingItems, setSearchingItems] = useState(false)
   const [itemSearch, setItemSearch] = useState('')
   const [showItemDropdown, setShowItemDropdown] = useState<number | null>(null)
@@ -56,6 +64,7 @@ export default function POForm({ purchaseOrder, onClose, onSave }: POFormProps) 
     purchaseOrder?.lines?.map(l => ({
       id: l.id,
       quickbooksItemId: l.quickbooksItemId,
+      masterPartId: (l as any).masterPartId || null,
       description: l.description || '',
       quantity: l.quantity,
       unitPrice: l.unitPrice
@@ -71,7 +80,7 @@ export default function POForm({ purchaseOrder, onClose, onSave }: POFormProps) 
 
   useEffect(() => {
     fetchVendors()
-    fetchItems()
+    fetchInventoryItems()
   }, [])
 
   async function fetchVendors() {
@@ -86,18 +95,18 @@ export default function POForm({ purchaseOrder, onClose, onSave }: POFormProps) 
     }
   }
 
-  async function fetchItems(search?: string) {
+  async function fetchInventoryItems(search?: string) {
     setSearchingItems(true)
     try {
-      const params = new URLSearchParams({ limit: '50' })
+      const params = new URLSearchParams({ limit: '100' })
       if (search) params.set('search', search)
-      const response = await fetch(`/api/quickbooks/items?${params}`)
+      const response = await fetch(`/api/inventory?${params}`)
       if (response.ok) {
         const data = await response.json()
-        setItems(data.items || [])
+        setInventoryItems(data.parts || [])
       }
     } catch (err) {
-      console.error('Error fetching items:', err)
+      console.error('Error fetching inventory:', err)
     } finally {
       setSearchingItems(false)
     }
@@ -117,17 +126,23 @@ export default function POForm({ purchaseOrder, onClose, onSave }: POFormProps) 
     setLines(newLines)
   }
 
-  function handleSelectItem(index: number, item: QuickBooksItem) {
+  function handleSelectItem(index: number, item: InventoryItem) {
     const newLines = [...lines]
     newLines[index] = {
       ...newLines[index],
-      quickbooksItemId: item.id,
-      description: item.name,
-      unitPrice: item.purchaseCost || 0
+      masterPartId: item.id,
+      quickbooksItemId: null,
+      description: `${item.partNumber} - ${item.baseName}`,
+      unitPrice: item.unitCost || 0
     }
     setLines(newLines)
     setShowItemDropdown(null)
     setItemSearch('')
+
+    // Auto-set vendor if part has a vendor and no vendor is selected
+    if (!vendorId && item.vendor?.id) {
+      setVendorId(item.vendor.id)
+    }
   }
 
   function calculateSubtotal(): number {
@@ -165,9 +180,10 @@ export default function POForm({ purchaseOrder, onClose, onSave }: POFormProps) 
         shipAddrZip: shipAddrZip || null,
         subtotal,
         totalAmount: subtotal,
-        lines: lines.filter(l => l.description || l.quickbooksItemId).map((line, idx) => ({
+        lines: lines.filter(l => l.description || l.masterPartId).map((line, idx) => ({
           id: line.id,
           lineNum: idx + 1,
+          masterPartId: line.masterPartId || null,
           quickbooksItemId: line.quickbooksItemId || null,
           description: line.description,
           quantity: line.quantity,
@@ -203,11 +219,21 @@ export default function POForm({ purchaseOrder, onClose, onSave }: POFormProps) 
     }
   }
 
-  const filteredItems = items.filter(item =>
-    !itemSearch ||
-    item.name.toLowerCase().includes(itemSearch.toLowerCase()) ||
-    item.sku?.toLowerCase().includes(itemSearch.toLowerCase())
-  )
+  // Filter items: by vendor (if selected), then by search term
+  const filteredItems = inventoryItems.filter(item => {
+    // If vendor is selected, only show parts for that vendor (or parts with no vendor)
+    if (vendorId && item.vendor?.id && item.vendor.id !== vendorId) {
+      return false
+    }
+
+    // Then filter by search term
+    if (!itemSearch) return true
+    return (
+      item.partNumber.toLowerCase().includes(itemSearch.toLowerCase()) ||
+      item.baseName.toLowerCase().includes(itemSearch.toLowerCase()) ||
+      item.description?.toLowerCase().includes(itemSearch.toLowerCase())
+    )
+  })
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -333,14 +359,12 @@ export default function POForm({ purchaseOrder, onClose, onSave }: POFormProps) 
                                     className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center justify-between"
                                   >
                                     <div>
-                                      <div className="font-medium text-gray-900">{item.name}</div>
-                                      {item.sku && (
-                                        <div className="text-xs text-gray-500 font-mono">{item.sku}</div>
-                                      )}
+                                      <div className="font-medium text-gray-900">{item.baseName}</div>
+                                      <div className="text-xs text-gray-500 font-mono">{item.partNumber}</div>
                                     </div>
-                                    {item.purchaseCost != null && (
+                                    {item.unitCost != null && (
                                       <span className="text-sm text-gray-600">
-                                        ${item.purchaseCost.toFixed(2)}
+                                        ${item.unitCost.toFixed(2)}
                                       </span>
                                     )}
                                   </button>

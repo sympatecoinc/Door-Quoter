@@ -95,15 +95,19 @@ export async function GET(request: NextRequest) {
             amount: line.Amount || 0
           }))
 
-        // Determine status based on balance
-        let status: 'DRAFT' | 'SENT' | 'PARTIAL' | 'PAID' | 'VOIDED' = 'SENT'
+        // Determine status based on balance and email status
+        let status: 'DRAFT' | 'SENT' | 'PARTIAL' | 'PAID' | 'VOIDED' = 'DRAFT'
         const balance = qbInvoice.Balance ?? 0
         const total = qbInvoice.TotalAmt ?? 0
+        const emailStatus = qbInvoice.EmailStatus
 
         if (balance === 0 && total > 0) {
           status = 'PAID'
         } else if (balance < total && balance > 0) {
           status = 'PARTIAL'
+        } else if (emailStatus === 'EmailSent') {
+          // Only mark as SENT if actually emailed to customer
+          status = 'SENT'
         }
 
         if (existingInvoice) {

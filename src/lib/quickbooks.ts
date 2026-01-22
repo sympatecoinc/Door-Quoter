@@ -1732,16 +1732,22 @@ export function localInvoiceToQB(invoice: any, customerQBId: string, lines: QBIn
 
 // Convert local InvoiceLine to QuickBooks invoice line format
 export function localInvoiceLineToQB(line: any): QBInvoiceLine {
-  return {
+  const qbLine: QBInvoiceLine = {
     Amount: line.amount,
     DetailType: 'SalesItemLineDetail',
     SalesItemLineDetail: {
-      ItemRef: line.itemRefId ? { value: line.itemRefId, name: line.itemRefName || undefined } : undefined,
       UnitPrice: line.unitPrice,
       Qty: line.quantity
     },
     Description: line.description || undefined
   }
+
+  // Only include ItemRef if an item is specified - omit entirely to avoid QB defaulting to "Services"
+  if (line.itemRefId) {
+    qbLine.SalesItemLineDetail!.ItemRef = { value: line.itemRefId, name: line.itemRefName || undefined }
+  }
+
+  return qbLine
 }
 
 // Convert QuickBooks Invoice to local Invoice format
@@ -1835,7 +1841,8 @@ export async function pushInvoiceToQB(invoiceId: number): Promise<any> {
       quickbooksId: result.Id,
       syncToken: result.SyncToken,
       docNumber: result.DocNumber || invoice.docNumber,
-      status: 'SENT', // Update status since it's now in QB
+      // Keep as DRAFT - pushing to QB doesn't mean it's been sent to customer
+      // Status will update to SENT when syncing from QB if EmailStatus === 'EmailSent'
       lastSyncedAt: new Date()
     },
     include: {
@@ -1846,4 +1853,202 @@ export async function pushInvoiceToQB(invoiceId: number): Promise<any> {
 
   console.log(`[QB Sync] Invoice ${invoice.invoiceNumber} synced to QB with ID: ${result.Id}`)
   return updatedInvoice
+}
+
+// ============================================================
+// QuickBooks Estimate (for Sales Orders)
+// ============================================================
+
+// QuickBooks Estimate interface
+export interface QBEstimate {
+  Id?: string
+  SyncToken?: string
+  DocNumber?: string
+  TxnDate?: string  // YYYY-MM-DD
+  ExpirationDate?: string  // Estimate expiry date
+  CustomerRef: { value: string; name?: string }
+  Line?: QBInvoiceLine[]  // Same format as invoice lines
+  BillAddr?: {
+    Id?: string
+    Line1?: string
+    Line2?: string
+    City?: string
+    CountrySubDivisionCode?: string
+    PostalCode?: string
+    Country?: string
+  }
+  ShipAddr?: {
+    Id?: string
+    Line1?: string
+    Line2?: string
+    City?: string
+    CountrySubDivisionCode?: string
+    PostalCode?: string
+    Country?: string
+  }
+  CustomerMemo?: { value: string }
+  PrivateNote?: string
+  TotalAmt?: number
+  TxnStatus?: string  // Accepted, Closed, Pending, Rejected
+  AcceptedDate?: string
+  sparse?: boolean
+}
+
+// Get estimate from QuickBooks
+export async function getQBEstimate(realmId: string, estimateId: string): Promise<QBEstimate> {
+  const response = await qbApiRequest(realmId, `estimate/${estimateId}`, 'GET')
+  return response.Estimate
+}
+
+// Create estimate in QuickBooks
+export async function createQBEstimateAPI(realmId: string, estimate: QBEstimate): Promise<QBEstimate> {
+  const response = await qbApiRequest(realmId, 'estimate', 'POST', estimate)
+  return response.Estimate
+}
+
+// Update estimate in QuickBooks
+export async function updateQBEstimateAPI(realmId: string, estimate: QBEstimate): Promise<QBEstimate> {
+  if (!estimate.Id || !estimate.SyncToken) {
+    throw new Error('Estimate Id and SyncToken are required for updates')
+  }
+  const response = await qbApiRequest(realmId, 'estimate', 'POST', estimate)
+  return response.Estimate
+}
+
+// Delete/void estimate in QuickBooks
+export async function voidQBEstimate(realmId: string, estimateId: string, syncToken: string): Promise<void> {
+  await qbApiRequest(realmId, `estimate?operation=delete`, 'POST', {
+    Id: estimateId,
+    SyncToken: syncToken
+  })
+}
+
+// Convert local SalesOrder to QuickBooks Estimate format
+export function localSOToQBEstimate(salesOrder: any, customerQBId: string): QBEstimate {
+  const qbEstimate: QBEstimate = {
+    CustomerRef: { value: customerQBId },
+    TxnDate: salesOrder.txnDate ? new Date(salesOrder.txnDate).toISOString().split('T')[0] : undefined,
+    ExpirationDate: salesOrder.dueDate ? new Date(salesOrder.dueDate).toISOString().split('T')[0] : undefined,
+    DocNumber: salesOrder.orderNumber
+  }
+
+  // Billing address
+  if (salesOrder.billAddrLine1 || salesOrder.billAddrCity) {
+    qbEstimate.BillAddr = {
+      Line1: salesOrder.billAddrLine1 || undefined,
+      Line2: salesOrder.billAddrLine2 || undefined,
+      City: salesOrder.billAddrCity || undefined,
+      CountrySubDivisionCode: salesOrder.billAddrState || undefined,
+      PostalCode: salesOrder.billAddrPostalCode || undefined,
+      Country: salesOrder.billAddrCountry || undefined
+    }
+  }
+
+  // Shipping address
+  if (salesOrder.shipAddrLine1 || salesOrder.shipAddrCity) {
+    qbEstimate.ShipAddr = {
+      Line1: salesOrder.shipAddrLine1 || undefined,
+      Line2: salesOrder.shipAddrLine2 || undefined,
+      City: salesOrder.shipAddrCity || undefined,
+      CountrySubDivisionCode: salesOrder.shipAddrState || undefined,
+      PostalCode: salesOrder.shipAddrPostalCode || undefined,
+      Country: salesOrder.shipAddrCountry || undefined
+    }
+  }
+
+  // Customer memo
+  if (salesOrder.customerMemo) {
+    qbEstimate.CustomerMemo = { value: salesOrder.customerMemo }
+  }
+
+  // Private note
+  if (salesOrder.privateNote) {
+    qbEstimate.PrivateNote = salesOrder.privateNote
+  }
+
+  // Line items
+  if (salesOrder.lines && salesOrder.lines.length > 0) {
+    qbEstimate.Line = salesOrder.lines.map((line: any): QBInvoiceLine => {
+      const qbLine: QBInvoiceLine = {
+        Amount: line.amount,
+        DetailType: 'SalesItemLineDetail',
+        Description: line.description,
+        SalesItemLineDetail: {
+          UnitPrice: line.unitPrice,
+          Qty: line.quantity
+        }
+      }
+
+      // Only include ItemRef if an item is specified - omit entirely to avoid QB defaulting to "Services"
+      if (line.itemRefId) {
+        qbLine.SalesItemLineDetail!.ItemRef = { value: line.itemRefId, name: line.itemRefName || undefined }
+      }
+
+      return qbLine
+    })
+  }
+
+  return qbEstimate
+}
+
+// Create QuickBooks Estimate from Sales Order
+export async function createQBEstimate(salesOrder: any): Promise<QBEstimate | null> {
+  const realmId = await getStoredRealmId()
+  if (!realmId) {
+    console.warn('[QB] QuickBooks not connected - skipping Estimate creation')
+    return null
+  }
+
+  // Check if customer has QB ID
+  const customerQBId = salesOrder.customer?.quickbooksId
+  if (!customerQBId) {
+    console.warn('[QB] Customer does not have QuickBooks ID - skipping Estimate creation')
+    return null
+  }
+
+  // Convert SO to QB Estimate format
+  const qbEstimate = localSOToQBEstimate(salesOrder, customerQBId)
+
+  try {
+    const result = await createQBEstimateAPI(realmId, qbEstimate)
+    console.log(`[QB Sync] Estimate ${salesOrder.orderNumber} created in QB with ID: ${result.Id}`)
+    return result
+  } catch (error) {
+    console.error('[QB] Failed to create Estimate:', error)
+    throw error
+  }
+}
+
+// Update QuickBooks Estimate from Sales Order
+export async function updateQBEstimate(salesOrder: any): Promise<QBEstimate | null> {
+  const realmId = await getStoredRealmId()
+  if (!realmId) {
+    console.warn('[QB] QuickBooks not connected - skipping Estimate update')
+    return null
+  }
+
+  if (!salesOrder.quickbooksId || !salesOrder.syncToken) {
+    console.warn('[QB] Sales Order does not have QuickBooks ID - cannot update')
+    return null
+  }
+
+  const customerQBId = salesOrder.customer?.quickbooksId
+  if (!customerQBId) {
+    console.warn('[QB] Customer does not have QuickBooks ID - cannot update Estimate')
+    return null
+  }
+
+  // Convert SO to QB Estimate format
+  const qbEstimate = localSOToQBEstimate(salesOrder, customerQBId)
+  qbEstimate.Id = salesOrder.quickbooksId
+  qbEstimate.SyncToken = salesOrder.syncToken
+
+  try {
+    const result = await updateQBEstimateAPI(realmId, qbEstimate)
+    console.log(`[QB Sync] Estimate ${salesOrder.orderNumber} updated in QB`)
+    return result
+  } catch (error) {
+    console.error('[QB] Failed to update Estimate:', error)
+    throw error
+  }
 }

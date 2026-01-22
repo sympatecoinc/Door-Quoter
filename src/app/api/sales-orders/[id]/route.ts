@@ -48,6 +48,15 @@ export async function GET(
             name: true,
             email: true
           }
+        },
+        invoices: {
+          select: {
+            id: true,
+            invoiceNumber: true,
+            status: true,
+            totalAmount: true
+          },
+          orderBy: { createdAt: 'desc' }
         }
       }
     })

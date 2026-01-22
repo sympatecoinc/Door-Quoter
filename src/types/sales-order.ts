@@ -2,6 +2,18 @@
 
 export type SOStatus = 'DRAFT' | 'CONFIRMED' | 'PARTIALLY_INVOICED' | 'FULLY_INVOICED' | 'CANCELLED'
 
+// Sales Order Part Status
+export type SOPartStatus = 'PENDING' | 'RESERVED' | 'PICKED' | 'PACKED' | 'SHIPPED' | 'CANCELLED'
+
+export const SO_PART_STATUS_CONFIG: Record<SOPartStatus, { label: string; color: string; bgColor: string }> = {
+  PENDING: { label: 'Pending', color: 'text-gray-700', bgColor: 'bg-gray-100' },
+  RESERVED: { label: 'Reserved', color: 'text-blue-700', bgColor: 'bg-blue-100' },
+  PICKED: { label: 'Picked', color: 'text-purple-700', bgColor: 'bg-purple-100' },
+  PACKED: { label: 'Packed', color: 'text-yellow-700', bgColor: 'bg-yellow-100' },
+  SHIPPED: { label: 'Shipped', color: 'text-green-700', bgColor: 'bg-green-100' },
+  CANCELLED: { label: 'Cancelled', color: 'text-red-700', bgColor: 'bg-red-100' }
+}
+
 export const SO_STATUS_CONFIG: Record<SOStatus, { label: string; color: string; bgColor: string }> = {
   DRAFT: { label: 'Draft', color: 'text-gray-700', bgColor: 'bg-gray-100' },
   CONFIRMED: { label: 'Confirmed', color: 'text-blue-700', bgColor: 'bg-blue-100' },
@@ -104,4 +116,66 @@ export interface SalesOrderFormData {
     quantity: number
     unitPrice: number
   }[]
+}
+
+// Sales Order Part - Individual part from project BOM with fulfillment tracking
+export interface SalesOrderPart {
+  id: number
+  salesOrderId: number
+  masterPartId?: number | null
+  masterPart?: {
+    id: number
+    partNumber: string
+    baseName: string
+    partType: string
+    qtyOnHand?: number | null
+    qtyReserved: number
+    binLocationRef?: { code: string; name: string } | null
+  } | null
+  partNumber: string
+  partName: string
+  partType: string
+  quantity: number
+  unit: string
+  cutLength?: number | null
+  openingName?: string | null
+  productName?: string | null
+  status: SOPartStatus
+  qtyPicked: number
+  qtyPacked: number
+  qtyShipped: number
+  pickedAt?: string | null
+  packedAt?: string | null
+  shippedAt?: string | null
+  pickedById?: number | null
+  pickedBy?: { id: number; name: string } | null
+  createdAt: string
+  updatedAt: string
+}
+
+// Availability check result for a single part
+export interface PartAvailability {
+  partNumber: string
+  partName: string
+  required: number
+  available: number
+  reserved: number
+  shortage: number
+  masterPartId?: number | null
+}
+
+// Confirm order result
+export interface ConfirmOrderResult {
+  success: boolean
+  salesOrder?: SalesOrder
+  parts?: SalesOrderPart[]
+  availability?: PartAvailability[]
+  hasShortages?: boolean
+  quickbooksEstimateId?: string | null
+  error?: string
+}
+
+// Extended SalesOrder with parts
+export interface SalesOrderWithParts extends SalesOrder {
+  parts: SalesOrderPart[]
 }

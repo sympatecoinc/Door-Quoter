@@ -2742,7 +2742,7 @@ export default function ProjectDetailView() {
               >
                 <FileText className="w-4 h-4" />
               </button>
-              {isViewingCurrentVersion && needsSync && !calculatingPrices && (
+              {isViewingCurrentVersion && needsSync && !calculatingPrices && project.status !== 'QUOTE_ACCEPTED' && (
                 <button
                   onClick={() => setShowSyncConfirmation(true)}
                   className="ml-3 flex items-center text-sm text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg transition-colors"
@@ -2844,8 +2844,8 @@ export default function ProjectDetailView() {
           </div>
         </div>
         <div className="flex items-center space-x-3">
-          {/* Create Sales Order button - only for QUOTE_ACCEPTED or ACTIVE projects on current version */}
-          {isViewingCurrentVersion && (project.status === 'QUOTE_ACCEPTED' || project.status === 'ACTIVE') && !existingSalesOrderNumber && (
+          {/* Create Sales Order button - only for ACTIVE projects on current version */}
+          {isViewingCurrentVersion && project.status === 'ACTIVE' && !existingSalesOrderNumber && (
             <button
               onClick={handleCreateSalesOrder}
               disabled={creatingSalesOrder || project.openings.length === 0}
@@ -2872,8 +2872,8 @@ export default function ProjectDetailView() {
               SO: {existingSalesOrderNumber}
             </span>
           )}
-          {/* Create Revision button - only shown when project is locked and viewing current version */}
-          {isViewingCurrentVersion && projectIsLocked && (
+          {/* Create Revision button - only shown when project is locked and viewing current version (not for QUOTE_ACCEPTED) */}
+          {isViewingCurrentVersion && projectIsLocked && project.status !== 'QUOTE_ACCEPTED' && (
             <button
               onClick={handleCreateRevision}
               disabled={creatingRevision}
