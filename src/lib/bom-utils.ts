@@ -446,6 +446,76 @@ export function findOptimalStockLengthByYield(
   return bestResult
 }
 
+/**
+ * Pre-process BOM items to apply yield-based stock length optimization.
+ * Updates the stockLength and partNumber of each item based on the optimal
+ * stock length determined by analyzing all cuts for each part.
+ *
+ * This should be called BEFORE aggregation so that all views (summary, cutlist)
+ * see consistent stock length values.
+ */
+export function applyYieldOptimizationToBomItems(
+  bomItems: BomItem[],
+  stockLengthOptionsMap: Record<string, number[]>
+): BomItem[] {
+  // Group items by base part number to collect all cut lengths
+  const partCutLengths: Record<string, number[]> = {}
+  const partItems: Record<string, BomItem[]> = {}
+
+  for (const item of bomItems) {
+    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') &&
+        item.basePartNumber && item.cutLength) {
+      if (!partCutLengths[item.basePartNumber]) {
+        partCutLengths[item.basePartNumber] = []
+        partItems[item.basePartNumber] = []
+      }
+      // Add cut length for each unit of quantity
+      const qty = item.quantity || 1
+      for (let i = 0; i < qty; i++) {
+        partCutLengths[item.basePartNumber].push(item.cutLength)
+      }
+      partItems[item.basePartNumber].push(item)
+    }
+  }
+
+  // Apply yield optimization for each part with multiple stock length options
+  const optimizedStockLengths: Record<string, number> = {}
+
+  for (const [basePartNumber, cutLengths] of Object.entries(partCutLengths)) {
+    const options = stockLengthOptionsMap[basePartNumber]
+    if (options && options.length > 1) {
+      const yieldResult = findOptimalStockLengthByYield(options, cutLengths)
+      if (yieldResult) {
+        optimizedStockLengths[basePartNumber] = yieldResult.stockLength
+      }
+    }
+  }
+
+  // Update items with optimized stock lengths
+  return bomItems.map(item => {
+    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') &&
+        item.basePartNumber && optimizedStockLengths[item.basePartNumber]) {
+      const newStockLength = optimizedStockLengths[item.basePartNumber]
+      const oldStockLength = item.stockLength
+
+      // If stock length changed, update the part number suffix
+      let newPartNumber = item.partNumber
+      if (oldStockLength && newStockLength !== oldStockLength) {
+        if (item.partNumber.endsWith(`-${oldStockLength}`)) {
+          newPartNumber = item.partNumber.slice(0, -`-${oldStockLength}`.length) + `-${newStockLength}`
+        }
+      }
+
+      return {
+        ...item,
+        stockLength: newStockLength,
+        partNumber: newPartNumber
+      }
+    }
+    return item
+  })
+}
+
 // BOM item for cut list aggregation (extrusions only)
 export interface BOMItemForCutList {
   partNumber: string

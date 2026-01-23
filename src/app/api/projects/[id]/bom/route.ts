@@ -10,7 +10,8 @@ import {
   summaryToCSV,
   getFrameDimensions,
   calculateRequiredPartLength,
-  findBestStockLengthRule
+  findBestStockLengthRule,
+  applyYieldOptimizationToBomItems
 } from '@/lib/bom-utils'
 import { aggregateFromProjectData, createAssemblyListPDF } from '@/lib/assembly-list-pdf-generator'
 
@@ -63,25 +64,22 @@ async function findStockLength(partNumber: string, bom: any, variables: Record<s
       // Calculate the required part length from the ProductBOM formula
       const requiredLength = calculateRequiredPartLength(bom, variables)
 
-      // Collect ALL applicable stock lengths for yield optimization
-      const applicableRules = masterPart.stockLengthRules.filter(rule => {
-        const matchesLength = (rule.minHeight === null || requiredLength >= rule.minHeight) &&
-                             (rule.maxHeight === null || requiredLength <= rule.maxHeight)
-        return rule.isActive && matchesLength && rule.stockLength !== null
-      })
-
-      const stockLengthOptions = [...new Set(
-        applicableRules
+      // For yield optimization: collect ALL stock lengths that can physically fit the cut
+      // (stockLength >= requiredLength), regardless of the rule's height constraints.
+      // The yield optimizer will decide which is best based on all cuts combined.
+      const allStockLengths = [...new Set(
+        masterPart.stockLengthRules
+          .filter(rule => rule.isActive && rule.stockLength !== null && rule.stockLength >= requiredLength)
           .map(r => r.stockLength)
           .filter((sl): sl is number => sl !== null)
       )].sort((a, b) => a - b)
 
-      // Get the best (most specific) rule for initial assignment
+      // Get the best (most specific) rule for initial assignment based on height constraints
       const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
 
       return {
-        stockLength: bestRule?.stockLength || stockLengthOptions[0] || null,
-        stockLengthOptions,
+        stockLength: bestRule?.stockLength || allStockLengths[0] || null,
+        stockLengthOptions: allStockLengths,
         isMillFinish: masterPart.isMillFinish || false,
         binLocation
       }
@@ -1306,33 +1304,37 @@ export async function GET(
       })
     })
 
+    // Build stock length options map for yield-based optimization
+    // This needs to happen BEFORE filtering so all cuts are considered
+    const stockLengthOptionsMap: Record<string, number[]> = {}
+    for (const item of bomItems) {
+      if ((item.partType === 'Extrusion' || item.partType === 'CutStock') &&
+          item.basePartNumber && item.stockLengthOptions && item.stockLengthOptions.length > 1) {
+        if (!stockLengthOptionsMap[item.basePartNumber]) {
+          stockLengthOptionsMap[item.basePartNumber] = []
+        }
+        // Merge in any new stock length options
+        for (const sl of item.stockLengthOptions) {
+          if (!stockLengthOptionsMap[item.basePartNumber].includes(sl)) {
+            stockLengthOptionsMap[item.basePartNumber].push(sl)
+          }
+        }
+      }
+    }
+
+    // Apply yield optimization to BOM items BEFORE filtering
+    // This ensures consistent stock lengths across all views (summary, cutlist, etc.)
+    const optimizedBomItems = applyYieldOptimizationToBomItems(bomItems, stockLengthOptionsMap)
+
     // Filter by openings if specified
-    let filteredBomItems = bomItems
+    let filteredBomItems = optimizedBomItems
     if (openingsFilter) {
       const selectedOpenings = new Set(openingsFilter.split(',').map(o => o.trim()))
-      filteredBomItems = bomItems.filter(item => selectedOpenings.has(item.openingName))
+      filteredBomItems = optimizedBomItems.filter(item => selectedOpenings.has(item.openingName))
     }
 
     // If summary mode is requested, return aggregated data
     if (summary) {
-      // Build stock length options map for yield-based optimization
-      // Group by base part number to collect all available stock lengths
-      const stockLengthOptionsMap: Record<string, number[]> = {}
-      for (const item of filteredBomItems) {
-        if ((item.partType === 'Extrusion' || item.partType === 'CutStock') &&
-            item.basePartNumber && item.stockLengthOptions && item.stockLengthOptions.length > 1) {
-          if (!stockLengthOptionsMap[item.basePartNumber]) {
-            stockLengthOptionsMap[item.basePartNumber] = []
-          }
-          // Merge in any new stock length options
-          for (const sl of item.stockLengthOptions) {
-            if (!stockLengthOptionsMap[item.basePartNumber].includes(sl)) {
-              stockLengthOptionsMap[item.basePartNumber].push(sl)
-            }
-          }
-        }
-      }
-
       const summaryItems = aggregateBomItems(filteredBomItems, stockLengthOptionsMap)
 
       // Calculate totals by type
