@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { name, description, tabs } = body
+    const { name, description, tabs, defaultTab } = body
 
     // Validate input
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -88,6 +88,14 @@ export async function POST(request: Request) {
       )
     }
 
+    // Validate defaultTab if provided
+    if (defaultTab && !validTabs.includes(defaultTab)) {
+      return NextResponse.json(
+        { error: 'Default tab must be one of the selected tabs' },
+        { status: 400 }
+      )
+    }
+
     // Check if profile name already exists
     const existingProfile = await prisma.profile.findUnique({
       where: { name: name.trim() }
@@ -106,6 +114,7 @@ export async function POST(request: Request) {
         name: name.trim(),
         description: description?.trim() || null,
         tabs: validTabs,
+        defaultTab: defaultTab || null,
         isActive: true
       },
       include: {

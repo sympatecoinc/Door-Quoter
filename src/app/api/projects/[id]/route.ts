@@ -276,7 +276,7 @@ export async function PUT(
       )
     }
 
-    const { name, status, dueDate, shipDate, shippingAddress, shippingCity, shippingState, shippingZipCode, primaryContactId, primaryProjectContactId, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost, quoteDrawingView } = await request.json()
+    const { name, status, dueDate, shipDate, shippingAddress, shippingCity, shippingState, shippingZipCode, primaryContactId, primaryProjectContactId, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost, quoteDrawingView, batchSize } = await request.json()
 
     // Validate status if provided
     if (status && !Object.values(ProjectStatus).includes(status)) {
@@ -304,6 +304,17 @@ export async function PUT(
         { error: 'Invalid quote drawing view. Must be ELEVATION or PLAN' },
         { status: 400 }
       )
+    }
+
+    // Validate batchSize if provided (must be null or positive integer)
+    if (batchSize !== undefined && batchSize !== null) {
+      const parsedBatchSize = parseInt(batchSize)
+      if (isNaN(parsedBatchSize) || parsedBatchSize < 1) {
+        return NextResponse.json(
+          { error: 'Invalid batch size. Must be a positive integer or null' },
+          { status: 400 }
+        )
+      }
     }
 
     const updateData: any = {}
@@ -365,6 +376,9 @@ export async function PUT(
     }
     if (quoteDrawingView !== undefined) {
       updateData.quoteDrawingView = quoteDrawingView
+    }
+    if (batchSize !== undefined) {
+      updateData.batchSize = batchSize === null ? null : parseInt(batchSize)
     }
 
     // Update project and track status change in a transaction

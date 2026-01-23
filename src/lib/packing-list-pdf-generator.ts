@@ -1,6 +1,6 @@
 // Packing List PDF Generation Utility
-// Generates a packing list PDF grouped by product type
-// Each product instance and each individual hardware item gets its own checkable line
+// Generates a packing list PDF with items in sticker order
+// Each line item shows its corresponding sticker number for easy correlation
 
 import { jsPDF } from 'jspdf'
 import fs from 'fs'
@@ -8,21 +8,17 @@ import path from 'path'
 import sharp from 'sharp'
 import { downloadFile } from './gcs-storage'
 
-export interface PackingListItem {
+export interface PackingListLineItem {
   openingName: string
-  productName: string  // The product type (e.g., "Swing Door", "Fixed Panel")
-  partNumber: string | null
-  partName: string
+  itemType: 'component' | 'hardware' | 'jambkit'
+  itemName: string
+  partNumber?: string | null
+  dimensions?: string  // For components
   quantity: number
-  unit: string | null
-}
-
-export interface ProductInstance {
-  openingName: string
-  productName: string
-  panelType?: string  // e.g., "Left", "Right", "Center"
-  width?: number
-  height?: number
+  unit?: string | null
+  itemCount?: number  // For jamb kits
+  stickerNumber: number  // 1-based sticker index
+  totalStickers: number  // Total stickers in project
 }
 
 export interface JambKitEntry {
@@ -34,10 +30,27 @@ export interface PackingListData {
   projectName: string
   customerName?: string
   companyLogo?: string | null
-  items: PackingListItem[]  // Hardware items
-  productInstances: ProductInstance[]
-  jambKits?: JambKitEntry[]  // Jamb kit items per opening
+  lineItems: PackingListLineItem[]
+  jambKits?: JambKitEntry[]
   generatedDate: string
+}
+
+// Legacy interfaces for backwards compatibility
+export interface PackingListItem {
+  openingName: string
+  productName: string
+  partNumber: string | null
+  partName: string
+  quantity: number
+  unit: string | null
+}
+
+export interface ProductInstance {
+  openingName: string
+  productName: string
+  panelType?: string
+  width?: number
+  height?: number
 }
 
 // Page layout constants
@@ -81,64 +94,7 @@ function drawCheckbox(pdf: jsPDF, x: number, y: number, size: number = 4): void 
 }
 
 /**
- * Groups product instances by product name
- */
-function groupProductsByType(instances: ProductInstance[]): Record<string, ProductInstance[]> {
-  const grouped: Record<string, ProductInstance[]> = {}
-
-  for (const instance of instances) {
-    const key = instance.productName || 'Other'
-    if (!grouped[key]) {
-      grouped[key] = []
-    }
-    grouped[key].push(instance)
-  }
-
-  // Sort instances within each group by opening name
-  for (const key of Object.keys(grouped)) {
-    grouped[key].sort((a, b) => a.openingName.localeCompare(b.openingName))
-  }
-
-  return grouped
-}
-
-/**
- * Expands hardware items - one line per individual item (not aggregated)
- */
-interface ExpandedHardwareItem {
-  partNumber: string
-  partName: string
-  unit: string
-  productName: string
-}
-
-function expandHardwareItems(items: PackingListItem[]): ExpandedHardwareItem[] {
-  const expanded: ExpandedHardwareItem[] = []
-
-  for (const item of items) {
-    // Create one entry per quantity
-    for (let i = 0; i < item.quantity; i++) {
-      expanded.push({
-        partNumber: item.partNumber || '',
-        partName: item.partName,
-        unit: item.unit || 'EA',
-        productName: item.productName
-      })
-    }
-  }
-
-  // Sort by part number, then part name
-  expanded.sort((a, b) => {
-    const partNumCompare = a.partNumber.localeCompare(b.partNumber)
-    if (partNumCompare !== 0) return partNumCompare
-    return a.partName.localeCompare(b.partName)
-  })
-
-  return expanded
-}
-
-/**
- * Creates a Packing List PDF grouped by product type
+ * Creates a Packing List PDF with items in sticker order
  */
 export async function createPackingListPDF(data: PackingListData): Promise<Buffer> {
   const pdf = new jsPDF({
@@ -243,21 +199,15 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
   pdf.text(data.projectName, MARGIN, yPos)
   yPos += 6
 
-  // Generated date
+  // Generated date and total stickers info
   pdf.setFontSize(9)
   pdf.setTextColor(100, 100, 100)
-  pdf.text(`Generated: ${data.generatedDate}`, MARGIN, yPos)
+  const totalStickers = data.lineItems.length > 0 ? data.lineItems[0].totalStickers : 0
+  pdf.text(`Generated: ${data.generatedDate}  |  Total Stickers: ${totalStickers}`, MARGIN, yPos)
   pdf.setTextColor(0, 0, 0)
   yPos += 10
 
-  // Group products by type
-  const productsByType = groupProductsByType(data.productInstances)
-  const sortedProductTypes = Object.keys(productsByType).sort()
-
-  // Expand hardware items (one per quantity)
-  const expandedHardware = expandHardwareItems(data.items)
-
-  if (sortedProductTypes.length === 0 && expandedHardware.length === 0) {
+  if (data.lineItems.length === 0) {
     pdf.setFontSize(12)
     pdf.setFont('helvetica', 'italic')
     pdf.setTextColor(100, 100, 100)
@@ -265,48 +215,30 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
     return Buffer.from(pdf.output('arraybuffer'))
   }
 
-  // Column widths
-  const COL_ITEM = 145  // Opening/Part info
-  const COL_STAGED = 16
-  const COL_QA = 14
-  const COL_LOADED = 16
+  // Column widths - adjusted to include sticker number column
+  const COL_STICKER = 16  // Sticker # column
+  const COL_ITEM = 125    // Opening/Item info
+  const COL_STAGED = 14
+  const COL_QA = 12
+  const COL_LOADED = 14
+  // Total: 16 + 125 + 14 + 12 + 14 = 181mm (fits in ~186mm content width)
 
   const rowHeight = 8
   const headerHeight = 8
 
-  // Helper to draw table header for products
-  const drawProductTableHeader = () => {
+  // Helper to draw table header
+  const drawTableHeader = () => {
     pdf.setFillColor(240, 240, 240)
     pdf.rect(MARGIN, yPos, CONTENT_WIDTH, headerHeight, 'F')
 
-    pdf.setFontSize(8)
+    pdf.setFontSize(7)
     pdf.setFont('helvetica', 'bold')
     pdf.setTextColor(50, 50, 50)
 
     let xPos = MARGIN + 2
-    pdf.text('Opening / Size', xPos, yPos + 5.5)
-    xPos += COL_ITEM
-    pdf.text('Staged', xPos + COL_STAGED / 2, yPos + 5.5, { align: 'center' })
-    xPos += COL_STAGED
-    pdf.text('QA', xPos + COL_QA / 2, yPos + 5.5, { align: 'center' })
-    xPos += COL_QA
-    pdf.text('Loaded', xPos + COL_LOADED / 2, yPos + 5.5, { align: 'center' })
-
-    pdf.setTextColor(0, 0, 0)
-    yPos += headerHeight
-  }
-
-  // Helper to draw table header for hardware
-  const drawHardwareTableHeader = () => {
-    pdf.setFillColor(240, 240, 240)
-    pdf.rect(MARGIN, yPos, CONTENT_WIDTH, headerHeight, 'F')
-
-    pdf.setFontSize(8)
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(50, 50, 50)
-
-    let xPos = MARGIN + 2
-    pdf.text('Part Number / Name', xPos, yPos + 5.5)
+    pdf.text('#', xPos, yPos + 5.5)
+    xPos += COL_STICKER
+    pdf.text('Opening / Item', xPos, yPos + 5.5)
     xPos += COL_ITEM
     pdf.text('Staged', xPos + COL_STAGED / 2, yPos + 5.5, { align: 'center' })
     xPos += COL_STAGED
@@ -328,67 +260,95 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
     return false
   }
 
-  // =====================================================
-  // SECTION 1: Products grouped by type
-  // =====================================================
-  for (const productType of sortedProductTypes) {
-    const products = productsByType[productType] || []
+  // Group items by opening for visual organization
+  const openingGroups: Record<string, PackingListLineItem[]> = {}
+  for (const item of data.lineItems) {
+    if (!openingGroups[item.openingName]) {
+      openingGroups[item.openingName] = []
+    }
+    openingGroups[item.openingName].push(item)
+  }
 
-    if (products.length === 0) continue
+  const sortedOpenings = Object.keys(openingGroups).sort()
+
+  // Render items grouped by opening
+  for (const openingName of sortedOpenings) {
+    const items = openingGroups[openingName]
 
     // Calculate minimum space needed for this group
-    const minSpace = 10 + headerHeight + Math.min(products.length, 2) * rowHeight + 10
+    const minSpace = 10 + headerHeight + Math.min(items.length, 2) * rowHeight + 10
     checkNewPage(minSpace)
 
-    // Product type header
+    // Opening header
     pdf.setFillColor(59, 130, 246) // Blue
     pdf.rect(MARGIN, yPos, CONTENT_WIDTH, 8, 'F')
-    pdf.setFontSize(11)
+    pdf.setFontSize(10)
     pdf.setFont('helvetica', 'bold')
     pdf.setTextColor(255, 255, 255)
-    pdf.text(productType, MARGIN + 3, yPos + 5.5)
+    pdf.text(openingName, MARGIN + 3, yPos + 5.5)
     pdf.setTextColor(0, 0, 0)
     yPos += 10
 
-    drawProductTableHeader()
+    drawTableHeader()
 
-    for (let i = 0; i < products.length; i++) {
-      const product = products[i]
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
 
       if (checkNewPage(rowHeight + 10)) {
-        // Re-draw product type header
+        // Re-draw opening header
         pdf.setFillColor(59, 130, 246)
         pdf.rect(MARGIN, yPos, CONTENT_WIDTH, 8, 'F')
-        pdf.setFontSize(11)
+        pdf.setFontSize(10)
         pdf.setFont('helvetica', 'bold')
         pdf.setTextColor(255, 255, 255)
-        pdf.text(`${productType} (continued)`, MARGIN + 3, yPos + 5.5)
+        pdf.text(`${openingName} (continued)`, MARGIN + 3, yPos + 5.5)
         pdf.setTextColor(0, 0, 0)
         yPos += 10
 
-        drawProductTableHeader()
+        drawTableHeader()
       }
 
-      // Alternating row background
-      if (i % 2 === 0) {
-        pdf.setFillColor(248, 250, 252)
-        pdf.rect(MARGIN, yPos, CONTENT_WIDTH, rowHeight, 'F')
+      // Row background based on item type
+      if (item.itemType === 'component') {
+        pdf.setFillColor(239, 246, 255) // Light blue for components
+      } else if (item.itemType === 'jambkit') {
+        pdf.setFillColor(254, 243, 199) // Light amber for jamb kits
+      } else {
+        pdf.setFillColor(240, 253, 244) // Light green for hardware
       }
+      pdf.rect(MARGIN, yPos, CONTENT_WIDTH, rowHeight, 'F')
 
-      pdf.setFontSize(9)
+      pdf.setFontSize(8)
       pdf.setFont('helvetica', 'normal')
 
       let xPos = MARGIN + 2
 
-      // Opening name and size
-      let itemText = product.openingName
-      if (product.panelType && product.panelType !== 'Component') {
-        itemText += ` (${product.panelType})`
+      // Sticker number (bold, highlighted)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFillColor(100, 100, 100)
+      const stickerNumText = `${item.stickerNumber}`
+      pdf.text(stickerNumText, xPos, yPos + 5.5)
+      pdf.setFont('helvetica', 'normal')
+      xPos += COL_STICKER
+
+      // Item type badge + item info
+      let itemText = ''
+      if (item.itemType === 'component') {
+        itemText = `[COMP] ${item.itemName}`
+        if (item.dimensions) {
+          itemText += ` - ${item.dimensions}`
+        }
+      } else if (item.itemType === 'jambkit') {
+        itemText = `[JAMB KIT] ${item.itemCount} items`
+      } else {
+        // Hardware
+        if (item.partNumber) {
+          itemText = `${item.partNumber} - ${item.itemName}`
+        } else {
+          itemText = item.itemName
+        }
       }
-      if (product.width && product.height) {
-        itemText += ` - ${product.width}" x ${product.height}"`
-      }
-      itemText = truncateText(pdf, itemText, COL_ITEM - 8)
+      itemText = truncateText(pdf, itemText, COL_ITEM - 4)
       pdf.text(itemText, xPos, yPos + 5.5)
       xPos += COL_ITEM
 
@@ -402,182 +362,11 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
       yPos += rowHeight
     }
 
-    // Space between product type groups
-    yPos += 6
-  }
-
-  // =====================================================
-  // SECTION 2: Jamb Kits (between Products and Hardware)
-  // =====================================================
-  if (data.jambKits && data.jambKits.length > 0) {
-    // Add some space before jamb kits section
+    // Space between opening groups
     yPos += 4
-
-    checkNewPage(headerHeight + rowHeight * 3 + 20)
-
-    // Jamb Kits section header
-    pdf.setFillColor(16, 185, 129) // Green (matches existing jamb kit styling)
-    pdf.rect(MARGIN, yPos, CONTENT_WIDTH, 8, 'F')
-    pdf.setFontSize(11)
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(255, 255, 255)
-    pdf.text('Jamb Kits', MARGIN + 3, yPos + 5.5)
-    pdf.setTextColor(0, 0, 0)
-    yPos += 10
-
-    // Table header
-    pdf.setFillColor(240, 240, 240)
-    pdf.rect(MARGIN, yPos, CONTENT_WIDTH, headerHeight, 'F')
-    pdf.setFontSize(8)
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(50, 50, 50)
-    let xPos = MARGIN + 2
-    pdf.text('Opening / Item Count', xPos, yPos + 5.5)
-    xPos += COL_ITEM
-    pdf.text('Staged', xPos + COL_STAGED / 2, yPos + 5.5, { align: 'center' })
-    xPos += COL_STAGED
-    pdf.text('QA', xPos + COL_QA / 2, yPos + 5.5, { align: 'center' })
-    xPos += COL_QA
-    pdf.text('Loaded', xPos + COL_LOADED / 2, yPos + 5.5, { align: 'center' })
-    pdf.setTextColor(0, 0, 0)
-    yPos += headerHeight
-
-    for (let i = 0; i < data.jambKits.length; i++) {
-      const jambKit = data.jambKits[i]
-
-      if (checkNewPage(rowHeight + 10)) {
-        // Re-draw jamb kits header
-        pdf.setFillColor(16, 185, 129)
-        pdf.rect(MARGIN, yPos, CONTENT_WIDTH, 8, 'F')
-        pdf.setFontSize(11)
-        pdf.setFont('helvetica', 'bold')
-        pdf.setTextColor(255, 255, 255)
-        pdf.text('Jamb Kits (continued)', MARGIN + 3, yPos + 5.5)
-        pdf.setTextColor(0, 0, 0)
-        yPos += 10
-
-        // Redraw table header
-        pdf.setFillColor(240, 240, 240)
-        pdf.rect(MARGIN, yPos, CONTENT_WIDTH, headerHeight, 'F')
-        pdf.setFontSize(8)
-        pdf.setFont('helvetica', 'bold')
-        pdf.setTextColor(50, 50, 50)
-        let headerX = MARGIN + 2
-        pdf.text('Opening / Item Count', headerX, yPos + 5.5)
-        headerX += COL_ITEM
-        pdf.text('Staged', headerX + COL_STAGED / 2, yPos + 5.5, { align: 'center' })
-        headerX += COL_STAGED
-        pdf.text('QA', headerX + COL_QA / 2, yPos + 5.5, { align: 'center' })
-        headerX += COL_QA
-        pdf.text('Loaded', headerX + COL_LOADED / 2, yPos + 5.5, { align: 'center' })
-        pdf.setTextColor(0, 0, 0)
-        yPos += headerHeight
-      }
-
-      // Alternating row background
-      if (i % 2 === 0) {
-        pdf.setFillColor(240, 253, 244) // Light green background
-        pdf.rect(MARGIN, yPos, CONTENT_WIDTH, rowHeight, 'F')
-      }
-
-      pdf.setFontSize(9)
-      pdf.setFont('helvetica', 'normal')
-
-      let rowX = MARGIN + 2
-
-      // Opening name and item count
-      const itemText = truncateText(pdf, `${jambKit.openingName} - ${jambKit.itemCount} items`, COL_ITEM - 8)
-      pdf.text(itemText, rowX, yPos + 5.5)
-      rowX += COL_ITEM
-
-      // Checkboxes (centered in each column)
-      drawCheckbox(pdf, rowX + (COL_STAGED - 5) / 2, yPos + 5.5, 5)
-      rowX += COL_STAGED
-      drawCheckbox(pdf, rowX + (COL_QA - 5) / 2, yPos + 5.5, 5)
-      rowX += COL_QA
-      drawCheckbox(pdf, rowX + (COL_LOADED - 5) / 2, yPos + 5.5, 5)
-
-      yPos += rowHeight
-    }
-
-    // Space after jamb kits section
-    yPos += 6
   }
 
-  // =====================================================
-  // SECTION 3: Hardware (at the end, one line per item)
-  // =====================================================
-  if (expandedHardware.length > 0) {
-    // Add some space before hardware section
-    yPos += 4
-
-    checkNewPage(headerHeight + rowHeight * 3 + 20)
-
-    // Hardware section header
-    pdf.setFillColor(100, 116, 139) // Slate gray
-    pdf.rect(MARGIN, yPos, CONTENT_WIDTH, 8, 'F')
-    pdf.setFontSize(11)
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(255, 255, 255)
-    pdf.text('Hardware', MARGIN + 3, yPos + 5.5)
-    pdf.setTextColor(0, 0, 0)
-    yPos += 10
-
-    drawHardwareTableHeader()
-
-    for (let i = 0; i < expandedHardware.length; i++) {
-      const part = expandedHardware[i]
-
-      if (checkNewPage(rowHeight + 10)) {
-        // Re-draw hardware header
-        pdf.setFillColor(100, 116, 139)
-        pdf.rect(MARGIN, yPos, CONTENT_WIDTH, 8, 'F')
-        pdf.setFontSize(11)
-        pdf.setFont('helvetica', 'bold')
-        pdf.setTextColor(255, 255, 255)
-        pdf.text('Hardware (continued)', MARGIN + 3, yPos + 5.5)
-        pdf.setTextColor(0, 0, 0)
-        yPos += 10
-
-        drawHardwareTableHeader()
-      }
-
-      // Alternating row background
-      if (i % 2 === 0) {
-        pdf.setFillColor(252, 252, 252)
-        pdf.rect(MARGIN, yPos, CONTENT_WIDTH, rowHeight, 'F')
-      }
-
-      pdf.setFontSize(8)
-      pdf.setFont('helvetica', 'normal')
-
-      let xPos = MARGIN + 2
-
-      // Part number and name
-      let partText = ''
-      if (part.partNumber) {
-        partText = `${part.partNumber} - ${part.partName}`
-      } else {
-        partText = part.partName
-      }
-      partText = truncateText(pdf, partText, COL_ITEM - 4)
-      pdf.text(partText, xPos, yPos + 5.5)
-      xPos += COL_ITEM
-
-      // Checkboxes (centered in each column)
-      drawCheckbox(pdf, xPos + (COL_STAGED - 5) / 2, yPos + 5.5, 5)
-      xPos += COL_STAGED
-      drawCheckbox(pdf, xPos + (COL_QA - 5) / 2, yPos + 5.5, 5)
-      xPos += COL_QA
-      drawCheckbox(pdf, xPos + (COL_LOADED - 5) / 2, yPos + 5.5, 5)
-
-      yPos += rowHeight
-    }
-  }
-
-  // =====================================================
-  // Summary
-  // =====================================================
+  // Summary section
   checkNewPage(35)
 
   yPos += 8
@@ -594,25 +383,45 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
   pdf.setFontSize(9)
   pdf.setFont('helvetica', 'normal')
 
-  const totalProducts = data.productInstances.length
-  const uniqueOpenings = new Set(data.productInstances.map(p => p.openingName)).size
-  const totalHardwareItems = expandedHardware.length
-  const totalJambKits = data.jambKits?.length || 0
+  const totalItems = data.lineItems.length
+  const componentCount = data.lineItems.filter(i => i.itemType === 'component').length
+  const hardwareCount = data.lineItems.filter(i => i.itemType === 'hardware').length
+  const jambKitCount = data.lineItems.filter(i => i.itemType === 'jambkit').length
+  const uniqueOpenings = sortedOpenings.length
 
-  pdf.text(`Total Openings: ${uniqueOpenings}`, MARGIN, yPos)
+  pdf.text(`Total Stickers: ${totalItems}`, MARGIN, yPos)
   yPos += 5
-  pdf.text(`Total Products: ${totalProducts}`, MARGIN, yPos)
+  pdf.text(`Openings: ${uniqueOpenings}`, MARGIN, yPos)
   yPos += 5
-  if (totalJambKits > 0) {
-    pdf.text(`Total Jamb Kits: ${totalJambKits}`, MARGIN, yPos)
-    yPos += 5
-  }
-  pdf.text(`Total Hardware Items: ${totalHardwareItems}`, MARGIN, yPos)
+  pdf.text(`Components: ${componentCount}  |  Hardware: ${hardwareCount}  |  Jamb Kits: ${jambKitCount}`, MARGIN, yPos)
+
+  // Legend
+  yPos += 10
+  pdf.setFontSize(8)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text('Legend:', MARGIN, yPos)
+  yPos += 5
+  pdf.setFont('helvetica', 'normal')
+
+  // Component color box
+  pdf.setFillColor(239, 246, 255)
+  pdf.rect(MARGIN, yPos - 3, 8, 4, 'F')
+  pdf.text('[COMP] = Component/Panel', MARGIN + 10, yPos)
+
+  // Hardware color box
+  pdf.setFillColor(240, 253, 244)
+  pdf.rect(MARGIN + 60, yPos - 3, 8, 4, 'F')
+  pdf.text('Hardware Item', MARGIN + 72, yPos)
+
+  // Jamb kit color box
+  pdf.setFillColor(254, 243, 199)
+  pdf.rect(MARGIN + 110, yPos - 3, 8, 4, 'F')
+  pdf.text('[JAMB KIT] = Jamb Kit', MARGIN + 120, yPos)
 
   // Footer
   pdf.setFontSize(8)
   pdf.setTextColor(150, 150, 150)
-  pdf.text('Generated by Door Quoter', PAGE_WIDTH / 2, PAGE_HEIGHT - 10, { align: 'center' })
+  pdf.text('Sticker # column corresponds to sticker "X of Y" - use to match stickers to checklist', PAGE_WIDTH / 2, PAGE_HEIGHT - 10, { align: 'center' })
 
   return Buffer.from(pdf.output('arraybuffer'))
 }

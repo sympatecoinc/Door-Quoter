@@ -25,7 +25,7 @@ interface MasterPart {
   addFinishToPartNumber?: boolean
   appendDirectionToPartNumber?: boolean
   addToPackingList?: boolean
-  includeOnPickList?: boolean
+  pickListStation?: string | null
   includeInJambKit?: boolean
   createdAt: string
   updatedAt: string
@@ -261,7 +261,7 @@ export default function MasterPartsView() {
   const [addFinishToPartNumber, setAddFinishToPartNumber] = useState(false)
   const [appendDirectionToPartNumber, setAppendDirectionToPartNumber] = useState(false)
   const [addToPackingList, setAddToPackingList] = useState(false)
-  const [includeOnPickList, setIncludeOnPickList] = useState(false)
+  const [pickListStation, setPickListStation] = useState<string | null>(null)
   const [includeInJambKit, setIncludeInJambKit] = useState(false)
 
   // Stock Rules State
@@ -473,7 +473,7 @@ export default function MasterPartsView() {
     setAddFinishToPartNumber(false)
     setAppendDirectionToPartNumber(false)
     setAddToPackingList(false)
-    setIncludeOnPickList(false)
+    setPickListStation(null)
     setIncludeInJambKit(false)
   }
 
@@ -500,7 +500,7 @@ export default function MasterPartsView() {
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
           appendDirectionToPartNumber: partType === 'Hardware' ? appendDirectionToPartNumber : false,
           addToPackingList: partType === 'Hardware' ? addToPackingList : false,
-          includeOnPickList: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? includeOnPickList : false,
+          pickListStation: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? pickListStation : null,
           includeInJambKit: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? includeInJambKit : false
         })
       })
@@ -546,7 +546,7 @@ export default function MasterPartsView() {
           addFinishToPartNumber: partType === 'Hardware' ? addFinishToPartNumber : false,
           appendDirectionToPartNumber: partType === 'Hardware' ? appendDirectionToPartNumber : false,
           addToPackingList: partType === 'Hardware' ? addToPackingList : false,
-          includeOnPickList: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? includeOnPickList : false,
+          pickListStation: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? pickListStation : null,
           includeInJambKit: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? includeInJambKit : false
         })
       })
@@ -740,7 +740,7 @@ export default function MasterPartsView() {
     setAddFinishToPartNumber(part.addFinishToPartNumber || false)
     setAppendDirectionToPartNumber(part.appendDirectionToPartNumber || false)
     setAddToPackingList(part.addToPackingList || false)
-    setIncludeOnPickList(part.includeOnPickList || false)
+    setPickListStation(part.pickListStation || null)
     setIncludeInJambKit(part.includeInJambKit || false)
   }
 
@@ -2302,20 +2302,23 @@ export default function MasterPartsView() {
                         </span>
                       </div>
 
-                      {/* Include on pick list checkbox */}
-                      <div className="flex items-center mt-2">
-                        <input
-                          type="checkbox"
-                          id="includeOnPickList"
-                          checked={includeOnPickList}
-                          onChange={(e) => setIncludeOnPickList(e.target.checked)}
-                          className="mr-2 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                        />
-                        <label htmlFor="includeOnPickList" className="text-sm font-medium text-gray-700">
-                          Include on pick list
+                      {/* Pick List Station dropdown */}
+                      <div className="mt-3">
+                        <label htmlFor="pickListStation" className="block text-sm font-medium text-gray-700 mb-1">
+                          Pick List Station
                         </label>
-                        <span className="ml-2 text-xs text-gray-500">
-                          (This item will appear on production pick lists)
+                        <select
+                          id="pickListStation"
+                          value={pickListStation || ''}
+                          onChange={(e) => setPickListStation(e.target.value || null)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        >
+                          <option value="">None (not on pick list)</option>
+                          <option value="Jamb Station">Jamb Station</option>
+                          <option value="Assembly">Assembly</option>
+                        </select>
+                        <span className="text-xs text-gray-500">
+                          Select which station this item should appear on for production pick lists
                         </span>
                       </div>
 
@@ -2376,20 +2379,23 @@ export default function MasterPartsView() {
                       </div>
                     </div>
 
-                    {/* Include on pick list checkbox */}
-                    <div className="flex items-center mt-3">
-                      <input
-                        type="checkbox"
-                        id="fastenerIncludeOnPickList"
-                        checked={includeOnPickList}
-                        onChange={(e) => setIncludeOnPickList(e.target.checked)}
-                        className="mr-2 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="fastenerIncludeOnPickList" className="text-sm font-medium text-gray-700">
-                        Include on pick list
+                    {/* Pick List Station dropdown */}
+                    <div className="mt-3">
+                      <label htmlFor="fastenerPickListStation" className="block text-sm font-medium text-gray-700 mb-1">
+                        Pick List Station
                       </label>
-                      <span className="ml-2 text-xs text-gray-500">
-                        (This item will appear on production pick lists)
+                      <select
+                        id="fastenerPickListStation"
+                        value={pickListStation || ''}
+                        onChange={(e) => setPickListStation(e.target.value || null)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      >
+                        <option value="">None (not on pick list)</option>
+                        <option value="Jamb Station">Jamb Station</option>
+                        <option value="Assembly">Assembly</option>
+                      </select>
+                      <span className="text-xs text-gray-500">
+                        Select which station this item should appear on for production pick lists
                       </span>
                     </div>
 
@@ -2519,20 +2525,23 @@ export default function MasterPartsView() {
                         </span>
                       </div>
 
-                      {/* Include on pick list checkbox for extrusions */}
-                      <div className="flex items-center mt-3">
-                        <input
-                          type="checkbox"
-                          id="extrusionIncludeOnPickList"
-                          checked={includeOnPickList}
-                          onChange={(e) => setIncludeOnPickList(e.target.checked)}
-                          className="mr-2 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                        />
-                        <label htmlFor="extrusionIncludeOnPickList" className="text-sm font-medium text-gray-700">
-                          Include on pick list
+                      {/* Pick List Station dropdown for extrusions */}
+                      <div className="mt-3">
+                        <label htmlFor="extrusionPickListStation" className="block text-sm font-medium text-gray-700 mb-1">
+                          Pick List Station
                         </label>
-                        <span className="ml-2 text-xs text-gray-500">
-                          (This item will appear on production pick lists)
+                        <select
+                          id="extrusionPickListStation"
+                          value={pickListStation || ''}
+                          onChange={(e) => setPickListStation(e.target.value || null)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        >
+                          <option value="">None (not on pick list)</option>
+                          <option value="Jamb Station">Jamb Station</option>
+                          <option value="Assembly">Assembly</option>
+                        </select>
+                        <span className="text-xs text-gray-500">
+                          Select which station this item should appear on for production pick lists
                         </span>
                       </div>
 

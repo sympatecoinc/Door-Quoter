@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import JSZip from 'jszip'
 import {
   ClipboardList,
   Tag,
@@ -28,7 +30,7 @@ interface LogisticsProject {
   updatedAt: string
 }
 
-type DownloadType = 'packinglist' | 'labels' | 'boxlist' | 'all'
+type DownloadType = 'packinglist' | 'labels' | 'boxlist'
 
 interface DownloadingState {
   [projectId: number]: {
@@ -140,10 +142,6 @@ export default function LogisticsView() {
           url = `/api/projects/${projectId}/bom?boxlist=true&format=pdf`
           filename = `${safeProjectName}-box-cut-list.pdf`
           break
-        case 'all':
-          url = `/api/projects/${projectId}/logistics-all`
-          filename = `${safeProjectName}-logistics-documents.zip`
-          break
         default:
           throw new Error('Invalid download type')
       }
@@ -181,24 +179,65 @@ export default function LogisticsView() {
 
     setBulkDownloading(true)
     const selectedProjects = projects.filter(p => selectedIds.has(p.id))
-    let successCount = 0
+    const zip = new JSZip()
+    let fileCount = 0
     let errorCount = 0
 
     for (const project of selectedProjects) {
-      try {
-        await downloadDocument(project.id, 'all', project.name)
-        successCount++
-      } catch (error) {
-        errorCount++
+      const safeProjectName = project.name.replace(/[^a-zA-Z0-9]/g, '-')
+      const projectFolder = selectedProjects.length > 1 ? zip.folder(safeProjectName) : zip
+
+      // Download all three document types for each project
+      const documents = [
+        { type: 'packinglist', url: `/api/projects/${project.id}/packing-list/pdf`, filename: `${safeProjectName}-packing-list.pdf` },
+        { type: 'labels', url: `/api/projects/${project.id}/packing-list/stickers`, filename: `${safeProjectName}-packing-stickers.pdf` },
+        { type: 'boxlist', url: `/api/projects/${project.id}/bom?boxlist=true&format=pdf`, filename: `${safeProjectName}-box-cut-list.pdf` },
+      ]
+
+      for (const doc of documents) {
+        try {
+          const response = await fetch(doc.url)
+          if (response.ok) {
+            const blob = await response.blob()
+            projectFolder?.file(doc.filename, blob)
+            fileCount++
+          } else {
+            errorCount++
+          }
+        } catch (error) {
+          console.error(`Error downloading ${doc.type} for ${project.name}:`, error)
+          errorCount++
+        }
       }
     }
 
-    setBulkDownloading(false)
+    if (fileCount === 0) {
+      showError('No files were downloaded')
+      setBulkDownloading(false)
+      return
+    }
 
-    if (errorCount === 0) {
-      showSuccess(`Downloaded documents for ${successCount} project(s)`)
-    } else {
-      showError(`Downloaded ${successCount} project(s), ${errorCount} failed`)
+    try {
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      const downloadUrl = window.URL.createObjectURL(zipBlob)
+      const a = document.createElement('a')
+      a.href = downloadUrl
+      a.download = `logistics-documents-${new Date().toISOString().split('T')[0]}.zip`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(downloadUrl)
+      document.body.removeChild(a)
+
+      if (errorCount === 0) {
+        showSuccess(`Downloaded ${fileCount} file${fileCount !== 1 ? 's' : ''} for ${selectedProjects.length} project${selectedProjects.length !== 1 ? 's' : ''}`)
+      } else {
+        showSuccess(`Downloaded ${fileCount} file${fileCount !== 1 ? 's' : ''} (${errorCount} failed)`)
+      }
+    } catch (error) {
+      console.error('Error creating ZIP:', error)
+      showError('Failed to create ZIP file')
+    } finally {
+      setBulkDownloading(false)
     }
   }
 
@@ -217,11 +256,11 @@ export default function LogisticsView() {
     return Object.values(state).some(v => v)
   }
 
-  const downloadOptions = [
+  // Selectable options (can be checked and downloaded together)
+  const selectableOptions = [
     { value: 'packinglist' as DownloadType, label: 'Packing List (PDF)', icon: ClipboardList },
     { value: 'labels' as DownloadType, label: 'Labels/Stickers (PDF)', icon: Tag },
     { value: 'boxlist' as DownloadType, label: 'Box Cut List (PDF)', icon: Package2 },
-    { value: 'all' as DownloadType, label: 'All Documents (ZIP)', icon: Download },
   ]
 
   const DownloadDropdown = ({
@@ -232,11 +271,19 @@ export default function LogisticsView() {
     projectName: string
   }) => {
     const [isOpen, setIsOpen] = useState(false)
-    const [selectedType, setSelectedType] = useState<DownloadType | null>(null)
+    const [selectedTypes, setSelectedTypes] = useState<Set<DownloadType>>(new Set())
+    const [menuPosition, setMenuPosition] = useState<{ top: number; left: number; openUpward: boolean } | null>(null)
+    const [isDownloading, setIsDownloading] = useState(false)
     const dropdownRef = useRef<HTMLDivElement>(null)
+    const buttonRef = useRef<HTMLButtonElement>(null)
+    const menuRef = useRef<HTMLDivElement>(null)
 
     const handleClickOutside = useCallback((event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(target) &&
+        menuRef.current && !menuRef.current.contains(target)
+      ) {
         setIsOpen(false)
       }
     }, [])
@@ -244,62 +291,161 @@ export default function LogisticsView() {
     useEffect(() => {
       if (isOpen) {
         document.addEventListener('mousedown', handleClickOutside)
+        // Calculate menu position
+        if (buttonRef.current) {
+          const rect = buttonRef.current.getBoundingClientRect()
+          const spaceBelow = window.innerHeight - rect.bottom
+          const dropdownHeight = 180
+          const openUpward = spaceBelow < dropdownHeight
+
+          setMenuPosition({
+            top: openUpward ? rect.top - dropdownHeight : rect.bottom + 4,
+            left: rect.left,
+            openUpward
+          })
+        }
+      } else {
+        setMenuPosition(null)
       }
       return () => {
         document.removeEventListener('mousedown', handleClickOutside)
       }
     }, [isOpen, handleClickOutside])
 
-    const selectedOption = downloadOptions.find(opt => opt.value === selectedType)
-    const isLoading = selectedType ? downloading[projectId]?.[selectedType] : false
-
-    const handleSelect = (value: DownloadType) => {
-      setSelectedType(value)
-      setIsOpen(false)
+    const toggleSelection = (value: DownloadType) => {
+      setSelectedTypes(prev => {
+        const newSet = new Set(prev)
+        if (newSet.has(value)) {
+          newSet.delete(value)
+        } else {
+          newSet.add(value)
+        }
+        return newSet
+      })
     }
 
-    const handleDownload = () => {
-      if (!selectedType) return
-      downloadDocument(projectId, selectedType, projectName)
+    const handleDownload = async () => {
+      if (selectedTypes.size === 0) return
+
+      setIsDownloading(true)
+      const safeProjectName = projectName.replace(/[^a-zA-Z0-9]/g, '-')
+
+      try {
+        if (selectedTypes.size === 1) {
+          // Single file - download directly
+          const type = Array.from(selectedTypes)[0]
+          await downloadDocument(projectId, type, projectName)
+        } else {
+          // Multiple files - create ZIP
+          const zip = new JSZip()
+          const typesArray = Array.from(selectedTypes)
+
+          for (const type of typesArray) {
+            let url: string
+            let filename: string
+
+            switch (type) {
+              case 'packinglist':
+                url = `/api/projects/${projectId}/packing-list/pdf`
+                filename = `${safeProjectName}-packing-list.pdf`
+                break
+              case 'labels':
+                url = `/api/projects/${projectId}/packing-list/stickers`
+                filename = `${safeProjectName}-packing-stickers.pdf`
+                break
+              case 'boxlist':
+                url = `/api/projects/${projectId}/bom?boxlist=true&format=pdf`
+                filename = `${safeProjectName}-box-cut-list.pdf`
+                break
+              default:
+                continue
+            }
+
+            const response = await fetch(url)
+            if (response.ok) {
+              const blob = await response.blob()
+              zip.file(filename, blob)
+            }
+          }
+
+          const zipBlob = await zip.generateAsync({ type: 'blob' })
+          const downloadUrl = window.URL.createObjectURL(zipBlob)
+          const a = document.createElement('a')
+          a.href = downloadUrl
+          a.download = `${safeProjectName}-logistics-documents.zip`
+          document.body.appendChild(a)
+          a.click()
+          window.URL.revokeObjectURL(downloadUrl)
+          document.body.removeChild(a)
+        }
+        setSelectedTypes(new Set())
+      } catch (error) {
+        console.error('Error downloading documents:', error)
+        showError('Failed to download documents')
+      } finally {
+        setIsDownloading(false)
+      }
     }
+
+    const getButtonLabel = () => {
+      if (selectedTypes.size === 0) return 'Select documents...'
+      if (selectedTypes.size === 1) {
+        const option = selectableOptions.find(opt => opt.value === Array.from(selectedTypes)[0])
+        return option?.label || 'Selected'
+      }
+      return `${selectedTypes.size} selected`
+    }
+
+    const dropdownMenu = isOpen && menuPosition && createPortal(
+      <div
+        ref={menuRef}
+        className="fixed z-50 w-56 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden"
+        style={{ top: menuPosition.top, left: menuPosition.left }}
+      >
+        {selectableOptions.map((option, index) => (
+          <button
+            key={option.value}
+            onClick={() => toggleSelection(option.value)}
+            className={`flex items-center w-full px-3 py-2.5 text-sm text-left transition-colors ${
+              selectedTypes.has(option.value)
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 hover:bg-gray-50'
+            } ${index === 0 ? 'rounded-t-lg' : ''} ${index === selectableOptions.length - 1 ? 'rounded-b-lg' : ''}`}
+          >
+            <div className={`w-4 h-4 mr-3 border rounded flex items-center justify-center ${
+              selectedTypes.has(option.value)
+                ? 'bg-blue-600 border-blue-600'
+                : 'border-gray-300'
+            }`}>
+              {selectedTypes.has(option.value) && (
+                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+            <option.icon className={`w-4 h-4 mr-3 ${selectedTypes.has(option.value) ? 'text-blue-600' : 'text-gray-400'}`} />
+            <span className="flex-1">{option.label}</span>
+          </button>
+        ))}
+      </div>,
+      document.body
+    )
 
     return (
       <div className="inline-flex items-center rounded-lg border border-gray-200 bg-white shadow-sm" ref={dropdownRef}>
         {/* Dropdown Select */}
         <div className="relative">
           <button
+            ref={buttonRef}
             onClick={() => setIsOpen(!isOpen)}
-            className="flex items-center justify-between w-48 px-3 py-2 text-sm text-gray-700 bg-transparent hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset rounded-l-lg transition-colors"
+            className="flex items-center justify-between w-44 px-3 py-2 text-sm text-gray-700 bg-transparent hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset rounded-l-lg transition-colors"
           >
-            {selectedOption ? (
-              <span className="flex items-center">
-                <selectedOption.icon className="w-4 h-4 mr-2 text-blue-600" />
-                <span className="truncate font-medium">{selectedOption.label}</span>
-              </span>
-            ) : (
-              <span className="text-gray-400">Select document...</span>
-            )}
+            <span className={selectedTypes.size > 0 ? 'font-medium text-gray-900' : 'text-gray-400'}>
+              {getButtonLabel()}
+            </span>
             <ChevronDown className={`w-4 h-4 ml-2 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
           </button>
-
-          {isOpen && (
-            <div className="absolute z-20 w-56 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
-              {downloadOptions.map((option, index) => (
-                <button
-                  key={option.value}
-                  onClick={() => handleSelect(option.value)}
-                  className={`flex items-center w-full px-3 py-2.5 text-sm text-left transition-colors ${
-                    selectedType === option.value
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  } ${index === 0 ? 'rounded-t-lg' : ''} ${index === downloadOptions.length - 1 ? 'rounded-b-lg' : ''}`}
-                >
-                  <option.icon className={`w-4 h-4 mr-3 ${selectedType === option.value ? 'text-blue-600' : 'text-gray-400'}`} />
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          )}
+          {dropdownMenu}
         </div>
 
         {/* Divider */}
@@ -308,14 +454,14 @@ export default function LogisticsView() {
         {/* Download Button - Always visible, disabled when no selection */}
         <button
           onClick={handleDownload}
-          disabled={!selectedType || isLoading}
+          disabled={selectedTypes.size === 0 || isDownloading}
           className={`flex items-center px-4 py-2 text-sm font-medium rounded-r-lg transition-all duration-200 ${
-            selectedType
+            selectedTypes.size > 0
               ? 'text-white bg-blue-600 hover:bg-blue-700'
               : 'text-gray-400 bg-gray-50 cursor-not-allowed'
           } disabled:opacity-60 disabled:cursor-not-allowed`}
         >
-          {isLoading ? (
+          {isDownloading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
             <>
@@ -332,7 +478,7 @@ export default function LogisticsView() {
     <div className="p-8">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Logistics</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Shipping</h1>
           <p className="text-gray-600 mt-2">
             Projects ready for shipping (Approved, Quote Accepted, or Active)
           </p>

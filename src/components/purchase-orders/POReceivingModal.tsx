@@ -8,7 +8,9 @@ import {
   Truck,
   AlertTriangle,
   CheckCircle,
-  Loader2
+  Loader2,
+  Printer,
+  Download
 } from 'lucide-react'
 
 interface POReceivingModalProps {
@@ -30,6 +32,7 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
   const [error, setError] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
   const [qualityNotes, setQualityNotes] = useState('')
+  const [totalBoxes, setTotalBoxes] = useState(1)
   const [receivingLines, setReceivingLines] = useState<ReceivingLineData[]>(
     purchaseOrder.lines
       ?.filter(line => (line.quantityRemaining ?? line.quantity) > 0)
@@ -113,6 +116,11 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
   const totalReceiving = receivingLines.reduce((sum, line) => sum + line.quantityReceived, 0)
   const totalDamaged = receivingLines.reduce((sum, line) => sum + line.quantityDamaged, 0)
   const totalRejected = receivingLines.reduce((sum, line) => sum + line.quantityRejected, 0)
+
+  function handlePrintTags() {
+    const url = `/api/purchase-orders/${purchaseOrder.id}/receiving-tags?boxes=${totalBoxes}`
+    window.open(url, '_blank')
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -292,6 +300,41 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Notes about quality issues..."
                 />
+              </div>
+            </div>
+
+            {/* Print Box Tags */}
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <div className="flex items-center gap-3 mb-3">
+                <Printer className="w-5 h-5 text-gray-600" />
+                <span className="font-medium text-gray-900">Print Box Tags</span>
+              </div>
+              <p className="text-sm text-gray-600 mb-3">
+                Print tags to place inside received boxes. Each tag shows the PO number, vendor, and items.
+              </p>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label htmlFor="totalBoxes" className="text-sm text-gray-700">
+                    Number of boxes:
+                  </label>
+                  <input
+                    id="totalBoxes"
+                    type="number"
+                    min="1"
+                    max="99"
+                    value={totalBoxes}
+                    onChange={(e) => setTotalBoxes(Math.max(1, Math.min(99, parseInt(e.target.value) || 1)))}
+                    className="w-16 px-2 py-1.5 border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handlePrintTags}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Download Tags ({totalBoxes} {totalBoxes === 1 ? 'page' : 'pages'})
+                </button>
               </div>
             </div>
           </div>

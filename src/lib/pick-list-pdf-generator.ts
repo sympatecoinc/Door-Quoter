@@ -1,5 +1,6 @@
 // Pick List PDF Generation Utility
-// Generates a professional pick list PDF showing hardware items grouped by product
+// Generates a professional pick list PDF showing hardware items grouped by station
+// with batch columns and checkboxes for tracking picked items
 
 import { jsPDF } from 'jspdf'
 import fs from 'fs'
@@ -8,7 +9,7 @@ import sharp from 'sharp'
 import { downloadFile } from './gcs-storage'
 
 export interface PickListItem {
-  productName: string
+  station: string  // "Jamb Station" or "Assembly"
   partNumber: string
   partName: string
   unit: string
@@ -22,6 +23,8 @@ export interface PickListData {
   companyLogo?: string | null
   items: PickListItem[]
   generatedDate: string
+  batchSize?: number | null
+  totalUnits?: number  // Total number of units in the project
 }
 
 // Page layout constants
@@ -31,7 +34,7 @@ const MARGIN = 15
 const CONTENT_WIDTH = PAGE_WIDTH - 2 * MARGIN
 
 /**
- * Creates a Pick List PDF
+ * Creates a Pick List PDF with batch columns and checkboxes
  */
 export async function createPickListPDF(data: PickListData): Promise<Buffer> {
   const pdf = new jsPDF({
@@ -136,6 +139,22 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
   pdf.text(data.projectName, MARGIN, yPos)
   yPos += 6
 
+  // Calculate batch info
+  const totalUnits = data.totalUnits || 1
+  const batchSize = data.batchSize && data.batchSize > 0 ? data.batchSize : totalUnits
+  const numBatches = Math.ceil(totalUnits / batchSize)
+  const hasBatches = batchSize < totalUnits && numBatches > 1
+
+  // Batch size info
+  if (hasBatches) {
+    pdf.setFontSize(11)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(79, 70, 229) // Indigo color
+    pdf.text(`Batch Size: ${batchSize} unit${batchSize !== 1 ? 's' : ''} (${numBatches} batches)`, MARGIN, yPos)
+    pdf.setTextColor(0, 0, 0)
+    yPos += 6
+  }
+
   // Generated date
   pdf.setFontSize(9)
   pdf.setTextColor(100, 100, 100)
@@ -151,42 +170,58 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
     return Buffer.from(pdf.output('arraybuffer'))
   }
 
-  // Group items by product
-  const groupedByProduct: Record<string, PickListItem[]> = {}
+  // Group items by station (Jamb Station, Assembly)
+  const groupedByStation: Record<string, PickListItem[]> = {}
   for (const item of data.items) {
-    if (!groupedByProduct[item.productName]) {
-      groupedByProduct[item.productName] = []
+    if (!groupedByStation[item.station]) {
+      groupedByStation[item.station] = []
     }
-    groupedByProduct[item.productName].push(item)
+    groupedByStation[item.station].push(item)
   }
 
-  // Column widths - must fit within CONTENT_WIDTH (~186mm)
-  const colWidths = {
-    partNumber: 55,
-    partName: 90,
-    qty: 20,
-    unit: 20
-  }
-  // Total: 55 + 90 + 20 + 20 = 185mm
+  // Sort stations: Jamb Station first, then Assembly
+  const stationOrder: Record<string, number> = { 'Jamb Station': 1, 'Assembly': 2 }
+  const sortedStations = Object.keys(groupedByStation).sort((a, b) => {
+    return (stationOrder[a] || 99) - (stationOrder[b] || 99)
+  })
 
-  const rowHeight = 7
+  // Dynamic column widths based on number of batches
+  // Base columns: Part Number, Part Name, Unit
+  // Then batch columns with checkboxes
+  const maxBatchColumns = 8 // Maximum batch columns per row
+  const batchColWidth = 18 // Width for each batch column (checkbox + qty)
+  const partNumberWidth = 45
+  const partNameWidth = hasBatches
+    ? Math.max(40, CONTENT_WIDTH - partNumberWidth - 15 - (Math.min(numBatches, maxBatchColumns) * batchColWidth))
+    : 90
+  const unitWidth = 15
+
+  const rowHeight = 8
   const headerHeight = 8
+  const checkboxSize = 4
 
-  // Render each product group
-  for (const [productName, items] of Object.entries(groupedByProduct)) {
-    // Check if we need a new page (header + at least 3 rows should fit)
-    if (yPos + headerHeight + rowHeight * 3 + 15 > PAGE_HEIGHT - MARGIN) {
-      pdf.addPage()
-      yPos = MARGIN
-    }
+  // Station colors: Jamb Station = purple, Assembly = blue
+  const stationColors: Record<string, [number, number, number]> = {
+    'Jamb Station': [147, 51, 234],  // Purple
+    'Assembly': [59, 130, 246]       // Blue
+  }
 
-    // Product group header
-    pdf.setFillColor(79, 70, 229) // Indigo color
+  // Helper function to draw a checkbox
+  const drawCheckbox = (x: number, y: number, size: number) => {
+    pdf.setDrawColor(100, 100, 100)
+    pdf.setLineWidth(0.3)
+    pdf.rect(x, y, size, size, 'S')
+  }
+
+  // Helper function to render table header
+  const renderTableHeader = (stationColor: [number, number, number], stationName: string, continued = false) => {
+    // Station group header
+    pdf.setFillColor(stationColor[0], stationColor[1], stationColor[2])
     pdf.rect(MARGIN, yPos, CONTENT_WIDTH, 8, 'F')
     pdf.setFontSize(11)
     pdf.setFont('helvetica', 'bold')
     pdf.setTextColor(255, 255, 255)
-    pdf.text(productName, MARGIN + 3, yPos + 5.5)
+    pdf.text(continued ? `${stationName} (continued)` : stationName, MARGIN + 3, yPos + 5.5)
     pdf.setTextColor(0, 0, 0)
     yPos += 10
 
@@ -194,25 +229,49 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
     pdf.setFillColor(240, 240, 240)
     pdf.rect(MARGIN, yPos, CONTENT_WIDTH, headerHeight, 'F')
 
-    pdf.setFontSize(8)
+    pdf.setFontSize(7)
     pdf.setFont('helvetica', 'bold')
     pdf.setTextColor(50, 50, 50)
 
     let xPos = MARGIN + 2
     pdf.text('Part Number', xPos, yPos + 5.5)
-    xPos += colWidths.partNumber
+    xPos += partNumberWidth
     pdf.text('Part Name', xPos, yPos + 5.5)
-    xPos += colWidths.partName
-    pdf.text('Qty', xPos, yPos + 5.5)
-    xPos += colWidths.qty
+    xPos += partNameWidth
+
+    if (hasBatches) {
+      // Batch column headers
+      const batchesToShow = Math.min(numBatches, maxBatchColumns)
+      for (let b = 0; b < batchesToShow; b++) {
+        pdf.text(`B${b + 1}`, xPos + batchColWidth / 2, yPos + 5.5, { align: 'center' })
+        xPos += batchColWidth
+      }
+    } else {
+      pdf.text('Qty', xPos, yPos + 5.5)
+      xPos += 20
+    }
+
     pdf.text('Unit', xPos, yPos + 5.5)
 
     yPos += headerHeight
-
-    // Table rows
     pdf.setFont('helvetica', 'normal')
     pdf.setTextColor(0, 0, 0)
+  }
 
+  // Render each station group (in order: Jamb Station, Assembly)
+  for (const stationName of sortedStations) {
+    const items = groupedByStation[stationName]
+    const stationColor = stationColors[stationName] || [79, 70, 229]
+
+    // Check if we need a new page (header + at least 3 rows should fit)
+    if (yPos + headerHeight + rowHeight * 3 + 15 > PAGE_HEIGHT - MARGIN) {
+      pdf.addPage()
+      yPos = MARGIN
+    }
+
+    renderTableHeader(stationColor, stationName)
+
+    // Table rows
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
 
@@ -220,36 +279,7 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
       if (yPos + rowHeight > PAGE_HEIGHT - MARGIN) {
         pdf.addPage()
         yPos = MARGIN
-
-        // Re-draw product header on new page
-        pdf.setFillColor(79, 70, 229)
-        pdf.rect(MARGIN, yPos, CONTENT_WIDTH, 8, 'F')
-        pdf.setFontSize(11)
-        pdf.setFont('helvetica', 'bold')
-        pdf.setTextColor(255, 255, 255)
-        pdf.text(`${productName} (continued)`, MARGIN + 3, yPos + 5.5)
-        pdf.setTextColor(0, 0, 0)
-        yPos += 10
-
-        // Re-draw table header
-        pdf.setFillColor(240, 240, 240)
-        pdf.rect(MARGIN, yPos, CONTENT_WIDTH, headerHeight, 'F')
-        pdf.setFontSize(8)
-        pdf.setFont('helvetica', 'bold')
-        pdf.setTextColor(50, 50, 50)
-
-        xPos = MARGIN + 2
-        pdf.text('Part Number', xPos, yPos + 5.5)
-        xPos += colWidths.partNumber
-        pdf.text('Part Name', xPos, yPos + 5.5)
-        xPos += colWidths.partName
-        pdf.text('Qty', xPos, yPos + 5.5)
-        xPos += colWidths.qty
-        pdf.text('Unit', xPos, yPos + 5.5)
-
-        yPos += headerHeight
-        pdf.setFont('helvetica', 'normal')
-        pdf.setTextColor(0, 0, 0)
+        renderTableHeader(stationColor, stationName, true)
       }
 
       // Alternating row background
@@ -258,34 +288,70 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
         pdf.rect(MARGIN, yPos, CONTENT_WIDTH, rowHeight, 'F')
       }
 
-      pdf.setFontSize(8)
-      xPos = MARGIN + 2
+      pdf.setFontSize(7)
+      let xPos = MARGIN + 2
 
       // Part Number (monospace style)
       pdf.setFont('courier', 'normal')
-      const partNumber = truncateText(pdf, item.partNumber, colWidths.partNumber - 4)
-      pdf.text(partNumber, xPos, yPos + 5)
-      xPos += colWidths.partNumber
+      const partNumber = truncateText(pdf, item.partNumber, partNumberWidth - 4)
+      pdf.text(partNumber, xPos, yPos + 5.5)
+      xPos += partNumberWidth
 
       // Part Name
       pdf.setFont('helvetica', 'normal')
-      const partName = truncateText(pdf, item.partName, colWidths.partName - 4)
-      pdf.text(partName, xPos, yPos + 5)
-      xPos += colWidths.partName
+      const partName = truncateText(pdf, item.partName, partNameWidth - 4)
+      pdf.text(partName, xPos, yPos + 5.5)
+      xPos += partNameWidth
 
-      // Quantity (bold, right-aligned)
-      pdf.setFont('helvetica', 'bold')
-      pdf.text(item.totalQuantity.toString(), xPos + colWidths.qty - 8, yPos + 5, { align: 'right' })
-      xPos += colWidths.qty
+      if (hasBatches) {
+        // Calculate quantity per batch
+        const qtyPerUnit = item.totalQuantity / totalUnits
+        const qtyPerBatch = Math.round(qtyPerUnit * batchSize * 100) / 100
+
+        // Handle remainder for last batch
+        const lastBatchUnits = totalUnits % batchSize || batchSize
+        const lastBatchQty = Math.round(qtyPerUnit * lastBatchUnits * 100) / 100
+
+        const batchesToShow = Math.min(numBatches, maxBatchColumns)
+        for (let b = 0; b < batchesToShow; b++) {
+          const isLastBatch = b === numBatches - 1
+          const batchQty = isLastBatch && (totalUnits % batchSize !== 0) ? lastBatchQty : qtyPerBatch
+
+          // Draw checkbox
+          drawCheckbox(xPos + 2, yPos + 2, checkboxSize)
+
+          // Draw quantity next to checkbox
+          pdf.setFont('helvetica', 'bold')
+          pdf.setFontSize(7)
+          const qtyStr = Number.isInteger(batchQty) ? batchQty.toString() : batchQty.toFixed(1)
+          pdf.text(qtyStr, xPos + checkboxSize + 4, yPos + 5.5)
+
+          xPos += batchColWidth
+        }
+
+        // If more batches than can fit, add indicator
+        if (numBatches > maxBatchColumns) {
+          pdf.setFontSize(6)
+          pdf.setTextColor(100, 100, 100)
+          pdf.text(`+${numBatches - maxBatchColumns}`, xPos - 5, yPos + 5.5)
+          pdf.setTextColor(0, 0, 0)
+        }
+      } else {
+        // Single quantity column (no batches)
+        pdf.setFont('helvetica', 'bold')
+        pdf.text(item.totalQuantity.toString(), xPos + 15, yPos + 5.5, { align: 'right' })
+        xPos += 20
+      }
 
       // Unit
       pdf.setFont('helvetica', 'normal')
-      pdf.text(item.unit || 'EA', xPos, yPos + 5)
+      pdf.setFontSize(7)
+      pdf.text(item.unit || 'EA', xPos, yPos + 5.5)
 
       yPos += rowHeight
     }
 
-    // Add space between product groups
+    // Add space between station groups
     yPos += 5
   }
 
@@ -309,11 +375,15 @@ export async function createPickListPDF(data: PickListData): Promise<Buffer> {
   pdf.setFont('helvetica', 'normal')
 
   const totalItems = data.items.reduce((sum, item) => sum + item.totalQuantity, 0)
-  const productCount = Object.keys(groupedByProduct).length
+  const stationCount = sortedStations.length
 
   pdf.text(`Total Items: ${totalItems}`, MARGIN, yPos)
   yPos += 5
-  pdf.text(`Product Types: ${productCount}`, MARGIN, yPos)
+  pdf.text(`Stations: ${stationCount}`, MARGIN, yPos)
+  if (hasBatches) {
+    yPos += 5
+    pdf.text(`Batches: ${numBatches} (${batchSize} units each${totalUnits % batchSize !== 0 ? `, last batch: ${totalUnits % batchSize} units` : ''})`, MARGIN, yPos)
+  }
 
   return Buffer.from(pdf.output('arraybuffer'))
 }

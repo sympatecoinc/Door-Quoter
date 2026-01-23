@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { UserPlus, Edit2, Trash2, Shield, Eye, Settings, X, Plus, Minus, Check } from 'lucide-react'
 import { ALL_TABS, parseTabOverrides, serializeTabOverrides, calculateEffectivePermissions, getPermissionSources, type TabOverrides } from '@/lib/permissions'
+import { useToast } from '@/hooks/useToast'
+import { ToastContainer } from '@/components/ui/Toast'
 
 interface Profile {
   id: number
@@ -25,18 +27,21 @@ interface User {
 
 const AVAILABLE_TABS = [
   { id: 'dashboard', label: 'Dashboard (Sales)' },
-  { id: 'projects', label: 'Projects' },
   { id: 'crm', label: 'CRM' },
+  { id: 'projects', label: 'Projects' },
   { id: 'production', label: 'Production' },
-  { id: 'logistics', label: 'Logistics' },
+  { id: 'logistics', label: 'Shipping' },
   { id: 'products', label: 'Products' },
   { id: 'masterParts', label: 'Master Parts' },
   { id: 'inventory', label: 'Inventory' },
   { id: 'vendors', label: 'Vendors' },
   { id: 'purchaseOrders', label: 'Purchase Orders' },
-  { id: 'salesOrders', label: 'Invoices' },
+  { id: 'receiving', label: 'Receiving' },
+  { id: 'purchasingDashboard', label: 'Purchasing Dashboard' },
+  { id: 'salesOrders', label: 'Sales Orders' },
+  { id: 'invoices', label: 'Invoices' },
   { id: 'quoteDocuments', label: 'Quote Settings' },
-  { id: 'accounting', label: 'Accounting' },
+  { id: 'accounting', label: 'Pricing' },
   { id: 'settings', label: 'Settings' },
 ] as const
 
@@ -47,6 +52,7 @@ export default function UserManagement() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const { toasts, removeToast, showSuccess, showError } = useToast()
 
   useEffect(() => {
     fetchUsers()
@@ -95,15 +101,15 @@ export default function UserManagement() {
       const data = await response.json()
 
       if (response.ok) {
-        alert('User created successfully!')
+        showSuccess('User created successfully!')
         setShowCreateModal(false)
         fetchUsers()
       } else {
-        alert(data.error || 'Failed to create user')
+        showError(data.error || 'Failed to create user')
       }
     } catch (error) {
       console.error('Error creating user:', error)
-      alert('Failed to create user')
+      showError('Failed to create user')
     }
   }
 
@@ -118,16 +124,16 @@ export default function UserManagement() {
       const data = await response.json()
 
       if (response.ok) {
-        alert('User updated successfully!')
+        showSuccess('User updated successfully!')
         setShowEditModal(false)
         setSelectedUser(null)
         fetchUsers()
       } else {
-        alert(data.error || 'Failed to update user')
+        showError(data.error || 'Failed to update user')
       }
     } catch (error) {
       console.error('Error updating user:', error)
-      alert('Failed to update user')
+      showError('Failed to update user')
     }
   }
 
@@ -144,14 +150,14 @@ export default function UserManagement() {
       const data = await response.json()
 
       if (response.ok) {
-        alert('User deactivated successfully!')
+        showSuccess('User deactivated successfully!')
         fetchUsers()
       } else {
-        alert(data.error || 'Failed to deactivate user')
+        showError(data.error || 'Failed to deactivate user')
       }
     } catch (error) {
       console.error('Error deactivating user:', error)
-      alert('Failed to deactivate user')
+      showError('Failed to deactivate user')
     }
   }
 
@@ -187,6 +193,7 @@ export default function UserManagement() {
 
   return (
     <div className="space-y-4">
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold text-gray-900">User Management</h3>
         <button

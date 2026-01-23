@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { createPackingListPDF, PackingListItem, ProductInstance, PackingListData, JambKitEntry } from '@/lib/packing-list-pdf-generator'
+import { createPackingListPDF, PackingListData, PackingListLineItem, JambKitEntry } from '@/lib/packing-list-pdf-generator'
 
 // Helper function to get finish code from database
 async function getFinishCode(finishType: string): Promise<string> {
@@ -91,10 +91,11 @@ export async function GET(
       orderBy: { name: 'asc' }
     })
 
-    // Build packing list items and product instances
-    const itemsMap = new Map<string, PackingListItem>()
-    const productInstances: ProductInstance[] = []
-    const jambKitsMap = new Map<number, JambKitEntry>()
+    // Build packing list items in STICKER ORDER
+    // Order: For each opening -> components -> hardware -> jamb kit
+    // This matches the exact order stickers are generated
+    const lineItems: Omit<PackingListLineItem, 'stickerNumber' | 'totalStickers'>[] = []
+    const jambKitsList: JambKitEntry[] = []
 
     for (const opening of openings) {
       // Get the finish code for this opening if it has a finish color
@@ -103,19 +104,21 @@ export async function GET(
       // Track jamb kit item count for this opening
       let jambKitItemCount = 0
 
+      // 1. Add component items (one per panel) - matches sticker order
       for (const panel of opening.panels) {
-        const productName = panel.componentInstance?.product?.name || 'Unknown Product'
+        const productName = panel.componentInstance?.product?.name || panel.type || 'Unknown'
 
-        // Add product instance (for the checklist section - matches stickers)
-        productInstances.push({
+        lineItems.push({
           openingName: opening.name,
-          productName: productName,
-          panelType: panel.type || undefined,
-          width: panel.width || undefined,
-          height: panel.height || undefined
+          itemType: 'component',
+          itemName: productName,
+          dimensions: `${panel.width}" x ${panel.height}"`,
+          partNumber: null,
+          quantity: 1,
+          unit: null
         })
 
-        // Check ALL BOM items (not just hardware) for jamb kit inclusion
+        // Check ALL BOM items for jamb kit inclusion
         if (panel.componentInstance?.product) {
           const allBoms = await prisma.productBOM.findMany({
             where: { productId: panel.componentInstance.product.id },
@@ -135,7 +138,7 @@ export async function GET(
           }
         }
 
-        // Process hardware from productBOMs for this panel (only Hardware type with addToPackingList)
+        // 2. Process hardware from productBOMs for this panel
         if (panel.componentInstance?.product?.productBOMs) {
           for (const bom of panel.componentInstance.product.productBOMs) {
             if (!bom.addToPackingList) continue
@@ -146,28 +149,22 @@ export async function GET(
               partNumber = `${partNumber}${finishCode}`
             }
 
+            // Create individual line items for each piece (matches sticker generation)
             const quantity = bom.quantity || 1
-
-            // Create a unique key for aggregation by product type + part
-            const key = `${productName}|${partNumber || ''}|${bom.partName}`
-
-            const existing = itemsMap.get(key)
-            if (existing) {
-              existing.quantity += quantity
-            } else {
-              itemsMap.set(key, {
+            for (let i = 0; i < quantity; i++) {
+              lineItems.push({
                 openingName: opening.name,
-                productName: productName,
-                partNumber: partNumber || null,
-                partName: bom.partName,
-                quantity: quantity,
-                unit: bom.unit || 'EA'
+                itemType: 'hardware',
+                itemName: bom.partName,
+                partNumber: partNumber,
+                quantity: 1,
+                unit: bom.unit
               })
             }
           }
         }
 
-        // Process hardware from IndividualOptions that have addToPackingList
+        // 3. Process hardware from IndividualOptions
         const componentInstance = panel.componentInstance
         if (componentInstance?.subOptionSelections && componentInstance.product?.productSubOptions) {
           try {
@@ -195,22 +192,14 @@ export async function GET(
                   partNumber = `${partNumber}${finishCode}`
                 }
 
-                // Create a unique key for aggregation by product type + part
-                const key = `${productName}|${partNumber}|${selectedOption.name}`
-
-                const existing = itemsMap.get(key)
-                if (existing) {
-                  existing.quantity += 1
-                } else {
-                  itemsMap.set(key, {
-                    openingName: opening.name,
-                    productName: productName,
-                    partNumber: partNumber,
-                    partName: selectedOption.name,
-                    quantity: 1,
-                    unit: 'EA'
-                  })
-                }
+                lineItems.push({
+                  openingName: opening.name,
+                  itemType: 'hardware',
+                  itemName: selectedOption.name,
+                  partNumber: partNumber,
+                  quantity: 1,
+                  unit: 'EA'
+                })
               }
             }
           } catch (error) {
@@ -219,18 +208,32 @@ export async function GET(
         }
       }
 
-      // Track jamb kit for this opening if it has any jamb kit items
+      // 4. Add jamb kit for this opening (at end of opening's items)
       if (jambKitItemCount > 0) {
-        jambKitsMap.set(opening.id, {
+        lineItems.push({
+          openingName: opening.name,
+          itemType: 'jambkit',
+          itemName: 'Jamb Kit',
+          itemCount: jambKitItemCount,
+          partNumber: null,
+          quantity: 1,
+          unit: null
+        })
+
+        jambKitsList.push({
           openingName: opening.name,
           itemCount: jambKitItemCount
         })
       }
     }
 
-    // Convert maps to arrays
-    const items = Array.from(itemsMap.values())
-    const jambKits = Array.from(jambKitsMap.values())
+    // Add sticker numbers (1-based index matching sticker generation)
+    const totalStickers = lineItems.length
+    const numberedItems: PackingListLineItem[] = lineItems.map((item, index) => ({
+      ...item,
+      stickerNumber: index + 1,
+      totalStickers
+    }))
 
     // Get company logo for branding
     const companyLogo = await getCompanyLogo()
@@ -240,9 +243,8 @@ export async function GET(
       projectName: project.name,
       customerName: project.customer?.companyName,
       companyLogo,
-      items: items,
-      productInstances: productInstances,
-      jambKits: jambKits,
+      lineItems: numberedItems,
+      jambKits: jambKitsList,
       generatedDate: new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',

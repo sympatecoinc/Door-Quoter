@@ -12,6 +12,8 @@ import MasterPartsView from './views/MasterPartsView'
 import InventoryView from './views/InventoryView'
 import VendorsView from './views/VendorsView'
 import PurchaseOrdersView from './views/PurchaseOrdersView'
+import PurchasingDashboardView from './views/PurchasingDashboardView'
+import ReceivingView from './views/ReceivingView'
 import SalesOrdersView from './views/SalesOrdersView'
 import InvoicesView from './views/InvoicesView'
 import AccountingView from './views/AccountingView'
@@ -44,6 +46,10 @@ export default function Dashboard() {
         return <VendorsView />
       case 'purchaseOrders':
         return <PurchaseOrdersView />
+      case 'purchasingDashboard':
+        return <PurchasingDashboardView />
+      case 'receiving':
+        return <ReceivingView />
       case 'salesOrders':
         return <SalesOrdersView />
       case 'invoices':

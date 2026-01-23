@@ -1609,7 +1609,7 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
                   <div>
                     <h4 className="font-medium text-purple-900">Pick List</h4>
                     <p className="text-sm text-purple-700">
-                      Hardware items marked for pick list, grouped by product.
+                      Hardware items grouped by station (Jamb Station / Assembly).
                     </p>
                   </div>
                   <button
@@ -1637,30 +1637,40 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
                   </div>
                 ) : pickListData?.pickListItems?.length > 0 ? (
                   <div className="space-y-4">
-                    {/* Group by product */}
-                    {pickListData.productGroups?.map((productName: string) => {
-                      const productItems = pickListData.pickListItems.filter(
-                        (item: any) => item.productName === productName
+                    {/* Group by station (Jamb Station, Assembly) */}
+                    {pickListData.stationGroups?.map((stationName: string) => {
+                      const stationItems = pickListData.pickListItems.filter(
+                        (item: any) => item.station === stationName
                       )
-                      if (productItems.length === 0) return null
+                      if (stationItems.length === 0) return null
+
+                      // Use different colors for different stations
+                      const isJambStation = stationName === 'Jamb Station'
+                      const bgColor = isJambStation ? 'bg-purple-100' : 'bg-blue-100'
+                      const textColor = isJambStation ? 'text-purple-900' : 'text-blue-900'
+                      const borderColor = isJambStation ? 'border-purple-200' : 'border-blue-200'
+                      const headBgColor = isJambStation ? 'bg-purple-50' : 'bg-blue-50'
+                      const headTextColor = isJambStation ? 'text-purple-700' : 'text-blue-700'
+                      const rowDivideColor = isJambStation ? 'divide-purple-100' : 'divide-blue-100'
+                      const hoverBgColor = isJambStation ? 'hover:bg-purple-50' : 'hover:bg-blue-50'
 
                       return (
-                        <div key={productName} className="bg-white rounded-lg border border-purple-200 overflow-hidden">
-                          <div className="bg-purple-100 px-3 py-2">
-                            <h5 className="font-medium text-purple-900">{productName}</h5>
+                        <div key={stationName} className={`bg-white rounded-lg border ${borderColor} overflow-hidden`}>
+                          <div className={`${bgColor} px-3 py-2`}>
+                            <h5 className={`font-medium ${textColor}`}>{stationName}</h5>
                           </div>
                           <table className="w-full text-sm">
-                            <thead className="bg-purple-50">
+                            <thead className={headBgColor}>
                               <tr>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">Part Number</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">Part Name</th>
-                                <th className="px-3 py-2 text-center text-xs font-medium text-purple-700 uppercase">Qty</th>
-                                <th className="px-3 py-2 text-center text-xs font-medium text-purple-700 uppercase">Unit</th>
+                                <th className={`px-3 py-2 text-left text-xs font-medium ${headTextColor} uppercase`}>Part Number</th>
+                                <th className={`px-3 py-2 text-left text-xs font-medium ${headTextColor} uppercase`}>Part Name</th>
+                                <th className={`px-3 py-2 text-center text-xs font-medium ${headTextColor} uppercase`}>Qty</th>
+                                <th className={`px-3 py-2 text-center text-xs font-medium ${headTextColor} uppercase`}>Unit</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-purple-100">
-                              {productItems.map((item: any, index: number) => (
-                                <tr key={index} className="hover:bg-purple-50">
+                            <tbody className={`divide-y ${rowDivideColor}`}>
+                              {stationItems.map((item: any, index: number) => (
+                                <tr key={index} className={hoverBgColor}>
                                   <td className="px-3 py-2 font-mono text-xs">{item.partNumber}</td>
                                   <td className="px-3 py-2">{item.partName}</td>
                                   <td className="px-3 py-2 text-center font-medium">{item.totalQuantity}</td>
@@ -1676,12 +1686,12 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
                     {/* Summary */}
                     <div className="flex justify-between text-sm text-purple-700 pt-2 border-t border-purple-200">
                       <span>Total Items: <strong>{pickListData.totalItems}</strong></span>
-                      <span>Products: <strong>{pickListData.productGroups?.length || 0}</strong></span>
+                      <span>Stations: <strong>{pickListData.stationGroups?.length || 0}</strong></span>
                     </div>
                   </div>
                 ) : (
                   <div className="text-center py-4 text-purple-600 text-sm">
-                    No pick list items. Mark hardware parts with &quot;Include on Pick List&quot; in Master Parts.
+                    No pick list items. Assign parts to a station (Jamb Station or Assembly) in Master Parts.
                   </div>
                 )}
               </div>

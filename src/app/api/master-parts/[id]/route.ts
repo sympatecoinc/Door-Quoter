@@ -43,7 +43,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
     }
 
-    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, perimeterInches, customPricePerLb, partType, isOption, addFinishToPartNumber, appendDirectionToPartNumber, addToPackingList, includeOnPickList, includeInJambKit } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, perimeterInches, customPricePerLb, partType, isOption, addFinishToPartNumber, appendDirectionToPartNumber, addToPackingList, pickListStation, includeInJambKit } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({
@@ -102,7 +102,7 @@ export async function PUT(
         addFinishToPartNumber: (partType === 'Hardware') ? (addFinishToPartNumber || false) : false,
         appendDirectionToPartNumber: (partType === 'Hardware') ? (appendDirectionToPartNumber || false) : false,
         addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false,
-        includeOnPickList: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? (includeOnPickList || false) : false,
+        pickListStation: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? (pickListStation || null) : null,
         includeInJambKit: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? (includeInJambKit || false) : false
       }
     })

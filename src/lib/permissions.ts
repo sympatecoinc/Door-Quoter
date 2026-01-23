@@ -10,6 +10,8 @@ export const ALL_TABS = [
   'inventory',
   'vendors',
   'purchaseOrders',
+  'receiving',
+  'purchasingDashboard',
   'salesOrders',
   'invoices',
   'quoteDocuments',

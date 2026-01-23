@@ -12,7 +12,9 @@ import {
   RefreshCw,
   FileSpreadsheet,
   ChevronDown,
-  FileText
+  FileText,
+  Settings,
+  X
 } from 'lucide-react'
 import { ProjectStatus, STATUS_CONFIG } from '@/types'
 import StatusBadge from '@/components/projects/StatusBadge'
@@ -41,7 +43,7 @@ interface ProductionProject {
   customerName: string
   customerContact: string | null
   openingsCount: number
-  value: number
+  batchSize: number | null
   updatedAt: string
 }
 
@@ -72,15 +74,99 @@ function ProjectRowSkeleton() {
         <div className="h-4 w-8 bg-gray-200 rounded" />
       </td>
       <td className="px-4 py-3">
-        <div className="h-4 w-20 bg-gray-200 rounded" />
+        <div className="h-4 w-16 bg-gray-200 rounded" />
       </td>
       <td className="px-4 py-3">
-        <div className="h-4 w-24 bg-gray-200 rounded" />
+        <div className="h-4 w-20 bg-gray-200 rounded" />
       </td>
       <td className="px-4 py-3">
         <div className="h-8 w-40 bg-gray-200 rounded" />
       </td>
     </tr>
+  )
+}
+
+function ProductionSettingsModal({
+  defaultBatchSize,
+  onSave,
+  onClose,
+  loading
+}: {
+  defaultBatchSize: number | null
+  onSave: (value: number | null) => void
+  onClose: () => void
+  loading: boolean
+}) {
+  const [value, setValue] = useState(defaultBatchSize?.toString() || '')
+
+  const handleSave = () => {
+    const trimmed = value.trim()
+    if (trimmed === '' || trimmed.toLowerCase() === 'all') {
+      onSave(null)
+    } else {
+      const parsed = parseInt(trimmed)
+      if (isNaN(parsed) || parsed < 1) {
+        return
+      }
+      onSave(parsed)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Settings className="h-5 w-5 text-gray-600" />
+            <h3 className="text-lg font-semibold text-gray-900">Production Settings</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Default Batch Size
+            </label>
+            <input
+              type="text"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="All (no default)"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Sets the default batch size for cut lists. Projects can override this individually.
+              Leave empty or type "All" for no default.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : null}
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -92,12 +178,16 @@ export default function ProductionView() {
   const [bulkDownloading, setBulkDownloading] = useState(false)
   const [bomModalProject, setBomModalProject] = useState<{ id: number; name: string } | null>(null)
   const [shopDrawingsModalProject, setShopDrawingsModalProject] = useState<{ id: number; name: string } | null>(null)
-  const [cutListModalProjects, setCutListModalProjects] = useState<Array<{ id: number; name: string }> | null>(null)
+  const [cutListModalProjects, setCutListModalProjects] = useState<Array<{ id: number; name: string; batchSize?: number | null }> | null>(null)
+  const [editingBatchSize, setEditingBatchSize] = useState<{ projectId: number; value: string } | null>(null)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [defaultBatchSize, setDefaultBatchSize] = useState<number | null>(null)
+  const [settingsLoading, setSettingsLoading] = useState(false)
 
   // Bulk download queue state - stores configuration as user goes through modals
   const [bulkDownloadQueue, setBulkDownloadQueue] = useState<{
     pendingModals: Array<'bom' | 'cutlist'>
-    projects: Array<{ id: number; name: string }>
+    projects: Array<{ id: number; name: string; batchSize?: number | null }>
     pendingDirectDownloads: Array<{ projectId: number; projectName: string; type: DownloadType }>
     // Collected configurations
     bomConfigs: BomConfig[]
@@ -108,7 +198,44 @@ export default function ProductionView() {
 
   useEffect(() => {
     fetchProjects()
+    fetchSettings()
   }, [])
+
+  async function fetchSettings() {
+    try {
+      const response = await fetch('/api/production/settings')
+      if (response.ok) {
+        const data = await response.json()
+        setDefaultBatchSize(data.defaultBatchSize)
+      }
+    } catch (error) {
+      console.error('Error fetching production settings:', error)
+    }
+  }
+
+  async function saveDefaultBatchSize(value: number | null) {
+    setSettingsLoading(true)
+    try {
+      const response = await fetch('/api/production/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultBatchSize: value })
+      })
+
+      if (response.ok) {
+        setDefaultBatchSize(value)
+        showSuccess('Default batch size saved')
+        setShowSettingsModal(false)
+      } else {
+        showError('Failed to save settings')
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error)
+      showError('Failed to save settings')
+    } finally {
+      setSettingsLoading(false)
+    }
+  }
 
   async function fetchProjects() {
     try {
@@ -233,7 +360,7 @@ export default function ProductionView() {
     if (pendingModals.length > 0) {
       setBulkDownloadQueue({
         pendingModals,
-        projects: selectedProjects.map(p => ({ id: p.id, name: p.name })),
+        projects: selectedProjects.map(p => ({ id: p.id, name: p.name, batchSize: p.batchSize })),
         pendingDirectDownloads,
         bomConfigs: [],
         cutListConfigs: []
@@ -244,7 +371,7 @@ export default function ProductionView() {
       if (firstModal === 'bom') {
         setBomModalProject({ id: selectedProjects[0].id, name: selectedProjects[0].name })
       } else if (firstModal === 'cutlist') {
-        setCutListModalProjects(selectedProjects.map(p => ({ id: p.id, name: p.name })))
+        setCutListModalProjects(selectedProjects.map(p => ({ id: p.id, name: p.name, batchSize: p.batchSize })))
       }
     } else {
       // No modals needed, just do direct downloads
@@ -562,6 +689,35 @@ export default function ProductionView() {
     })
   }
 
+  async function saveBatchSize(projectId: number, value: string) {
+    const trimmed = value.trim()
+    const batchSize = trimmed === '' || trimmed.toLowerCase() === 'all' ? null : parseInt(trimmed)
+
+    if (batchSize !== null && (isNaN(batchSize) || batchSize < 1)) {
+      showError('Batch size must be a positive number or "All"')
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchSize })
+      })
+
+      if (response.ok) {
+        setProjects(prev => prev.map(p =>
+          p.id === projectId ? { ...p, batchSize } : p
+        ))
+      } else {
+        showError('Failed to save batch size')
+      }
+    } catch (error) {
+      console.error('Error saving batch size:', error)
+      showError('Failed to save batch size')
+    }
+  }
+
   function isProjectDownloading(projectId: number): boolean {
     const state = downloading[projectId]
     if (!state) return false
@@ -590,9 +746,11 @@ export default function ProductionView() {
   const DownloadDropdown = ({
     projectId,
     projectName,
+    batchSize,
   }: {
     projectId: number
     projectName: string
+    batchSize: number | null
   }) => {
     const [isOpen, setIsOpen] = useState(false)
     const [selectedTypes, setSelectedTypes] = useState<Set<DownloadType>>(new Set())
@@ -683,7 +841,7 @@ export default function ProductionView() {
 
         setBulkDownloadQueue({
           pendingModals: modalTypes,
-          projects: [{ id: projectId, name: projectName }],
+          projects: [{ id: projectId, name: projectName, batchSize }],
           pendingDirectDownloads,
           bomConfigs: [],
           cutListConfigs: []
@@ -694,7 +852,7 @@ export default function ProductionView() {
         if (firstModal === 'bom') {
           setBomModalProject({ id: projectId, name: projectName })
         } else if (firstModal === 'cutlist') {
-          setCutListModalProjects([{ id: projectId, name: projectName }])
+          setCutListModalProjects([{ id: projectId, name: projectName, batchSize }])
         }
       } else {
         // No modals needed, just do direct downloads
@@ -829,7 +987,16 @@ export default function ProductionView() {
     <div className="p-8">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Production</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold text-gray-900">Production</h1>
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Production Settings"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+          </div>
           <p className="text-gray-600 mt-2">
             Projects ready for production (Approved, Quote Accepted, or Active)
           </p>
@@ -874,8 +1041,8 @@ export default function ProductionView() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Openings</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Batch Size</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Downloads</th>
                 </tr>
               </thead>
@@ -912,10 +1079,10 @@ export default function ProductionView() {
                     Openings
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Due Date
+                    Batch Size
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Value
+                    Due Date
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Downloads
@@ -954,16 +1121,47 @@ export default function ProductionView() {
                     <td className="px-4 py-3 text-sm text-gray-900">
                       {project.openingsCount}
                     </td>
+                    <td className="px-4 py-3 text-sm">
+                      {editingBatchSize?.projectId === project.id ? (
+                        <input
+                          type="text"
+                          value={editingBatchSize.value}
+                          onChange={(e) => setEditingBatchSize({ projectId: project.id, value: e.target.value })}
+                          onBlur={() => {
+                            saveBatchSize(project.id, editingBatchSize.value)
+                            setEditingBatchSize(null)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              saveBatchSize(project.id, editingBatchSize.value)
+                              setEditingBatchSize(null)
+                            } else if (e.key === 'Escape') {
+                              setEditingBatchSize(null)
+                            }
+                          }}
+                          autoFocus
+                          className="w-16 px-2 py-1 text-sm border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => setEditingBatchSize({
+                            projectId: project.id,
+                            value: project.batchSize?.toString() || ''
+                          })}
+                          className="px-2 py-1 text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                        >
+                          {project.batchSize || 'All'}
+                        </button>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {formatDate(project.dueDate)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      ${project.value.toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
                       <DownloadDropdown
                         projectId={project.id}
                         projectName={project.name}
+                        batchSize={project.batchSize}
                       />
                     </td>
                   </tr>
@@ -1035,6 +1233,7 @@ export default function ProductionView() {
       {cutListModalProjects && (
         <CutListDownloadModal
           projects={cutListModalProjects}
+          defaultBatchSize={defaultBatchSize}
           onClose={() => {
             setCutListModalProjects(null)
             if (bulkDownloadQueue) {
@@ -1050,6 +1249,16 @@ export default function ProductionView() {
             processBulkDownloadQueueWithCutList('cutlist', configs)
           } : undefined}
           hasMoreModals={bulkDownloadQueue ? bulkDownloadQueue.pendingModals.filter(m => m !== 'cutlist').length > 0 : false}
+        />
+      )}
+
+      {/* Production Settings Modal */}
+      {showSettingsModal && (
+        <ProductionSettingsModal
+          defaultBatchSize={defaultBatchSize}
+          onSave={saveDefaultBatchSize}
+          onClose={() => setShowSettingsModal(false)}
+          loading={settingsLoading}
         />
       )}
 

@@ -4,7 +4,7 @@ import { calculateEffectivePermissions, ALL_TABS } from './permissions'
 import type { User, Session, Profile } from '@prisma/client'
 
 export type UserWithoutPassword = Omit<User, 'passwordHash'> & {
-  profile?: { id: number; name: string; tabs: string[] } | null
+  profile?: { id: number; name: string; tabs: string[]; defaultTab: string | null } | null
   effectivePermissions?: string[]
 }
 
@@ -52,7 +52,8 @@ export async function getSessionWithUser(
             select: {
               id: true,
               name: true,
-              tabs: true
+              tabs: true,
+              defaultTab: true
             }
           },
           createdAt: true,

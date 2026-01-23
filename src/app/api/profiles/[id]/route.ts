@@ -89,7 +89,7 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { name, description, tabs } = body
+    const { name, description, tabs, defaultTab } = body
 
     // Build update data
     const updateData: any = {}
@@ -121,6 +121,7 @@ export async function PUT(
       updateData.description = description?.trim() || null
     }
 
+    let validTabs: string[] | undefined
     if (tabs !== undefined) {
       if (!Array.isArray(tabs)) {
         return NextResponse.json(
@@ -130,7 +131,7 @@ export async function PUT(
       }
 
       // Validate each tab ID
-      const validTabs = tabs.filter(tab => ALL_TABS.includes(tab))
+      validTabs = tabs.filter(tab => ALL_TABS.includes(tab))
       if (validTabs.length !== tabs.length) {
         const invalidTabs = tabs.filter(tab => !ALL_TABS.includes(tab))
         return NextResponse.json(
@@ -140,6 +141,27 @@ export async function PUT(
       }
 
       updateData.tabs = validTabs
+    }
+
+    // Handle defaultTab
+    if (defaultTab !== undefined) {
+      // If tabs are being updated, validate against new tabs
+      // If not, we need to fetch the current profile to validate
+      const tabsToValidate = validTabs || (await prisma.profile.findUnique({
+        where: { id: profileId },
+        select: { tabs: true }
+      }))?.tabs || []
+
+      if (defaultTab === null) {
+        updateData.defaultTab = null
+      } else if (tabsToValidate.includes(defaultTab)) {
+        updateData.defaultTab = defaultTab
+      } else {
+        return NextResponse.json(
+          { error: 'Default tab must be one of the selected tabs' },
+          { status: 400 }
+        )
+      }
     }
 
     // Update profile

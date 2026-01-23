@@ -15,6 +15,38 @@ async function getFinishCode(finishType: string): Promise<string> {
   }
 }
 
+// Helper function to get category label
+function getCategoryLabel(category: string): string {
+  switch (category) {
+    case 'THINWALL': return 'Thinwall'
+    case 'TRIMMED': return 'Trimmed'
+    case 'BOTH': return '' // Don't add category for "Both"
+    default: return ''
+  }
+}
+
+// Helper function to get type label
+function getTypeLabel(type: string): string {
+  switch (type) {
+    case 'SWING_DOOR': return 'Swing Door'
+    case 'SLIDING_DOOR': return 'Sliding Door'
+    case 'FIXED_PANEL': return 'Fixed Panel'
+    case 'CORNER_90': return '90° Corner'
+    case 'FRAME': return 'Frame'
+    default: return ''
+  }
+}
+
+// Build product type string from category and type
+function buildProductTypeLabel(category: string, type: string): string {
+  const categoryLabel = getCategoryLabel(category)
+  const typeLabel = getTypeLabel(type)
+  if (categoryLabel && typeLabel) {
+    return `${categoryLabel} ${typeLabel}`
+  }
+  return typeLabel || categoryLabel || ''
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -73,8 +105,8 @@ export async function GET(
       orderBy: { name: 'asc' }
     })
 
-    // Build flat sticker array
-    const stickers: StickerData[] = []
+    // Build flat sticker array (will add indexes later)
+    const stickersWithoutIndex: Omit<StickerData, 'stickerIndex' | 'totalStickers'>[] = []
 
     for (const opening of openings) {
       // Get the finish code for this opening if it has a finish color
@@ -83,12 +115,25 @@ export async function GET(
       // Track jamb kit item count for this opening
       let jambKitItemCount = 0
 
+      // Track product types for this opening
+      const productTypesSet = new Set<string>()
+
       // Add component stickers (one per panel)
       for (const panel of opening.panels) {
         const productName = panel.componentInstance?.product?.name || panel.type || 'Unknown'
 
-        stickers.push({
+        // Track product type for this panel
+        if (panel.componentInstance?.product) {
+          const product = panel.componentInstance.product as any
+          const label = buildProductTypeLabel(product.productCategory, product.productType)
+          if (label) {
+            productTypesSet.add(label)
+          }
+        }
+
+        stickersWithoutIndex.push({
           openingName: opening.name,
+          projectName: project.name,
           itemType: 'component',
           itemName: productName,
           dimensions: `${panel.width}" x ${panel.height}"`,
@@ -129,8 +174,9 @@ export async function GET(
             // Create individual stickers for each piece of hardware
             const quantity = bom.quantity || 1
             for (let i = 0; i < quantity; i++) {
-              stickers.push({
+              stickersWithoutIndex.push({
                 openingName: opening.name,
+                projectName: project.name,
                 itemType: 'hardware',
                 itemName: bom.partName,
                 partNumber: partNumber,
@@ -170,8 +216,9 @@ export async function GET(
                 }
 
                 // Add one sticker for this option
-                stickers.push({
+                stickersWithoutIndex.push({
                   openingName: opening.name,
+                  projectName: project.name,
                   itemType: 'hardware',
                   itemName: selectedOption.name,
                   partNumber: partNumber,
@@ -188,15 +235,25 @@ export async function GET(
 
       // Add jamb kit sticker for this opening if it has any jamb kit items
       if (jambKitItemCount > 0) {
-        stickers.push({
+        stickersWithoutIndex.push({
           openingName: opening.name,
+          projectName: project.name,
           itemType: 'jambkit',
           itemName: 'Jamb Kit',
           itemCount: jambKitItemCount,
-          partNumber: null
+          partNumber: null,
+          productTypes: Array.from(productTypesSet)
         })
       }
     }
+
+    // Post-process to add stickerIndex and totalStickers
+    const totalStickers = stickersWithoutIndex.length
+    const stickers: StickerData[] = stickersWithoutIndex.map((sticker, index) => ({
+      ...sticker,
+      stickerIndex: index + 1, // 1-based index
+      totalStickers
+    }))
 
     // Generate the PDF
     const pdfBuffer = await createStickersPDF(project.name, stickers)

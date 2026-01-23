@@ -95,7 +95,8 @@ export async function GET(request: NextRequest) {
         customerName: project.customer?.companyName || 'No Customer',
         customerContact: project.customer?.contactName || null,
         openingsCount: project.openings.length,
-        value: Math.round(saleValue * 100) / 100,
+        value: saleValue,
+        batchSize: project.batchSize,
         updatedAt: project.updatedAt
       }
     })

@@ -284,16 +284,16 @@ export async function GET(
             percentOfStock = (cutLength / stockLength) * 100
           }
 
-          // Lookup MasterPart for Hardware/Extrusion/Fastener to get pick list and jamb kit flags
-          let includeOnPickList = false
+          // Lookup MasterPart for Hardware/Extrusion/Fastener to get pick list station and jamb kit flags
+          let pickListStation: string | null = null
           let includeInJambKit = false
           if ((bom.partType === 'Hardware' || bom.partType === 'Extrusion' || bom.partType === 'Fastener') && bom.partNumber) {
             const masterPart = await prisma.masterPart.findUnique({
               where: { partNumber: bom.partNumber },
-              select: { includeOnPickList: true, includeInJambKit: true }
+              select: { pickListStation: true, includeInJambKit: true }
             })
             if (masterPart) {
-              includeOnPickList = masterPart.includeOnPickList
+              pickListStation = masterPart.pickListStation
               includeInJambKit = masterPart.includeInJambKit
             }
           }
@@ -315,7 +315,7 @@ export async function GET(
             unit: bom.unit || '',
             description: bom.description || '',
             color: opening.finishColor || 'N/A',
-            includeOnPickList: includeOnPickList,
+            pickListStation: pickListStation,
             includeInJambKit: includeInJambKit,
             isMilled: bom.isMilled !== false, // Default to true if not set
             binLocation: binLocation
@@ -855,7 +855,7 @@ export async function GET(
                       color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
                       addToPackingList: linkedPart.masterPart.addToPackingList,
                       isLinkedPart: true,
-                      includeOnPickList: linkedPart.masterPart.includeOnPickList || false,
+                      pickListStation: linkedPart.masterPart.pickListStation || null,
                       includeInJambKit: linkedPart.masterPart.includeInJambKit || false,
                       isMilled: linkedPartBom?.isMilled !== false,
                       binLocation: linkedBinLocation
@@ -1189,7 +1189,7 @@ export async function GET(
                     color: linkedPart.masterPart.addFinishToPartNumber ? (opening.finishColor || 'N/A') : 'N/A',
                     addToPackingList: linkedPart.masterPart.addToPackingList,
                     isLinkedPart: true,
-                    includeOnPickList: linkedPart.masterPart.includeOnPickList || false,
+                    pickListStation: linkedPart.masterPart.pickListStation || null,
                     includeInJambKit: linkedPart.masterPart.includeInJambKit || false,
                     isMilled: linkedPartBom?.isMilled !== false,
                     binLocation: linkedBinLocation
@@ -1444,33 +1444,33 @@ export async function GET(
       })
     }
 
-    // If picklist mode is requested, return pick list data (hardware items with includeOnPickList=true)
+    // If picklist mode is requested, return pick list data (items with pickListStation set)
     if (picklist) {
-      // Filter to items with includeOnPickList flag (Hardware, Extrusion, Fastener, or linked parts)
+      // Filter to items with pickListStation set (Hardware, Extrusion, Fastener, or linked parts)
       const pickListItems = filteredBomItems.filter(item =>
         (item.partType === 'Hardware' || item.partType === 'Extrusion' || item.partType === 'Fastener' || item.isLinkedPart === true) &&
-        item.includeOnPickList === true
+        item.pickListStation !== null && item.pickListStation !== undefined
       )
 
-      // Group by product name
-      const groupedByProduct: Record<string, any[]> = {}
+      // Group by station (Jamb Station, Assembly)
+      const groupedByStation: Record<string, any[]> = {}
       for (const item of pickListItems) {
-        const productKey = item.productName
-        if (!groupedByProduct[productKey]) {
-          groupedByProduct[productKey] = []
+        const stationKey = item.pickListStation
+        if (!groupedByStation[stationKey]) {
+          groupedByStation[stationKey] = []
         }
-        groupedByProduct[productKey].push(item)
+        groupedByStation[stationKey].push(item)
       }
 
-      // Aggregate items within each product group by part number
+      // Aggregate items within each station group by part number
       const aggregatedPickList: any[] = []
-      for (const [productName, items] of Object.entries(groupedByProduct)) {
+      for (const [station, items] of Object.entries(groupedByStation)) {
         const aggregatedByPart: Record<string, any> = {}
         for (const item of items) {
           const key = item.partNumber
           if (!aggregatedByPart[key]) {
             aggregatedByPart[key] = {
-              productName: productName,
+              station: station,
               partNumber: item.partNumber,
               partName: item.partName,
               unit: item.unit,
@@ -1492,16 +1492,21 @@ export async function GET(
         }
       }
 
-      // Sort by product name, then by part number
+      // Sort by station (Jamb Station first, then Assembly), then by part number
+      const stationOrder: Record<string, number> = { 'Jamb Station': 1, 'Assembly': 2 }
       aggregatedPickList.sort((a, b) => {
-        if (a.productName !== b.productName) {
-          return a.productName.localeCompare(b.productName)
+        const stationA = stationOrder[a.station] || 99
+        const stationB = stationOrder[b.station] || 99
+        if (stationA !== stationB) {
+          return stationA - stationB
         }
         return a.partNumber.localeCompare(b.partNumber)
       })
 
-      // Get unique products for grouping info
-      const productGroups = Object.keys(groupedByProduct)
+      // Get unique stations for grouping info (in order: Jamb Station, Assembly)
+      const stationGroups = Object.keys(groupedByStation).sort((a, b) => {
+        return (stationOrder[a] || 99) - (stationOrder[b] || 99)
+      })
 
       if (format === 'pdf') {
         // PDF generation will be handled by a separate utility
@@ -1518,7 +1523,9 @@ export async function GET(
             day: 'numeric',
             hour: '2-digit',
             minute: '2-digit'
-          })
+          }),
+          batchSize: (project as any).batchSize,
+          totalUnits: project.openings.length
         })
         const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '-')}-pick-list.pdf`
 
@@ -1535,7 +1542,7 @@ export async function GET(
         projectId,
         projectName: project.name,
         pickListItems: aggregatedPickList,
-        productGroups,
+        stationGroups,
         totalItems: aggregatedPickList.reduce((sum, item) => sum + item.totalQuantity, 0)
       })
     }

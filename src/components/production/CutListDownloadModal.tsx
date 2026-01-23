@@ -48,7 +48,8 @@ export interface CutListConfigData {
 }
 
 interface CutListDownloadModalProps {
-  projects: Array<{ id: number; name: string }>
+  projects: Array<{ id: number; name: string; batchSize?: number | null }>
+  defaultBatchSize?: number | null  // Global default from production settings
   onClose: () => void
   showError: (message: string) => void
   showSuccess: (message: string) => void
@@ -59,6 +60,7 @@ interface CutListDownloadModalProps {
 
 export default function CutListDownloadModal({
   projects,
+  defaultBatchSize,
   onClose,
   showError,
   showSuccess,
@@ -101,9 +103,19 @@ export default function CutListDownloadModal({
           const cutListItems: CutListItem[] = data.cutListItems || []
           const groupMap = new Map<string, ProductGroup>()
 
+          // Priority: project batch size > global default > all units
+          const projectBatchSize = project.batchSize
+
           for (const item of cutListItems) {
             const key = `${item.productName}|${item.sizeKey}`
             if (!groupMap.has(key)) {
+              // Determine batch size: project > global default > all units
+              let effectiveBatchSize = item.unitCount
+              if (projectBatchSize && projectBatchSize <= item.unitCount) {
+                effectiveBatchSize = projectBatchSize
+              } else if (defaultBatchSize && defaultBatchSize <= item.unitCount) {
+                effectiveBatchSize = defaultBatchSize
+              }
               groupMap.set(key, {
                 productName: item.productName,
                 sizeKey: item.sizeKey,
@@ -111,7 +123,7 @@ export default function CutListDownloadModal({
                 uniqueCuts: 0,
                 partsPerUnit: 0,
                 totalParts: 0,
-                batchSize: item.unitCount // Default to total units
+                batchSize: effectiveBatchSize
               })
             }
             const group = groupMap.get(key)!

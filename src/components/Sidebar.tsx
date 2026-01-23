@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/stores/appStore'
 import { MenuOption } from '@/types'
@@ -10,9 +10,6 @@ import {
   Package,
   Database,
   Settings,
-  Plus,
-  ChevronDown,
-  ChevronRight,
   Users,
   LogOut,
   User,
@@ -24,53 +21,56 @@ import {
   ClipboardList,
   Receipt,
   Factory,
-  PackageCheck
+  PackageCheck,
+  LayoutDashboard,
+  PackageOpen,
+  LucideIcon
 } from 'lucide-react'
 
-const menuItems = [
-  { id: 'dashboard' as MenuOption, label: 'Dashboard (Sales)', icon: Home },
-  { id: 'crm' as MenuOption, label: 'CRM', icon: Users },
-  { id: 'projects' as MenuOption, label: 'Projects', icon: Folder },
-  { id: 'production' as MenuOption, label: 'Production', icon: Factory },
-  { id: 'logistics' as MenuOption, label: 'Logistics', icon: PackageCheck },
-  { id: 'products' as MenuOption, label: 'Products', icon: Package },
-  { id: 'masterParts' as MenuOption, label: 'Master Parts', icon: Database },
-  { id: 'inventory' as MenuOption, label: 'Inventory', icon: Warehouse },
-  { id: 'vendors' as MenuOption, label: 'Vendors', icon: Truck },
-  { id: 'purchaseOrders' as MenuOption, label: 'Purchase Orders', icon: ShoppingCart },
-  { id: 'salesOrders' as MenuOption, label: 'Sales Orders', icon: ClipboardList },
-  { id: 'invoices' as MenuOption, label: 'Invoices', icon: Receipt },
-  { id: 'quoteDocuments' as MenuOption, label: 'Quote Settings', icon: FileText },
-  { id: 'accounting' as MenuOption, label: 'Pricing', icon: DollarSign },
-  { id: 'settings' as MenuOption, label: 'Settings', icon: Settings },
-]
-
-interface Project {
-  id: number
-  name: string
-  status: string
+// Menu item metadata (icons and labels)
+const menuItemsMap: Record<string, { label: string; icon: LucideIcon }> = {
+  dashboard: { label: 'Dashboard (Sales)', icon: Home },
+  crm: { label: 'CRM', icon: Users },
+  projects: { label: 'Projects', icon: Folder },
+  production: { label: 'Production', icon: Factory },
+  logistics: { label: 'Shipping', icon: PackageCheck },
+  products: { label: 'Products', icon: Package },
+  masterParts: { label: 'Master Parts', icon: Database },
+  inventory: { label: 'Inventory', icon: Warehouse },
+  vendors: { label: 'Vendors', icon: Truck },
+  purchaseOrders: { label: 'Purchase Orders', icon: ShoppingCart },
+  receiving: { label: 'Receiving', icon: PackageOpen },
+  purchasingDashboard: { label: 'Purchasing Dashboard', icon: LayoutDashboard },
+  salesOrders: { label: 'Sales Orders', icon: ClipboardList },
+  invoices: { label: 'Invoices', icon: Receipt },
+  quoteDocuments: { label: 'Quote Settings', icon: FileText },
+  accounting: { label: 'Pricing', icon: DollarSign },
+  settings: { label: 'Settings', icon: Settings },
 }
+
+// Default order (used when no profile ordering is set)
+const defaultMenuOrder: MenuOption[] = [
+  'dashboard', 'crm', 'projects', 'production', 'logistics', 'products',
+  'masterParts', 'inventory', 'vendors', 'purchaseOrders', 'receiving',
+  'purchasingDashboard', 'salesOrders', 'invoices', 'quoteDocuments',
+  'accounting', 'settings'
+]
 
 export default function Sidebar() {
   const router = useRouter()
-  const { currentMenu, setCurrentMenu, selectedProjectId, setSelectedProjectId, notificationRefreshTrigger } = useAppStore()
-  const [showProjects, setShowProjects] = useState(false)
-  const [projects, setProjects] = useState<Project[]>([])
+  const { currentMenu, setCurrentMenu, notificationRefreshTrigger } = useAppStore()
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [inventoryNotificationCount, setInventoryNotificationCount] = useState(0)
   const [pendingQuotesCount, setPendingQuotesCount] = useState(0)
+  const [receivingCount, setReceivingCount] = useState(0)
   const [companyLogo, setCompanyLogo] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (showProjects) {
-      fetchProjects()
-    }
-  }, [showProjects])
+  const hasSetDefaultTab = useRef(false)
 
   useEffect(() => {
     fetchCurrentUser()
     fetchInventoryNotificationCount()
     fetchPendingQuotesCount()
+    fetchReceivingCount()
     fetchBranding()
   }, [])
 
@@ -93,6 +93,9 @@ export default function Sidebar() {
     }
     if (currentMenu !== 'salesOrders') {
       fetchPendingQuotesCount()
+    }
+    if (currentMenu !== 'receiving') {
+      fetchReceivingCount()
     }
   }, [currentMenu])
 
@@ -127,25 +130,84 @@ export default function Sidebar() {
     }
   }
 
+  async function fetchReceivingCount() {
+    try {
+      const response = await fetch('/api/receiving/count')
+      if (response.ok) {
+        const data = await response.json()
+        setReceivingCount(data.count || 0)
+      }
+    } catch (error) {
+      console.error('Error fetching receiving count:', error)
+    }
+  }
+
   async function fetchCurrentUser() {
     try {
       const response = await fetch('/api/auth/session')
       if (response.ok) {
         const data = await response.json()
         setCurrentUser(data.user)
+
+        // Set default tab on first load (only once)
+        if (!hasSetDefaultTab.current && data.user) {
+          hasSetDefaultTab.current = true
+          const profile = data.user.profile
+          const effectivePermissions = data.user.effectivePermissions || data.user.permissions || []
+
+          // Use profile's defaultTab if set and user has access to it
+          if (profile?.defaultTab && effectivePermissions.includes(profile.defaultTab)) {
+            setCurrentMenu(profile.defaultTab as MenuOption)
+          }
+          // Otherwise, use the first available tab from the profile's ordered tabs
+          else if (profile?.tabs?.length > 0) {
+            const firstAccessibleTab = profile.tabs.find((tab: string) => effectivePermissions.includes(tab))
+            if (firstAccessibleTab) {
+              setCurrentMenu(firstAccessibleTab as MenuOption)
+            }
+          }
+        }
       }
     } catch (error) {
       console.error('Error fetching current user:', error)
     }
   }
 
-  // Filter menu items based on user permissions
-  // Use effectivePermissions (computed from profile + overrides) if available, fall back to legacy permissions
-  const visibleMenuItems = currentUser
-    ? menuItems.filter(item =>
-        (currentUser.effectivePermissions || currentUser.permissions)?.includes(item.id)
-      )
-    : menuItems
+  // Build visible menu items based on user permissions and profile tab ordering
+  const visibleMenuItems = (() => {
+    if (!currentUser) {
+      // No user yet - show default order
+      return defaultMenuOrder.map(id => ({
+        id,
+        label: menuItemsMap[id]?.label || id,
+        icon: menuItemsMap[id]?.icon || Home
+      }))
+    }
+
+    const effectivePermissions = currentUser.effectivePermissions || currentUser.permissions || []
+    const profile = currentUser.profile
+
+    // If user has a profile with ordered tabs, use that order
+    if (profile?.tabs?.length > 0) {
+      // Filter to only tabs the user has access to, preserving profile order
+      return profile.tabs
+        .filter((tabId: string) => effectivePermissions.includes(tabId))
+        .map((tabId: string) => ({
+          id: tabId as MenuOption,
+          label: menuItemsMap[tabId]?.label || tabId,
+          icon: menuItemsMap[tabId]?.icon || Home
+        }))
+    }
+
+    // Fallback: filter default order by permissions
+    return defaultMenuOrder
+      .filter(id => effectivePermissions.includes(id))
+      .map(id => ({
+        id,
+        label: menuItemsMap[id]?.label || id,
+        icon: menuItemsMap[id]?.icon || Home
+      }))
+  })()
 
   async function handleLogout() {
     try {
@@ -155,18 +217,6 @@ export default function Sidebar() {
     } catch (error) {
       console.error('Error logging out:', error)
       alert('Failed to logout')
-    }
-  }
-
-  async function fetchProjects() {
-    try {
-      const response = await fetch('/api/projects')
-      if (response.ok) {
-        const projectsData = await response.json()
-        setProjects(projectsData)
-      }
-    } catch (error) {
-      console.error('Error fetching projects:', error)
     }
   }
 
@@ -185,11 +235,12 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-        {visibleMenuItems.map((item) => {
+        {visibleMenuItems.map((item: { id: MenuOption; label: string; icon: LucideIcon }) => {
           const Icon = item.icon
           const isActive = currentMenu === item.id
           const showInventoryBadge = item.id === 'inventory' && inventoryNotificationCount > 0
           const showSalesOrdersBadge = item.id === 'salesOrders' && pendingQuotesCount > 0
+          const showReceivingBadge = item.id === 'receiving' && receivingCount > 0
 
           return (
             <button
@@ -213,64 +264,15 @@ export default function Sidebar() {
                   {pendingQuotesCount}
                 </span>
               )}
+              {showReceivingBadge && (
+                <span className="bg-orange-100 text-orange-700 rounded-full px-2 py-0.5 text-xs font-medium">
+                  {receivingCount}
+                </span>
+              )}
             </button>
           )
         })}
       </nav>
-
-      {/* Project Selector */}
-      <div className="p-4 border-t border-gray-200 flex-shrink-0">
-        <button
-          onClick={() => setShowProjects(!showProjects)}
-          className="w-full flex items-center justify-between px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg"
-        >
-          <span className="font-medium">Projects</span>
-          {showProjects ? (
-            <ChevronDown className="w-4 h-4" />
-          ) : (
-            <ChevronRight className="w-4 h-4" />
-          )}
-        </button>
-
-        {showProjects && (
-          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
-            <button
-              onClick={() => setCurrentMenu('projects')}
-              className="w-full flex items-center px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Create New Project
-            </button>
-            {projects.map((project) => (
-              <button
-                key={project.id}
-                onClick={() => {
-                  setSelectedProjectId(project.id)
-                  setCurrentMenu('projects')
-                }}
-                className={`w-full flex items-center px-3 py-2 text-sm rounded-lg text-left ${
-                  selectedProjectId === project.id
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex-1 truncate">
-                  {project.name}
-                </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  project.status === 'Draft'
-                    ? 'bg-gray-100 text-gray-600'
-                    : project.status === 'In Progress'
-                    ? 'bg-blue-100 text-blue-600'
-                    : 'bg-green-100 text-green-600'
-                }`}>
-                  {project.status}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* User Section */}
       {currentUser && (

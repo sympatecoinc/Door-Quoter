@@ -7,6 +7,7 @@ import QRCode from 'qrcode'
 
 export interface StickerData {
   openingName: string
+  projectName: string
   itemType: 'component' | 'hardware' | 'jambkit'
   itemName: string
   partNumber?: string | null
@@ -14,6 +15,9 @@ export interface StickerData {
   dimensions?: string // For components: "36" x 84""
   unit?: string | null
   itemCount?: number // For jamb kits: number of items in kit
+  stickerIndex: number // 1-based index of this sticker
+  totalStickers: number // Total number of stickers
+  productTypes?: string[] // For jamb kits: product types in the opening
 }
 
 // Page layout constants (6-up: 3 rows x 2 cols)
@@ -81,16 +85,29 @@ function drawSticker(
     headerR = 34; headerG = 197; headerB = 94 // Green for hardware
   }
 
-  // Opening name header (prominent, at top) - matches item type color
+  // Header (prominent, at top) - matches item type color
   pdf.setFillColor(headerR, headerG, headerB)
   pdf.rect(contentX, contentY, contentWidth, 10, 'F')
-  pdf.setFontSize(11)
+  pdf.setFontSize(9)
   pdf.setFont('helvetica', 'bold')
   pdf.setTextColor(255, 255, 255)
-  const openingText = pdf.splitTextToSize(sticker.openingName, contentWidth - 4)
-  pdf.text(openingText[0] || sticker.openingName, contentX + contentWidth / 2, contentY + 7, {
-    align: 'center'
-  })
+
+  // Left side: "Project Name | Opening Name"
+  const headerLabel = `${sticker.projectName} | ${sticker.openingName}`
+  const maxLabelWidth = contentWidth - 24 // Leave space for counter on right
+  let displayLabel = headerLabel
+  if (pdf.getTextWidth(displayLabel) > maxLabelWidth) {
+    // Truncate if too long
+    while (pdf.getTextWidth(displayLabel + '...') > maxLabelWidth && displayLabel.length > 0) {
+      displayLabel = displayLabel.slice(0, -1)
+    }
+    displayLabel = displayLabel + '...'
+  }
+  pdf.text(displayLabel, contentX + 2, contentY + 7)
+
+  // Right side: "X of X" counter
+  const counterText = `${sticker.stickerIndex} of ${sticker.totalStickers}`
+  pdf.text(counterText, contentX + contentWidth - 2, contentY + 7, { align: 'right' })
   pdf.setTextColor(0, 0, 0)
 
   // Item type badge (same color as header)
@@ -143,12 +160,16 @@ function drawSticker(
     pdf.text(`QTY: ${sticker.quantity}${sticker.unit ? ' ' + sticker.unit : ''}`, contentX, qtyY)
   }
 
-  // Item count (for jamb kits)
-  if (sticker.itemType === 'jambkit' && sticker.itemCount) {
-    const countY = contentY + contentHeight - 8
-    pdf.setFontSize(12)
-    pdf.setFont('helvetica', 'bold')
-    pdf.text(`${sticker.itemCount} ITEMS`, contentX, countY)
+  // Product types (for jamb kits)
+  if (sticker.itemType === 'jambkit' && sticker.productTypes && sticker.productTypes.length > 0) {
+    const typesY = itemNameY + (itemNameLines.length > 1 ? 10 : 5)
+    pdf.setFontSize(8)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(100, 100, 100) // Gray text
+    const typesText = sticker.productTypes.join(', ')
+    const typesLines = pdf.splitTextToSize(typesText, contentWidth - 30) // Leave space for QR
+    pdf.text(typesLines.slice(0, 2), contentX, typesY) // Max 2 lines
+    pdf.setTextColor(0, 0, 0)
   }
 
   // QR Code (bottom right)

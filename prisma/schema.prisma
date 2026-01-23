@@ -27,6 +27,7 @@ model Project {
   updatedAt              DateTime           @updatedAt
   dueDate                DateTime?
   shipDate               DateTime?          // Expected ship/delivery date
+  batchSize              Int?               // Default batch size for cut lists (null = all units)
   shippingAddress        String?            // Shipping street address
   shippingCity           String?            // Shipping city
   shippingState          String?            // Shipping state
@@ -367,7 +368,7 @@ model MasterPart {
   addFinishToPartNumber   Boolean            @default(false) // When true, append finish color code to hardware part number in BOM
   appendDirectionToPartNumber Boolean        @default(false) // When true, append swing/sliding direction suffix (from plan view name) to part number in BOM
   addToPackingList        Boolean            @default(false) // When true, this hardware item appears in the packing list
-  includeOnPickList       Boolean            @default(false) // When true, shows in production pick list
+  pickListStation         String?            // Pick list station: null=not on list, "Jamb Station", "Assembly"
   includeInJambKit        Boolean            @default(false) // When true, marked as Jamb Kit item on pick list
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
@@ -398,6 +399,9 @@ model MasterPart {
 
   // Sales Order Parts - parts reserved/picked for sales orders
   salesOrderParts         SalesOrderPart[]
+
+  // Price history for this part
+  priceHistory            PriceHistory[]
 
   @@map("MasterParts")
 }
@@ -758,6 +762,7 @@ model Profile {
   name        String   @unique
   description String?
   tabs        String[] @default([])
+  defaultTab  String?  // The tab users land on by default (must be in tabs array)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -933,6 +938,7 @@ model Vendor {
   contacts            VendorContact[]
   masterParts         MasterPart[]    // Parts supplied by this vendor
   purchaseOrders      PurchaseOrder[] // Purchase orders to this vendor
+  priceHistory        PriceHistory[]  // Price history for this vendor
 
   @@map("Vendors")
 }
@@ -1470,4 +1476,28 @@ model InvoiceLine {
   updatedAt             DateTime  @updatedAt
 
   @@map("InvoiceLines")
+}
+
+// Price History - Track price changes for purchasing analytics
+model PriceHistory {
+  id              Int         @id @default(autoincrement())
+  vendorId        Int
+  vendor          Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  masterPartId    Int?
+  masterPart      MasterPart? @relation(fields: [masterPartId], references: [id], onDelete: SetNull)
+  sku             String?
+  description     String?
+  unitPrice       Float
+  previousPrice   Float?
+  priceChange     Float?
+  percentChange   Float?
+  sourceType      String      // 'PURCHASE_ORDER', 'MANUAL', 'QUOTE'
+  sourceId        Int?
+  effectiveDate   DateTime    @default(now())
+  createdAt       DateTime    @default(now())
+
+  @@index([vendorId])
+  @@index([masterPartId])
+  @@index([effectiveDate])
+  @@map("PriceHistory")
 }
