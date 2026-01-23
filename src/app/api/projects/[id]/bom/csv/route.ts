@@ -1245,7 +1245,7 @@ export async function GET(
               item.quantity,
               `"${(item.cutLength || '').replace(/"/g, '""')}"`,
               `"${item.percentOfStock}"`,
-              `"${item.isMilled ? 'Yes' : 'No'}"`,
+              `"${item.partType === 'Extrusion' ? (item.isMilled ? 'Yes' : 'No') : ''}"`,
               `"${item.unit}"`,
               `"${(item.color || '').replace(/"/g, '""')}"`
             ].join(','))
@@ -1329,7 +1329,7 @@ export async function GET(
               item.quantity,
               `"${(item.cutLength || '').replace(/"/g, '""')}"`,
               `"${item.percentOfStock}"`,
-              `"${item.isMilled ? 'Yes' : 'No'}"`,
+              `"${item.partType === 'Extrusion' ? (item.isMilled ? 'Yes' : 'No') : ''}"`,
               `"${item.unit}"`,
               `"${(item.color || '').replace(/"/g, '""')}"`
             ].join(','))
@@ -1393,7 +1393,7 @@ export async function GET(
         item.quantity,
         `"${(item.cutLength || '').replace(/"/g, '""')}"`,
         `"${item.percentOfStock}"`,
-        `"${item.isMilled ? 'Yes' : 'No'}"`,
+        `"${item.partType === 'Extrusion' ? (item.isMilled ? 'Yes' : 'No') : ''}"`,
         `"${item.unit}"`,
         `"${(item.color || '').replace(/"/g, '""')}"`
       ].join(','))

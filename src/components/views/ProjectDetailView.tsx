@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
 
@@ -188,6 +188,7 @@ export default function ProjectDetailView() {
   const [saving, setSaving] = useState(false)
   const [showAddOpening, setShowAddOpening] = useState(false)
   const [addingOpening, setAddingOpening] = useState(false)
+  const hasCheckedEmptyOpenings = useRef(false)
   const [newOpening, setNewOpening] = useState({
     name: '',
     finishColor: '',
@@ -624,6 +625,21 @@ export default function ProjectDetailView() {
       }
     }
   }, [autoOpenAddOpening, project, setAutoOpenAddOpening])
+
+  // Auto-open Add Opening modal when project loads with no openings
+  useEffect(() => {
+    if (project && !loading && !hasCheckedEmptyOpenings.current) {
+      hasCheckedEmptyOpenings.current = true
+      if (project.openings.length === 0 && !showAddOpening) {
+        setShowAddOpening(true)
+      }
+    }
+  }, [project, loading])
+
+  // Reset the empty openings check when switching projects
+  useEffect(() => {
+    hasCheckedEmptyOpenings.current = false
+  }, [selectedProjectId])
 
   useEffect(() => {
     fetchGlassTypes()
@@ -3375,6 +3391,9 @@ export default function ProjectDetailView() {
                                       preselectedVariants[String(pso.standardOptionId)] = defaultVariant.id
                                     }
                                   }
+                                } else {
+                                  // No default set, pre-select "None"
+                                  preselected[pso.category.id] = null
                                 }
                               }
                               setAddComponentSelectedOptions(preselected)
@@ -3416,141 +3435,132 @@ export default function ProjectDetailView() {
                     </svg>
                     Back to selection
                   </button>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Product</label>
-                  <Listbox
-                    value={selectedProductId || null}
-                    onChange={(productId: number | null) => {
-                      if (!productId) return
-                      setSelectedProductId(productId)
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Select Product</label>
+                  <div className="border border-gray-300 rounded-lg overflow-hidden max-h-80 overflow-y-auto">
+                    {products.filter(p => p.productType !== 'FRAME').map((product) => {
+                      const isSelected = selectedProductId === product.id
+                      const handleSelectProduct = () => {
+                        const productId = product.id
+                        setSelectedProductId(productId)
 
-                      // Load hardware options for the selected product
-                      const product = products.find(p => p.id === productId)
-                      if (product?.productSubOptions && product.productSubOptions.length > 0) {
-                        setAddComponentOptions(product.productSubOptions)
-                        // Pre-select standard options and their default variants
-                        const preselected: Record<number, number | null> = {}
-                        const preselectedVariants: Record<string, number> = {}
-                        for (const pso of product.productSubOptions) {
-                          if (pso.standardOptionId) {
-                            preselected[pso.category.id] = pso.standardOptionId
-                            // Find the standard option and check for default variant
-                            const standardOption = pso.category.individualOptions?.find(
-                              (opt: any) => opt.id === pso.standardOptionId
-                            )
-                            if (standardOption?.variants?.length > 0) {
-                              const defaultVariant = standardOption.variants.find((v: any) => v.isDefault)
-                              if (defaultVariant) {
-                                preselectedVariants[String(pso.standardOptionId)] = defaultVariant.id
+                        // Load hardware options for the selected product
+                        if (product?.productSubOptions && product.productSubOptions.length > 0) {
+                          setAddComponentOptions(product.productSubOptions)
+                          // Pre-select standard options and their default variants
+                          const preselected: Record<number, number | null> = {}
+                          const preselectedVariants: Record<string, number> = {}
+                          for (const pso of product.productSubOptions) {
+                            if (pso.standardOptionId) {
+                              preselected[pso.category.id] = pso.standardOptionId
+                              // Find the standard option and check for default variant
+                              const standardOption = pso.category.individualOptions?.find(
+                                (opt: any) => opt.id === pso.standardOptionId
+                              )
+                              if (standardOption?.variants?.length > 0) {
+                                const defaultVariant = standardOption.variants.find((v: any) => v.isDefault)
+                                if (defaultVariant) {
+                                  preselectedVariants[String(pso.standardOptionId)] = defaultVariant.id
+                                }
                               }
+                            } else {
+                              // No default set, pre-select "None"
+                              preselected[pso.category.id] = null
+                            }
+                          }
+                          setAddComponentSelectedOptions(preselected)
+                          setVariantSelections(preselectedVariants)
+                        } else {
+                          setAddComponentOptions([])
+                          setAddComponentSelectedOptions({})
+                          setVariantSelections({})
+                        }
+
+                        // Auto-calculate width and height based on opening dimensions and product tolerances
+                        if (product && product.productType !== 'CORNER_90' && product.productType !== 'FRAME') {
+                          const opening = project?.openings.find(o => o.id === selectedOpeningId)
+
+                          // Calculate effective dimensions with product tolerances
+                          const effectiveDims = getEffectiveFinishedDimensions(opening, product)
+
+                          // Get existing panels to calculate remaining space
+                          const nonFramePanels = opening?.panels?.filter(p =>
+                            p.componentInstance?.product?.productType !== 'FRAME' &&
+                            p.componentInstance?.product?.productType !== 'CORNER_90'
+                          ) || []
+
+                          // Calculate remaining width
+                          const usedWidth = nonFramePanels.reduce((sum, p) => sum + (p.width || 0), 0)
+                          const remainingWidth = (effectiveDims.width || 0) - usedWidth
+
+                          // Auto-calculate width: use remaining space or defaultWidth, whichever is smaller
+                          if (opening?.isFinishedOpening && effectiveDims.width) {
+                            let finalWidth = remainingWidth
+                            // If product has defaultWidth and it's smaller than remaining, use defaultWidth
+                            if (product.defaultWidth && product.defaultWidth < remainingWidth) {
+                              finalWidth = product.defaultWidth
+                            }
+                            // Apply product maxWidth constraint
+                            if (product.maxWidth && finalWidth > product.maxWidth) {
+                              finalWidth = product.maxWidth
+                            }
+                            // Apply product minWidth constraint
+                            if (product.minWidth && finalWidth < product.minWidth) {
+                              finalWidth = product.minWidth
+                            }
+                            if (finalWidth > 0) {
+                              setComponentWidth(finalWidth.toString())
+                            }
+                          } else if (product.defaultWidth) {
+                            // Non-finished opening: just use defaultWidth
+                            setComponentWidth(product.defaultWidth.toString())
+                          }
+
+                          // Auto-calculate height
+                          if (opening?.isFinishedOpening && opening.roughHeight) {
+                            if (nonFramePanels.length > 0) {
+                              // Use existing panel height for consistency
+                              setComponentHeight(nonFramePanels[0].height.toString())
+                            } else if (effectiveDims.height) {
+                              // First panel - use effective height with product tolerances
+                              let finalHeight = effectiveDims.height
+                              if (product.maxHeight && finalHeight > product.maxHeight) {
+                                finalHeight = product.maxHeight
+                              }
+                              if (product.minHeight && finalHeight < product.minHeight) {
+                                finalHeight = product.minHeight
+                              }
+                              setComponentHeight(finalHeight.toString())
                             }
                           }
                         }
-                        setAddComponentSelectedOptions(preselected)
-                        setVariantSelections(preselectedVariants)
-                      } else {
-                        setAddComponentOptions([])
-                        setAddComponentSelectedOptions({})
-                        setVariantSelections({})
+
+                        // Reset direction selections when product changes (no default selection)
+                        setSwingDirection('')
+                        setSlidingDirection('')
+                        setCornerDirection('')
+                        setGlassType('')
+
+                        // Reset current mandatory option index
+                        setCurrentMandatoryOptionIndex(0)
                       }
 
-                      // Auto-calculate width and height based on opening dimensions and product tolerances
-                      if (product && product.productType !== 'CORNER_90' && product.productType !== 'FRAME') {
-                        const opening = project?.openings.find(o => o.id === selectedOpeningId)
-
-                        // Calculate effective dimensions with product tolerances
-                        const effectiveDims = getEffectiveFinishedDimensions(opening, product)
-
-                        // Get existing panels to calculate remaining space
-                        const nonFramePanels = opening?.panels?.filter(p =>
-                          p.componentInstance?.product?.productType !== 'FRAME' &&
-                          p.componentInstance?.product?.productType !== 'CORNER_90'
-                        ) || []
-
-                        // Calculate remaining width
-                        const usedWidth = nonFramePanels.reduce((sum, p) => sum + (p.width || 0), 0)
-                        const remainingWidth = (effectiveDims.width || 0) - usedWidth
-
-                        // Auto-calculate width: use remaining space or defaultWidth, whichever is smaller
-                        if (opening?.isFinishedOpening && effectiveDims.width) {
-                          let finalWidth = remainingWidth
-                          // If product has defaultWidth and it's smaller than remaining, use defaultWidth
-                          if (product.defaultWidth && product.defaultWidth < remainingWidth) {
-                            finalWidth = product.defaultWidth
-                          }
-                          // Apply product maxWidth constraint
-                          if (product.maxWidth && finalWidth > product.maxWidth) {
-                            finalWidth = product.maxWidth
-                          }
-                          // Apply product minWidth constraint
-                          if (product.minWidth && finalWidth < product.minWidth) {
-                            finalWidth = product.minWidth
-                          }
-                          if (finalWidth > 0) {
-                            setComponentWidth(finalWidth.toString())
-                          }
-                        } else if (product.defaultWidth) {
-                          // Non-finished opening: just use defaultWidth
-                          setComponentWidth(product.defaultWidth.toString())
-                        }
-
-                        // Auto-calculate height
-                        if (opening?.isFinishedOpening && opening.roughHeight) {
-                          if (nonFramePanels.length > 0) {
-                            // Use existing panel height for consistency
-                            setComponentHeight(nonFramePanels[0].height.toString())
-                          } else if (effectiveDims.height) {
-                            // First panel - use effective height with product tolerances
-                            let finalHeight = effectiveDims.height
-                            if (product.maxHeight && finalHeight > product.maxHeight) {
-                              finalHeight = product.maxHeight
-                            }
-                            if (product.minHeight && finalHeight < product.minHeight) {
-                              finalHeight = product.minHeight
-                            }
-                            setComponentHeight(finalHeight.toString())
-                          }
-                        }
-                      }
-
-                      // Reset direction selections when product changes (no default selection)
-                      setSwingDirection('')
-                      setSlidingDirection('')
-                      setCornerDirection('')
-                      setGlassType('')
-
-                      // Reset current mandatory option index
-                      setCurrentMandatoryOptionIndex(0)
-                    }}
-                  >
-                    <div className="relative">
-                      <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
-                        {(() => {
-                          const selectedProduct = products.find(p => p.id === selectedProductId)
-                          if (selectedProduct) {
-                            return <span>{selectedProduct.productType === 'CORNER_90' ? '90° Corner' : selectedProduct.name}</span>
-                          }
-                          return <span className="text-gray-500">Select a product...</span>
-                        })()}
-                        <ChevronDown className="w-4 h-4 text-gray-400" />
-                      </ListboxButton>
-                      <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
-                        {products.filter(p => p.productType !== 'FRAME').map((product) => (
-                          <ListboxOption
-                            key={product.id}
-                            value={product.id}
-                            className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
-                          >
-                            {({ selected }) => (
-                              <>
-                                <span>{product.productType === 'CORNER_90' ? '90° Corner' : product.name}</span>
-                                {selected && <Check className="w-4 h-4 text-blue-600" />}
-                              </>
-                            )}
-                          </ListboxOption>
-                        ))}
-                      </ListboxOptions>
-                    </div>
-                  </Listbox>
+                      return (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onClick={handleSelectProduct}
+                          className={`w-full px-4 py-3 text-left flex items-center justify-between border-b border-gray-200 last:border-b-0 transition-colors ${
+                            isSelected
+                              ? 'bg-blue-100 text-blue-900'
+                              : 'bg-white hover:bg-gray-50 text-gray-900'
+                          }`}
+                        >
+                          <span className="font-medium">{product.productType === 'CORNER_90' ? '90° Corner' : product.name}</span>
+                          {isSelected && <Check className="w-5 h-5 text-blue-600" />}
+                        </button>
+                      )
+                    })}
+                  </div>
                   {/* Next button - only show when product is selected */}
                   {selectedProductId && (
                     <div className="flex justify-end pt-4">
@@ -3614,67 +3624,57 @@ export default function ProjectDetailView() {
 
                     {/* Product Selection - Fixed Panels Only */}
                     <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Fixed Panel Product</label>
-                      <Listbox
-                        value={selectedProductId || null}
-                        onChange={(productId: number | null) => {
-                          if (!productId) return
-                          setSelectedProductId(productId)
-                          const product = products.find(p => p.id === productId)
-                          if (product?.productSubOptions && product.productSubOptions.length > 0) {
-                            setAddComponentOptions(product.productSubOptions)
-                            const preselected: Record<number, number | null> = {}
-                            const preselectedVariants: Record<string, number> = {}
-                            for (const pso of product.productSubOptions) {
-                              if (pso.standardOptionId) {
-                                preselected[pso.category.id] = pso.standardOptionId
-                                const standardOption = pso.category.individualOptions?.find(
-                                  (opt: any) => opt.id === pso.standardOptionId
-                                )
-                                if (standardOption?.variants?.length > 0) {
-                                  const defaultVariant = standardOption.variants.find((v: any) => v.isDefault)
-                                  if (defaultVariant) {
-                                    preselectedVariants[String(pso.standardOptionId)] = defaultVariant.id
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Fixed Panel Product</label>
+                      <div className="border border-gray-300 rounded-lg overflow-hidden max-h-60 overflow-y-auto">
+                        {fixedPanelProducts.map((product) => {
+                          const isSelected = selectedProductId === product.id
+                          const handleSelectProduct = () => {
+                            setSelectedProductId(product.id)
+                            if (product?.productSubOptions && product.productSubOptions.length > 0) {
+                              setAddComponentOptions(product.productSubOptions)
+                              const preselected: Record<number, number | null> = {}
+                              const preselectedVariants: Record<string, number> = {}
+                              for (const pso of product.productSubOptions) {
+                                if (pso.standardOptionId) {
+                                  preselected[pso.category.id] = pso.standardOptionId
+                                  const standardOption = pso.category.individualOptions?.find(
+                                    (opt: any) => opt.id === pso.standardOptionId
+                                  )
+                                  if (standardOption?.variants?.length > 0) {
+                                    const defaultVariant = standardOption.variants.find((v: any) => v.isDefault)
+                                    if (defaultVariant) {
+                                      preselectedVariants[String(pso.standardOptionId)] = defaultVariant.id
+                                    }
                                   }
+                                } else {
+                                  // No default set, pre-select "None"
+                                  preselected[pso.category.id] = null
                                 }
                               }
+                              setAddComponentSelectedOptions(preselected)
+                              setVariantSelections(preselectedVariants)
                             }
-                            setAddComponentSelectedOptions(preselected)
-                            setVariantSelections(preselectedVariants)
+                            setGlassType('')
+                            setCurrentMandatoryOptionIndex(0)
                           }
-                          setGlassType('')
-                          setCurrentMandatoryOptionIndex(0)
-                        }}
-                      >
-                        <div className="relative">
-                          <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900 bg-white text-left flex items-center justify-between">
-                            {(() => {
-                              const selectedProduct = products.find(p => p.id === selectedProductId)
-                              if (selectedProduct) {
-                                return <span>{selectedProduct.name}</span>
-                              }
-                              return <span className="text-gray-500">Select fixed panel product...</span>
-                            })()}
-                            <ChevronDown className="w-4 h-4 text-gray-400" />
-                          </ListboxButton>
-                          <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
-                            {fixedPanelProducts.map((product) => (
-                              <ListboxOption
-                                key={product.id}
-                                value={product.id}
-                                className="cursor-pointer select-none px-3 py-2 hover:bg-green-50 data-[selected]:bg-green-100 flex items-center justify-between"
-                              >
-                                {({ selected }) => (
-                                  <>
-                                    <span>{product.name}</span>
-                                    {selected && <Check className="w-4 h-4 text-green-600" />}
-                                  </>
-                                )}
-                              </ListboxOption>
-                            ))}
-                          </ListboxOptions>
-                        </div>
-                      </Listbox>
+
+                          return (
+                            <button
+                              key={product.id}
+                              type="button"
+                              onClick={handleSelectProduct}
+                              className={`w-full px-4 py-3 text-left flex items-center justify-between border-b border-gray-200 last:border-b-0 transition-colors ${
+                                isSelected
+                                  ? 'bg-green-100 text-green-900'
+                                  : 'bg-white hover:bg-gray-50 text-gray-900'
+                              }`}
+                            >
+                              <span className="font-medium">{product.name}</span>
+                              {isSelected && <Check className="w-5 h-5 text-green-600" />}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
 
                     {/* Number of Panels */}
@@ -4664,10 +4664,11 @@ export default function ProjectDetailView() {
                               value={addComponentSelectedOptions[currentOption.category.id] || null}
                               onChange={(newValue: number | null) => {
                                 if (newValue === null) {
-                                  // Remove the selection (set to undefined by deleting key)
-                                  const newOptions = { ...addComponentSelectedOptions }
-                                  delete newOptions[currentOption.category.id]
-                                  setAddComponentSelectedOptions(newOptions)
+                                  // Set to null (None selected)
+                                  setAddComponentSelectedOptions({
+                                    ...addComponentSelectedOptions,
+                                    [currentOption.category.id]: null
+                                  })
                                   // Also remove quantity if any
                                   const newQuantities = { ...addComponentOptionQuantities }
                                   delete newQuantities[quantityKey]
@@ -4720,13 +4721,23 @@ export default function ProjectDetailView() {
                               <div className={`${isRangeMode || hasVariants ? 'flex-1' : 'w-full'} relative`}>
                                 <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
                                   {(() => {
+                                    if (addComponentSelectedOptions[currentOption.category.id] === null) {
+                                      return (
+                                        <span className="flex items-center gap-2 text-gray-700">
+                                          None (No hardware)
+                                          {!currentOption.standardOptionId && (
+                                            <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
+                                          )}
+                                        </span>
+                                      )
+                                    }
                                     const selectedOpt = currentOption.category.individualOptions?.find((opt: any) => opt.id === addComponentSelectedOptions[currentOption.category.id])
                                     if (selectedOpt) {
                                       return (
                                         <span className="flex items-center gap-2">
                                           {selectedOpt.name}
                                           {selectedOpt.id === currentOption.standardOptionId && (
-                                            <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded font-medium">Standard</span>
+                                            <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
                                           )}
                                         </span>
                                       )
@@ -4736,6 +4747,22 @@ export default function ProjectDetailView() {
                                   <ChevronDown className="w-4 h-4 text-gray-400" />
                                 </ListboxButton>
                                 <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                                  <ListboxOption
+                                    value={null}
+                                    className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
+                                  >
+                                    {({ selected }) => (
+                                      <>
+                                        <span className="flex items-center gap-2">
+                                          None (No hardware)
+                                          {!currentOption.standardOptionId && (
+                                            <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
+                                          )}
+                                        </span>
+                                        {selected && <Check className="w-4 h-4 text-blue-600" />}
+                                      </>
+                                    )}
+                                  </ListboxOption>
                                   {currentOption.category.individualOptions?.map((opt: any) => (
                                     <ListboxOption
                                       key={opt.id}
@@ -4747,7 +4774,7 @@ export default function ProjectDetailView() {
                                           <span className="flex items-center gap-2">
                                             {opt.name}
                                             {opt.id === currentOption.standardOptionId && (
-                                              <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded font-medium">Standard</span>
+                                              <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
                                             )}
                                           </span>
                                           {selected && <Check className="w-4 h-4 text-blue-600" />}
@@ -4811,7 +4838,7 @@ export default function ProjectDetailView() {
                                   }
                                 }}
                               >
-                                <div className="relative w-40">
+                                <div className="relative w-56">
                                   <ListboxButton className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-900 bg-purple-50 text-left flex items-center justify-between">
                                     {(() => {
                                       const selectedVariant = optionVariants.find((v: any) => v.id === variantSelections[String(selectedOptionId)])
@@ -5319,11 +5346,8 @@ export default function ProjectDetailView() {
 
                   return (
                     <div key={option.id}>
-                      <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         {option.category.name}
-                        {selectedOptions[option.category.id] === option.standardOptionId && (
-                          <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">Standard Option Applied</span>
-                        )}
                       </label>
                       {option.category.description && (
                         <p className="text-xs text-gray-500 mb-2">{option.category.description}</p>
@@ -5378,7 +5402,14 @@ export default function ProjectDetailView() {
                             <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
                               {(() => {
                                 if (selectedOptions[option.category.id] === null) {
-                                  return <span className="text-gray-700">None (No hardware)</span>
+                                  return (
+                                    <span className="flex items-center gap-2 text-gray-700">
+                                      None (No hardware)
+                                      {!option.standardOptionId && (
+                                        <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
+                                      )}
+                                    </span>
+                                  )
                                 }
                                 const selectedOpt = option.category.individualOptions?.find((opt: any) => opt.id === selectedOptions[option.category.id])
                                 if (selectedOpt) {
@@ -5386,7 +5417,7 @@ export default function ProjectDetailView() {
                                     <span className="flex items-center gap-2">
                                       {selectedOpt.name}
                                       {selectedOpt.id === option.standardOptionId && (
-                                        <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded font-medium">Standard</span>
+                                        <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
                                       )}
                                     </span>
                                   )
@@ -5402,7 +5433,12 @@ export default function ProjectDetailView() {
                               >
                                 {({ selected }) => (
                                   <>
-                                    <span>None (No hardware)</span>
+                                    <span className="flex items-center gap-2">
+                                      None (No hardware)
+                                      {!option.standardOptionId && (
+                                        <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
+                                      )}
+                                    </span>
                                     {selected && <Check className="w-4 h-4 text-blue-600" />}
                                   </>
                                 )}
@@ -5418,7 +5454,7 @@ export default function ProjectDetailView() {
                                       <span className="flex items-center gap-2">
                                         {opt.name}
                                         {opt.id === option.standardOptionId && (
-                                          <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded font-medium">Standard</span>
+                                          <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
                                         )}
                                       </span>
                                       {selected && <Check className="w-4 h-4 text-blue-600" />}
@@ -5445,7 +5481,7 @@ export default function ProjectDetailView() {
                               }
                             }}
                           >
-                            <div className="relative w-40">
+                            <div className="relative w-56">
                               <ListboxButton className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-900 bg-purple-50 text-left flex items-center justify-between">
                                 {(() => {
                                   const selectedVariant = optionVariants.find((v: any) => v.id === variantSelections[String(selectedOptionIdNum)])

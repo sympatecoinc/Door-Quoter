@@ -129,6 +129,10 @@ export default function SalesLeadView() {
                 onLeadUpdated={fetchLeads}
                 onVersionSwitch={setSalesLeadId}
                 onStatusCategoryChange={setSalesViewMode}
+                onArchive={(archivedId) => {
+                  setLeads(prev => prev.filter(l => l.id !== archivedId))
+                  setSalesLeadId(null)
+                }}
               />
             ) : (
               <div className="flex-1 flex items-center justify-center text-gray-500">

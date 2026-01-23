@@ -28,6 +28,21 @@ export async function GET(
       )
     }
 
+    // Check if project has any openings
+    const openingsCount = await prisma.opening.count({
+      where: { projectId },
+    })
+
+    if (openingsCount === 0) {
+      return NextResponse.json({
+        hasChanges: false,
+        reason: 'Cannot generate quote: Project has no openings',
+        details: {
+          hasNoOpenings: true,
+        },
+      })
+    }
+
     // Get the most recent quote version
     const lastVersion = await prisma.quoteVersion.findFirst({
       where: { projectId },

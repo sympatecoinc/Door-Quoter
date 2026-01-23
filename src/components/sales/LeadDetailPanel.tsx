@@ -118,6 +118,7 @@ interface LeadDetailPanelProps {
   onLeadUpdated: () => void
   onVersionSwitch?: (versionId: number) => void
   onStatusCategoryChange?: (newMode: SalesViewMode) => void
+  onArchive?: (leadId: number) => void
 }
 
 type TabType = 'overview' | 'openings' | 'quotes'
@@ -128,6 +129,7 @@ export default function LeadDetailPanel({
   onLeadUpdated,
   onVersionSwitch,
   onStatusCategoryChange,
+  onArchive,
 }: LeadDetailPanelProps) {
   const [lead, setLead] = useState<LeadDetailData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -233,10 +235,14 @@ export default function LeadDetailPanel({
       if (response.ok) {
         await fetchLead()
 
-        // If archiving, close the detail panel and refresh the list
+        // If archiving, optimistically remove from list and close panel
         if (pendingStatus === ProjectStatus.ARCHIVE) {
-          onLeadUpdated()
-          onClose()
+          if (onArchive) {
+            onArchive(leadId)
+          } else {
+            onLeadUpdated()
+            onClose()
+          }
         }
         // If changing between lead and project categories, switch the view mode
         // The mode change triggers a refetch via useEffect, so don't call onLeadUpdated
@@ -427,7 +433,7 @@ export default function LeadDetailPanel({
                       <span
                         className={`w-2 h-2 rounded-full ${STATUS_CONFIG[ProjectStatus.ARCHIVE].bgColor}`}
                       />
-                      {STATUS_CONFIG[ProjectStatus.ARCHIVE].label}
+                      Archive
                     </button>
                   </div>
                 )}

@@ -26,6 +26,7 @@ interface ChangeStatus {
   reason: string
   details?: {
     isFirstQuote?: boolean
+    hasNoOpenings?: boolean
     changeCount?: number
     changes?: string[]
   }
@@ -198,9 +199,9 @@ export default function LeadQuotesTab({ leadId, leadName, isCurrentVersion = tru
               </div>
             )}
             {!generating && !isQuoteLocked && changeStatus && !changeStatus.hasChanges && (
-              <div className="flex items-center gap-1.5 text-sm text-gray-500" title={changeStatus.reason}>
+              <div className={`flex items-center gap-1.5 text-sm ${changeStatus.details?.hasNoOpenings ? 'text-amber-600' : 'text-gray-500'}`} title={changeStatus.reason}>
                 <Info className="w-4 h-4" />
-                <span>No changes since last quote</span>
+                <span>{changeStatus.details?.hasNoOpenings ? 'Add openings to generate quote' : 'No changes since last quote'}</span>
               </div>
             )}
             <button
@@ -210,9 +211,11 @@ export default function LeadQuotesTab({ leadId, leadName, isCurrentVersion = tru
               title={
                 isQuoteLocked
                   ? 'Quote is locked after acceptance. Create a revision to generate new quotes.'
-                  : changeStatus && !changeStatus.hasChanges
-                    ? changeStatus.reason
-                    : changeStatus?.details?.changes?.join(', ') || 'Generate a new quote version'
+                  : changeStatus?.details?.hasNoOpenings
+                    ? 'Add openings to the project before generating a quote'
+                    : changeStatus && !changeStatus.hasChanges
+                      ? changeStatus.reason
+                      : changeStatus?.details?.changes?.join(', ') || 'Generate a new quote version'
               }
             >
               {generating ? (
@@ -361,9 +364,11 @@ export default function LeadQuotesTab({ leadId, leadName, isCurrentVersion = tru
               ? 'This historical version has no quotes.'
               : isQuoteLocked
                 ? 'Quote generation is locked. Create a revision to generate new quotes.'
-                : 'Generate your first quote to create a versioned snapshot.'}
+                : changeStatus?.details?.hasNoOpenings
+                  ? 'Add openings to the project before generating a quote.'
+                  : 'Generate your first quote to create a versioned snapshot.'}
           </p>
-          {isCurrentVersion && !isQuoteLocked && (
+          {isCurrentVersion && !isQuoteLocked && !changeStatus?.details?.hasNoOpenings && (
             <button
               onClick={handleGenerateQuote}
               disabled={generating || checkingChanges || (changeStatus !== null && !changeStatus.hasChanges)}
