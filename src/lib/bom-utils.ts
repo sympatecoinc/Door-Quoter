@@ -86,6 +86,17 @@ export function evaluateFormula(formula: string, variables: Record<string, numbe
   }
 }
 
+/**
+ * Round up non-EA quantities with 5% overage.
+ * For quantities that are NOT unit "EA", adds 5% and rounds up to nearest whole number.
+ * EA quantities are returned unchanged.
+ */
+export function roundUpWithOverage(value: number, unit: string): number {
+  if (unit === 'EA') return value
+  // Add 5% and round up to nearest whole number
+  return Math.ceil(value * 1.05)
+}
+
 // Type definitions for BOM items
 export interface BomItem {
   partNumber: string
@@ -586,6 +597,12 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
     }
     // For LF/IN items, leave sizeStr empty - totals are shown only in Pieces column
 
+    // Determine unit - extrusions, CutStock, and glass use EA
+    let unitStr = item.unit
+    if (item.partType === 'Extrusion' || item.partType === 'CutStock' || item.partType === 'Glass') {
+      unitStr = 'EA'
+    }
+
     // Determine pieces value
     let piecesValue: string | number = item.totalQuantity
     if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockPiecesNeeded !== null) {
@@ -593,14 +610,11 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
     } else if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
                (item.unit === 'LF' || item.unit === 'IN') &&
                item.totalCalculatedLength) {
-      // For LF/IN items, show the calculated length as the pieces value (without unit suffix)
-      piecesValue = item.totalCalculatedLength.toFixed(3)
-    }
-
-    // Determine unit - extrusions, CutStock, and glass use EA
-    let unitStr = item.unit
-    if (item.partType === 'Extrusion' || item.partType === 'CutStock' || item.partType === 'Glass') {
-      unitStr = 'EA'
+      // For LF/IN items, apply 5% overage and round up to whole number
+      piecesValue = roundUpWithOverage(item.totalCalculatedLength, unitStr)
+    } else if (unitStr !== 'EA') {
+      // For any other non-EA items, apply 5% overage and round up
+      piecesValue = roundUpWithOverage(item.totalQuantity, unitStr)
     }
 
     return [
