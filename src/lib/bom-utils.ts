@@ -112,6 +112,10 @@ export interface BomItem {
   isLinkedPart?: boolean
   isOptionPart?: boolean
   glassArea?: number | null
+  // For yield-based optimization: base part number without stock length suffix
+  basePartNumber?: string
+  // For yield-based optimization: all applicable stock lengths for this part
+  stockLengthOptions?: number[]
 }
 
 export interface AggregatedBomItem {
@@ -136,14 +140,24 @@ export interface AggregatedBomItem {
 }
 
 // Helper function to aggregate BOM items for purchasing summary
-export function aggregateBomItems(bomItems: BomItem[]): AggregatedBomItem[] {
+// Optional stockLengthOptions map allows yield-based optimization when multiple stock lengths are available
+export function aggregateBomItems(
+  bomItems: BomItem[],
+  stockLengthOptions?: Record<string, number[]>
+): AggregatedBomItem[] {
   const aggregated: Record<string, AggregatedBomItem> = {}
 
   for (const item of bomItems) {
     // For glass, group by part number AND dimensions to get separate rows per size
     // For LF/IN hardware/fastener, group by part number only (aggregate all lengths)
+    // For extrusions/CutStock with stockLengthOptions, use base part number for grouping
+    // to enable yield-based stock length optimization across all cuts
     let key = item.partNumber
-    if (item.partType === 'Glass' && item.glassWidth && item.glassHeight) {
+
+    // Use base part number for extrusions/CutStock when yield optimization is available
+    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.basePartNumber) {
+      key = item.basePartNumber
+    } else if (item.partType === 'Glass' && item.glassWidth && item.glassHeight) {
       key = `${item.partNumber}|${item.glassWidth.toFixed(3)}x${item.glassHeight.toFixed(3)}`
     }
     // LF/IN parts now use just partNumber as key, so all lengths are aggregated together
@@ -220,11 +234,39 @@ export function aggregateBomItems(bomItems: BomItem[]): AggregatedBomItem[] {
   }
 
   // Calculate stock optimization for extrusions and CutStock
-  for (const item of Object.values(aggregated)) {
-    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockLength && item.cutLengths.length > 0) {
-      const optimization = calculateOptimizedStockPieces(item.cutLengths, item.stockLength)
-      item.stockPiecesNeeded = optimization.stockPiecesNeeded
-      item.wastePercent = optimization.wastePercent
+  // Use yield-based optimization when multiple stock lengths are available
+  for (const [key, item] of Object.entries(aggregated)) {
+    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.cutLengths.length > 0) {
+      // Check for stock length options (either from parameter or from collected BOM items)
+      const options = stockLengthOptions?.[key]
+
+      if (options && options.length > 1) {
+        // Multiple stock lengths available - use yield-based optimization
+        const yieldResult = findOptimalStockLengthByYield(options, item.cutLengths)
+        if (yieldResult) {
+          // Update stock length with optimal choice
+          const oldStockLength = item.stockLength
+          item.stockLength = yieldResult.stockLength
+          item.stockPiecesNeeded = yieldResult.stockPiecesNeeded
+          item.wastePercent = yieldResult.wastePercent
+
+          // Update part number to include optimal stock length suffix
+          // If the current part number doesn't have a stock length suffix, add one
+          // If it has a different suffix, replace it
+          if (oldStockLength && item.partNumber.endsWith(`-${oldStockLength}`)) {
+            // Replace old suffix with new one
+            item.partNumber = item.partNumber.slice(0, -`-${oldStockLength}`.length) + `-${yieldResult.stockLength}`
+          } else if (!item.partNumber.match(/-\d+$/)) {
+            // No stock length suffix - add one
+            item.partNumber = `${item.partNumber}-${yieldResult.stockLength}`
+          }
+        }
+      } else if (item.stockLength) {
+        // Single stock length - use standard optimization
+        const optimization = calculateOptimizedStockPieces(item.cutLengths, item.stockLength)
+        item.stockPiecesNeeded = optimization.stockPiecesNeeded
+        item.wastePercent = optimization.wastePercent
+      }
     }
   }
 
@@ -330,6 +372,78 @@ export function findBestStockLengthRule(
                          (b.maxHeight !== null && b.maxHeight !== undefined ? 1 : 0)
     return bSpecificity - aSpecificity
   })[0] || null
+}
+
+// Result from comparing yield across multiple stock length options
+export interface YieldComparisonResult {
+  stockLength: number
+  stockPiecesNeeded: number
+  totalStockLength: number
+  wasteLength: number
+  wastePercent: number
+}
+
+/**
+ * Find the optimal stock length by comparing yield (waste percentage) across multiple options.
+ * Uses FFD bin-packing optimization for each stock length to determine which produces least waste.
+ *
+ * @param stockLengths - Array of available stock lengths to compare
+ * @param cutLengths - Array of cut lengths needed (including duplicates for quantity)
+ * @param kerf - Kerf width (material lost per cut), defaults to KERF_WIDTH
+ * @returns The stock length option with lowest waste percentage, or null if no valid option
+ */
+export function findOptimalStockLengthByYield(
+  stockLengths: number[],
+  cutLengths: number[],
+  kerf: number = KERF_WIDTH
+): YieldComparisonResult | null {
+  if (cutLengths.length === 0 || stockLengths.length === 0) {
+    return null
+  }
+
+  // Find the longest cut to filter out stock lengths that can't fit any cuts
+  const maxCutLength = Math.max(...cutLengths)
+
+  // Filter to stock lengths that can fit at least the largest cut
+  const validStockLengths = stockLengths.filter(sl => sl >= maxCutLength)
+
+  if (validStockLengths.length === 0) {
+    return null
+  }
+
+  // If only one valid option, use it directly
+  if (validStockLengths.length === 1) {
+    const result = calculateOptimizedStockPieces(cutLengths, validStockLengths[0], kerf)
+    return {
+      stockLength: validStockLengths[0],
+      ...result
+    }
+  }
+
+  // Compare yield for each valid stock length option
+  let bestResult: YieldComparisonResult | null = null
+
+  for (const stockLength of validStockLengths) {
+    const optimization = calculateOptimizedStockPieces(cutLengths, stockLength, kerf)
+
+    const result: YieldComparisonResult = {
+      stockLength,
+      stockPiecesNeeded: optimization.stockPiecesNeeded,
+      totalStockLength: optimization.totalStockLength,
+      wasteLength: optimization.wasteLength,
+      wastePercent: optimization.wastePercent
+    }
+
+    // Select this option if it has lower waste percentage
+    // If waste percentages are equal, prefer the option with less total stock length
+    if (bestResult === null ||
+        result.wastePercent < bestResult.wastePercent ||
+        (result.wastePercent === bestResult.wastePercent && result.totalStockLength < bestResult.totalStockLength)) {
+      bestResult = result
+    }
+  }
+
+  return bestResult
 }
 
 // BOM item for cut list aggregation (extrusions only)

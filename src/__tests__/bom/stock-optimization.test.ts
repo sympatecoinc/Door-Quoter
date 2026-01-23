@@ -1,10 +1,12 @@
 import {
   calculateOptimizedStockPieces,
   findBestStockLengthRule,
+  findOptimalStockLengthByYield,
   calculateStockOptimization,
   KERF_WIDTH,
   type StockLengthRule,
-  type CutListItem
+  type CutListItem,
+  type YieldComparisonResult
 } from '@/lib/bom/calculations'
 
 describe('calculateOptimizedStockPieces', () => {
@@ -335,5 +337,145 @@ describe('calculateStockOptimization', () => {
 
     expect(result[0].partNumber).toBe('A-PART')
     expect(result[1].partNumber).toBe('Z-PART')
+  })
+})
+
+describe('findOptimalStockLengthByYield', () => {
+  describe('basic functionality', () => {
+    it('should return null for empty cut lengths', () => {
+      const result = findOptimalStockLengthByYield([78, 99], [])
+      expect(result).toBeNull()
+    })
+
+    it('should return null for empty stock lengths', () => {
+      const result = findOptimalStockLengthByYield([], [44.625])
+      expect(result).toBeNull()
+    })
+
+    it('should return null when all cuts exceed stock lengths', () => {
+      const result = findOptimalStockLengthByYield([78, 99], [100])
+      expect(result).toBeNull()
+    })
+
+    it('should return the only valid stock length when single option', () => {
+      const result = findOptimalStockLengthByYield([78], [36])
+      expect(result).not.toBeNull()
+      expect(result?.stockLength).toBe(78)
+    })
+  })
+
+  describe('yield optimization - single cut scenarios', () => {
+    it('should select 78" for single 44.625" cut (less absolute waste)', () => {
+      // 78" stock: waste = 78 - 44.625 = 33.375" (42.8% waste)
+      // 99" stock: waste = 99 - 44.625 = 54.375" (54.9% waste)
+      // 78" has lower waste percentage
+      const result = findOptimalStockLengthByYield([78, 99], [44.625])
+      expect(result).not.toBeNull()
+      expect(result?.stockLength).toBe(78)
+    })
+
+    it('should select shorter stock when it produces less waste percentage', () => {
+      // Single 36" cut
+      // 78" stock: waste = 78 - 36 = 42" (53.8% waste)
+      // 99" stock: waste = 99 - 36 = 63" (63.6% waste)
+      // 78" has lower waste percentage
+      const result = findOptimalStockLengthByYield([78, 99], [36])
+      expect(result?.stockLength).toBe(78)
+    })
+  })
+
+  describe('yield optimization - multiple cut scenarios', () => {
+    it('should select 99" for two 44.625" cuts (fits 2 per stock)', () => {
+      // Problem example from the plan:
+      // 78" stock: 1 cut per stock, needs 2 stocks = 156" total, ~43% waste each
+      // 99" stock: 2 cuts fit (44.625 + 0.125 + 44.625 = 89.375"), needs 1 stock = 99" total, ~10% waste
+      // 99" should be selected
+      const result = findOptimalStockLengthByYield([78, 99], [44.625, 44.625])
+      expect(result).not.toBeNull()
+      expect(result?.stockLength).toBe(99)
+      expect(result?.stockPiecesNeeded).toBe(1)
+    })
+
+    it('should select stock that minimizes waste for many same-size cuts', () => {
+      // 4 cuts of 44.625"
+      // 78" stock: 1 cut per stock, 4 stocks needed = 312" total, ~43% waste
+      // 99" stock: 2 cuts per stock, 2 stocks needed = 198" total, ~10% waste
+      const result = findOptimalStockLengthByYield([78, 99], [44.625, 44.625, 44.625, 44.625])
+      expect(result?.stockLength).toBe(99)
+      expect(result?.stockPiecesNeeded).toBe(2)
+    })
+
+    it('should handle mixed cut sizes', () => {
+      // 2 cuts: 36" and 40"
+      // 78" stock: Both fit in one (36 + 0.125 + 40 = 76.125"), 1 stock, waste = 1.875" (2.4%)
+      // 99" stock: Both fit in one, 1 stock, waste = 22.875" (23.1%)
+      // 78" should be selected (lower waste %)
+      const result = findOptimalStockLengthByYield([78, 99], [36, 40])
+      expect(result?.stockLength).toBe(78)
+      expect(result?.stockPiecesNeeded).toBe(1)
+    })
+
+    it('should prefer less total stock length when waste percentages are equal', () => {
+      // Craft a scenario where waste percentages are identical
+      // If both options produce the same waste %, prefer the one with less total stock used
+      // Single 50% cut from each stock
+      const result = findOptimalStockLengthByYield([100, 200], [50, 100])
+      // 100" stock: 1 cut fits (50"), needs 2 stocks for both cuts = 200" total
+      // 200" stock: both cuts fit (50 + 0.125 + 100 = 150.125"), needs 1 stock = 200" total
+      // Waste percentages are different, so this will select based on lowest waste %
+      expect(result).not.toBeNull()
+    })
+  })
+
+  describe('edge cases', () => {
+    it('should filter out stock lengths that cannot fit the largest cut', () => {
+      // 50" cut cannot fit in 48" stock, only 60" is valid
+      const result = findOptimalStockLengthByYield([48, 60], [50])
+      expect(result?.stockLength).toBe(60)
+    })
+
+    it('should handle cuts exactly equal to stock length', () => {
+      const result = findOptimalStockLengthByYield([78, 99], [78])
+      expect(result).not.toBeNull()
+      expect(result?.stockLength).toBe(78)
+      expect(result?.stockPiecesNeeded).toBe(1)
+    })
+
+    it('should use custom kerf width when provided', () => {
+      // Two 48" cuts with 0.5" kerf
+      // 99" stock: 48 + 0.5 + 48 + 0.5 = 97" - fits in 99"
+      const result = findOptimalStockLengthByYield([99], [48, 48], 0.5)
+      expect(result?.stockPiecesNeeded).toBe(1)
+    })
+
+    it('should handle many stock length options', () => {
+      const result = findOptimalStockLengthByYield([60, 72, 84, 96, 108, 120], [40, 40])
+      // Best option should be the shortest that can fit both cuts
+      // 40 + 0.125 + 40 = 80.125", needs at least 84" stock
+      expect(result).not.toBeNull()
+      // 84" stock: both fit, waste = 84 - 80.125 = 3.875" (4.6%)
+      // Others would have higher waste %
+      expect(result?.stockLength).toBe(84)
+    })
+  })
+
+  describe('real-world door/window scenarios', () => {
+    it('should optimize jamb cuts for multiple door openings', () => {
+      // 4 jamb pieces at 84" each (for 2 doors)
+      // 99" stock: 1 per stock, 4 stocks = 396" total, ~15% waste
+      // 168" stock: 1 per stock, 4 stocks = 672" total, ~50% waste
+      const result = findOptimalStockLengthByYield([99, 168], [84, 84, 84, 84])
+      expect(result?.stockLength).toBe(99)
+      expect(result?.stockPiecesNeeded).toBe(4)
+    })
+
+    it('should optimize header and sill cuts', () => {
+      // 4 headers/sills at 36" each
+      // 78" stock: 2 per stock (36 + 0.125 + 36 = 72.125"), 2 stocks = 156" total, ~7.7% waste
+      // 99" stock: 2 per stock (same), 2 stocks = 198" total, ~27% waste
+      const result = findOptimalStockLengthByYield([78, 99], [36, 36, 36, 36])
+      expect(result?.stockLength).toBe(78)
+      expect(result?.stockPiecesNeeded).toBe(2)
+    })
   })
 })

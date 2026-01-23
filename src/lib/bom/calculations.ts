@@ -236,6 +236,80 @@ export function findBestStockLengthRule(rules: StockLengthRule[], requiredLength
 }
 
 /**
+ * Result from comparing yield across multiple stock length options
+ */
+export interface YieldComparisonResult {
+  stockLength: number
+  stockPiecesNeeded: number
+  totalStockLength: number
+  wasteLength: number
+  wastePercent: number
+}
+
+/**
+ * Find the optimal stock length by comparing yield (waste percentage) across multiple options.
+ * Uses FFD bin-packing optimization for each stock length to determine which produces least waste.
+ *
+ * @param stockLengths - Array of available stock lengths to compare
+ * @param cutLengths - Array of cut lengths needed (including duplicates for quantity)
+ * @param kerf - Kerf width (material lost per cut), defaults to KERF_WIDTH
+ * @returns The stock length option with lowest waste percentage, or null if no valid option
+ */
+export function findOptimalStockLengthByYield(
+  stockLengths: number[],
+  cutLengths: number[],
+  kerf: number = KERF_WIDTH
+): YieldComparisonResult | null {
+  if (cutLengths.length === 0 || stockLengths.length === 0) {
+    return null
+  }
+
+  // Find the longest cut to filter out stock lengths that can't fit any cuts
+  const maxCutLength = Math.max(...cutLengths)
+
+  // Filter to stock lengths that can fit at least the largest cut
+  const validStockLengths = stockLengths.filter(sl => sl >= maxCutLength)
+
+  if (validStockLengths.length === 0) {
+    return null
+  }
+
+  // If only one valid option, use it directly
+  if (validStockLengths.length === 1) {
+    const result = calculateOptimizedStockPieces(cutLengths, validStockLengths[0], kerf)
+    return {
+      stockLength: validStockLengths[0],
+      ...result
+    }
+  }
+
+  // Compare yield for each valid stock length option
+  let bestResult: YieldComparisonResult | null = null
+
+  for (const stockLength of validStockLengths) {
+    const optimization = calculateOptimizedStockPieces(cutLengths, stockLength, kerf)
+
+    const result: YieldComparisonResult = {
+      stockLength,
+      stockPiecesNeeded: optimization.stockPiecesNeeded,
+      totalStockLength: optimization.totalStockLength,
+      wasteLength: optimization.wasteLength,
+      wastePercent: optimization.wastePercent
+    }
+
+    // Select this option if it has lower waste percentage
+    // If waste percentages are equal, prefer the option with less total stock length
+    if (bestResult === null ||
+        result.wastePercent < bestResult.wastePercent ||
+        (result.wastePercent === bestResult.wastePercent && result.totalStockLength < bestResult.totalStockLength)) {
+      bestResult = result
+    }
+  }
+
+  return bestResult
+}
+
+/**
  * Helper function to aggregate BOM items for purchasing summary
  * Groups by part number (and dimensions for glass)
  */

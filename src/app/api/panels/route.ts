@@ -85,7 +85,17 @@ export async function POST(request: NextRequest) {
         where: { id: parseInt(openingId) },
         include: {
           panels: {
-            select: { id: true, width: true }
+            select: {
+              id: true,
+              width: true,
+              componentInstance: {
+                select: {
+                  product: {
+                    select: { productType: true }
+                  }
+                }
+              }
+            }
           }
         }
       })
@@ -120,8 +130,13 @@ export async function POST(request: NextRequest) {
           const parsedWidth = parseFloat(width) || 0
           const parsedHeight = parseFloat(height) || 0
 
-          // Filter out corners/frames from existing panels width calculation
-          const existingWidths = opening.panels.map(p => p.width)
+          // Filter out CORNER_90/FRAME panels from existing panels width calculation
+          const existingWidths = opening.panels
+            .filter(p => {
+              const pType = p.componentInstance?.product?.productType
+              return pType !== 'CORNER_90' && pType !== 'FRAME'
+            })
+            .map(p => p.width)
 
           // Account for multiple panels being created
           const totalNewWidth = parsedWidth * panelCount

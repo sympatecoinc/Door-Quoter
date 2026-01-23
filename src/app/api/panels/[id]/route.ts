@@ -61,7 +61,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           opening: {
             include: {
               panels: {
-                select: { id: true, width: true }
+                select: {
+                  id: true,
+                  width: true,
+                  componentInstance: {
+                    select: {
+                      product: {
+                        select: { productType: true }
+                      }
+                    }
+                  }
+                }
               }
             }
           },
@@ -85,30 +95,41 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           const parsedWidth = parseFloat(width)
           const parsedHeight = parseFloat(height)
 
-          // Exclude current panel from width calculation
-          const otherPanelWidths = currentPanel.opening.panels
-            .filter(p => p.id !== panelId)
-            .map(p => p.width)
+          // Skip validation if dimensions haven't actually changed
+          const widthChanged = Math.abs(parsedWidth - currentPanel.width) > 0.001
+          const heightChanged = Math.abs(parsedHeight - currentPanel.height) > 0.001
 
-          const validationResult = validateComponentSize(
-            parsedWidth,
-            parsedHeight,
-            {
-              finishedWidth: currentPanel.opening.finishedWidth,
-              finishedHeight: currentPanel.opening.finishedHeight,
-              existingPanelWidths: otherPanelWidths
-            },
-            product || {}
-          )
+          if (widthChanged || heightChanged) {
+            // Exclude current panel AND CORNER_90/FRAME panels from width calculation
+            const otherPanelWidths = currentPanel.opening.panels
+              .filter(p => {
+                if (p.id === panelId) return false
+                const pType = p.componentInstance?.product?.productType
+                if (pType === 'CORNER_90' || pType === 'FRAME') return false
+                return true
+              })
+              .map(p => p.width)
 
-          if (!validationResult.valid) {
-            return NextResponse.json(
+            const validationResult = validateComponentSize(
+              parsedWidth,
+              parsedHeight,
               {
-                error: 'Component size validation failed',
-                validationErrors: validationResult.errors
+                finishedWidth: currentPanel.opening.finishedWidth,
+                finishedHeight: currentPanel.opening.finishedHeight,
+                existingPanelWidths: otherPanelWidths
               },
-              { status: 400 }
+              product || {}
             )
+
+            if (!validationResult.valid) {
+              return NextResponse.json(
+                {
+                  error: 'Component size validation failed',
+                  validationErrors: validationResult.errors
+                },
+                { status: 400 }
+              )
+            }
           }
         }
       }
@@ -184,7 +205,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           opening: {
             include: {
               panels: {
-                select: { id: true, width: true }
+                select: {
+                  id: true,
+                  width: true,
+                  componentInstance: {
+                    select: {
+                      product: {
+                        select: { productType: true }
+                      }
+                    }
+                  }
+                }
               }
             }
           },
@@ -209,30 +240,41 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           const parsedWidth = updateData.width !== undefined ? parseFloat(updateData.width) : currentPanel.width
           const parsedHeight = updateData.height !== undefined ? parseFloat(updateData.height) : currentPanel.height
 
-          // Exclude current panel from width calculation
-          const otherPanelWidths = currentPanel.opening.panels
-            .filter(p => p.id !== panelId)
-            .map(p => p.width)
+          // Skip validation if dimensions haven't actually changed
+          const widthChanged = updateData.width !== undefined && Math.abs(parsedWidth - currentPanel.width) > 0.001
+          const heightChanged = updateData.height !== undefined && Math.abs(parsedHeight - currentPanel.height) > 0.001
 
-          const validationResult = validateComponentSize(
-            parsedWidth,
-            parsedHeight,
-            {
-              finishedWidth: currentPanel.opening.finishedWidth,
-              finishedHeight: currentPanel.opening.finishedHeight,
-              existingPanelWidths: otherPanelWidths
-            },
-            product || {}
-          )
+          if (widthChanged || heightChanged) {
+            // Exclude current panel AND CORNER_90/FRAME panels from width calculation
+            const otherPanelWidths = currentPanel.opening.panels
+              .filter(p => {
+                if (p.id === panelId) return false
+                const pType = p.componentInstance?.product?.productType
+                if (pType === 'CORNER_90' || pType === 'FRAME') return false
+                return true
+              })
+              .map(p => p.width)
 
-          if (!validationResult.valid) {
-            return NextResponse.json(
+            const validationResult = validateComponentSize(
+              parsedWidth,
+              parsedHeight,
               {
-                error: 'Component size validation failed',
-                validationErrors: validationResult.errors
+                finishedWidth: currentPanel.opening.finishedWidth,
+                finishedHeight: currentPanel.opening.finishedHeight,
+                existingPanelWidths: otherPanelWidths
               },
-              { status: 400 }
+              product || {}
             )
+
+            if (!validationResult.valid) {
+              return NextResponse.json(
+                {
+                  error: 'Component size validation failed',
+                  validationErrors: validationResult.errors
+                },
+                { status: 400 }
+              )
+            }
           }
         }
       }

@@ -41,7 +41,13 @@ async function getFinishCode(finishType: string): Promise<string> {
 }
 
 // Helper function to find stock length for extrusions using the new formula-based approach
-async function findStockLength(partNumber: string, bom: any, variables: Record<string, number>): Promise<{ stockLength: number | null, isMillFinish: boolean, binLocation: string | null }> {
+// Returns the best stock length as well as ALL applicable stock lengths for yield optimization
+async function findStockLength(partNumber: string, bom: any, variables: Record<string, number>): Promise<{
+  stockLength: number | null,
+  stockLengthOptions: number[],
+  isMillFinish: boolean,
+  binLocation: string | null
+}> {
   try {
     const masterPart = await prisma.masterPart.findUnique({
       where: { partNumber },
@@ -57,20 +63,34 @@ async function findStockLength(partNumber: string, bom: any, variables: Record<s
       // Calculate the required part length from the ProductBOM formula
       const requiredLength = calculateRequiredPartLength(bom, variables)
 
+      // Collect ALL applicable stock lengths for yield optimization
+      const applicableRules = masterPart.stockLengthRules.filter(rule => {
+        const matchesLength = (rule.minHeight === null || requiredLength >= rule.minHeight) &&
+                             (rule.maxHeight === null || requiredLength <= rule.maxHeight)
+        return rule.isActive && matchesLength && rule.stockLength !== null
+      })
+
+      const stockLengthOptions = [...new Set(
+        applicableRules
+          .map(r => r.stockLength)
+          .filter((sl): sl is number => sl !== null)
+      )].sort((a, b) => a - b)
+
+      // Get the best (most specific) rule for initial assignment
       const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
-      if (bestRule) {
-        return {
-          stockLength: bestRule.stockLength || null,
-          isMillFinish: masterPart.isMillFinish || false,
-          binLocation
-        }
+
+      return {
+        stockLength: bestRule?.stockLength || stockLengthOptions[0] || null,
+        stockLengthOptions,
+        isMillFinish: masterPart.isMillFinish || false,
+        binLocation
       }
     }
 
-    return { stockLength: null, isMillFinish: masterPart?.isMillFinish || false, binLocation }
+    return { stockLength: null, stockLengthOptions: [], isMillFinish: masterPart?.isMillFinish || false, binLocation }
   } catch (error) {
     console.error(`Error finding stock length for ${partNumber}:`, error)
-    return { stockLength: null, isMillFinish: false, binLocation: null }
+    return { stockLength: null, stockLengthOptions: [], isMillFinish: false, binLocation: null }
   }
 }
 
@@ -220,7 +240,9 @@ export async function GET(
 
           // Generate part number with finish code and stock length for extrusions
           let fullPartNumber = bom.partNumber || ''
+          let basePartNumber = bom.partNumber || ''  // Part number before stock length suffix
           let stockLength: number | null = null
+          let stockLengthOptions: number[] = []
           let isMillFinish = false
           let binLocation: string | null = null
 
@@ -229,6 +251,7 @@ export async function GET(
             if (bom.partNumber) {
               const stockInfo = await findStockLength(bom.partNumber, bom, variables)
               stockLength = stockInfo.stockLength
+              stockLengthOptions = stockInfo.stockLengthOptions
               isMillFinish = stockInfo.isMillFinish
               binLocation = stockInfo.binLocation
             }
@@ -238,6 +261,7 @@ export async function GET(
               const finishCode = await getFinishCode(opening.finishColor)
               if (finishCode) {
                 fullPartNumber = `${fullPartNumber}${finishCode}`
+                basePartNumber = fullPartNumber  // Base includes finish code
               }
             }
 
@@ -318,7 +342,10 @@ export async function GET(
             pickListStation: pickListStation,
             includeInJambKit: includeInJambKit,
             isMilled: bom.isMilled !== false, // Default to true if not set
-            binLocation: binLocation
+            binLocation: binLocation,
+            // For yield-based stock length optimization
+            basePartNumber: (bom.partType === 'Extrusion' || bom.partType === 'CutStock') ? basePartNumber : undefined,
+            stockLengthOptions: stockLengthOptions.length > 1 ? stockLengthOptions : undefined
           })
         }
 
@@ -482,6 +509,8 @@ export async function GET(
 
                   let cutLength: number | null = null
                   let stockLength: number | null = null
+                  let stockLengthOpts: number[] = []
+                  let optionBasePartNumber = partNumber  // Track base before stock length suffix
                   let isMillFinish = false
                   let percentOfStock: number | null = null
                   let optionBinLocation: string | null = null
@@ -503,6 +532,7 @@ export async function GET(
                         { width: effectiveWidth, height: effectiveHeight }
                       )
                       stockLength = stockInfo.stockLength
+                      stockLengthOpts = stockInfo.stockLengthOptions
                       isMillFinish = stockInfo.isMillFinish
                       optionBinLocation = stockInfo.binLocation
 
@@ -512,6 +542,7 @@ export async function GET(
                         const finishCode = await getFinishCode(opening.finishColor)
                         if (finishCode) {
                           partNumber = `${partNumber}${finishCode}`
+                          optionBasePartNumber = partNumber  // Base includes finish code
                         }
                       }
                       if (stockLength) {
@@ -577,7 +608,10 @@ export async function GET(
                     isStandard: true,
                     optionPrice: (standardOption as any).price ?? 0,
                     isMilled: optionBom?.isMilled !== false,
-                    binLocation: optionBinLocation
+                    binLocation: optionBinLocation,
+                    // For yield-based stock length optimization
+                    basePartNumber: optionBom ? optionBasePartNumber : undefined,
+                    stockLengthOptions: stockLengthOpts.length > 1 ? stockLengthOpts : undefined
                   })
                 }
                 continue
@@ -608,6 +642,8 @@ export async function GET(
 
                 let cutLength: number | null = null
                 let stockLength: number | null = null
+                let stockLengthOpts: number[] = []
+                let indivBasePartNumber = partNumber  // Track base before stock length suffix
                 let isMillFinish = false
                 let percentOfStock: number | null = null
                 let optionBinLocation: string | null = null
@@ -629,6 +665,7 @@ export async function GET(
                       { width: effectiveWidth, height: effectiveHeight }
                     )
                     stockLength = stockInfo.stockLength
+                    stockLengthOpts = stockInfo.stockLengthOptions
                     isMillFinish = stockInfo.isMillFinish
                     optionBinLocation = stockInfo.binLocation
 
@@ -638,6 +675,7 @@ export async function GET(
                       const finishCode = await getFinishCode(opening.finishColor)
                       if (finishCode) {
                         partNumber = `${partNumber}${finishCode}`
+                        indivBasePartNumber = partNumber  // Base includes finish code
                       }
                     }
                     if (stockLength) {
@@ -718,7 +756,10 @@ export async function GET(
                   isStandard: isStandardOption,
                   optionPrice: (individualOption as any).price ?? 0,
                   isMilled: optionBom?.isMilled !== false,
-                  binLocation: optionBinLocation
+                  binLocation: optionBinLocation,
+                  // For yield-based stock length optimization
+                  basePartNumber: optionBom ? indivBasePartNumber : undefined,
+                  stockLengthOptions: stockLengthOpts.length > 1 ? stockLengthOpts : undefined
                 })
 
                 // Track which part numbers have been processed as linked parts (to avoid duplicates in optionParts)
@@ -764,6 +805,7 @@ export async function GET(
                     // Calculate cut length if formula exists
                     let linkedCutLength: number | null = null
                     let linkedStockLength: number | null = null
+                    let linkedStockLengthOpts: number[] = []
                     let linkedPercentOfStock: number | null = null
                     let linkedIsMillFinish = false
                     let linkedBinLocation: string | null = null
@@ -797,6 +839,7 @@ export async function GET(
                           { width: effectiveWidth, height: effectiveHeight }
                         )
                         linkedStockLength = stockInfo.stockLength
+                        linkedStockLengthOpts = stockInfo.stockLengthOptions
                         linkedIsMillFinish = stockInfo.isMillFinish
                         linkedBinLocation = stockInfo.binLocation
 
@@ -808,12 +851,14 @@ export async function GET(
 
                     // Build part number with finish code if applicable
                     let linkedPartNumber = linkedPart.masterPart.partNumber
+                    let linkedBasePartNumber = linkedPart.masterPart.partNumber  // Track base before suffix
 
                     // For extrusions, apply finish code based on isMillFinish
                     if ((linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') && opening.finishColor && !linkedIsMillFinish) {
                       const finishCode = await getFinishCode(opening.finishColor)
                       if (finishCode) {
                         linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                        linkedBasePartNumber = linkedPartNumber  // Base includes finish code
                       }
                     } else if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
                       const finishCode = await getFinishCode(opening.finishColor)
@@ -836,6 +881,7 @@ export async function GET(
                       }
                     }
 
+                    const isLinkedExtrusion = linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock'
                     bomItems.push({
                       openingName: opening.name,
                       panelId: panel.id,
@@ -858,7 +904,10 @@ export async function GET(
                       pickListStation: linkedPart.masterPart.pickListStation || null,
                       includeInJambKit: linkedPart.masterPart.includeInJambKit || false,
                       isMilled: linkedPartBom?.isMilled !== false,
-                      binLocation: linkedBinLocation
+                      binLocation: linkedBinLocation,
+                      // For yield-based stock length optimization
+                      basePartNumber: isLinkedExtrusion ? linkedBasePartNumber : undefined,
+                      stockLengthOptions: linkedStockLengthOpts.length > 1 ? linkedStockLengthOpts : undefined
                     })
 
                     // Track this part number to avoid duplicate processing in optionParts
@@ -972,6 +1021,8 @@ export async function GET(
 
               let cutLength: number | null = null
               let stockLength: number | null = null
+              let stockLengthOpts2: number[] = []
+              let stdBasePartNumber = partNumber  // Track base before stock length suffix
               let isMillFinish = false
               let percentOfStock: number | null = null
               let optionBinLocation: string | null = null
@@ -993,6 +1044,7 @@ export async function GET(
                     { width: effectiveWidth, height: effectiveHeight }
                   )
                   stockLength = stockInfo.stockLength
+                  stockLengthOpts2 = stockInfo.stockLengthOptions
                   isMillFinish = stockInfo.isMillFinish
                   optionBinLocation = stockInfo.binLocation
 
@@ -1002,6 +1054,7 @@ export async function GET(
                     const finishCode = await getFinishCode(opening.finishColor)
                     if (finishCode) {
                       partNumber = `${partNumber}${finishCode}`
+                      stdBasePartNumber = partNumber  // Base includes finish code
                     }
                   }
                   if (stockLength) {
@@ -1067,7 +1120,10 @@ export async function GET(
                 isStandard: true,
                 optionPrice: (standardOption as any).price ?? 0,
                 isMilled: optionBom?.isMilled !== false,
-                binLocation: optionBinLocation
+                binLocation: optionBinLocation,
+                // For yield-based stock length optimization
+                basePartNumber: optionBom ? stdBasePartNumber : undefined,
+                stockLengthOptions: stockLengthOpts2.length > 1 ? stockLengthOpts2 : undefined
               })
 
               // Process linked parts for standard option
@@ -1098,6 +1154,7 @@ export async function GET(
                   // Calculate cut length if formula exists
                   let linkedCutLength: number | null = null
                   let linkedStockLength: number | null = null
+                  let linkedStockLengthOpts2: number[] = []
                   let linkedPercentOfStock: number | null = null
                   let linkedIsMillFinish = false
                   let linkedBinLocation: string | null = null
@@ -1131,6 +1188,7 @@ export async function GET(
                         { width: effectiveWidth, height: effectiveHeight }
                       )
                       linkedStockLength = stockInfo.stockLength
+                      linkedStockLengthOpts2 = stockInfo.stockLengthOptions
                       linkedIsMillFinish = stockInfo.isMillFinish
                       linkedBinLocation = stockInfo.binLocation
 
@@ -1142,12 +1200,14 @@ export async function GET(
 
                   // Build part number with finish code if applicable
                   let linkedPartNumber = linkedPart.masterPart.partNumber
+                  let linkedBasePartNumber2 = linkedPart.masterPart.partNumber  // Track base before suffix
 
                   // For extrusions, apply finish code based on isMillFinish
                   if ((linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') && opening.finishColor && !linkedIsMillFinish) {
                     const finishCode = await getFinishCode(opening.finishColor)
                     if (finishCode) {
                       linkedPartNumber = `${linkedPartNumber}${finishCode}`
+                      linkedBasePartNumber2 = linkedPartNumber  // Base includes finish code
                     }
                   } else if (linkedPart.masterPart.addFinishToPartNumber && opening.finishColor) {
                     const finishCode = await getFinishCode(opening.finishColor)
@@ -1170,6 +1230,7 @@ export async function GET(
                     }
                   }
 
+                  const isLinkedExtrusion2 = linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock'
                   bomItems.push({
                     openingName: opening.name,
                     panelId: panel.id,
@@ -1192,7 +1253,10 @@ export async function GET(
                     pickListStation: linkedPart.masterPart.pickListStation || null,
                     includeInJambKit: linkedPart.masterPart.includeInJambKit || false,
                     isMilled: linkedPartBom?.isMilled !== false,
-                    binLocation: linkedBinLocation
+                    binLocation: linkedBinLocation,
+                    // For yield-based stock length optimization
+                    basePartNumber: isLinkedExtrusion2 ? linkedBasePartNumber2 : undefined,
+                    stockLengthOptions: linkedStockLengthOpts2.length > 1 ? linkedStockLengthOpts2 : undefined
                   })
                 }
               }
@@ -1251,7 +1315,25 @@ export async function GET(
 
     // If summary mode is requested, return aggregated data
     if (summary) {
-      const summaryItems = aggregateBomItems(filteredBomItems)
+      // Build stock length options map for yield-based optimization
+      // Group by base part number to collect all available stock lengths
+      const stockLengthOptionsMap: Record<string, number[]> = {}
+      for (const item of filteredBomItems) {
+        if ((item.partType === 'Extrusion' || item.partType === 'CutStock') &&
+            item.basePartNumber && item.stockLengthOptions && item.stockLengthOptions.length > 1) {
+          if (!stockLengthOptionsMap[item.basePartNumber]) {
+            stockLengthOptionsMap[item.basePartNumber] = []
+          }
+          // Merge in any new stock length options
+          for (const sl of item.stockLengthOptions) {
+            if (!stockLengthOptionsMap[item.basePartNumber].includes(sl)) {
+              stockLengthOptionsMap[item.basePartNumber].push(sl)
+            }
+          }
+        }
+      }
+
+      const summaryItems = aggregateBomItems(filteredBomItems, stockLengthOptionsMap)
 
       // Calculate totals by type
       const totals = {
