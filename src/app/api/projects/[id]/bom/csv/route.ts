@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import JSZip from 'jszip'
+import { applyYieldOptimizationToBomItems, BomItem } from '@/lib/bom-utils'
 
 // Function to evaluate simple formulas for cut lengths
 function evaluateFormula(formula: string, variables: Record<string, number>): number {
@@ -94,7 +95,13 @@ function sanitizeFilename(name: string): string {
 }
 
 // Helper function to find stock length for extrusions using the formula-based approach
-async function findStockLength(partNumber: string, bom: any, variables: Record<string, number>): Promise<{ stockLength: number | null, isMillFinish: boolean }> {
+// Returns stockLength, isMillFinish, basePartNumber, and all stockLengthOptions for yield optimization
+async function findStockLength(partNumber: string, bom: any, variables: Record<string, number>): Promise<{
+  stockLength: number | null,
+  isMillFinish: boolean,
+  basePartNumber: string,
+  stockLengthOptions: number[]
+}> {
   try {
     const masterPart = await prisma.masterPart.findUnique({
       where: { partNumber },
@@ -103,23 +110,49 @@ async function findStockLength(partNumber: string, bom: any, variables: Record<s
       }
     })
 
-    if (masterPart && masterPart.partType === 'Extrusion' && masterPart.stockLengthRules.length > 0) {
+    if (masterPart && (masterPart.partType === 'Extrusion' || masterPart.partType === 'CutStock') && masterPart.stockLengthRules.length > 0) {
       // Calculate the required part length from the ProductBOM formula
       const requiredLength = calculateRequiredPartLength(bom, variables)
+
+      // Collect all applicable stock lengths for yield optimization
+      const applicableRules = masterPart.stockLengthRules.filter(rule => {
+        const matchesLength = (rule.minHeight === null || requiredLength >= rule.minHeight) &&
+                             (rule.maxHeight === null || requiredLength <= rule.maxHeight)
+        return rule.isActive && matchesLength
+      })
+
+      const stockLengthOptions = applicableRules
+        .map(rule => rule.stockLength)
+        .filter((sl): sl is number => sl !== null && sl !== undefined)
+        .filter((value, index, self) => self.indexOf(value) === index) // unique values
 
       const bestRule = findBestStockLengthRule(masterPart.stockLengthRules, requiredLength)
       if (bestRule) {
         return {
           stockLength: bestRule.stockLength || null,
-          isMillFinish: masterPart.isMillFinish || false
+          isMillFinish: masterPart.isMillFinish || false,
+          basePartNumber: partNumber,
+          stockLengthOptions
         }
+      }
+
+      return {
+        stockLength: null,
+        isMillFinish: masterPart.isMillFinish || false,
+        basePartNumber: partNumber,
+        stockLengthOptions
       }
     }
 
-    return { stockLength: null, isMillFinish: masterPart?.isMillFinish || false }
+    return {
+      stockLength: null,
+      isMillFinish: masterPart?.isMillFinish || false,
+      basePartNumber: partNumber,
+      stockLengthOptions: []
+    }
   } catch (error) {
     console.error(`Error finding stock length for ${partNumber}:`, error)
-    return { stockLength: null, isMillFinish: false }
+    return { stockLength: null, isMillFinish: false, basePartNumber: partNumber, stockLengthOptions: [] }
   }
 }
 
@@ -322,13 +355,17 @@ export async function GET(
           let fullPartNumber = bom.partNumber || ''
           let stockLength: number | null = null
           let isMillFinish = false
+          let basePartNumber: string = bom.partNumber || ''
+          let stockLengthOptions: number[] = []
 
-          if (bom.partType === 'Extrusion' && fullPartNumber) {
+          if ((bom.partType === 'Extrusion' || bom.partType === 'CutStock') && fullPartNumber) {
             // Find stock length and isMillFinish flag for extrusions from MasterPart
             if (bom.partNumber) {
               const stockInfo = await findStockLength(bom.partNumber, bom, variables)
               stockLength = stockInfo.stockLength
               isMillFinish = stockInfo.isMillFinish
+              basePartNumber = stockInfo.basePartNumber
+              stockLengthOptions = stockInfo.stockLengthOptions
             }
 
             // Only append finish color code if NOT mill finish (using masterPart.isMillFinish)
@@ -387,11 +424,15 @@ export async function GET(
             partType: bom.partType,
             quantity: bom.quantity || 1,
             cutLength: cutLength ? cutLength.toFixed(3) : '',
+            cutLengthNum: cutLength, // Numeric cut length for yield optimization
             percentOfStock: percentOfStock,
             isMilled: bom.isMilled !== false, // Default to true if not set
             unit: bom.unit || '',
             description: bom.description || '',
-            color: opening.finishColor || 'N/A'
+            color: opening.finishColor || 'N/A',
+            stockLength: stockLength, // For yield optimization
+            basePartNumber: (bom.partType === 'Extrusion' || bom.partType === 'CutStock') ? basePartNumber : undefined,
+            stockLengthOptions: (bom.partType === 'Extrusion' || bom.partType === 'CutStock') && stockLengthOptions.length > 1 ? stockLengthOptions : undefined
           })
         }
 
@@ -1138,6 +1179,92 @@ export async function GET(
               }
             }
           }
+        }
+      }
+    }
+
+    // Apply yield optimization for extrusions/CutStock
+    // Step 1: Ensure all extrusion/CutStock items have numeric cut length
+    for (const item of bomItems) {
+      if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && !item.cutLengthNum && item.cutLength) {
+        // Parse cut length from string (e.g., "72.500") to number
+        const parsed = parseFloat(item.cutLength)
+        if (!isNaN(parsed)) {
+          item.cutLengthNum = parsed
+        }
+      }
+    }
+
+    // Step 2: Collect unique base part numbers that need stock length options
+    const basePartNumbers = new Set<string>()
+    for (const item of bomItems) {
+      if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.cutLengthNum) {
+        // Extract base part number by removing stock length suffix (e.g., "-288" or "-192")
+        let basePn = item.basePartNumber
+        if (!basePn) {
+          // For items from options that don't have basePartNumber set, extract it from partNumber
+          const match = item.partNumber.match(/^(.+)-\d+$/)
+          if (match) {
+            basePn = match[1]
+          } else {
+            basePn = item.partNumber
+          }
+          item.basePartNumber = basePn
+        }
+        basePartNumbers.add(basePn)
+      }
+    }
+
+    // Step 3: Fetch stock length options from database for all base part numbers
+    const stockLengthOptionsMap: Record<string, number[]> = {}
+    if (basePartNumbers.size > 0) {
+      const masterParts = await prisma.masterPart.findMany({
+        where: {
+          partNumber: { in: Array.from(basePartNumbers) },
+          partType: { in: ['Extrusion', 'CutStock'] }
+        },
+        include: {
+          stockLengthRules: { where: { isActive: true } }
+        }
+      })
+
+      for (const mp of masterParts) {
+        const stockLengths = mp.stockLengthRules
+          .map(rule => rule.stockLength)
+          .filter((sl): sl is number => sl !== null && sl !== undefined)
+          .filter((value, index, self) => self.indexOf(value) === index) // unique
+        if (stockLengths.length > 1) {
+          stockLengthOptionsMap[mp.partNumber] = stockLengths
+        }
+      }
+    }
+
+    // Step 4: Prepare items for yield optimization (convert to BomItem format)
+    const itemsForOptimization: BomItem[] = bomItems.map((item: any) => ({
+      partNumber: item.partNumber,
+      partName: item.partName,
+      partType: item.partType,
+      quantity: item.quantity,
+      unit: item.unit || 'EA',
+      stockLength: item.stockLength || null,
+      cutLength: item.cutLengthNum || null,
+      basePartNumber: item.basePartNumber,
+      stockLengthOptions: item.stockLengthOptions
+    }))
+
+    // Step 5: Apply yield optimization
+    const optimizedItems = applyYieldOptimizationToBomItems(itemsForOptimization, stockLengthOptionsMap)
+
+    // Step 6: Update original bomItems with optimized stock lengths and part numbers
+    for (let i = 0; i < bomItems.length; i++) {
+      const original = bomItems[i]
+      const optimized = optimizedItems[i]
+      if (original.partNumber !== optimized.partNumber || original.stockLength !== optimized.stockLength) {
+        original.partNumber = optimized.partNumber
+        original.stockLength = optimized.stockLength
+        // Recalculate percentOfStock with new stock length
+        if (original.cutLengthNum && optimized.stockLength && optimized.stockLength > 0) {
+          original.percentOfStock = ((original.cutLengthNum / optimized.stockLength) * 100).toFixed(1) + '%'
         }
       }
     }
