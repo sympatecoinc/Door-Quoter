@@ -41,7 +41,7 @@ export function generatePricingDebugCSV(data: any): string {
       // BOM Items
       if (component.bomItems.length > 0) {
         csv += 'BOM ITEMS\n'
-        csv += 'Part Number,Part Name,Part Type,Stock Length,Cut Length,Quantity,Unit Cost,Finish Cost,Total Cost,Method,Details,Finish Details\n'
+        csv += 'Part Number,Part Name,Part Type,Stock Length,Cut Length,Quantity,Unit Cost,Finish Cost,Marked Up Cost,Non-Marked Up Cost,Total Cost,Method,Details,Finish Details\n'
         for (const bom of component.bomItems) {
           const partNumber = bom.partNumber || ''
           const partName = (bom.partName || '').replace(/"/g, '""')
@@ -52,11 +52,18 @@ export function generatePricingDebugCSV(data: any): string {
           const unitCost = bom.unitCost?.toFixed(2) || '0.00'
           // Finish cost per unit (total finish cost divided by quantity)
           const finishCostPerUnit = bom.finishCost ? (bom.finishCost / quantity).toFixed(2) : '0.00'
-          const totalCost = bom.totalCost?.toFixed(2) || '0.00'
+          const totalCost = bom.totalCost || 0
+
+          // Calculate marked up vs non-marked up portions
+          // If hybridBreakdown exists, remainingPortionCost is the non-marked up portion
+          // Everything else (including finish cost) gets marked up
+          const nonMarkedUpCost = bom.hybridBreakdown?.remainingPortionCost || 0
+          const markedUpCost = totalCost - nonMarkedUpCost
+
           const method = bom.method || ''
           const details = (bom.details || '').replace(/"/g, '""')
           const finishDetails = (bom.finishDetails || '').replace(/"/g, '""')
-          csv += `"${partNumber}","${partName}","${partType}","${stockLength}","${cutLength}",${quantity},$${unitCost},$${finishCostPerUnit},$${totalCost},"${method}","${details}","${finishDetails}"\n`
+          csv += `"${partNumber}","${partName}","${partType}","${stockLength}","${cutLength}",${quantity},$${unitCost},$${finishCostPerUnit},$${markedUpCost.toFixed(2)},$${nonMarkedUpCost.toFixed(2)},$${totalCost.toFixed(2)},"${method}","${details}","${finishDetails}"\n`
         }
         csv += '\n'
       }
@@ -120,6 +127,43 @@ export function generatePricingDebugCSV(data: any): string {
   csv += `Tax Rate,${(data.totals.taxRate * 100).toFixed(1)}%\n`
   csv += `Tax Amount,$${data.totals.taxAmount?.toFixed(2)}\n`
   csv += `Grand Total,$${data.totals.grandTotal?.toFixed(2)}\n`
+  csv += '\n'
+
+  // Extrusion Markup Breakdown section
+  csv += '=== EXTRUSION MARKUP BREAKDOWN ===\n'
+  csv += 'This section shows which portion of extrusion costs receive markup vs pass-through at cost\n'
+  csv += '\n'
+  csv += 'Opening,Total Extrusion Cost,Extrusion With Markup,Extrusion Without Markup (Hybrid Remaining),Markup %,Marked Up Result\n'
+
+  let totalExtrusionBase = 0
+  let totalExtrusionWithMarkup = 0
+  let totalExtrusionWithoutMarkup = 0
+
+  for (const opening of data.openings) {
+    const extrusionBase = opening.costSummary.extrusion.base || 0
+    const hybridRemaining = opening.costSummary.hybridRemaining.base || 0
+    const extrusionForMarkup = extrusionBase - hybridRemaining
+    const extrusionMarkup = opening.costSummary.extrusion.markup || 0
+    const markedUpResult = opening.costSummary.extrusion.markedUp || 0
+
+    totalExtrusionBase += extrusionBase
+    totalExtrusionWithMarkup += extrusionForMarkup
+    totalExtrusionWithoutMarkup += hybridRemaining
+
+    csv += `"${opening.name}",$${extrusionBase.toFixed(2)},$${extrusionForMarkup.toFixed(2)},$${hybridRemaining.toFixed(2)},${extrusionMarkup}%,$${markedUpResult.toFixed(2)}\n`
+  }
+
+  // Add totals row
+  const overallMarkup = data.pricingMode?.extrusionMarkup || 0
+  const discount = data.pricingMode?.discount || 0
+  const totalMarkedUpResult = totalExtrusionWithMarkup * (1 + overallMarkup / 100) * (1 - discount / 100) + totalExtrusionWithoutMarkup
+
+  csv += '\n'
+  csv += `TOTALS,$${totalExtrusionBase.toFixed(2)},$${totalExtrusionWithMarkup.toFixed(2)},$${totalExtrusionWithoutMarkup.toFixed(2)},${overallMarkup}%,$${totalMarkedUpResult.toFixed(2)}\n`
+  csv += '\n'
+  csv += 'Note: "Extrusion With Markup" = portion that receives the extrusion markup percentage\n'
+  csv += 'Note: "Extrusion Without Markup (Hybrid Remaining)" = portion passed through at cost (no markup applied)\n'
+  csv += 'Note: Marked Up Result = (With Markup × (1 + Markup%)) × (1 - Discount%) + Without Markup\n'
 
   return csv
 }
