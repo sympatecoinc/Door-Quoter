@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FileText, DollarSign, Building2, Plus } from 'lucide-react'
+import { FileText, DollarSign, Building2, Plus, AlertTriangle } from 'lucide-react'
 
 interface PendingQuote {
   id: number
@@ -138,15 +138,29 @@ export default function PendingQuotesList({ onCreateSO, refreshKey }: PendingQuo
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-gray-400" />
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {quote.customer?.companyName || 'Unknown Customer'}
-                      </div>
-                      {quote.customer?.contactName && (
-                        <div className="text-xs text-gray-500">{quote.customer.contactName}</div>
-                      )}
-                    </div>
+                    {quote.customer ? (
+                      <>
+                        <Building2 className="w-4 h-4 text-gray-400" />
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {quote.customer.companyName}
+                          </div>
+                          {quote.customer.contactName && (
+                            <div className="text-xs text-gray-500">{quote.customer.contactName}</div>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="w-4 h-4 text-amber-500" />
+                        <div>
+                          <div className="text-sm font-medium text-amber-700">
+                            No Customer Assigned
+                          </div>
+                          <div className="text-xs text-amber-600">Assign customer before creating SO</div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-3 text-right">
@@ -164,20 +178,27 @@ export default function PendingQuotesList({ onCreateSO, refreshKey }: PendingQuo
                   {formatDate(quote.updatedAt)}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button
-                    onClick={() => handleCreateSO(quote.id)}
-                    disabled={creating === quote.id}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                  >
-                    {creating === quote.id ? (
-                      'Creating...'
-                    ) : (
-                      <>
-                        <Plus className="w-4 h-4" />
-                        Create SO
-                      </>
-                    )}
-                  </button>
+                  {quote.customer ? (
+                    <button
+                      onClick={() => handleCreateSO(quote.id)}
+                      disabled={creating === quote.id}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                    >
+                      {creating === quote.id ? (
+                        'Creating...'
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4" />
+                          Create SO
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-gray-200 text-gray-500 text-sm rounded-lg cursor-not-allowed">
+                      <AlertTriangle className="w-4 h-4" />
+                      Needs Customer
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}

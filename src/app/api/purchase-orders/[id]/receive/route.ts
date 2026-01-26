@@ -109,7 +109,9 @@ export async function POST(
       }
     })
 
-    // Update PO line quantities
+    // Update PO line quantities and track inventory updates
+    const inventoryUpdates: { masterPartId: number; partNumber: string; quantityReceived: number }[] = []
+
     for (const line of lines) {
       const poLine = lineMap.get(line.purchaseOrderLineId)!
       const newReceived = poLine.quantityReceived + (line.quantityReceived || 0)
@@ -120,6 +122,77 @@ export async function POST(
         data: {
           quantityReceived: newReceived,
           quantityRemaining: newRemaining
+        }
+      })
+
+      // Update MasterPart inventory
+      const qtyReceived = line.quantityReceived || 0
+      if (qtyReceived > 0) {
+        // Get the PO line with QuickBooksItem and MasterPart
+        const poLineWithItem = await prisma.purchaseOrderLine.findUnique({
+          where: { id: line.purchaseOrderLineId },
+          include: {
+            quickbooksItem: {
+              include: {
+                masterPart: true
+              }
+            }
+          }
+        })
+
+        let masterPart = poLineWithItem?.quickbooksItem?.masterPart
+
+        // If no direct link, try to find MasterPart by matching description or itemRefName
+        if (!masterPart && poLineWithItem) {
+          const searchTerm = poLineWithItem.description || poLineWithItem.itemRefName
+          if (searchTerm) {
+            // Try exact match on baseName first
+            masterPart = await prisma.masterPart.findFirst({
+              where: {
+                OR: [
+                  { baseName: searchTerm },
+                  { partNumber: searchTerm },
+                  // Also try if the search term contains "partNumber - description" format
+                  { partNumber: searchTerm.split(' - ')[0]?.trim() }
+                ]
+              }
+            })
+          }
+        }
+
+        if (masterPart) {
+          // Increment qtyOnHand
+          await prisma.masterPart.update({
+            where: { id: masterPart.id },
+            data: {
+              qtyOnHand: {
+                increment: qtyReceived
+              }
+            }
+          })
+
+          inventoryUpdates.push({
+            masterPartId: masterPart.id,
+            partNumber: masterPart.partNumber,
+            quantityReceived: qtyReceived
+          })
+        }
+      }
+    }
+
+    // Create inventory notification if any inventory was updated
+    if (inventoryUpdates.length > 0) {
+      const totalQty = inventoryUpdates.reduce((sum, u) => sum + u.quantityReceived, 0)
+      const partsText = inventoryUpdates.length === 1
+        ? `${inventoryUpdates[0].partNumber} (${inventoryUpdates[0].quantityReceived})`
+        : `${inventoryUpdates.length} parts`
+
+      await prisma.inventoryNotification.create({
+        data: {
+          type: 'items_received',
+          message: `Received ${totalQty} items from PO #${purchaseOrder.poNumber || poId}: ${partsText}`,
+          masterPartId: inventoryUpdates.length === 1 ? inventoryUpdates[0].masterPartId : null,
+          actionType: null
         }
       })
     }

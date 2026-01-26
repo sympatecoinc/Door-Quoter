@@ -6,6 +6,7 @@ import {
   fetchAllQBPurchaseOrders,
   qbPOToLocal,
   pushPOToQB,
+  pushVendorToQB,
   QBPurchaseOrder,
   QBPOLine
 } from '@/lib/quickbooks'
@@ -39,10 +40,20 @@ export async function GET(request: NextRequest) {
 
     for (const po of localOnlyPOs) {
       try {
-        // Skip if vendor is not synced to QB
+        // Auto-push vendor to QB if not synced
         if (!po.vendor?.quickbooksId) {
-          results.errors.push(`Skipped PO ${po.poNumber}: Vendor not synced to QuickBooks`)
-          continue
+          if (!po.vendor) {
+            results.errors.push(`Skipped PO ${po.poNumber}: No vendor assigned`)
+            continue
+          }
+          console.log(`[QB 2-Way Sync] Vendor "${po.vendor.displayName}" not synced - pushing to QB first...`)
+          try {
+            await pushVendorToQB(po.vendor.id)
+            console.log(`[QB 2-Way Sync] Vendor "${po.vendor.displayName}" synced to QuickBooks`)
+          } catch (vendorError) {
+            results.errors.push(`Skipped PO ${po.poNumber}: Failed to sync vendor "${po.vendor.displayName}" - ${vendorError instanceof Error ? vendorError.message : 'Unknown error'}`)
+            continue
+          }
         }
         await pushPOToQB(po.id)
         results.pushed++
@@ -77,26 +88,45 @@ export async function GET(request: NextRequest) {
           continue
         }
 
-        // Check if PO exists locally
+        // Check if PO exists locally by quickbooksId
         const existingPO = await prisma.purchaseOrder.findUnique({
           where: { quickbooksId: qbPO.Id }
         })
 
+        console.log(`[QB Sync] Processing QB PO ${qbPO.DocNumber || qbPO.Id}: existingPO=${existingPO ? `found (id=${existingPO.id}, status=${existingPO.status})` : 'NOT FOUND'}`)
+
         const localData = qbPOToLocal(qbPO, vendor.id)
 
         // Map QB PO status to local status
-        const status = mapQBStatusToLocal(qbPO)
-        localData.status = status
+        const qbMappedStatus = mapQBStatusToLocal(qbPO)
 
         if (existingPO) {
           // Update existing PO
+          // Only override local status if QB explicitly indicates closed/complete
+          const qbIndicatesClosed = qbPO.ManuallyClosed === true || qbPO.POStatus === 'Closed'
+          const finalStatus = qbIndicatesClosed ? qbMappedStatus : existingPO.status
+
+          console.log(`[QB Sync] Updating existing PO ${existingPO.poNumber}:`, {
+            qbId: qbPO.Id,
+            qbManuallyClosed: qbPO.ManuallyClosed,
+            qbPOStatus: qbPO.POStatus,
+            qbIndicatesClosed,
+            existingStatus: existingPO.status,
+            finalStatus
+          })
+
+          // Remove status from localData to avoid accidental override
+          const { status: _ignoredStatus, ...localDataWithoutStatus } = localData as any
+
           await prisma.purchaseOrder.update({
             where: { id: existingPO.id },
             data: {
-              ...localData,
+              ...localDataWithoutStatus,
               // Don't overwrite local-only fields
               poNumber: existingPO.poNumber,
-              createdById: existingPO.createdById
+              createdById: existingPO.createdById,
+              // Explicitly set status
+              status: finalStatus
             }
           })
 
@@ -105,7 +135,7 @@ export async function GET(request: NextRequest) {
 
           results.updated++
         } else {
-          // Create new PO
+          // Create new PO from QuickBooks (not created locally first)
           const poNumber = qbPO.DocNumber || `QB-${qbPO.Id}`
 
           // Check for duplicate poNumber
@@ -113,15 +143,17 @@ export async function GET(request: NextRequest) {
             where: { poNumber }
           })
 
+          console.log(`[QB Sync] Creating new PO from QB: ${poNumber}, status: ${qbMappedStatus}`)
+
           const newPO = await prisma.purchaseOrder.create({
             data: {
               ...localData,
               poNumber: existingByNumber ? `${poNumber}-QB` : poNumber,
-              status,
+              status: qbMappedStatus,
               statusHistory: {
                 create: {
                   fromStatus: null,
-                  toStatus: status,
+                  toStatus: qbMappedStatus,
                   notes: 'Synced from QuickBooks'
                 }
               }
@@ -182,42 +214,70 @@ async function syncPOLines(poId: number, qbPO: QBPurchaseOrder) {
     where: { purchaseOrderId: poId }
   })
 
-  // Delete lines that don't exist in QB anymore (based on lineNum)
-  // For simplicity, we'll just update/create based on line order
-
+  // Process lines from QB - handle both ItemBasedExpenseLineDetail and AccountBasedExpenseLineDetail
   let lineNum = 0
   for (const qbLine of qbPO.Line) {
-    if (qbLine.DetailType !== 'ItemBasedExpenseLineDetail') {
-      continue // Skip non-item lines (like subtotal lines)
+    // Skip subtotal/summary lines that don't represent actual line items
+    if (qbLine.DetailType !== 'ItemBasedExpenseLineDetail' &&
+        qbLine.DetailType !== 'AccountBasedExpenseLineDetail') {
+      continue
     }
 
     lineNum++
-    const detail = qbLine.ItemBasedExpenseLineDetail
 
-    // Try to find matching QB Item locally
     let quickbooksItemId: number | null = null
-    if (detail?.ItemRef?.value) {
-      const qbItem = await prisma.quickBooksItem.findUnique({
-        where: { quickbooksId: detail.ItemRef.value }
-      })
-      quickbooksItemId = qbItem?.id || null
+    let itemRefId: string | null = null
+    let itemRefName: string | null = null
+    let quantity = 1
+    let unitPrice = 0
+
+    if (qbLine.DetailType === 'ItemBasedExpenseLineDetail') {
+      const detail = qbLine.ItemBasedExpenseLineDetail
+
+      // Try to find matching QB Item locally
+      if (detail?.ItemRef?.value) {
+        const qbItem = await prisma.quickBooksItem.findUnique({
+          where: { quickbooksId: detail.ItemRef.value }
+        })
+        quickbooksItemId = qbItem?.id || null
+        itemRefId = detail.ItemRef.value
+        itemRefName = detail.ItemRef.name || null
+      }
+
+      quantity = detail?.Qty || 1
+      unitPrice = detail?.UnitPrice || 0
+    } else if (qbLine.DetailType === 'AccountBasedExpenseLineDetail') {
+      // Account-based lines don't store quantity/unit price in QB
+      // We'll use defaults here, but preserve existing values if the line already exists
+      quantity = 1
+      unitPrice = qbLine.Amount || 0
+    }
+
+    // Find existing line by lineNum BEFORE building lineData
+    // so we can preserve quantity/price for account-based lines
+    const existingLine = currentLines.find(l => l.lineNum === lineNum)
+
+    // For account-based lines, preserve the original quantity, unit price, and amount
+    // since QB doesn't store these values separately
+    let amount = qbLine.Amount || 0
+    if (qbLine.DetailType === 'AccountBasedExpenseLineDetail' && existingLine) {
+      quantity = existingLine.quantity
+      unitPrice = existingLine.unitPrice
+      amount = existingLine.amount || (quantity * unitPrice)
     }
 
     const lineData = {
       lineNum,
       quickbooksItemId,
-      itemRefId: detail?.ItemRef?.value || null,
-      itemRefName: detail?.ItemRef?.name || null,
+      itemRefId,
+      itemRefName,
       description: qbLine.Description || null,
-      quantity: detail?.Qty || 1,
-      unitPrice: detail?.UnitPrice || 0,
-      amount: qbLine.Amount || 0,
+      quantity,
+      unitPrice,
+      amount,
       quantityReceived: 0,
-      quantityRemaining: detail?.Qty || 1
+      quantityRemaining: quantity
     }
-
-    // Find existing line by lineNum
-    const existingLine = currentLines.find(l => l.lineNum === lineNum)
 
     if (existingLine) {
       await prisma.purchaseOrderLine.update({

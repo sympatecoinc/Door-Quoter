@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Bell, ChevronDown, ChevronUp, X, Settings } from 'lucide-react'
+import { Bell, ChevronDown, ChevronUp, X, Settings, Eye, PackageCheck } from 'lucide-react'
 
 interface MasterPart {
   id: number
@@ -59,44 +59,65 @@ export default function InventoryNotificationBanner({
       {/* Notification list - collapsible */}
       {isExpanded && (
         <div className="border-t border-blue-200 divide-y divide-blue-100">
-          {notifications.map(notification => (
-            <div
-              key={notification.id}
-              className="px-4 py-3 flex items-center justify-between bg-white"
-            >
-              <div className="flex-1">
-                <div className="text-sm text-gray-900">
-                  {notification.message}
-                </div>
-                {notification.masterPart && (
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {notification.masterPart.partType} - {notification.masterPart.baseName}
+          {notifications.map(notification => {
+            const isItemsReceived = notification.type === 'items_received'
+            const bgColor = isItemsReceived ? 'bg-green-50' : 'bg-white'
+
+            return (
+              <div
+                key={notification.id}
+                className={`px-4 py-3 flex items-center justify-between ${bgColor}`}
+              >
+                <div className="flex items-center gap-3 flex-1">
+                  {isItemsReceived && (
+                    <PackageCheck className="w-5 h-5 text-green-600 flex-shrink-0" />
+                  )}
+                  <div className="flex-1">
+                    <div className="text-sm text-gray-900">
+                      {notification.message}
+                    </div>
+                    {notification.masterPart && (
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {notification.masterPart.partType} - {notification.masterPart.baseName}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              <div className="flex items-center gap-2 ml-4">
-                {notification.actionType === 'setup_part' && notification.masterPartId && (
+                </div>
+                <div className="flex items-center gap-2 ml-4">
+                  {notification.actionType === 'setup_part' && notification.masterPartId && (
+                    <button
+                      onClick={() => {
+                        onSetupPart(notification.masterPartId!)
+                        onDismiss(notification.id)
+                      }}
+                      className="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
+                    >
+                      <Settings className="w-4 h-4" />
+                      Set Up Part
+                    </button>
+                  )}
+                  {isItemsReceived && notification.masterPartId && (
+                    <button
+                      onClick={() => {
+                        onSetupPart(notification.masterPartId!)
+                      }}
+                      className="px-3 py-1.5 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1"
+                    >
+                      <Eye className="w-4 h-4" />
+                      View Part
+                    </button>
+                  )}
                   <button
-                    onClick={() => {
-                      onSetupPart(notification.masterPartId!)
-                      onDismiss(notification.id)
-                    }}
-                    className="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
+                    onClick={() => onDismiss(notification.id)}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                    title="Dismiss"
                   >
-                    <Settings className="w-4 h-4" />
-                    Set Up Part
+                    <X className="w-4 h-4" />
                   </button>
-                )}
-                <button
-                  onClick={() => onDismiss(notification.id)}
-                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                  title="Dismiss"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

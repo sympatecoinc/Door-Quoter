@@ -27,14 +27,23 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 })
     }
 
-    // Check project status first
+    // Check project status and customer first
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { status: true }
+      select: { status: true, customerId: true, prospectCompanyName: true }
     })
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    // Check if project has a customer assigned
+    if (!project.customerId) {
+      const prospectName = project.prospectCompanyName ? ` (Prospect: ${project.prospectCompanyName})` : ''
+      return NextResponse.json(
+        { error: `Cannot create sales order without a customer assigned.${prospectName} Please assign a customer to this project before creating a sales order.` },
+        { status: 400 }
+      )
     }
 
     // Check if project status allows sales order creation

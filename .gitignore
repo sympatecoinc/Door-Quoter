@@ -52,3 +52,9 @@ next-env.d.ts
 # ClickUp API credentials
 /scripts/clickup-helper.js
 backups/
+
+# Firebase
+firebase-debug.log
+
+# External projects
+/Linea Motion Website/

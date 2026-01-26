@@ -56,6 +56,14 @@ export async function createSalesOrderFromProject(
     return { success: false, error: 'Project not found' }
   }
 
+  // Check if project has a customer assigned
+  if (!project.customerId) {
+    return {
+      success: false,
+      error: 'Cannot create sales order without a customer assigned. Please assign a customer to this project first.'
+    }
+  }
+
   // Check if sales order already exists for this project
   if (project.salesOrders.length > 0) {
     // Sales order already exists - this is not an error for auto-create

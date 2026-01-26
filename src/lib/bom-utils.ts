@@ -814,3 +814,63 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
 
   return [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
 }
+
+// Helper function to convert combined summary to CSV with project header
+export function combinedSummaryToCSV(
+  projectNames: string[],
+  summaryItems: AggregatedBomItem[]
+): string {
+  const lines: string[] = []
+
+  // Header section with project info
+  lines.push('# Combined Purchase Summary')
+  lines.push(`# Projects: ${projectNames.join(', ')}`)
+  lines.push(`# Generated: ${new Date().toISOString().split('T')[0]}`)
+  lines.push('')
+
+  const headers = ['Part Number', 'Part Name', 'Type', 'Size (WxH)', 'Pieces', 'Unit', 'Stock Length']
+  lines.push(headers.join(','))
+
+  for (const item of summaryItems) {
+    // For glass, show the specific size; for extrusions, show cut lengths
+    let sizeStr = ''
+    if (item.partType === 'Glass' && item.glassWidth && item.glassHeight) {
+      sizeStr = `${item.glassWidth.toFixed(3)}" x ${item.glassHeight.toFixed(3)}"`
+    } else if (item.cutLengths && item.cutLengths.length > 0) {
+      const uniqueCuts = [...new Set(item.cutLengths.map((l: number) => l.toFixed(3)))]
+      sizeStr = uniqueCuts.join('; ')
+    }
+
+    // Determine unit - extrusions, CutStock, and glass use EA
+    let unitStr = item.unit
+    if (item.partType === 'Extrusion' || item.partType === 'CutStock' || item.partType === 'Glass') {
+      unitStr = 'EA'
+    }
+
+    // Determine pieces value
+    let piecesValue: string | number = item.totalQuantity
+    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockPiecesNeeded !== null) {
+      piecesValue = item.stockPiecesNeeded
+    } else if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
+               (item.unit === 'LF' || item.unit === 'IN') &&
+               item.totalCalculatedLength) {
+      piecesValue = roundUpWithOverage(item.totalCalculatedLength, unitStr)
+    } else if (unitStr !== 'EA') {
+      piecesValue = roundUpWithOverage(item.totalQuantity, unitStr)
+    }
+
+    const row = [
+      item.partNumber,
+      item.partName,
+      item.partType,
+      sizeStr,
+      piecesValue,
+      unitStr,
+      item.stockLength || ''
+    ].map(field => `"${String(field).replace(/"/g, '""')}"`)
+
+    lines.push(row.join(','))
+  }
+
+  return lines.join('\n')
+}

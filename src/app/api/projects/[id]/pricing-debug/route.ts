@@ -78,7 +78,7 @@ function calculateExtrusionPricePerPiece(
 
 // Helper function to calculate option price - handles both hardware and extrusions
 async function calculateOptionPrice(
-  option: { partNumber?: string | null; isCutListItem: boolean; id: number; name: string },
+  option: any,
   optionBom: any | null,
   quantity: number,
   componentWidth: number,
@@ -86,58 +86,100 @@ async function calculateOptionPrice(
   extrusionCostingMethod: string,
   excludedPartNumbers: string[],
   finishColor: string | null,
-  globalMaterialPricePerLb: number
-): Promise<{ unitPrice: number; totalPrice: number; isExtrusion: boolean; breakdown?: any }> {
-  if (!option.partNumber) {
-    return { unitPrice: 0, totalPrice: 0, isExtrusion: false }
-  }
+  globalMaterialPricePerLb: number,
+  selectedVariantId?: number | null
+): Promise<{ unitPrice: number; totalPrice: number; isExtrusion: boolean; breakdown?: any; linkedPartsCost?: number; linkedPartsBreakdown?: any[] }> {
+  let baseUnitPrice = 0
+  let baseTotalPrice = 0
+  let isExtrusion = false
+  let breakdown: any = null
 
-  // Look up MasterPart to check if it's an extrusion
-  const masterPart = await prisma.masterPart.findUnique({
-    where: { partNumber: option.partNumber },
-    select: { partType: true, cost: true }
-  })
+  if (option.partNumber) {
+    // Look up MasterPart to check if it's an extrusion
+    const masterPart = await prisma.masterPart.findUnique({
+      where: { partNumber: option.partNumber },
+      select: { partType: true, cost: true, salePrice: true }
+    })
 
-  if (!masterPart) {
-    return { unitPrice: 0, totalPrice: 0, isExtrusion: false }
-  }
+    if (masterPart) {
+      // Check for sale price first
+      if (masterPart.salePrice && masterPart.salePrice > 0) {
+        baseUnitPrice = masterPart.salePrice
+        baseTotalPrice = masterPart.salePrice * quantity
+      } else if (masterPart.partType === 'Extrusion' && optionBom) {
+        // If it's an extrusion with a BOM entry, use full extrusion pricing logic
+        const bomForPricing = {
+          partNumber: option.partNumber,
+          partName: option.name,
+          partType: 'Extrusion',
+          quantity: quantity,
+          formula: optionBom.formula,
+          cost: optionBom.cost
+        }
 
-  // If it's an extrusion with a BOM entry, use full extrusion pricing logic
-  if (masterPart.partType === 'Extrusion' && optionBom) {
-    // Create a BOM-like object for calculateBOMItemPrice
-    const bomForPricing = {
-      partNumber: option.partNumber,
-      partName: option.name,
-      partType: 'Extrusion',
-      quantity: quantity,
-      formula: optionBom.formula,
-      cost: optionBom.cost
+        const bomResult = await calculateBOMItemPrice(
+          bomForPricing,
+          componentWidth,
+          componentHeight,
+          extrusionCostingMethod,
+          excludedPartNumbers,
+          finishColor,
+          globalMaterialPricePerLb
+        )
+
+        baseUnitPrice = bomResult.cost / quantity
+        baseTotalPrice = bomResult.cost
+        isExtrusion = true
+        breakdown = bomResult.breakdown
+      } else {
+        // For hardware and other part types, use direct cost
+        baseUnitPrice = masterPart.cost ?? 0
+        baseTotalPrice = baseUnitPrice * quantity
+      }
     }
+  }
 
-    const { cost, breakdown } = await calculateBOMItemPrice(
-      bomForPricing,
-      componentWidth,
-      componentHeight,
-      extrusionCostingMethod,
-      excludedPartNumbers,
-      finishColor,
-      globalMaterialPricePerLb
-    )
+  // Calculate linked parts cost
+  let linkedPartsCost = 0
+  const linkedPartsBreakdown: any[] = []
+  if (option.linkedParts && option.linkedParts.length > 0) {
+    const applicableLinkedParts = option.linkedParts.filter((lp: any) => {
+      if (lp.variantId === null) return true
+      if (!selectedVariantId) {
+        const defaultVariant = option.variants?.find((v: any) => v.isDefault)
+        if (defaultVariant) return lp.variantId === defaultVariant.id
+        return false
+      }
+      return lp.variantId === selectedVariantId
+    })
 
-    return {
-      unitPrice: cost / quantity,
-      totalPrice: cost,
-      isExtrusion: true,
-      breakdown
+    for (const linkedPart of applicableLinkedParts) {
+      const linkedQuantity = (linkedPart.quantity || 1) * quantity
+      const partCost = linkedPart.masterPart?.cost || 0
+      const cost = partCost * linkedQuantity
+      linkedPartsCost += cost
+      linkedPartsBreakdown.push({
+        partNumber: linkedPart.masterPart?.partNumber,
+        partName: linkedPart.masterPart?.partName,
+        quantity: linkedQuantity,
+        unitCost: partCost,
+        totalCost: cost,
+        variantId: linkedPart.variantId,
+        variantName: linkedPart.variant?.name
+      })
     }
   }
 
-  // For hardware and other part types, use direct cost
-  const unitPrice = masterPart.cost ?? 0
+  const totalPrice = baseTotalPrice + linkedPartsCost
+  const unitPrice = quantity > 0 ? totalPrice / quantity : 0
+
   return {
     unitPrice,
-    totalPrice: unitPrice * quantity,
-    isExtrusion: false
+    totalPrice,
+    isExtrusion,
+    breakdown,
+    linkedPartsCost,
+    linkedPartsBreakdown
   }
 }
 
@@ -595,7 +637,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                         productSubOptions: {
                           include: {
                             category: {
-                              include: { individualOptions: true }
+                              include: {
+                                individualOptions: {
+                                  include: {
+                                    linkedParts: {
+                                      include: {
+                                        masterPart: true,
+                                        variant: true
+                                      }
+                                    },
+                                    variants: {
+                                      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+                                    }
+                                  }
+                                }
+                              }
                             }
                           }
                         }
@@ -681,6 +737,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         if (panel.componentInstance.subOptionSelections) {
           try {
             selections = JSON.parse(panel.componentInstance.subOptionSelections)
+          } catch (e) {}
+        }
+
+        // Parse variant selections
+        let variantSelections: Record<string, number> = {}
+        if (panel.componentInstance.variantSelections) {
+          try {
+            variantSelections = JSON.parse(panel.componentInstance.variantSelections)
           } catch (e) {}
         }
 
@@ -804,6 +868,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               const quantity = optionBom?.quantity || 1
 
               // Calculate price using helper that handles both hardware and extrusions
+              // For standard options, use the selected variant or default variant
+              const selectedVariantId = variantSelections[String(standardOption.id)]
               const priceResult = await calculateOptionPrice(
                 standardOption,
                 optionBom,
@@ -813,7 +879,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 extrusionCostingMethod,
                 project.excludedPartNumbers || [],
                 opening.finishColor,
-                globalMaterialPricePerLb
+                globalMaterialPricePerLb,
+                selectedVariantId
               )
 
               componentData.optionItems.push({
@@ -826,7 +893,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 isStandard: true,
                 isIncluded: false,
                 method: priceResult.breakdown?.method,
-                details: priceResult.breakdown?.details
+                details: priceResult.breakdown?.details,
+                linkedPartsCost: priceResult.linkedPartsCost,
+                linkedParts: priceResult.linkedPartsBreakdown
               })
               componentData.totalOptionCost += priceResult.totalPrice
               standardOptionCost += priceResult.totalPrice
@@ -862,6 +931,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               : (optionBom?.quantity || 1)
 
             // Calculate price using helper that handles both hardware and extrusions
+            const selectedVariantId = variantSelections[String(selectedOption.id)]
             const priceResult = await calculateOptionPrice(
               selectedOption,
               optionBom,
@@ -871,7 +941,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               extrusionCostingMethod,
               project.excludedPartNumbers || [],
               opening.finishColor,
-              globalMaterialPricePerLb
+              globalMaterialPricePerLb,
+              selectedVariantId
             )
 
             if (isStandardSelected) {
@@ -888,7 +959,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 isStandard: true,
                 isIncluded,
                 method: priceResult.breakdown?.method,
-                details: priceResult.breakdown?.details
+                details: priceResult.breakdown?.details,
+                linkedPartsCost: priceResult.linkedPartsCost,
+                linkedParts: priceResult.linkedPartsBreakdown
               })
               componentData.totalOptionCost += optionPrice
               standardOptionCost += optionPrice
@@ -906,6 +979,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               const standardOptionBom = standardOption?.isCutListItem
                 ? product.productBOMs?.find((bom: any) => bom.optionId === standardOption.id)
                 : null
+              const standardVariantId = standardOption ? variantSelections[String(standardOption.id)] : null
               const standardPriceResult = standardOption
                 ? await calculateOptionPrice(
                     standardOption,
@@ -916,7 +990,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                     extrusionCostingMethod,
                     project.excludedPartNumbers || [],
                     opening.finishColor,
-                    globalMaterialPricePerLb
+                    globalMaterialPricePerLb,
+                    standardVariantId
                   )
                 : { unitPrice: 0, totalPrice: 0, isExtrusion: false }
 
@@ -932,7 +1007,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 standardDeducted: standardPriceResult.unitPrice,
                 standardPrice: standardPriceResult.totalPrice,
                 method: priceResult.breakdown?.method,
-                details: priceResult.breakdown?.details
+                details: priceResult.breakdown?.details,
+                linkedPartsCost: priceResult.linkedPartsCost,
+                linkedParts: priceResult.linkedPartsBreakdown
               })
               componentData.totalOptionCost += optionPrice
               // Track the standard portion in standardOptionCost (no markup)
@@ -961,6 +1038,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               const quantity = optionBom?.quantity || 1
 
               // Calculate price using helper that handles both hardware and extrusions
+              const selectedVariantId = variantSelections[String(standardOption.id)]
               const priceResult = await calculateOptionPrice(
                 standardOption,
                 optionBom,
@@ -970,7 +1048,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 extrusionCostingMethod,
                 project.excludedPartNumbers || [],
                 opening.finishColor,
-                globalMaterialPricePerLb
+                globalMaterialPricePerLb,
+                selectedVariantId
               )
 
               componentData.optionItems.push({
@@ -983,7 +1062,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 isStandard: true,
                 isIncluded: false,
                 method: priceResult.breakdown?.method,
-                details: priceResult.breakdown?.details
+                details: priceResult.breakdown?.details,
+                linkedPartsCost: priceResult.linkedPartsCost,
+                linkedParts: priceResult.linkedPartsBreakdown
               })
               componentData.totalOptionCost += priceResult.totalPrice
               standardOptionCost += priceResult.totalPrice

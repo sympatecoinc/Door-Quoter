@@ -11,6 +11,12 @@ export async function GET() {
         isCurrentVersion: true
       },
       include: {
+        customer: {
+          select: {
+            id: true,
+            companyName: true
+          }
+        },
         openings: {
           orderBy: { id: 'asc' },
           select: {

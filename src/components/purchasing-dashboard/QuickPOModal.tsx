@@ -1,13 +1,16 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Package, AlertCircle, ShoppingCart, ExternalLink, Loader2 } from 'lucide-react'
-import type { InventoryAlert, QuickPOResponse } from './types'
+import { X, Package, AlertCircle, ShoppingCart, ExternalLink, Loader2, Plus, FileText } from 'lucide-react'
+import type { InventoryAlert, QuickPOResponse, DraftPO, AddToExistingPOResponse } from './types'
+import { useAppStore } from '@/stores/appStore'
 
 interface Vendor {
   id: number
   displayName: string
 }
+
+type POMode = 'create' | 'addToExisting'
 
 interface QuickPOModalProps {
   alert: InventoryAlert
@@ -16,6 +19,8 @@ interface QuickPOModalProps {
 }
 
 export default function QuickPOModal({ alert, onClose, onSuccess }: QuickPOModalProps) {
+  const { setCurrentMenu, setSelectedPOId } = useAppStore()
+  const [mode, setMode] = useState<POMode>('create')
   const [quantity, setQuantity] = useState<number>(
     alert.shortage > 0 ? alert.shortage : (alert.reorderQty || 1)
   )
@@ -25,10 +30,26 @@ export default function QuickPOModal({ alert, onClose, onSuccess }: QuickPOModal
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [createdPO, setCreatedPO] = useState<QuickPOResponse['purchaseOrder'] | null>(null)
+  const [addedToPO, setAddedToPO] = useState<boolean>(false)
+
+  // Add to existing PO state
+  const [draftPOs, setDraftPOs] = useState<DraftPO[]>([])
+  const [selectedPO, setSelectedPO] = useState<number | null>(null)
+  const [loadingDraftPOs, setLoadingDraftPOs] = useState(false)
 
   useEffect(() => {
     fetchVendors()
   }, [])
+
+  // Fetch draft POs when vendor changes and mode is addToExisting
+  useEffect(() => {
+    if (mode === 'addToExisting' && vendorId) {
+      fetchDraftPOs(vendorId)
+    } else {
+      setDraftPOs([])
+      setSelectedPO(null)
+    }
+  }, [mode, vendorId])
 
   async function fetchVendors() {
     try {
@@ -42,30 +63,81 @@ export default function QuickPOModal({ alert, onClose, onSuccess }: QuickPOModal
     }
   }
 
+  async function fetchDraftPOs(vendorIdParam: number) {
+    setLoadingDraftPOs(true)
+    try {
+      const response = await fetch(`/api/purchase-orders?vendorId=${vendorIdParam}&status=DRAFT&limit=50`)
+      if (response.ok) {
+        const data = await response.json()
+        const drafts: DraftPO[] = (data.purchaseOrders || []).map((po: any) => ({
+          id: po.id,
+          poNumber: po.poNumber,
+          vendorName: po.vendor?.displayName || 'Unknown',
+          totalAmount: po.totalAmount || 0,
+          lineCount: po._count?.lines || po.lines?.length || 0,
+          createdAt: po.createdAt
+        }))
+        setDraftPOs(drafts)
+        // Auto-select if only one draft
+        if (drafts.length === 1) {
+          setSelectedPO(drafts[0].id)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching draft POs:', error)
+    } finally {
+      setLoadingDraftPOs(false)
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setLoading(true)
 
     try {
-      const response = await fetch('/api/purchase-orders/quick-create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          masterPartId: alert.partId,
-          quantity,
-          vendorId: vendorId || undefined,
-          notes: notes || undefined
+      if (mode === 'addToExisting' && selectedPO) {
+        // Add line to existing PO
+        const response = await fetch(`/api/purchase-orders/${selectedPO}/add-line`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            masterPartId: alert.partId,
+            quantity,
+            notes: notes || undefined
+          })
         })
-      })
 
-      const result = await response.json()
+        const result: AddToExistingPOResponse = await response.json()
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to create purchase order')
+        if (!response.ok) {
+          throw new Error((result as any).error || 'Failed to add to purchase order')
+        }
+
+        setCreatedPO(result.purchaseOrder)
+        setAddedToPO(true)
+      } else {
+        // Create new PO
+        const response = await fetch('/api/purchase-orders/quick-create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            masterPartId: alert.partId,
+            quantity,
+            vendorId: vendorId || undefined,
+            notes: notes || undefined
+          })
+        })
+
+        const result = await response.json()
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to create purchase order')
+        }
+
+        setCreatedPO(result.purchaseOrder)
+        setAddedToPO(false)
       }
-
-      setCreatedPO(result.purchaseOrder)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -82,9 +154,14 @@ export default function QuickPOModal({ alert, onClose, onSuccess }: QuickPOModal
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <ShoppingCart className="w-8 h-8 text-green-600" />
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">PO Created Successfully</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">
+              {addedToPO ? 'Line Added Successfully' : 'PO Created Successfully'}
+            </h2>
             <p className="text-gray-600 mb-4">
-              {createdPO.poNumber} has been created as a draft for {createdPO.vendorName}
+              {addedToPO
+                ? `Item added to ${createdPO.poNumber} for ${createdPO.vendorName}`
+                : `${createdPO.poNumber} has been created as a draft for ${createdPO.vendorName}`
+              }
             </p>
             <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
               <div className="grid grid-cols-2 gap-2 text-sm">
@@ -100,17 +177,21 @@ export default function QuickPOModal({ alert, onClose, onSuccess }: QuickPOModal
             </div>
             <div className="flex gap-3">
               <button
-                onClick={onSuccess}
+                onClick={onClose}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
               >
                 Close
               </button>
-              <a
-                href={`/purchasing?po=${createdPO.id}`}
+              <button
+                onClick={() => {
+                  setSelectedPOId(createdPO.id)
+                  setCurrentMenu('purchaseOrders')
+                  onClose()
+                }}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
               >
                 View PO <ExternalLink className="w-4 h-4" />
-              </a>
+              </button>
             </div>
           </div>
         </div>
@@ -269,6 +350,93 @@ export default function QuickPOModal({ alert, onClose, onSuccess }: QuickPOModal
             )}
           </div>
 
+          {/* PO Mode Selection */}
+          {vendorId && (
+            <div className="p-4 border-b border-gray-200">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Add To</h3>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMode('create')}
+                  className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
+                    mode === 'create'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                  }`}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="font-medium">New PO</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('addToExisting')}
+                  className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
+                    mode === 'addToExisting'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span className="font-medium">Existing PO</span>
+                </button>
+              </div>
+
+              {/* Draft PO Selection */}
+              {mode === 'addToExisting' && (
+                <div className="mt-4">
+                  {loadingDraftPOs ? (
+                    <div className="flex items-center justify-center py-4 text-gray-500">
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Loading draft POs...
+                    </div>
+                  ) : draftPOs.length === 0 ? (
+                    <div className="py-4 text-center">
+                      <p className="text-sm text-gray-500">No draft POs found for this vendor.</p>
+                      <button
+                        type="button"
+                        onClick={() => setMode('create')}
+                        className="mt-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        Create a new PO instead
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <label className="text-sm text-gray-600">Select Draft PO</label>
+                      {draftPOs.map(po => (
+                        <label
+                          key={po.id}
+                          className={`block p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                            selectedPO === po.id
+                              ? 'border-blue-500 bg-blue-50'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="radio"
+                              name="draftPO"
+                              value={po.id}
+                              checked={selectedPO === po.id}
+                              onChange={() => setSelectedPO(po.id)}
+                              className="text-blue-600 focus:ring-blue-500"
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-900">{po.poNumber}</div>
+                              <div className="text-sm text-gray-500">
+                                {po.lineCount} item{po.lineCount !== 1 ? 's' : ''} · ${po.totalAmount.toFixed(2)}
+                              </div>
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Notes */}
           <div className="p-4 border-b border-gray-200">
             <h3 className="text-sm font-medium text-gray-700 mb-3">Notes (Optional)</h3>
@@ -300,13 +468,18 @@ export default function QuickPOModal({ alert, onClose, onSuccess }: QuickPOModal
             </button>
             <button
               type="submit"
-              disabled={loading || !vendorId}
+              disabled={loading || !vendorId || (mode === 'addToExisting' && !selectedPO)}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Creating...
+                  {mode === 'addToExisting' ? 'Adding...' : 'Creating...'}
+                </>
+              ) : mode === 'addToExisting' ? (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Add to PO
                 </>
               ) : (
                 <>

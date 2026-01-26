@@ -90,24 +90,39 @@ export async function GET() {
 
     // Add Sales Order parts requirements (only unfulfilled quantity)
     for (const so of salesOrders) {
+      // First, aggregate parts by partNumber within this SO
+      const soPartsByNumber: Map<string, { partType: string; totalRemainingQty: number }> = new Map()
+
       for (const part of so.parts) {
-        // Calculate remaining quantity needed (not yet shipped)
         const remainingQty = part.quantity - part.qtyShipped
         if (remainingQty <= 0) continue // Skip fully shipped parts
 
-        const existing = requirementsByPart.get(part.partNumber) || {
-          partName: part.partNumber,
-          materialType: part.partType,
+        const existingSoPart = soPartsByNumber.get(part.partNumber)
+        if (existingSoPart) {
+          existingSoPart.totalRemainingQty += remainingQty
+        } else {
+          soPartsByNumber.set(part.partNumber, {
+            partType: part.partType,
+            totalRemainingQty: remainingQty
+          })
+        }
+      }
+
+      // Now add aggregated SO parts to requirements
+      for (const [partNumber, soPart] of soPartsByNumber) {
+        const existing = requirementsByPart.get(partNumber) || {
+          partName: partNumber,
+          materialType: soPart.partType,
           totalQty: 0,
           neededByDate: null,
           projects: []
         }
 
-        existing.totalQty += remainingQty
+        existing.totalQty += soPart.totalRemainingQty
         existing.projects.push({
           id: so.id,
           name: `SO: ${so.orderNumber}`,
-          qty: remainingQty,
+          qty: soPart.totalRemainingQty,
           type: 'salesOrder'
         })
 
@@ -118,7 +133,7 @@ export async function GET() {
           }
         }
 
-        requirementsByPart.set(part.partNumber, existing)
+        requirementsByPart.set(partNumber, existing)
       }
     }
 

@@ -16,6 +16,9 @@ interface AppState {
   showSalesLeadView: boolean
   salesViewMode: SalesViewMode
   cameFromSalesDashboard: boolean
+  // Purchase Order state
+  selectedPOId: number | null
+  setSelectedPOId: (id: number | null) => void
   setCurrentMenu: (menu: MenuOption) => void
   setSelectedProjectId: (id: number | null) => void
   setSelectedCustomerId: (id: number | null) => void
@@ -46,6 +49,9 @@ export const useAppStore = create<AppState>((set) => ({
   showSalesLeadView: false,
   salesViewMode: 'leads',
   cameFromSalesDashboard: false,
+  // Purchase Order state
+  selectedPOId: null,
+  setSelectedPOId: (id) => set({ selectedPOId: id }),
   setCurrentMenu: (menu) => set({ currentMenu: menu }),
   setSelectedProjectId: (id) => set({ selectedProjectId: id }),
   setSelectedCustomerId: (id) => set({ selectedCustomerId: id }),

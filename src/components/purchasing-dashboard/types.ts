@@ -33,6 +33,10 @@ export interface InventoryAlert {
   vendorName: string | null
   category: string | null
   demandSources: DemandSource[] // Breakdown of where demand comes from
+  // Extrusion variant details (optional - only for extrusion parts)
+  color: string | null          // Finish type (e.g., "Mill Finish", "Black", "Clear Anodized")
+  stockLength: number | null    // Stock length in inches (e.g., 144 = 12ft)
+  variantId: number | null      // ExtrusionVariant ID if this alert is for a specific variant
 }
 
 export interface InventoryAlertsResponse {
@@ -83,6 +87,42 @@ export interface QuickPOResponse {
     status: string
     totalAmount: number
   }
+  warning?: string
+}
+
+// Add to Existing PO Types
+export interface AddToExistingPORequest {
+  masterPartId: number
+  quantity: number
+  notes?: string
+}
+
+export interface AddToExistingPOResponse {
+  purchaseOrder: {
+    id: number
+    poNumber: string
+    vendorId: number
+    vendorName: string
+    status: string
+    totalAmount: number
+  }
+  addedLine: {
+    id: number
+    partNumber: string
+    quantity: number
+    unitPrice: number
+    amount: number
+  }
+}
+
+// Draft PO for selection
+export interface DraftPO {
+  id: number
+  poNumber: string
+  vendorName: string
+  totalAmount: number
+  lineCount: number
+  createdAt: string
 }
 
 // Vendor Scorecard
@@ -289,5 +329,45 @@ export interface VendorCommunicationResponse {
   gmailIntegration: {
     enabled: boolean
     message: string
+  }
+}
+
+// Combined Purchase Summary
+export interface CombinedSummaryProject {
+  id: number
+  name: string
+  customerName: string
+}
+
+export interface CombinedSummaryItem {
+  partNumber: string
+  partName: string
+  partType: string
+  totalQuantity: number
+  unit: string
+  stockLength: number | null
+  cutLengths: number[]
+  totalCutLength: number
+  calculatedLengths: number[]
+  totalCalculatedLength: number
+  glassDimensions: Array<{ width: number | null; height: number | null; area: number | null }>
+  totalArea: number
+  glassWidth: number | null
+  glassHeight: number | null
+  calculatedLength: number | null
+  stockPiecesNeeded: number | null
+  wastePercent: number | null
+}
+
+export interface CombinedSummaryResponse {
+  projects: CombinedSummaryProject[]
+  summaryItems: CombinedSummaryItem[]
+  totals: {
+    totalParts: number
+    totalExtrusions: number
+    totalHardware: number
+    totalGlass: number
+    totalOptions: number
+    totalStockPiecesToOrder: number
   }
 }

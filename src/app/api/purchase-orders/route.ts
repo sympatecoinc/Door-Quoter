@@ -9,6 +9,7 @@ import {
   generatePONumber,
   createQBItemForPOLine,
   getDefaultExpenseAccount,
+  pushVendorToQB,
   QBPOLine
 } from '@/lib/quickbooks'
 
@@ -218,11 +219,28 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Push to QuickBooks if requested and vendor has QB ID
-    if (pushToQuickBooks && vendor.quickbooksId) {
+    // Push to QuickBooks if requested
+    if (pushToQuickBooks) {
       const realmId = await getStoredRealmId()
       if (realmId) {
         try {
+          // Auto-push vendor to QuickBooks if it doesn't have a QB ID
+          let vendorQBId = vendor.quickbooksId
+          if (!vendorQBId) {
+            console.log(`[PO Create] Vendor "${vendor.displayName}" not synced to QB - pushing now...`)
+            try {
+              const syncedVendor = await pushVendorToQB(vendor.id)
+              vendorQBId = syncedVendor.quickbooksId
+              console.log(`[PO Create] Vendor synced to QB with ID: ${vendorQBId}`)
+            } catch (vendorError) {
+              console.error(`[PO Create] Failed to push vendor to QB:`, vendorError)
+              return NextResponse.json({
+                purchaseOrder,
+                warning: `Purchase order created locally but vendor "${vendor.displayName}" could not be synced to QuickBooks. Error: ${vendorError instanceof Error ? vendorError.message : 'Unknown error'}`
+              })
+            }
+          }
+
           // Get default expense account for lines without items
           const defaultExpenseAccountId = await getDefaultExpenseAccount(realmId)
 
@@ -283,7 +301,7 @@ export async function POST(request: NextRequest) {
           })
 
           // Create QB PO
-          const qbPO = localPOToQB(purchaseOrder, vendor.quickbooksId, qbLines)
+          const qbPO = localPOToQB(purchaseOrder, vendorQBId!, qbLines)
           qbPO.DocNumber = poNumber
 
           const createdQBPO = await createQBPurchaseOrder(realmId, qbPO)

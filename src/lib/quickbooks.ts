@@ -1580,7 +1580,7 @@ export async function pushPOToQB(poId: number): Promise<any> {
     throw new Error('QuickBooks not connected')
   }
 
-  const po = await prisma.purchaseOrder.findUnique({
+  let po = await prisma.purchaseOrder.findUnique({
     where: { id: poId },
     include: {
       vendor: true,
@@ -1603,12 +1603,53 @@ export async function pushPOToQB(poId: number): Promise<any> {
   // Get default expense account for lines without items
   const defaultExpenseAccountId = await getDefaultExpenseAccount(realmId)
 
-  // Build QB PO lines
+  // Create QB items on-the-fly for lines without item references
+  // This ensures all lines use ItemBasedExpenseLineDetail which supports Qty
+  for (const line of po.lines) {
+    const hasQBItem = line.quickbooksItem?.quickbooksId || line.itemRefId
+    if (!hasQBItem && line.description) {
+      try {
+        console.log(`[QB Sync] Creating QB item for line: "${line.description}"`)
+        const { qbItemId, localItemId } = await createQBItemForPOLine(
+          realmId,
+          line.description,
+          line.unitPrice
+        )
+
+        // Update the local line with the new item reference
+        await prisma.purchaseOrderLine.update({
+          where: { id: line.id },
+          data: {
+            quickbooksItemId: localItemId,
+            itemRefId: qbItemId,
+            itemRefName: line.description
+          }
+        })
+        console.log(`[QB Sync] Created QB item ${qbItemId} for line "${line.description}"`)
+      } catch (itemError) {
+        console.error(`[QB Sync] Failed to create QB item for "${line.description}":`, itemError)
+        // Continue - line will fall back to AccountBasedExpenseLineDetail
+      }
+    }
+  }
+
+  // Refresh PO to get updated line data after item creation
+  po = await prisma.purchaseOrder.findUnique({
+    where: { id: poId },
+    include: {
+      vendor: true,
+      lines: {
+        include: { quickbooksItem: true }
+      }
+    }
+  }) as typeof po
+
+  // Build QB PO lines - use quickbooksItem.quickbooksId if available, then itemRefId
   const qbLines: QBPOLine[] = []
   for (const line of po.lines) {
     const qbLine = localPOLineToQB({
-      itemRefId: line.itemRefId,
-      itemRefName: line.itemRefName,
+      itemRefId: line.quickbooksItem?.quickbooksId || line.itemRefId,
+      itemRefName: line.quickbooksItem?.name || line.itemRefName,
       description: line.description,
       quantity: line.quantity,
       unitPrice: line.unitPrice,

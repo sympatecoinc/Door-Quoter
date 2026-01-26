@@ -8,13 +8,20 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const vendorId = searchParams.get('vendorId')
+    const isHistory = searchParams.get('history') === 'true'
 
-    // Valid statuses for receiving
+    // Valid statuses for receiving queue
     const validStatuses: POStatus[] = ['SENT', 'ACKNOWLEDGED', 'PARTIAL']
 
     // Build where clause
-    const where: any = {
-      status: status && validStatuses.includes(status as POStatus)
+    const where: any = {}
+
+    if (isHistory) {
+      // History tab: show only completed orders
+      where.status = 'COMPLETE'
+    } else {
+      // Pending tab: show receivable orders
+      where.status = status && validStatuses.includes(status as POStatus)
         ? status as POStatus
         : { in: validStatuses }
     }
@@ -47,10 +54,10 @@ export async function GET(request: NextRequest) {
           orderBy: { lineNum: 'asc' }
         }
       },
-      orderBy: [
-        { expectedDate: 'asc' },
-        { createdAt: 'desc' }
-      ]
+      orderBy: isHistory
+        ? [{ updatedAt: 'desc' }]  // Most recently completed first
+        : [{ expectedDate: 'asc' }, { createdAt: 'desc' }],
+      take: isHistory ? 50 : undefined  // Limit history to last 50
     })
 
     // Calculate progress for each PO

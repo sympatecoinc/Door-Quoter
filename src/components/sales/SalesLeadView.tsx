@@ -46,7 +46,7 @@ export default function SalesLeadView() {
   const fetchLeads = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/dashboard')
+      const response = await fetch('/api/dashboard', { cache: 'no-store' })
       if (response.ok) {
         const data = await response.json()
         // Filter based on mode - show only leads or only projects

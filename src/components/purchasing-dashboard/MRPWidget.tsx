@@ -79,14 +79,23 @@ export default function MRPWidget({ refreshKey = 0, compact = false }: MRPWidget
             <h3 className="font-semibold text-gray-900">Material Requirements</h3>
           </div>
           {!compact && (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={showShortagesOnly}
-                onChange={(e) => setShowShortagesOnly(e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
               <span className="text-gray-600">Show shortages only</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showShortagesOnly}
+                onClick={() => setShowShortagesOnly(!showShortagesOnly)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                  showShortagesOnly ? 'bg-blue-600' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    showShortagesOnly ? 'translate-x-4' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
             </label>
           )}
         </div>

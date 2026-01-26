@@ -214,6 +214,14 @@ export default function InventoryAlertsWidget({ refreshKey = 0, compact = false,
                             </button>
                           )}
                           <span className="font-medium">{alert.partNumber}</span>
+                          {/* Show color and stock length for extrusions */}
+                          {(alert.color || alert.stockLength) && (
+                            <span className="text-xs ml-2 px-1.5 py-0.5 bg-gray-200 bg-opacity-50 rounded">
+                              {alert.color && <span>{alert.color}</span>}
+                              {alert.color && alert.stockLength && <span> · </span>}
+                              {alert.stockLength && <span>{alert.stockLength >= 12 ? `${Math.round(alert.stockLength / 12)}ft` : `${alert.stockLength}"`}</span>}
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm opacity-80">{alert.description}</div>
                         <div className="text-xs mt-1 opacity-70">

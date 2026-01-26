@@ -15,10 +15,11 @@ import ReceivingQueueWidget from '@/components/purchasing-dashboard/ReceivingQue
 import SpendAnalyticsWidget from '@/components/purchasing-dashboard/SpendAnalyticsWidget'
 import OpenOrdersSummaryWidget from '@/components/purchasing-dashboard/OpenOrdersSummaryWidget'
 import VendorCommunicationWidget from '@/components/purchasing-dashboard/VendorCommunicationWidget'
+import CombinedPurchaseSummaryWidget from '@/components/purchasing-dashboard/CombinedPurchaseSummaryWidget'
 
 const TABS: { id: DashboardTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
-  { id: 'orders', label: 'Orders' },
+  { id: 'orders', label: 'Receiving' },
   { id: 'vendors', label: 'Vendors' },
   { id: 'pricing', label: 'Pricing' },
   { id: 'stock', label: 'Stock' }
@@ -164,11 +165,16 @@ interface OverviewTabProps {
 
 function OverviewTab({ refreshKey, dateRange, onViewPO, onPOCreated }: OverviewTabProps) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <InventoryAlertsWidget refreshKey={refreshKey} compact onPOCreated={onPOCreated} />
-      <OpenOrdersSummaryWidget refreshKey={refreshKey} compact onViewPO={onViewPO} />
-      <MRPWidget refreshKey={refreshKey} />
-      <ReceivingQueueWidget refreshKey={refreshKey} compact onViewPO={onViewPO} />
+    <div className="columns-1 lg:columns-2 gap-6 space-y-6">
+      <div className="break-inside-avoid">
+        <InventoryAlertsWidget refreshKey={refreshKey} compact onPOCreated={onPOCreated} />
+      </div>
+      <div className="break-inside-avoid">
+        <MRPWidget refreshKey={refreshKey} />
+      </div>
+      <div className="break-inside-avoid">
+        <ReceivingQueueWidget refreshKey={refreshKey} compact onViewPO={onViewPO} />
+      </div>
     </div>
   )
 }
@@ -181,9 +187,13 @@ interface OrdersTabProps {
 
 function OrdersTab({ refreshKey, onViewPO }: OrdersTabProps) {
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-      <OpenOrdersSummaryWidget refreshKey={refreshKey} onViewPO={onViewPO} />
-      <ReceivingQueueWidget refreshKey={refreshKey} onViewPO={onViewPO} />
+    <div className="columns-1 xl:columns-2 gap-6 space-y-6">
+      <div className="break-inside-avoid">
+        <OpenOrdersSummaryWidget refreshKey={refreshKey} onViewPO={onViewPO} />
+      </div>
+      <div className="break-inside-avoid">
+        <ReceivingQueueWidget refreshKey={refreshKey} onViewPO={onViewPO} />
+      </div>
     </div>
   )
 }
@@ -196,9 +206,13 @@ interface VendorsTabProps {
 
 function VendorsTab({ refreshKey, dateRange }: VendorsTabProps) {
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-      <VendorScorecardWidget refreshKey={refreshKey} dateRange={dateRange} />
-      <VendorCommunicationWidget refreshKey={refreshKey} />
+    <div className="columns-1 xl:columns-2 gap-6 space-y-6">
+      <div className="break-inside-avoid">
+        <VendorScorecardWidget refreshKey={refreshKey} dateRange={dateRange} />
+      </div>
+      <div className="break-inside-avoid">
+        <VendorCommunicationWidget refreshKey={refreshKey} />
+      </div>
     </div>
   )
 }
@@ -211,9 +225,19 @@ interface PricingTabProps {
 
 function PricingTab({ refreshKey, dateRange }: PricingTabProps) {
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-      <PriceTrackingWidget refreshKey={refreshKey} dateRange={dateRange} />
-      <SpendAnalyticsWidget refreshKey={refreshKey} dateRange={dateRange} />
+    <div className="space-y-6">
+      {/* Combined Summary Widget - full width */}
+      <CombinedPurchaseSummaryWidget refreshKey={refreshKey} />
+
+      {/* Existing: 2-column grid */}
+      <div className="columns-1 xl:columns-2 gap-6 space-y-6">
+        <div className="break-inside-avoid">
+          <PriceTrackingWidget refreshKey={refreshKey} dateRange={dateRange} />
+        </div>
+        <div className="break-inside-avoid">
+          <SpendAnalyticsWidget refreshKey={refreshKey} dateRange={dateRange} />
+        </div>
+      </div>
     </div>
   )
 }

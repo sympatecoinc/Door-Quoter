@@ -9,12 +9,13 @@ import POStatsWidget from '@/components/purchase-orders/POStatsWidget'
 import { PurchaseOrder } from '@/types/purchase-order'
 import { Plus, CheckCircle, AlertCircle, X, RefreshCw, CloudOff } from 'lucide-react'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
+import { useAppStore } from '@/stores/appStore'
 
 type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error'
 
 export default function PurchaseOrdersView() {
   const searchParams = useSearchParams()
-  const [selectedPOId, setSelectedPOId] = useState<number | null>(null)
+  const { selectedPOId, setSelectedPOId } = useAppStore()
   const [showForm, setShowForm] = useState(false)
   const [editingPO, setEditingPO] = useState<PurchaseOrder | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)

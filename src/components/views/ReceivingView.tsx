@@ -10,10 +10,13 @@ import {
   RefreshCw,
   PackageOpen,
   Filter,
-  CheckCircle2
+  CheckCircle2,
+  History
 } from 'lucide-react'
 import POReceivingModal from '@/components/purchase-orders/POReceivingModal'
 import { PurchaseOrder, PO_STATUS_CONFIG, POStatus } from '@/types/purchase-order'
+
+type TabType = 'pending' | 'history'
 
 interface ReceivingPO extends PurchaseOrder {
   totalItems: number
@@ -29,26 +32,49 @@ interface ReceivingStats {
   acknowledgedCount: number
   partialCount: number
   totalItemsPending: number
+  completeCount?: number
 }
 
 export default function ReceivingView() {
+  const [activeTab, setActiveTab] = useState<TabType>('pending')
   const [purchaseOrders, setPurchaseOrders] = useState<ReceivingPO[]>([])
   const [stats, setStats] = useState<ReceivingStats | null>(null)
+  const [pendingCount, setPendingCount] = useState<number>(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [refreshing, setRefreshing] = useState(false)
 
+  // Fetch pending count on mount and after receiving
+  useEffect(() => {
+    fetchPendingCount()
+  }, [])
+
   useEffect(() => {
     fetchReceivingData()
-  }, [statusFilter])
+  }, [statusFilter, activeTab])
+
+  async function fetchPendingCount() {
+    try {
+      const response = await fetch('/api/receiving')
+      if (response.ok) {
+        const data = await response.json()
+        setPendingCount(data.stats?.totalPOs || 0)
+      }
+    } catch {
+      // Ignore errors for count fetch
+    }
+  }
 
   async function fetchReceivingData() {
     try {
       setError(null)
       const params = new URLSearchParams()
-      if (statusFilter !== 'all') {
+
+      if (activeTab === 'history') {
+        params.set('history', 'true')
+      } else if (statusFilter !== 'all') {
         params.set('status', statusFilter)
       }
 
@@ -60,6 +86,11 @@ export default function ReceivingView() {
       const data = await response.json()
       setPurchaseOrders(data.purchaseOrders || [])
       setStats(data.stats || null)
+
+      // Update pending count when viewing all pending
+      if (activeTab === 'pending' && statusFilter === 'all') {
+        setPendingCount(data.stats?.totalPOs || 0)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load receiving data')
     } finally {
@@ -76,6 +107,7 @@ export default function ReceivingView() {
   function handleReceiveComplete() {
     setSelectedPO(null)
     fetchReceivingData()
+    fetchPendingCount()
   }
 
   function formatDate(dateString: string | null): string {
@@ -194,8 +226,44 @@ export default function ReceivingView() {
         </button>
       </div>
 
-      {/* Stats Cards */}
-      {stats && (
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => {
+              setActiveTab('pending')
+              setStatusFilter('all')
+            }}
+            className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+              activeTab === 'pending'
+                ? 'border-orange-500 text-orange-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <PackageOpen className="w-4 h-4" />
+            Pending
+            {pendingCount > 0 && (
+              <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full text-xs min-w-[1.5rem] text-center">
+                {pendingCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+              activeTab === 'history'
+                ? 'border-green-500 text-green-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            History
+          </button>
+        </nav>
+      </div>
+
+      {/* Stats Cards - only show for pending tab */}
+      {stats && activeTab === 'pending' && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center gap-3">
@@ -247,25 +315,27 @@ export default function ReceivingView() {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-500" />
-            <span className="text-sm font-medium text-gray-700">Filter by Status:</span>
+      {/* Filters - only show for pending tab */}
+      {activeTab === 'pending' && (
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-gray-500" />
+              <span className="text-sm font-medium text-gray-700">Filter by Status:</span>
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Receivable</option>
+              <option value="SENT">Sent</option>
+              <option value="ACKNOWLEDGED">Acknowledged</option>
+              <option value="PARTIAL">Partial</option>
+            </select>
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Receivable</option>
-            <option value="SENT">Sent</option>
-            <option value="ACKNOWLEDGED">Acknowledged</option>
-            <option value="PARTIAL">Partial</option>
-          </select>
         </div>
-      </div>
+      )}
 
       {/* Error State */}
       {error && (
@@ -290,7 +360,7 @@ export default function ReceivingView() {
                 Status
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Expected Date
+                {activeTab === 'history' ? 'Completed Date' : 'Expected Date'}
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Progress
@@ -308,9 +378,19 @@ export default function ReceivingView() {
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center">
                   <div className="flex flex-col items-center gap-2">
-                    <CheckCircle2 className="w-12 h-12 text-green-300" />
-                    <p className="text-gray-500 font-medium">No purchase orders awaiting receiving</p>
-                    <p className="text-sm text-gray-400">All caught up!</p>
+                    {activeTab === 'history' ? (
+                      <>
+                        <History className="w-12 h-12 text-gray-300" />
+                        <p className="text-gray-500 font-medium">No receiving history yet</p>
+                        <p className="text-sm text-gray-400">Completed orders will appear here</p>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-12 h-12 text-green-300" />
+                        <p className="text-gray-500 font-medium">No purchase orders awaiting receiving</p>
+                        <p className="text-sm text-gray-400">All caught up!</p>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -327,7 +407,9 @@ export default function ReceivingView() {
                     {getStatusBadge(po.status)}
                   </td>
                   <td className="px-4 py-4">
-                    <span className="text-gray-600">{formatDate(po.expectedDate)}</span>
+                    <span className="text-gray-600">
+                      {activeTab === 'history' ? formatDate(po.updatedAt) : formatDate(po.expectedDate)}
+                    </span>
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-3">
@@ -356,13 +438,20 @@ export default function ReceivingView() {
                     </span>
                   </td>
                   <td className="px-4 py-4 text-right">
-                    <button
-                      onClick={() => setSelectedPO(po)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-                    >
-                      <PackageOpen className="w-4 h-4" />
-                      Receive
-                    </button>
+                    {activeTab === 'history' ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 text-sm font-medium rounded-lg">
+                        <CheckCircle2 className="w-4 h-4" />
+                        Received
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setSelectedPO(po)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        <PackageOpen className="w-4 h-4" />
+                        Receive
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
