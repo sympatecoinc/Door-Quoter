@@ -364,7 +364,7 @@ describe('summaryToCSV', () => {
       expect(headers).toContain('Size (WxH)')
       expect(headers).toContain('Pieces')
       expect(headers).toContain('Unit')
-      expect(headers).toContain('Stock Pieces')
+      // Stock length is now in the part number (e.g., EXT-001-99), no separate column
     })
   })
 

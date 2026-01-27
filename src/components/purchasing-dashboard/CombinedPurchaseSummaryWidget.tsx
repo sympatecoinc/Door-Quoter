@@ -199,28 +199,6 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
     return '-'
   }
 
-  // Get stock breakdown display string
-  // Converts {99: 2, 123: 1} to "2x 99" + 1x 123""
-  const getStockBreakdownDisplay = (item: CombinedSummaryItem): string => {
-    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockLengthBreakdown) {
-      const entries = Object.entries(item.stockLengthBreakdown)
-        .map(([length, count]) => ({ length: Number(length), count }))
-        .sort((a, b) => a.length - b.length)
-
-      if (entries.length === 0) return '-'
-      if (entries.length === 1) {
-        const { length, count } = entries[0]
-        return `${count}x ${length}"`
-      }
-
-      return entries.map(({ length, count }) => `${count}x ${length}"`).join(' + ')
-    }
-    if (item.stockLength) {
-      return `${item.stockLength}"`
-    }
-    return '-'
-  }
-
   if (loading) {
     return (
       <div className="bg-white rounded-lg shadow p-6 animate-pulse">
@@ -413,7 +391,6 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
                       <th className="text-left px-3 py-2 font-medium text-gray-700">Size</th>
                       <th className="text-right px-3 py-2 font-medium text-gray-700">Qty</th>
                       <th className="text-left px-3 py-2 font-medium text-gray-700">Unit</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-700">Stock Pieces</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -435,7 +412,6 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
                         <td className="px-3 py-2 text-xs text-gray-600">{getSizeDisplay(item)}</td>
                         <td className="px-3 py-2 text-right font-medium">{getPiecesDisplay(item)}</td>
                         <td className="px-3 py-2 text-xs text-gray-600">{getUnitDisplay(item)}</td>
-                        <td className="px-3 py-2 text-xs text-gray-600">{getStockBreakdownDisplay(item)}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -439,7 +439,8 @@ describe('summaryToCSV', () => {
     const csv = summaryToCSV('Test Project', items as any)
     expect(csv).toContain('Part Number')
     expect(csv).toContain('Part Name')
-    expect(csv).toContain('Stock Pieces')
+    expect(csv).toContain('Pieces')
+    // Stock length is now in the part number (e.g., EXT-001-99), no separate column
   })
 
   it('should show unique cut lengths for extrusions', () => {

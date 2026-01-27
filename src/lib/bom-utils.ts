@@ -241,6 +241,10 @@ export function aggregateBomItems(
 
   // Calculate stock optimization for extrusions and CutStock
   // Use multi-stock optimization when multiple stock lengths are available
+  // When multiple stock lengths are used, create separate line items for each
+  const expandedItems: AggregatedBomItem[] = []
+  const keysToRemove: string[] = []
+
   for (const [key, item] of Object.entries(aggregated)) {
     if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.cutLengths.length > 0) {
       // Check for stock length options (either from parameter or from collected BOM items)
@@ -249,47 +253,93 @@ export function aggregateBomItems(
       if (options && options.length > 1) {
         // Multiple stock lengths available - use multi-stock optimization
         const multiResult = calculateMultiStockOptimization(options, item.cutLengths)
-        if (multiResult) {
-          // Store the breakdown of stock lengths used
-          item.stockLengthBreakdown = multiResult.stockLengthBreakdown
+        if (multiResult && Object.keys(multiResult.stockLengthBreakdown).length > 1) {
+          // Multiple stock lengths used - create separate line items for each
+          keysToRemove.push(key)
 
-          // Set primary stock length to the most frequently used one
-          // This maintains backward compatibility for views that expect a single stockLength
-          const sortedLengths = Object.entries(multiResult.stockLengthBreakdown)
-            .sort((a, b) => b[1] - a[1]) // Sort by count descending
-          if (sortedLengths.length > 0) {
-            item.stockLength = Number(sortedLengths[0][0])
+          for (const stockPiece of multiResult.stockPieces) {
+            const stockLength = stockPiece.stockLength
+            const existingExpanded = expandedItems.find(
+              e => e.partNumber === `${key}-${stockLength}` && e.stockLength === stockLength
+            )
+
+            if (existingExpanded) {
+              // Add cuts to existing expanded item
+              existingExpanded.cutLengths.push(...stockPiece.cuts)
+              existingExpanded.totalCutLength += stockPiece.cuts.reduce((sum, c) => sum + c, 0)
+              existingExpanded.stockPiecesNeeded = (existingExpanded.stockPiecesNeeded || 0) + 1
+            } else {
+              // Create new expanded item for this stock length
+              const totalCutLength = stockPiece.cuts.reduce((sum, c) => sum + c, 0)
+              expandedItems.push({
+                partNumber: `${key}-${stockLength}`,
+                partName: item.partName,
+                partType: item.partType,
+                totalQuantity: stockPiece.cuts.length,
+                unit: item.unit,
+                stockLength: stockLength,
+                cutLengths: [...stockPiece.cuts],
+                totalCutLength: totalCutLength,
+                calculatedLengths: [],
+                totalCalculatedLength: 0,
+                glassDimensions: [],
+                totalArea: 0,
+                glassWidth: null,
+                glassHeight: null,
+                calculatedLength: null,
+                stockPiecesNeeded: 1,
+                wastePercent: Math.round((stockPiece.wasteLength / stockLength) * 1000) / 10,
+                stockLengthBreakdown: { [stockLength]: 1 }
+              })
+            }
           }
 
-          // Total stock pieces = sum of all stock lengths used
-          item.stockPiecesNeeded = multiResult.stockPieces.length
+          // Recalculate waste percent for each expanded item
+          for (const expanded of expandedItems.filter(e => e.partNumber.startsWith(key + '-'))) {
+            if (expanded.stockLength && expanded.stockPiecesNeeded) {
+              const totalStock = expanded.stockLength * expanded.stockPiecesNeeded
+              const waste = totalStock - expanded.totalCutLength
+              expanded.wastePercent = Math.round((waste / totalStock) * 1000) / 10
+              expanded.stockLengthBreakdown = { [expanded.stockLength]: expanded.stockPiecesNeeded }
+            }
+          }
+        } else if (multiResult) {
+          // Only one stock length used - update the existing item
+          const stockLength = Number(Object.keys(multiResult.stockLengthBreakdown)[0])
+          const pieceCount = multiResult.stockLengthBreakdown[stockLength]
+
+          item.stockLength = stockLength
+          item.partNumber = `${key}-${stockLength}`
+          item.stockPiecesNeeded = pieceCount
           item.wastePercent = multiResult.wastePercent
-
-          // Update part number - remove stock length suffix since we're using multiple
-          // The breakdown will show the actual stock lengths used
-          const basePartNumber = key // The key is already the base part number
-          if (!item.partNumber.match(/-\d+$/)) {
-            // No stock length suffix - keep as is
-            item.partNumber = basePartNumber
-          } else {
-            // Remove existing suffix - the breakdown shows actual lengths
-            item.partNumber = basePartNumber
-          }
+          item.stockLengthBreakdown = { [stockLength]: pieceCount }
         }
       } else if (item.stockLength) {
-        // Single stock length - use standard optimization
+        // Single stock length option - use standard optimization
         const optimization = calculateOptimizedStockPieces(item.cutLengths, item.stockLength)
         item.stockPiecesNeeded = optimization.stockPiecesNeeded
         item.wastePercent = optimization.wastePercent
-        // Single stock length - create breakdown with just that length
         item.stockLengthBreakdown = { [item.stockLength]: optimization.stockPiecesNeeded }
+
+        // Ensure part number has stock length suffix
+        if (!item.partNumber.endsWith(`-${item.stockLength}`)) {
+          item.partNumber = `${key}-${item.stockLength}`
+        }
       }
     }
   }
 
+  // Remove items that were expanded into multiple stock lengths
+  for (const key of keysToRemove) {
+    delete aggregated[key]
+  }
+
+  // Combine original items with expanded items
+  const allItems = [...Object.values(aggregated), ...expandedItems]
+
   // Sort by part type then part number
   const typeOrder: Record<string, number> = { 'Extrusion': 1, 'CutStock': 2, 'Hardware': 3, 'Glass': 4, 'Option': 5 }
-  return Object.values(aggregated).sort((a, b) => {
+  return allItems.sort((a, b) => {
     const aOrder = typeOrder[a.partType] || 5
     const bOrder = typeOrder[b.partType] || 5
     if (aOrder !== bOrder) return aOrder - bOrder
@@ -944,7 +994,8 @@ export function formatStockBreakdown(breakdown: Record<number, number> | null): 
 }
 
 export function summaryToCSV(projectName: string, summaryItems: AggregatedBomItem[]): string {
-  const headers = ['Part Number', 'Part Name', 'Type', 'Size (WxH)', 'Pieces', 'Unit', 'Stock Pieces']
+  // Part number now includes stock length (e.g., EXT-001-99), so no separate stock column needed
+  const headers = ['Part Number', 'Part Name', 'Type', 'Size (WxH)', 'Pieces', 'Unit']
 
   const rows = summaryItems.map(item => {
     // For glass, show the specific size; for extrusions, show cut lengths
@@ -979,22 +1030,13 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
       piecesValue = roundUpWithOverage(item.totalQuantity, unitStr)
     }
 
-    // Format stock pieces - show breakdown if multiple stock lengths used
-    let stockPiecesStr = ''
-    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockLengthBreakdown) {
-      stockPiecesStr = formatStockBreakdown(item.stockLengthBreakdown)
-    } else if (item.stockLength) {
-      stockPiecesStr = `${item.stockLength}"`
-    }
-
     return [
       item.partNumber,
       item.partName,
       item.partType,
       sizeStr,
       piecesValue,
-      unitStr,
-      stockPiecesStr
+      unitStr
     ].map(field => `"${String(field).replace(/"/g, '""')}"`)
   })
 
@@ -1014,7 +1056,8 @@ export function combinedSummaryToCSV(
   lines.push(`# Generated: ${new Date().toISOString().split('T')[0]}`)
   lines.push('')
 
-  const headers = ['Part Number', 'Part Name', 'Type', 'Size (WxH)', 'Pieces', 'Unit', 'Stock Pieces']
+  // Part number now includes stock length (e.g., EXT-001-99), so no separate stock column needed
+  const headers = ['Part Number', 'Part Name', 'Type', 'Size (WxH)', 'Pieces', 'Unit']
   lines.push(headers.join(','))
 
   for (const item of summaryItems) {
@@ -1045,22 +1088,13 @@ export function combinedSummaryToCSV(
       piecesValue = roundUpWithOverage(item.totalQuantity, unitStr)
     }
 
-    // Format stock pieces - show breakdown if multiple stock lengths used
-    let stockPiecesStr = ''
-    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockLengthBreakdown) {
-      stockPiecesStr = formatStockBreakdown(item.stockLengthBreakdown)
-    } else if (item.stockLength) {
-      stockPiecesStr = `${item.stockLength}"`
-    }
-
     const row = [
       item.partNumber,
       item.partName,
       item.partType,
       sizeStr,
       piecesValue,
-      unitStr,
-      stockPiecesStr
+      unitStr
     ].map(field => `"${String(field).replace(/"/g, '""')}"`)
 
     lines.push(row.join(','))
