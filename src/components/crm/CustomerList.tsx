@@ -78,15 +78,15 @@ export default function CustomerList({ onAddCustomer, onViewCustomer, prospectsO
       })
 
       // Add multiple status filters if any are selected
-      // If prospectsOnly mode, always show only Prospects
-      // If no filters selected, show Active and Prospect by default
+      // If prospectsOnly mode, always show only Leads
+      // If no filters selected, show Active and Lead by default
       if (prospectsOnly) {
-        params.append('status', 'Prospect')
+        params.append('status', 'Lead')
       } else if (statusFilters.length > 0) {
         params.append('status', statusFilters.join(','))
       } else {
-        // Default: show Active customers and Prospects
-        params.append('status', 'Active,Prospect')
+        // Default: show Active customers and Leads
+        params.append('status', 'Active,Lead')
       }
 
       const response = await fetch(`/api/customers?${params}`)
@@ -130,30 +130,29 @@ export default function CustomerList({ onAddCustomer, onViewCustomer, prospectsO
   const getStatusBadge = (status: string) => {
     const colors: { [key: string]: string } = {
       'Active': 'bg-green-100 text-green-800',
-      'Inactive': 'bg-gray-100 text-gray-800',
-      'Prospect': 'bg-blue-100 text-blue-800',
-      'Archived': 'bg-slate-100 text-slate-800'
+      'Lead': 'bg-blue-100 text-blue-800',
+      'Archived': 'bg-gray-100 text-gray-600'
     }
     return colors[status] || 'bg-gray-100 text-gray-800'
   }
 
-  const statuses = ['Active', 'Inactive', 'Prospect']
+  const statuses = ['Active', 'Lead', 'Archived']
 
   return (
     <div className="space-y-6">
       {/* Header Actions */}
       <div className="flex justify-between items-center gap-4">
         <div className="flex items-center gap-4 flex-wrap">
-          {/* Prospects Title - Only shown in prospectsOnly mode */}
+          {/* Leads Title - Only shown in prospectsOnly mode */}
           {prospectsOnly && (
-            <h2 className="text-lg font-semibold text-gray-900">Prospects</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Leads</h2>
           )}
           {/* Expandable Search Bar */}
           <div className="relative flex items-center">
             <button
               onClick={() => setSearchExpanded(true)}
               className={`p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200 ${searchExpanded ? 'opacity-0 pointer-events-none absolute' : ''}`}
-              title={prospectsOnly ? "Search prospects" : "Search customers"}
+              title={prospectsOnly ? "Search leads" : "Search customers"}
             >
               <Search className="w-4 h-4" />
             </button>
@@ -162,7 +161,7 @@ export default function CustomerList({ onAddCustomer, onViewCustomer, prospectsO
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder={prospectsOnly ? "Search prospects..." : "Search customers..."}
+                  placeholder={prospectsOnly ? "Search leads..." : "Search customers..."}
                   value={searchTerm}
                   onChange={(e) => {
                     setSearchTerm(e.target.value)
@@ -202,14 +201,11 @@ export default function CustomerList({ onAddCustomer, onViewCustomer, prospectsO
                     'Active': isActive
                       ? 'bg-green-100 text-green-800'
                       : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
-                    'Inactive': isActive
-                      ? 'bg-gray-600 text-white'
-                      : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
-                    'Prospect': isActive
+                    'Lead': isActive
                       ? 'bg-blue-100 text-blue-800'
                       : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
                     'Archived': isActive
-                      ? 'bg-slate-100 text-slate-800'
+                      ? 'bg-gray-600 text-white'
                       : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
                   }[status]
 
@@ -379,7 +375,7 @@ export default function CustomerList({ onAddCustomer, onViewCustomer, prospectsO
                 <tr>
                   <td colSpan={5} className="text-center py-8 text-gray-500">
                     {prospectsOnly
-                      ? "No prospects found."
+                      ? "No leads found."
                       : "No customers found. Add your first customer to get started!"}
                   </td>
                 </tr>
@@ -393,7 +389,7 @@ export default function CustomerList({ onAddCustomer, onViewCustomer, prospectsO
           <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
             <div className="flex justify-between items-center">
               <div className="text-sm text-gray-700">
-                Showing {((currentPage - 1) * 10) + 1} to {Math.min(currentPage * 10, data.pagination.total)} of {data.pagination.total} {prospectsOnly ? 'prospects' : 'customers'}
+                Showing {((currentPage - 1) * 10) + 1} to {Math.min(currentPage * 10, data.pagination.total)} of {data.pagination.total} {prospectsOnly ? 'leads' : 'customers'}
               </div>
               <div className="flex space-x-2">
                 <button

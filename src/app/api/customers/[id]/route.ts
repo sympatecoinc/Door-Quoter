@@ -94,7 +94,7 @@ export async function PUT(
       notes
     } = body
 
-    // Fetch existing customer to detect status change from Prospect to Active
+    // Fetch existing customer to detect status change from Lead to Active
     const existingCustomer = await prisma.customer.findUnique({
       where: { id: customerId },
       select: { status: true, quickbooksId: true }
@@ -125,8 +125,8 @@ export async function PUT(
     })
 
     // Sync changes to QuickBooks
-    // Case 1: Transitioning from Prospect to Active - create customer in QB
-    if (previousStatus === 'Prospect' && status === 'Active' && !existingCustomer?.quickbooksId) {
+    // Case 1: Transitioning from Lead to Active - create customer in QB
+    if (previousStatus === 'Lead' && status === 'Active' && !existingCustomer?.quickbooksId) {
       try {
         const realmId = await getStoredRealmId()
         if (realmId) {

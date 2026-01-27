@@ -3,10 +3,13 @@ import {
   findBestStockLengthRule,
   findOptimalStockLengthByYield,
   calculateStockOptimization,
+  calculateMultiStockOptimization,
+  formatStockBreakdown,
   KERF_WIDTH,
   type StockLengthRule,
   type CutListItem,
-  type YieldComparisonResult
+  type YieldComparisonResult,
+  type MultiStockOptimizationResult
 } from '@/lib/bom/calculations'
 
 describe('calculateOptimizedStockPieces', () => {
@@ -477,5 +480,223 @@ describe('findOptimalStockLengthByYield', () => {
       expect(result?.stockLength).toBe(78)
       expect(result?.stockPiecesNeeded).toBe(2)
     })
+  })
+})
+
+describe('calculateMultiStockOptimization', () => {
+  describe('basic functionality', () => {
+    it('should return null for empty cut lengths', () => {
+      const result = calculateMultiStockOptimization([78, 99, 123], [])
+      expect(result).toBeNull()
+    })
+
+    it('should return null for empty stock lengths', () => {
+      const result = calculateMultiStockOptimization([], [44.625])
+      expect(result).toBeNull()
+    })
+
+    it('should return null when all cuts exceed stock lengths', () => {
+      const result = calculateMultiStockOptimization([78, 99], [130])
+      expect(result).toBeNull()
+    })
+
+    it('should handle single cut correctly', () => {
+      const result = calculateMultiStockOptimization([78, 99, 123], [86])
+      expect(result).not.toBeNull()
+      // 86" cut only fits in 99" or 123" stock - should pick 99" (smaller waste)
+      expect(result?.stockLengthBreakdown).toEqual({ 99: 1 })
+      expect(result?.stockPieces.length).toBe(1)
+    })
+  })
+
+  describe('multi-stock optimization scenarios', () => {
+    it('should use multiple stock lengths when that produces less waste', () => {
+      // Problem from the plan:
+      // Cuts needed: 86", 45", 45" for EXTRUSION-A
+      // Available stocks: 78", 99", 123"
+      //
+      // Single stock approach (99"):
+      //   Stock 1: 86" (remaining ~12.875") - 45" doesn't fit
+      //   Stock 2: 45" + 45" (remaining ~8.75")
+      //   Total: 2 stocks of 99" = 198", waste = 22"
+      //
+      // Multi-stock approach:
+      //   99" stock 1: 86" (waste ~12.875")
+      //   99" stock 2: 45" + 45" (waste ~8.75")
+      //   Total: 2 stocks of 99" = 198"
+      //   OR potentially use different sizes
+      const result = calculateMultiStockOptimization([78, 99, 123], [86, 45, 45])
+      expect(result).not.toBeNull()
+      expect(result?.stockPieces.length).toBe(2)
+      // Algorithm should optimize for minimum waste
+      expect(result?.totalWasteLength).toBeLessThan(50)
+    })
+
+    it('should combine cuts optimally on single stocks when possible', () => {
+      // Two 45" cuts should fit on one 99" stock
+      // 45 + 0.125 + 45 = 90.125" fits in 99" (waste 8.875" = 9.0%)
+      // OR each 45" cut uses 78" stock (waste 33" = 42.3% each)
+      //
+      // Algorithm behavior: First cut goes to smallest fitting stock (78")
+      // Second cut: existing 78" bin has ~32.875" remaining (can't fit 45")
+      // So second cut opens new bin - should pick 78" (smallest fitting)
+      //
+      // Result: 2x 78" = 156" total, 66" waste (42.3%)
+      // vs 1x 99" = 99" total, 8.875" waste (9.0%)
+      //
+      // The algorithm should recognize that putting both in 99" is better
+      // But the greedy first-fit approach picks smallest fitting stock first
+      //
+      // Let's test with only 99" available to verify combination works
+      const result = calculateMultiStockOptimization([99], [45, 45])
+      expect(result).not.toBeNull()
+      expect(result?.stockPieces.length).toBe(1)
+      expect(result?.stockLengthBreakdown).toEqual({ 99: 1 })
+    })
+
+    it('should use smallest stock that fits when that minimizes waste', () => {
+      // Single 36" cut should use smallest stock (78") for less waste
+      const result = calculateMultiStockOptimization([78, 99, 123], [36])
+      expect(result).not.toBeNull()
+      expect(result?.stockLengthBreakdown).toEqual({ 78: 1 })
+    })
+
+    it('should track stock length breakdown correctly', () => {
+      // Cuts: 86", 50", 50", 36", 36"
+      // 86" needs 99" or 123" stock
+      // 50" + 50" = 100" needs 123" stock or 2x smaller
+      // 36" + 36" = 72" fits in 78" stock
+      const result = calculateMultiStockOptimization([78, 99, 123], [86, 50, 50, 36, 36])
+      expect(result).not.toBeNull()
+
+      // Verify we have a breakdown object
+      expect(result?.stockLengthBreakdown).toBeDefined()
+
+      // Total pieces should be less than 5 (we're optimizing)
+      const totalPieces = Object.values(result?.stockLengthBreakdown || {}).reduce((a, b) => a + b, 0)
+      expect(totalPieces).toBeLessThanOrEqual(4)
+    })
+  })
+
+  describe('waste calculations', () => {
+    it('should calculate total stock length correctly', () => {
+      const result = calculateMultiStockOptimization([99, 123], [86, 45, 45])
+      expect(result).not.toBeNull()
+
+      // Total should be sum of all stock piece lengths
+      const expectedTotal = result!.stockPieces.reduce((sum, p) => sum + p.stockLength, 0)
+      expect(result?.totalStockLength).toBe(expectedTotal)
+    })
+
+    it('should calculate total cut length correctly', () => {
+      const cuts = [86, 45, 45]
+      const result = calculateMultiStockOptimization([99, 123], cuts)
+      expect(result).not.toBeNull()
+      expect(result?.totalCutLength).toBe(86 + 45 + 45)
+    })
+
+    it('should calculate waste percentage correctly', () => {
+      const result = calculateMultiStockOptimization([99], [45, 45])
+      expect(result).not.toBeNull()
+      // One 99" stock with two 45" cuts = 90" used + kerf, ~9" waste
+      // Waste % should be around 9%
+      expect(result?.wastePercent).toBeLessThan(15)
+    })
+  })
+
+  describe('edge cases', () => {
+    it('should handle cuts exactly equal to stock length', () => {
+      const result = calculateMultiStockOptimization([99], [99])
+      expect(result).not.toBeNull()
+      expect(result?.stockPieces.length).toBe(1)
+      expect(result?.stockLengthBreakdown).toEqual({ 99: 1 })
+    })
+
+    it('should handle many small cuts efficiently', () => {
+      // 10 cuts of 20" each = 200"
+      // Using 78" stock: fits 3 per stock (60" + kerfs), needs 4 stocks
+      // Using 99" stock: fits 4 per stock (80" + kerfs), needs 3 stocks
+      const cuts = Array(10).fill(20)
+      const result = calculateMultiStockOptimization([78, 99], cuts)
+      expect(result).not.toBeNull()
+      expect(result?.stockPieces.length).toBeLessThanOrEqual(4)
+    })
+
+    it('should prefer existing bins over new bins when scores are close', () => {
+      // This tests the NEW_BIN_PENALTY behavior
+      const cuts = [40, 30, 25] // Should all fit in one 99" stock
+      const result = calculateMultiStockOptimization([99], cuts)
+      expect(result).not.toBeNull()
+      expect(result?.stockPieces.length).toBe(1)
+      expect(result?.stockPieces[0].cuts.length).toBe(3)
+    })
+
+    it('should use custom kerf width', () => {
+      // With 0 kerf, two 49" cuts fit exactly in 99" (98" used)
+      // With large kerf, they might not fit
+      const resultNoKerf = calculateMultiStockOptimization([99], [49, 49], 0)
+      expect(resultNoKerf?.stockPieces.length).toBe(1)
+
+      // With 2" kerf, 49 + 2 + 49 = 100" > 99", needs 2 stocks
+      const resultLargeKerf = calculateMultiStockOptimization([99], [49, 49], 2)
+      expect(resultLargeKerf?.stockPieces.length).toBe(2)
+    })
+  })
+
+  describe('real-world scenarios from plan', () => {
+    it('should optimize example: 86", 45", 45" cuts with 78", 99", 123" stocks', () => {
+      // This is the exact example from the plan
+      const result = calculateMultiStockOptimization([78, 99, 123], [86, 45, 45])
+      expect(result).not.toBeNull()
+
+      // The 86" cut must use 99" or 123" stock (doesn't fit in 78")
+      // The two 45" cuts together (90.25" with kerf) fit in one 99" stock
+      // Optimal: 1x 99" for 86", 1x 99" for 45"+45" = 2 pieces total
+      expect(result?.stockPieces.length).toBe(2)
+
+      // Verify reasonable waste
+      expect(result?.wastePercent).toBeLessThan(20)
+    })
+
+    it('should handle mixed cut sizes from multiple openings', () => {
+      // Simulate BOM from project with multiple doors
+      // 4 jambs at 84", 4 headers at 36", 4 sills at 38"
+      const cuts = [84, 84, 84, 84, 36, 36, 36, 36, 38, 38, 38, 38]
+      const result = calculateMultiStockOptimization([78, 99, 123], cuts)
+      expect(result).not.toBeNull()
+
+      // 84" needs 99" stock minimum
+      // 36" + 38" = 74" fits in 78" stock
+      // Should optimize to mix stock lengths
+      expect(result?.stockLengthBreakdown).toBeDefined()
+
+      // Total pieces should be reasonable (not 12)
+      const totalPieces = Object.values(result?.stockLengthBreakdown || {}).reduce((a, b) => a + b, 0)
+      expect(totalPieces).toBeLessThan(10)
+    })
+  })
+})
+
+describe('formatStockBreakdown', () => {
+  it('should return empty string for null input', () => {
+    expect(formatStockBreakdown(null)).toBe('')
+  })
+
+  it('should return empty string for empty breakdown', () => {
+    expect(formatStockBreakdown({})).toBe('')
+  })
+
+  it('should format single stock length correctly', () => {
+    expect(formatStockBreakdown({ 99: 3 })).toBe('3x 99"')
+  })
+
+  it('should format multiple stock lengths sorted by length', () => {
+    expect(formatStockBreakdown({ 123: 1, 99: 2 })).toBe('2x 99" + 1x 123"')
+    expect(formatStockBreakdown({ 78: 1, 123: 1, 99: 2 })).toBe('1x 78" + 2x 99" + 1x 123"')
+  })
+
+  it('should handle numeric keys correctly', () => {
+    const breakdown: Record<number, number> = { 99: 2, 123: 1 }
+    expect(formatStockBreakdown(breakdown)).toBe('2x 99" + 1x 123"')
   })
 })

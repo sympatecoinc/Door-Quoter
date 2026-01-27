@@ -25,11 +25,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Step 1: Push local customers without quickbooksId to QuickBooks
-    // Exclude Prospects - they should only be pushed when status changes to Active
+    // Exclude Leads - they should only be pushed when status changes to Active
     const localOnlyCustomers = await prisma.customer.findMany({
       where: {
         quickbooksId: null,
-        status: { notIn: ['Prospect'] }
+        status: { notIn: ['Lead'] }
       }
     })
 

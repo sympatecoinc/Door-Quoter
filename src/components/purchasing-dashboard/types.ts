@@ -357,6 +357,8 @@ export interface CombinedSummaryItem {
   calculatedLength: number | null
   stockPiecesNeeded: number | null
   wastePercent: number | null
+  // Multi-stock optimization: breakdown of stock lengths used, e.g., {99: 2, 123: 1}
+  stockLengthBreakdown?: Record<number, number> | null
 }
 
 export interface CombinedSummaryResponse {

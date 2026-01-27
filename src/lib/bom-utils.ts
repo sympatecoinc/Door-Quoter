@@ -137,6 +137,8 @@ export interface AggregatedBomItem {
   calculatedLength: number | null
   stockPiecesNeeded: number | null
   wastePercent: number | null
+  // Multi-stock optimization: breakdown of stock lengths used, e.g., {99: 2, 123: 1}
+  stockLengthBreakdown: Record<number, number> | null
 }
 
 // Helper function to aggregate BOM items for purchasing summary
@@ -187,7 +189,9 @@ export function aggregateBomItems(
         calculatedLength: isLengthBasedHardware ? (item.calculatedLength ?? null) : null,
         // Stock optimization fields (for extrusions)
         stockPiecesNeeded: null,
-        wastePercent: null
+        wastePercent: null,
+        // Multi-stock optimization breakdown
+        stockLengthBreakdown: null
       }
     }
 
@@ -222,7 +226,9 @@ export function aggregateBomItems(
     if ((item.partType === 'Hardware' || item.partType === 'Fastener') &&
         (item.unit === 'LF' || item.unit === 'IN') &&
         item.calculatedLength) {
-      aggregated[key].calculatedLengths.push(item.calculatedLength)
+      for (let i = 0; i < (item.quantity || 1); i++) {
+        aggregated[key].calculatedLengths.push(item.calculatedLength)
+      }
       // For linked parts and option parts, quantity already represents total length (calculatedLength × optionQuantity)
       // For regular BOM parts, quantity is piece count, so multiply by calculatedLength
       if (item.isLinkedPart || item.isOptionPart) {
@@ -234,31 +240,40 @@ export function aggregateBomItems(
   }
 
   // Calculate stock optimization for extrusions and CutStock
-  // Use yield-based optimization when multiple stock lengths are available
+  // Use multi-stock optimization when multiple stock lengths are available
   for (const [key, item] of Object.entries(aggregated)) {
     if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.cutLengths.length > 0) {
       // Check for stock length options (either from parameter or from collected BOM items)
       const options = stockLengthOptions?.[key]
 
       if (options && options.length > 1) {
-        // Multiple stock lengths available - use yield-based optimization
-        const yieldResult = findOptimalStockLengthByYield(options, item.cutLengths)
-        if (yieldResult) {
-          // Update stock length with optimal choice
-          const oldStockLength = item.stockLength
-          item.stockLength = yieldResult.stockLength
-          item.stockPiecesNeeded = yieldResult.stockPiecesNeeded
-          item.wastePercent = yieldResult.wastePercent
+        // Multiple stock lengths available - use multi-stock optimization
+        const multiResult = calculateMultiStockOptimization(options, item.cutLengths)
+        if (multiResult) {
+          // Store the breakdown of stock lengths used
+          item.stockLengthBreakdown = multiResult.stockLengthBreakdown
 
-          // Update part number to include optimal stock length suffix
-          // If the current part number doesn't have a stock length suffix, add one
-          // If it has a different suffix, replace it
-          if (oldStockLength && item.partNumber.endsWith(`-${oldStockLength}`)) {
-            // Replace old suffix with new one
-            item.partNumber = item.partNumber.slice(0, -`-${oldStockLength}`.length) + `-${yieldResult.stockLength}`
-          } else if (!item.partNumber.match(/-\d+$/)) {
-            // No stock length suffix - add one
-            item.partNumber = `${item.partNumber}-${yieldResult.stockLength}`
+          // Set primary stock length to the most frequently used one
+          // This maintains backward compatibility for views that expect a single stockLength
+          const sortedLengths = Object.entries(multiResult.stockLengthBreakdown)
+            .sort((a, b) => b[1] - a[1]) // Sort by count descending
+          if (sortedLengths.length > 0) {
+            item.stockLength = Number(sortedLengths[0][0])
+          }
+
+          // Total stock pieces = sum of all stock lengths used
+          item.stockPiecesNeeded = multiResult.stockPieces.length
+          item.wastePercent = multiResult.wastePercent
+
+          // Update part number - remove stock length suffix since we're using multiple
+          // The breakdown will show the actual stock lengths used
+          const basePartNumber = key // The key is already the base part number
+          if (!item.partNumber.match(/-\d+$/)) {
+            // No stock length suffix - keep as is
+            item.partNumber = basePartNumber
+          } else {
+            // Remove existing suffix - the breakdown shows actual lengths
+            item.partNumber = basePartNumber
           }
         }
       } else if (item.stockLength) {
@@ -266,6 +281,8 @@ export function aggregateBomItems(
         const optimization = calculateOptimizedStockPieces(item.cutLengths, item.stockLength)
         item.stockPiecesNeeded = optimization.stockPiecesNeeded
         item.wastePercent = optimization.wastePercent
+        // Single stock length - create breakdown with just that length
+        item.stockLengthBreakdown = { [item.stockLength]: optimization.stockPiecesNeeded }
       }
     }
   }
@@ -383,6 +400,24 @@ export interface YieldComparisonResult {
   wastePercent: number
 }
 
+// Assignment of cuts to a single stock piece for multi-stock optimization
+export interface StockPieceAssignment {
+  stockLength: number           // e.g., 99
+  cuts: number[]                // Cut lengths assigned to this piece, e.g., [86]
+  remainingCapacity: number     // Space left after all cuts and kerfs
+  wasteLength: number           // remainingCapacity (unusable leftover)
+}
+
+// Result from multi-stock optimization across different stock lengths
+export interface MultiStockOptimizationResult {
+  stockPieces: StockPieceAssignment[]
+  stockLengthBreakdown: Record<number, number>  // {99: 2, 123: 1} means 2 pieces of 99", 1 piece of 123"
+  totalStockLength: number
+  totalCutLength: number
+  totalWasteLength: number
+  wastePercent: number
+}
+
 /**
  * Find the optimal stock length by comparing yield (waste percentage) across multiple options.
  * Uses FFD bin-packing optimization for each stock length to determine which produces least waste.
@@ -444,6 +479,129 @@ export function findOptimalStockLengthByYield(
   }
 
   return bestResult
+}
+
+/**
+ * Multi-stock optimization using Hybrid FFD with best-fit bin selection.
+ * Can use MULTIPLE different stock lengths when that yields better material utilization.
+ *
+ * Algorithm:
+ * 1. Sort cuts by length descending (First Fit Decreasing)
+ * 2. For each cut:
+ *    a. Try to fit in existing open bins (any stock length with capacity)
+ *    b. Score by: remaining_space / bin_capacity (lower = less waste)
+ *    c. Also consider opening new bin with each valid stock length
+ *    d. Pick option with lowest waste score
+ *    e. Prefer existing bins over new bins (small penalty for new)
+ * 3. When opening new bin, use smallest stock that fits the cut
+ * 4. Return breakdown: {stockLength: count} for all pieces
+ *
+ * @param stockLengths - Array of available stock lengths to choose from
+ * @param cutLengths - Array of cut lengths needed (including duplicates for quantity)
+ * @param kerf - Kerf width (material lost per cut), defaults to KERF_WIDTH
+ * @returns Optimization result with stock piece assignments and breakdown, or null if no valid solution
+ */
+export function calculateMultiStockOptimization(
+  stockLengths: number[],
+  cutLengths: number[],
+  kerf: number = KERF_WIDTH
+): MultiStockOptimizationResult | null {
+  if (cutLengths.length === 0 || stockLengths.length === 0) {
+    return null
+  }
+
+  // Find the longest cut to validate stock lengths
+  const maxCutLength = Math.max(...cutLengths)
+
+  // Filter to stock lengths that can fit at least the largest cut
+  const validStockLengths = stockLengths.filter(sl => sl >= maxCutLength).sort((a, b) => a - b)
+
+  if (validStockLengths.length === 0) {
+    return null
+  }
+
+  // Sort cuts by length descending for first-fit decreasing
+  const sortedCuts = [...cutLengths].sort((a, b) => b - a)
+
+  // Track open bins (stock pieces with remaining capacity)
+  const stockPieces: StockPieceAssignment[] = []
+
+  // Penalty for opening a new bin (encourages filling existing bins first)
+  // This is a small fraction that makes existing bins with same waste score win
+  const NEW_BIN_PENALTY = 0.001
+
+  for (const cut of sortedCuts) {
+    let bestOption: { pieceIndex: number; stockLength: number; score: number; isNew: boolean } | null = null
+
+    // Option 1: Try fitting in existing bins
+    for (let i = 0; i < stockPieces.length; i++) {
+      const piece = stockPieces[i]
+      // Need cut + kerf (kerf goes after the cut for potential next cut)
+      if (piece.remainingCapacity >= cut) {
+        // Score: remaining space after cut / original stock length
+        // Lower score = less waste percentage
+        const newRemaining = piece.remainingCapacity - cut - kerf
+        const wasteScore = Math.max(0, newRemaining) / piece.stockLength
+
+        if (bestOption === null || wasteScore < bestOption.score) {
+          bestOption = { pieceIndex: i, stockLength: piece.stockLength, score: wasteScore, isNew: false }
+        }
+      }
+    }
+
+    // Option 2: Open new bin with each valid stock length
+    for (const stockLength of validStockLengths) {
+      if (stockLength >= cut) {
+        // Score: remaining space after cut / stock length + new bin penalty
+        const newRemaining = stockLength - cut - kerf
+        const wasteScore = Math.max(0, newRemaining) / stockLength + NEW_BIN_PENALTY
+
+        if (bestOption === null || wasteScore < bestOption.score) {
+          bestOption = { pieceIndex: -1, stockLength, score: wasteScore, isNew: true }
+        }
+      }
+    }
+
+    // Apply the best option
+    if (bestOption) {
+      if (bestOption.isNew) {
+        // Open a new bin
+        stockPieces.push({
+          stockLength: bestOption.stockLength,
+          cuts: [cut],
+          remainingCapacity: bestOption.stockLength - cut - kerf,
+          wasteLength: Math.max(0, bestOption.stockLength - cut - kerf)
+        })
+      } else {
+        // Add to existing bin
+        const piece = stockPieces[bestOption.pieceIndex]
+        piece.cuts.push(cut)
+        piece.remainingCapacity = piece.remainingCapacity - cut - kerf
+        piece.wasteLength = Math.max(0, piece.remainingCapacity)
+      }
+    }
+  }
+
+  // Build breakdown: count of each stock length used
+  const stockLengthBreakdown: Record<number, number> = {}
+  for (const piece of stockPieces) {
+    stockLengthBreakdown[piece.stockLength] = (stockLengthBreakdown[piece.stockLength] || 0) + 1
+  }
+
+  // Calculate totals
+  const totalStockLength = stockPieces.reduce((sum, p) => sum + p.stockLength, 0)
+  const totalCutLength = cutLengths.reduce((sum, c) => sum + c, 0)
+  const totalWasteLength = totalStockLength - totalCutLength
+  const wastePercent = totalStockLength > 0 ? Math.round((totalWasteLength / totalStockLength) * 1000) / 10 : 0
+
+  return {
+    stockPieces,
+    stockLengthBreakdown,
+    totalStockLength,
+    totalCutLength,
+    totalWasteLength,
+    wastePercent
+  }
 }
 
 /**
@@ -765,8 +923,28 @@ export function cutlistToCSV(
 }
 
 // Helper function to convert summary to CSV
+/**
+ * Format stock length breakdown for display.
+ * Converts {99: 2, 123: 1} to "2x 99\" + 1x 123\""
+ */
+export function formatStockBreakdown(breakdown: Record<number, number> | null): string {
+  if (!breakdown) return ''
+
+  const entries = Object.entries(breakdown)
+    .map(([length, count]) => ({ length: Number(length), count }))
+    .sort((a, b) => a.length - b.length) // Sort by stock length ascending
+
+  if (entries.length === 0) return ''
+  if (entries.length === 1) {
+    const { length, count } = entries[0]
+    return `${count}x ${length}"`
+  }
+
+  return entries.map(({ length, count }) => `${count}x ${length}"`).join(' + ')
+}
+
 export function summaryToCSV(projectName: string, summaryItems: AggregatedBomItem[]): string {
-  const headers = ['Part Number', 'Part Name', 'Type', 'Size (WxH)', 'Pieces', 'Unit', 'Stock Length']
+  const headers = ['Part Number', 'Part Name', 'Type', 'Size (WxH)', 'Pieces', 'Unit', 'Stock Pieces']
 
   const rows = summaryItems.map(item => {
     // For glass, show the specific size; for extrusions, show cut lengths
@@ -801,6 +979,14 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
       piecesValue = roundUpWithOverage(item.totalQuantity, unitStr)
     }
 
+    // Format stock pieces - show breakdown if multiple stock lengths used
+    let stockPiecesStr = ''
+    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockLengthBreakdown) {
+      stockPiecesStr = formatStockBreakdown(item.stockLengthBreakdown)
+    } else if (item.stockLength) {
+      stockPiecesStr = `${item.stockLength}"`
+    }
+
     return [
       item.partNumber,
       item.partName,
@@ -808,7 +994,7 @@ export function summaryToCSV(projectName: string, summaryItems: AggregatedBomIte
       sizeStr,
       piecesValue,
       unitStr,
-      item.stockLength || ''
+      stockPiecesStr
     ].map(field => `"${String(field).replace(/"/g, '""')}"`)
   })
 
@@ -828,7 +1014,7 @@ export function combinedSummaryToCSV(
   lines.push(`# Generated: ${new Date().toISOString().split('T')[0]}`)
   lines.push('')
 
-  const headers = ['Part Number', 'Part Name', 'Type', 'Size (WxH)', 'Pieces', 'Unit', 'Stock Length']
+  const headers = ['Part Number', 'Part Name', 'Type', 'Size (WxH)', 'Pieces', 'Unit', 'Stock Pieces']
   lines.push(headers.join(','))
 
   for (const item of summaryItems) {
@@ -859,6 +1045,14 @@ export function combinedSummaryToCSV(
       piecesValue = roundUpWithOverage(item.totalQuantity, unitStr)
     }
 
+    // Format stock pieces - show breakdown if multiple stock lengths used
+    let stockPiecesStr = ''
+    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockLengthBreakdown) {
+      stockPiecesStr = formatStockBreakdown(item.stockLengthBreakdown)
+    } else if (item.stockLength) {
+      stockPiecesStr = `${item.stockLength}"`
+    }
+
     const row = [
       item.partNumber,
       item.partName,
@@ -866,7 +1060,7 @@ export function combinedSummaryToCSV(
       sizeStr,
       piecesValue,
       unitStr,
-      item.stockLength || ''
+      stockPiecesStr
     ].map(field => `"${String(field).replace(/"/g, '""')}"`)
 
     lines.push(row.join(','))

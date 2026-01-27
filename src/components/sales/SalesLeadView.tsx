@@ -27,7 +27,7 @@ export interface LeadSummary {
   customer: {
     id: number
     companyName: string
-    isProspect: boolean
+    isLead: boolean
   } | null
   prospectCompanyName?: string | null
 }

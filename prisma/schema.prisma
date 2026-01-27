@@ -481,7 +481,7 @@ model Customer {
   state       String?
   zipCode     String?
   country     String?    @default("USA")
-  status      String     @default("Active") // Active, Inactive, Prospect
+  status      String     @default("Active") // Active, Lead, Archived
   source      String?    // How they found us
   notes       String?
   createdAt   DateTime   @default(now())

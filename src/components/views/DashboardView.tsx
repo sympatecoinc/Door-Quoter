@@ -37,7 +37,7 @@ interface RecentLead extends RecentProject {
   customer: {
     id: number
     companyName: string
-    isProspect: boolean
+    isLead: boolean
   } | null
   prospectCompanyName?: string | null
 }

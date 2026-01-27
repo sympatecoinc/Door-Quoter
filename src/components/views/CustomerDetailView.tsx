@@ -102,8 +102,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
   const getStatusBadge = (status: string) => {
     const colors: { [key: string]: string } = {
       'Active': 'bg-green-100 text-green-800',
-      'Inactive': 'bg-gray-100 text-gray-800',
-      'Prospect': 'bg-blue-100 text-blue-800'
+      'Lead': 'bg-blue-100 text-blue-800',
+      'Archived': 'bg-gray-100 text-gray-600'
     }
     return colors[status] || 'bg-gray-100 text-gray-800'
   }
@@ -131,8 +131,8 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
       default:
         return (
           <div className="space-y-8">
-            {/* Projects Section (Won projects) - Hidden for prospects */}
-            {customer.status !== 'Prospect' && (
+            {/* Projects Section (Won projects) - Hidden for leads */}
+            {customer.status !== 'Lead' && (
               <CustomerProjects customerId={customerId} customer={customer} onProjectClick={setSelectedProjectId} showFullHeader={false} filterType="projects" refreshKey={refreshKey} onStatusChange={() => setRefreshKey(k => k + 1)} />
             )}
 

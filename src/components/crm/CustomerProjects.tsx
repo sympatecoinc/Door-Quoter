@@ -938,8 +938,8 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(STATUS_CONFIG)
                     .filter(([key]) => {
-                      // Prospects can only have lead statuses
-                      if (customer.status === 'Prospect') {
+                      // Leads can only have lead statuses
+                      if (customer.status === 'Lead') {
                         return LEAD_STATUSES.includes(key as ProjectStatus)
                       }
                       // Filter status buttons based on filterType
@@ -1065,8 +1065,8 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                 >
                   {Object.entries(STATUS_CONFIG)
                     .filter(([key]) => {
-                      // Prospects can only have lead statuses
-                      if (customer.status === 'Prospect') {
+                      // Leads can only have lead statuses
+                      if (customer.status === 'Lead') {
                         return LEAD_STATUSES.includes(key as ProjectStatus)
                       }
                       return true

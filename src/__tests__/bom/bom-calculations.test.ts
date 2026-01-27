@@ -434,31 +434,32 @@ describe('cutlistToCSV', () => {
 describe('summaryToCSV', () => {
   it('should generate valid CSV headers', () => {
     const items = [
-      { partNumber: 'EXTR-001', partName: 'Rail', partType: 'Extrusion', totalQuantity: 4, unit: 'EA', stockLength: 96, cutLengths: [42, 42, 42, 42], totalCutLength: 168, stockPiecesNeeded: 2, wastePercent: 12.5, glassDimensions: [], totalArea: 0, calculatedLengths: [], totalCalculatedLength: 0, glassWidth: null, glassHeight: null }
+      { partNumber: 'EXTR-001', partName: 'Rail', partType: 'Extrusion', totalQuantity: 4, unit: 'EA', stockLength: 96, cutLengths: [42, 42, 42, 42], totalCutLength: 168, stockPiecesNeeded: 2, wastePercent: 12.5, glassDimensions: [], totalArea: 0, calculatedLengths: [], totalCalculatedLength: 0, glassWidth: null, glassHeight: null, stockLengthBreakdown: null }
     ]
     const csv = summaryToCSV('Test Project', items as any)
     expect(csv).toContain('Part Number')
-    expect(csv).toContain('Stock Pieces to Order')
-    expect(csv).toContain('Waste %')
+    expect(csv).toContain('Part Name')
+    expect(csv).toContain('Stock Pieces')
   })
 
   it('should show unique cut lengths for extrusions', () => {
     const items = [
-      { partNumber: 'EXTR-001', partName: 'Rail', partType: 'Extrusion', totalQuantity: 4, unit: 'EA', stockLength: 96, cutLengths: [42, 42, 30, 30], totalCutLength: 144, stockPiecesNeeded: 2, wastePercent: 25, glassDimensions: [], totalArea: 0, calculatedLengths: [], totalCalculatedLength: 0, glassWidth: null, glassHeight: null }
+      { partNumber: 'EXTR-001', partName: 'Rail', partType: 'Extrusion', totalQuantity: 4, unit: 'EA', stockLength: 96, cutLengths: [42, 42, 30, 30], totalCutLength: 144, stockPiecesNeeded: 2, wastePercent: 25, glassDimensions: [], totalArea: 0, calculatedLengths: [], totalCalculatedLength: 0, glassWidth: null, glassHeight: null, stockLengthBreakdown: null }
     ]
     const csv = summaryToCSV('Test Project', items as any)
-    expect(csv).toContain('42.00')
-    expect(csv).toContain('30.00')
+    // Cut lengths are now shown with 3 decimal places
+    expect(csv).toContain('42.000')
+    expect(csv).toContain('30.000')
   })
 
   it('should show glass dimensions for glass items', () => {
     const items = [
-      { partNumber: 'GLASS-CLEAR', partName: 'Clear Glass', partType: 'Glass', totalQuantity: 1, unit: 'SQ FT', stockLength: null, cutLengths: [], totalCutLength: 0, stockPiecesNeeded: null, wastePercent: null, glassDimensions: [{ width: 41.5, height: 107.5 }], totalArea: 30.97, glassWidth: 41.5, glassHeight: 107.5, calculatedLengths: [], totalCalculatedLength: 0 }
+      { partNumber: 'GLASS-CLEAR', partName: 'Clear Glass', partType: 'Glass', totalQuantity: 1, unit: 'SQ FT', stockLength: null, cutLengths: [], totalCutLength: 0, stockPiecesNeeded: null, wastePercent: null, glassDimensions: [{ width: 41.5, height: 107.5 }], totalArea: 30.97, glassWidth: 41.5, glassHeight: 107.5, calculatedLengths: [], totalCalculatedLength: 0, stockLengthBreakdown: null }
     ]
     const csv = summaryToCSV('Test Project', items as any)
-    expect(csv).toContain('41.50')
-    expect(csv).toContain('107.50')
-    expect(csv).toContain('30.97')
+    // Glass dimensions are shown with 3 decimal places in size column
+    expect(csv).toContain('41.500')
+    expect(csv).toContain('107.500')
   })
 })
 

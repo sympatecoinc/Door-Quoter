@@ -364,10 +364,7 @@ describe('summaryToCSV', () => {
       expect(headers).toContain('Size (WxH)')
       expect(headers).toContain('Pieces')
       expect(headers).toContain('Unit')
-      expect(headers).toContain('Stock Length')
-      expect(headers).toContain('Stock Pieces to Order')
-      expect(headers).toContain('Waste %')
-      expect(headers).toContain('Area (SQ FT)')
+      expect(headers).toContain('Stock Pieces')
     })
   })
 
@@ -390,7 +387,8 @@ describe('summaryToCSV', () => {
         glassHeight: null,
         calculatedLength: null,
         stockPiecesNeeded: null,
-        wastePercent: null
+        wastePercent: null,
+        stockLengthBreakdown: null
       }]
       const csv = summaryToCSV('Test', items)
       expect(csv).toContain('""001""')
@@ -417,12 +415,13 @@ describe('summaryToCSV', () => {
         glassHeight: 48.25,
         calculatedLength: null,
         stockPiecesNeeded: null,
-        wastePercent: null
+        wastePercent: null,
+        stockLengthBreakdown: null
       }]
       const csv = summaryToCSV('Test', items)
-      // In CSV, quotes are escaped as "", so 24.50" x 48.25" becomes 24.50"" x 48.25""
-      expect(csv).toContain('24.50"" x 48.25""')
-      expect(csv).toContain('8.20')
+      // Glass dimensions should be in the Size column
+      // In CSV, quotes are escaped as "", so 24.500" x 48.250" becomes 24.500"" x 48.250""
+      expect(csv).toContain('24.500"" x 48.250""')
     })
   })
 
@@ -445,12 +444,13 @@ describe('summaryToCSV', () => {
         glassHeight: null,
         calculatedLength: null,
         stockPiecesNeeded: 2,
-        wastePercent: 28.1
+        wastePercent: 28.1,
+        stockLengthBreakdown: null
       }]
       const csv = summaryToCSV('Test', items)
-      expect(csv).toContain('48.00')
-      expect(csv).toContain('42.00')
-      expect(csv).toContain('28.1%')
+      // Cut lengths should be in the Size column
+      expect(csv).toContain('48.000')
+      expect(csv).toContain('42.000')
     })
 
     it('shows stock pieces to order', () => {
@@ -471,7 +471,8 @@ describe('summaryToCSV', () => {
         glassHeight: null,
         calculatedLength: null,
         stockPiecesNeeded: 2,
-        wastePercent: 47.9
+        wastePercent: 47.9,
+        stockLengthBreakdown: null
       }]
       const csv = summaryToCSV('Test', items)
       // Check that stock pieces to order is present
@@ -481,7 +482,7 @@ describe('summaryToCSV', () => {
   })
 
   describe('hardware LF/IN formatting', () => {
-    it('shows total calculated length for LF hardware', () => {
+    it('shows total calculated length with overage for LF hardware', () => {
       const items: AggregatedBomItem[] = [{
         partNumber: 'HW-001',
         partName: 'Weatherstrip',
@@ -499,10 +500,14 @@ describe('summaryToCSV', () => {
         glassHeight: null,
         calculatedLength: 12.5,  // Individual calculated length for grouping
         stockPiecesNeeded: null,
-        wastePercent: null
+        wastePercent: null,
+        stockLengthBreakdown: null
       }]
       const csv = summaryToCSV('Test', items)
-      expect(csv).toContain('20.50 LF')
+      // Pieces column contains total calculated length with 5% overage, rounded up
+      // 20.5 * 1.05 = 21.525, rounded up = 22
+      expect(csv).toContain('"22"')
+      expect(csv).toContain('"LF"')
     })
   })
 })

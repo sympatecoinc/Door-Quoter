@@ -77,9 +77,9 @@ export interface CustomerProject {
 }
 
 // Customer status options
-export type CustomerStatus = 'Active' | 'Inactive' | 'Prospect' | 'Archived'
+export type CustomerStatus = 'Active' | 'Lead' | 'Archived'
 
-export const CUSTOMER_STATUSES: CustomerStatus[] = ['Active', 'Inactive', 'Prospect', 'Archived']
+export const CUSTOMER_STATUSES: CustomerStatus[] = ['Active', 'Lead', 'Archived']
 
 export const CUSTOMER_STATUS_CONFIG: Record<CustomerStatus, {
   label: string
@@ -91,20 +91,15 @@ export const CUSTOMER_STATUS_CONFIG: Record<CustomerStatus, {
     bgColor: 'bg-green-100',
     textColor: 'text-green-800'
   },
-  Inactive: {
-    label: 'Inactive',
-    bgColor: 'bg-gray-100',
-    textColor: 'text-gray-600'
-  },
-  Prospect: {
-    label: 'Prospect',
+  Lead: {
+    label: 'Lead',
     bgColor: 'bg-blue-100',
     textColor: 'text-blue-800'
   },
   Archived: {
     label: 'Archived',
-    bgColor: 'bg-red-100',
-    textColor: 'text-red-800'
+    bgColor: 'bg-gray-100',
+    textColor: 'text-gray-600'
   }
 }
 

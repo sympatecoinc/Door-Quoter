@@ -349,13 +349,13 @@ export async function GET() {
         openingsCount: lead._count.openings,
         value: calculateQuoteTotal(lead, defaultPricingMode),
         updatedAt: lead.updatedAt.toISOString(),
-        // Include customer if linked, otherwise include prospect info
+        // Include customer if linked, otherwise include lead info
         customer: lead.customer ? {
           id: lead.customer.id,
           companyName: lead.customer.companyName,
-          isProspect: lead.customer.status === 'Prospect'
+          isLead: lead.customer.status === 'Lead'
         } : null,
-        // Prospect info for leads without customer
+        // Lead info for leads without customer
         prospectCompanyName: lead.prospectCompanyName,
         hasThinWall,
         hasTrimmed,

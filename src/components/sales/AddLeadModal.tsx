@@ -55,7 +55,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
 
     setSearchLoading(true)
     try {
-      const response = await fetch(`/api/customers?search=${encodeURIComponent(query)}&limit=10&status=Active,Prospect`)
+      const response = await fetch(`/api/customers?search=${encodeURIComponent(query)}&limit=10&status=Active,Lead`)
       if (response.ok) {
         const data = await response.json()
         setCustomers(data.customers || [])
@@ -153,7 +153,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
             city: formData.city.trim() || undefined,
             state: formData.state.trim() || undefined,
             zipCode: formData.zipCode.trim() || undefined,
-            status: 'Prospect'
+            status: 'Lead'
           })
         })
 

@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/appStore'
 import CustomerList from '@/components/customers/CustomerList'
 import CustomerForm from '@/components/customers/CustomerForm'
 import { Customer } from '@/types/customer'
-import { Plus, CheckCircle, AlertCircle, X, Building2, Users, UserPlus } from 'lucide-react'
+import { Plus, CheckCircle, AlertCircle, X, Building2, Users, Target } from 'lucide-react'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 
 export default function CustomersView() {
@@ -14,10 +14,10 @@ export default function CustomersView() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
-  const [stats, setStats] = useState<{ total: number; active: number; prospects: number }>({
+  const [stats, setStats] = useState<{ total: number; active: number; leads: number }>({
     total: 0,
     active: 0,
-    prospects: 0
+    leads: 0
   })
 
   useEffect(() => {
@@ -44,22 +44,22 @@ export default function CustomersView() {
 
   async function fetchStats() {
     try {
-      const [totalRes, activeRes, prospectsRes] = await Promise.all([
+      const [totalRes, activeRes, leadsRes] = await Promise.all([
         fetch('/api/customers?limit=1'),
         fetch('/api/customers?limit=1&status=Active'),
-        fetch('/api/customers?limit=1&status=Prospect')
+        fetch('/api/customers?limit=1&status=Lead')
       ])
 
-      if (totalRes.ok && activeRes.ok && prospectsRes.ok) {
-        const [totalData, activeData, prospectsData] = await Promise.all([
+      if (totalRes.ok && activeRes.ok && leadsRes.ok) {
+        const [totalData, activeData, leadsData] = await Promise.all([
           totalRes.json(),
           activeRes.json(),
-          prospectsRes.json()
+          leadsRes.json()
         ])
         setStats({
           total: totalData.pagination.total,
           active: activeData.pagination.total,
-          prospects: prospectsData.pagination.total
+          leads: leadsData.pagination.total
         })
       }
     } catch (error) {
@@ -164,12 +164,12 @@ export default function CustomersView() {
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-              <UserPlus className="w-5 h-5 text-purple-600" />
+            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Target className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-gray-900">{stats.prospects}</div>
-              <div className="text-sm text-gray-500">Prospects</div>
+              <div className="text-2xl font-bold text-gray-900">{stats.leads}</div>
+              <div className="text-sm text-gray-500">Leads</div>
             </div>
           </div>
         </div>

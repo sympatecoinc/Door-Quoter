@@ -247,6 +247,28 @@ export interface YieldComparisonResult {
 }
 
 /**
+ * Assignment of cuts to a single stock piece for multi-stock optimization
+ */
+export interface StockPieceAssignment {
+  stockLength: number           // e.g., 99
+  cuts: number[]                // Cut lengths assigned to this piece, e.g., [86]
+  remainingCapacity: number     // Space left after all cuts and kerfs
+  wasteLength: number           // remainingCapacity (unusable leftover)
+}
+
+/**
+ * Result from multi-stock optimization across different stock lengths
+ */
+export interface MultiStockOptimizationResult {
+  stockPieces: StockPieceAssignment[]
+  stockLengthBreakdown: Record<number, number>  // {99: 2, 123: 1} means 2 pieces of 99", 1 piece of 123"
+  totalStockLength: number
+  totalCutLength: number
+  totalWasteLength: number
+  wastePercent: number
+}
+
+/**
  * Find the optimal stock length by comparing yield (waste percentage) across multiple options.
  * Uses FFD bin-packing optimization for each stock length to determine which produces least waste.
  *
@@ -307,6 +329,149 @@ export function findOptimalStockLengthByYield(
   }
 
   return bestResult
+}
+
+/**
+ * Multi-stock optimization using Hybrid FFD with best-fit bin selection.
+ * Can use MULTIPLE different stock lengths when that yields better material utilization.
+ *
+ * Algorithm:
+ * 1. Sort cuts by length descending (First Fit Decreasing)
+ * 2. For each cut:
+ *    a. Try to fit in existing open bins (any stock length with capacity)
+ *    b. Score by: remaining_space / bin_capacity (lower = less waste)
+ *    c. Also consider opening new bin with each valid stock length
+ *    d. Pick option with lowest waste score
+ *    e. Prefer existing bins over new bins (small penalty for new)
+ * 3. When opening new bin, use smallest stock that fits the cut
+ * 4. Return breakdown: {stockLength: count} for all pieces
+ *
+ * @param stockLengths - Array of available stock lengths to choose from
+ * @param cutLengths - Array of cut lengths needed (including duplicates for quantity)
+ * @param kerf - Kerf width (material lost per cut), defaults to KERF_WIDTH
+ * @returns Optimization result with stock piece assignments and breakdown, or null if no valid solution
+ */
+export function calculateMultiStockOptimization(
+  stockLengths: number[],
+  cutLengths: number[],
+  kerf: number = KERF_WIDTH
+): MultiStockOptimizationResult | null {
+  if (cutLengths.length === 0 || stockLengths.length === 0) {
+    return null
+  }
+
+  // Find the longest cut to validate stock lengths
+  const maxCutLength = Math.max(...cutLengths)
+
+  // Filter to stock lengths that can fit at least the largest cut
+  const validStockLengths = stockLengths.filter(sl => sl >= maxCutLength).sort((a, b) => a - b)
+
+  if (validStockLengths.length === 0) {
+    return null
+  }
+
+  // Sort cuts by length descending for first-fit decreasing
+  const sortedCuts = [...cutLengths].sort((a, b) => b - a)
+
+  // Track open bins (stock pieces with remaining capacity)
+  const stockPieces: StockPieceAssignment[] = []
+
+  // Penalty for opening a new bin (encourages filling existing bins first)
+  // This is a small fraction that makes existing bins with same waste score win
+  const NEW_BIN_PENALTY = 0.001
+
+  for (const cut of sortedCuts) {
+    let bestOption: { pieceIndex: number; stockLength: number; score: number; isNew: boolean } | null = null
+
+    // Option 1: Try fitting in existing bins
+    for (let i = 0; i < stockPieces.length; i++) {
+      const piece = stockPieces[i]
+      // Need cut + kerf (kerf goes after the cut for potential next cut)
+      if (piece.remainingCapacity >= cut) {
+        // Score: remaining space after cut / original stock length
+        // Lower score = less waste percentage
+        const newRemaining = piece.remainingCapacity - cut - kerf
+        const wasteScore = Math.max(0, newRemaining) / piece.stockLength
+
+        if (bestOption === null || wasteScore < bestOption.score) {
+          bestOption = { pieceIndex: i, stockLength: piece.stockLength, score: wasteScore, isNew: false }
+        }
+      }
+    }
+
+    // Option 2: Open new bin with each valid stock length
+    for (const stockLength of validStockLengths) {
+      if (stockLength >= cut) {
+        // Score: remaining space after cut / stock length + new bin penalty
+        const newRemaining = stockLength - cut - kerf
+        const wasteScore = Math.max(0, newRemaining) / stockLength + NEW_BIN_PENALTY
+
+        if (bestOption === null || wasteScore < bestOption.score) {
+          bestOption = { pieceIndex: -1, stockLength, score: wasteScore, isNew: true }
+        }
+      }
+    }
+
+    // Apply the best option
+    if (bestOption) {
+      if (bestOption.isNew) {
+        // Open a new bin
+        stockPieces.push({
+          stockLength: bestOption.stockLength,
+          cuts: [cut],
+          remainingCapacity: bestOption.stockLength - cut - kerf,
+          wasteLength: Math.max(0, bestOption.stockLength - cut - kerf)
+        })
+      } else {
+        // Add to existing bin
+        const piece = stockPieces[bestOption.pieceIndex]
+        piece.cuts.push(cut)
+        piece.remainingCapacity = piece.remainingCapacity - cut - kerf
+        piece.wasteLength = Math.max(0, piece.remainingCapacity)
+      }
+    }
+  }
+
+  // Build breakdown: count of each stock length used
+  const stockLengthBreakdown: Record<number, number> = {}
+  for (const piece of stockPieces) {
+    stockLengthBreakdown[piece.stockLength] = (stockLengthBreakdown[piece.stockLength] || 0) + 1
+  }
+
+  // Calculate totals
+  const totalStockLength = stockPieces.reduce((sum, p) => sum + p.stockLength, 0)
+  const totalCutLength = cutLengths.reduce((sum, c) => sum + c, 0)
+  const totalWasteLength = totalStockLength - totalCutLength
+  const wastePercent = totalStockLength > 0 ? Math.round((totalWasteLength / totalStockLength) * 1000) / 10 : 0
+
+  return {
+    stockPieces,
+    stockLengthBreakdown,
+    totalStockLength,
+    totalCutLength,
+    totalWasteLength,
+    wastePercent
+  }
+}
+
+/**
+ * Format stock length breakdown for display.
+ * Converts {99: 2, 123: 1} to "2x 99\" + 1x 123\""
+ */
+export function formatStockBreakdown(breakdown: Record<number, number> | null): string {
+  if (!breakdown) return ''
+
+  const entries = Object.entries(breakdown)
+    .map(([length, count]) => ({ length: Number(length), count }))
+    .sort((a, b) => a.length - b.length) // Sort by stock length ascending
+
+  if (entries.length === 0) return ''
+  if (entries.length === 1) {
+    const { length, count } = entries[0]
+    return `${count}x ${length}"`
+  }
+
+  return entries.map(({ length, count }) => `${count}x ${length}"`).join(' + ')
 }
 
 /**

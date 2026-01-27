@@ -16,6 +16,8 @@ import {
   ShoppingCart
 } from 'lucide-react'
 
+const FILTER_STATUSES = ['Active', 'Lead', 'Archived'] as const
+
 function SkeletonRow() {
   return (
     <tr className="animate-pulse">
@@ -68,23 +70,27 @@ export default function CustomerList({
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState(searchTerm)
-  const [status, setStatus] = useState(statusFilter)
+  const [statusFilters, setStatusFilters] = useState<string[]>([])
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null)
+  const [searchExpanded, setSearchExpanded] = useState(false)
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
   const isFirstRender = useRef(true)
   const limit = 25
 
   useEffect(() => {
     setSearch(searchTerm)
-    setStatus(statusFilter)
+    if (statusFilter !== 'all') {
+      setStatusFilters([statusFilter])
+    }
     setPage(1)
   }, [searchTerm, statusFilter])
 
   useEffect(() => {
     fetchCustomers()
-  }, [page, search, status])
+  }, [page, search, statusFilters])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -96,6 +102,15 @@ export default function CustomerList({
     return () => document.removeEventListener('click', handleClickOutside)
   }, [menuOpenId])
 
+  const toggleStatusFilter = (status: string) => {
+    setStatusFilters(prev =>
+      prev.includes(status)
+        ? prev.filter(s => s !== status)
+        : [...prev, status]
+    )
+    setPage(1)
+  }
+
   async function fetchCustomers() {
     setLoading(true)
     try {
@@ -103,8 +118,14 @@ export default function CustomerList({
         page: page.toString(),
         limit: limit.toString(),
         ...(search && { search }),
-        ...(status !== 'all' && { status })
       })
+
+      // Add status filters (default to Active,Lead if none selected)
+      if (statusFilters.length > 0) {
+        params.append('status', statusFilters.join(','))
+      } else {
+        params.append('status', 'Active,Lead')
+      }
 
       const response = await fetch(`/api/customers?${params}`)
       if (response.ok) {
@@ -145,12 +166,6 @@ export default function CustomerList({
     setMenuOpenId(null)
   }
 
-  function handleSearchSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setPage(1)
-    fetchCustomers()
-  }
-
   const getStatusConfig = (customerStatus: string) => {
     return CUSTOMER_STATUS_CONFIG[customerStatus as keyof typeof CUSTOMER_STATUS_CONFIG] || {
       label: customerStatus,
@@ -160,38 +175,99 @@ export default function CustomerList({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-      {/* Filters */}
-      <div className="p-4 border-b border-gray-200">
-        <div className="flex flex-wrap gap-4 items-center">
-          {/* Search */}
-          <form onSubmit={handleSearchSubmit} className="flex-1 min-w-[200px]">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search customers..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </form>
+    <div className="space-y-6">
+      {/* Header Actions */}
+      <div className="flex justify-between items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          {/* Expandable Search Bar */}
+          <div className="relative flex items-center">
+            <button
+              onClick={() => setSearchExpanded(true)}
+              className={`p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200 ${searchExpanded ? 'opacity-0 pointer-events-none absolute' : ''}`}
+              title="Search customers"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+            {searchExpanded && (
+              <div className="relative animate-expand-search">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search customers..."
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value)
+                    setPage(1)
+                  }}
+                  onBlur={() => {
+                    if (!search) {
+                      setSearchExpanded(false)
+                    }
+                  }}
+                  autoFocus
+                  className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm text-gray-900 placeholder-gray-400 w-64"
+                />
+              </div>
+            )}
+          </div>
 
-          {/* Status Filter */}
-          <select
-            value={status}
-            onChange={(e) => { setStatus(e.target.value); setPage(1); }}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Status</option>
-            {CUSTOMER_STATUSES.filter(s => s !== 'Archived').map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
+          {/* Status Filter Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setFiltersExpanded(!filtersExpanded)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${
+                filtersExpanded || statusFilters.length > 0
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Filter {statusFilters.length > 0 && `(${statusFilters.length})`}
+            </button>
+            <div className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out ${
+              filtersExpanded ? 'max-w-[400px] opacity-100' : 'max-w-0 opacity-0'
+            }`}>
+              {FILTER_STATUSES.map((status) => {
+                const isActive = statusFilters.includes(status)
+                const colorClasses = {
+                  'Active': isActive
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
+                  'Lead': isActive
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
+                  'Archived': isActive
+                    ? 'bg-gray-600 text-white'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600',
+                }[status]
+
+                return (
+                  <button
+                    key={status}
+                    onClick={() => toggleStatusFilter(status)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 whitespace-nowrap ${colorClasses}`}
+                  >
+                    {status}
+                  </button>
+                )
+              })}
+              {statusFilters.length > 0 && (
+                <button
+                  onClick={() => {
+                    setStatusFilters([])
+                    setPage(1)
+                  }}
+                  className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
+      {/* Customer Table */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -345,33 +421,34 @@ export default function CustomerList({
         </table>
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
-          <div className="text-sm text-gray-500">
-            Showing {((page - 1) * limit) + 1} - {Math.min(page * limit, total)} of {total} customers
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
+            <div className="text-sm text-gray-500">
+              Showing {((page - 1) * limit) + 1} - {Math.min(page * limit, total)} of {total} customers
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm text-gray-700">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-sm text-gray-700">
-              Page {page} of {totalPages}
-            </span>
-            <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

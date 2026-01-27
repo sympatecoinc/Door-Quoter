@@ -94,7 +94,7 @@ export default function CustomerForm({ isOpen, onClose, onSubmit, customer, mode
       <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-semibold text-gray-900">
-            {mode === 'edit' ? `Edit ${formData.status === 'Prospect' ? 'Prospect' : 'Customer'}` : 'Add New Customer'}
+            {mode === 'edit' ? `Edit ${formData.status === 'Lead' ? 'Lead' : 'Customer'}` : 'Add New Customer'}
           </h2>
           <button
             onClick={onClose}
@@ -189,8 +189,8 @@ export default function CustomerForm({ isOpen, onClose, onSubmit, customer, mode
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="Active">Active</option>
-                <option value="Prospect">Prospect</option>
-                <option value="Inactive">Inactive</option>
+                <option value="Lead">Lead</option>
+                <option value="Archived">Archived</option>
               </select>
             </div>
             <div>
@@ -243,7 +243,7 @@ export default function CustomerForm({ isOpen, onClose, onSubmit, customer, mode
             >
               {isSubmitting
                 ? (mode === 'edit' ? 'Updating...' : 'Creating...')
-                : (mode === 'edit' ? `Update ${formData.status === 'Prospect' ? 'Prospect' : 'Customer'}` : 'Create Customer')
+                : (mode === 'edit' ? `Update ${formData.status === 'Lead' ? 'Lead' : 'Customer'}` : 'Create Customer')
               }
             </button>
           </div>

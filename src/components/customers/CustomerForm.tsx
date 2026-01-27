@@ -23,7 +23,7 @@ export default function CustomerForm({ customer, onClose, onSave }: CustomerForm
     state: customer?.state || '',
     zipCode: customer?.zipCode || '',
     country: customer?.country || 'USA',
-    status: customer?.status || 'Prospect',
+    status: customer?.status || 'Lead',
     source: customer?.source || '',
     notes: customer?.notes || ''
   })
