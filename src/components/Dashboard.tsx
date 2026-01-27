@@ -3,6 +3,8 @@
 import { useAppStore } from '@/stores/appStore'
 import DashboardView from './views/DashboardView'
 import CRMView from './views/CRMView'
+import CustomersView from './views/CustomersView'
+import CustomerDetailView from './customers/CustomerDetailView'
 import ProjectsView from './views/ProjectsView'
 import ProjectDetailView from './views/ProjectDetailView'
 import ProductionView from './views/ProductionView'
@@ -22,12 +24,14 @@ import QuoteView from './views/QuoteView'
 import QuoteDocumentsView from './views/QuoteDocumentsView'
 
 export default function Dashboard() {
-  const { currentMenu, selectedProjectId } = useAppStore()
+  const { currentMenu, selectedProjectId, selectedCustomerId } = useAppStore()
 
   const renderView = () => {
     switch (currentMenu) {
       case 'dashboard':
         return <DashboardView />
+      case 'customers':
+        return selectedCustomerId ? <CustomerDetailView /> : <CustomersView />
       case 'crm':
         return <CRMView />
       case 'projects':

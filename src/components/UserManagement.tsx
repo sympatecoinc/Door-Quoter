@@ -27,6 +27,7 @@ interface User {
 
 const AVAILABLE_TABS = [
   { id: 'dashboard', label: 'Dashboard (Sales)' },
+  { id: 'customers', label: 'Customers' },
   { id: 'crm', label: 'CRM' },
   { id: 'projects', label: 'Projects' },
   { id: 'production', label: 'Production' },

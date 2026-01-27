@@ -110,7 +110,7 @@ export default function InventoryAlertsWidget({ refreshKey = 0, compact = false,
 
   return (
     <>
-      <div className="bg-white rounded-lg shadow">
+      <div className="bg-white rounded-lg shadow flex flex-col min-h-[calc(100vh-280px)]">
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -180,7 +180,7 @@ export default function InventoryAlertsWidget({ refreshKey = 0, compact = false,
           )}
         </div>
 
-        <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
+        <div className="p-4 space-y-3 flex-1 overflow-y-auto">
           {displayAlerts.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <CheckCircle className="w-12 h-12 mx-auto mb-2 text-green-500" />
@@ -193,7 +193,7 @@ export default function InventoryAlertsWidget({ refreshKey = 0, compact = false,
 
               return (
                 <div
-                  key={alert.partId}
+                  key={alert.variantId ? `${alert.partId}-${alert.variantId}` : alert.partId}
                   className={`border rounded-lg p-3 ${getUrgencyStyle(alert.urgency)}`}
                 >
                   <div className="flex items-start justify-between">

@@ -167,7 +167,7 @@ function OverviewTab({ refreshKey, dateRange, onViewPO, onPOCreated }: OverviewT
   return (
     <div className="columns-1 lg:columns-2 gap-6 space-y-6">
       <div className="break-inside-avoid">
-        <InventoryAlertsWidget refreshKey={refreshKey} compact onPOCreated={onPOCreated} />
+        <InventoryAlertsWidget refreshKey={refreshKey} onPOCreated={onPOCreated} />
       </div>
       <div className="break-inside-avoid">
         <MRPWidget refreshKey={refreshKey} />

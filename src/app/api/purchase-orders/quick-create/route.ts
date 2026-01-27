@@ -214,12 +214,11 @@ export async function POST(request: NextRequest) {
     // Build memo with context
     const memo = notes || `Quick PO for ${masterPart.partNumber} from inventory alert`
 
-    // Build description with part number, and finish/length for extrusions
+    // Build description and itemRefName for the PO line
     let lineDescription = `${masterPart.partNumber} - ${masterPart.description || masterPart.baseName}`
+    let lineItemRefName = masterPart.partNumber
 
     if (isExtrusion) {
-      // Reset to just base description for extrusions, we'll rebuild with all parts
-      const baseDescription = masterPart.description || masterPart.baseName
       // Get stock length
       let stockLengthInches = 0
       if (masterPart.stockLengthRules && masterPart.stockLengthRules.length > 0) {
@@ -228,43 +227,43 @@ export async function POST(request: NextRequest) {
         stockLengthInches = masterPart.extrusionVariants[0].stockLength || 0
       }
 
-      // Get finish from extrusionVariant or decode from part number
-      let finishName = 'Mill Finish' // default
+      // Get finish code from extrusionVariant
+      let finishCode = ''
       if (masterPart.extrusionVariants && masterPart.extrusionVariants.length > 0) {
         const variant = masterPart.extrusionVariants[0]
-        if (variant.finishPricing?.finishType) {
-          finishName = variant.finishPricing.finishType
+        if (variant.finishPricing?.finishCode) {
+          finishCode = variant.finishPricing.finishCode
         }
       }
 
-      // Also check part number suffix for finish code
+      // Check if base part number already has finish suffix, extract it
       const partNumber = masterPart.partNumber
-      if (partNumber.endsWith('-BL')) {
-        finishName = 'Black'
-      } else if (partNumber.endsWith('-C2')) {
-        finishName = 'Clear Anodized'
-      } else if (partNumber.endsWith('-AL')) {
-        finishName = 'Aluminum'
-      } else if (partNumber.endsWith('-WH')) {
-        finishName = 'White'
-      } else if (partNumber.endsWith('-BR')) {
-        finishName = 'Bronze'
+      const finishSuffixes = ['-BL', '-C2', '-AL', '-WH', '-BR', '-MF']
+      let basePartNumber = partNumber
+      for (const suffix of finishSuffixes) {
+        if (partNumber.endsWith(suffix)) {
+          basePartNumber = partNumber.slice(0, -suffix.length)
+          if (!finishCode) {
+            finishCode = suffix.slice(1) // Remove the leading dash
+          }
+          break
+        }
       }
 
-      // Format length
-      const lengthStr = stockLengthInches > 0
-        ? `${(stockLengthInches / 12).toFixed(0)}ft (${stockLengthInches}")`
-        : ''
+      // Build full part number: basePartNumber-finishCode-stockLength
+      // e.g., 48349-BL-144
+      const fullPartParts = [basePartNumber]
+      if (finishCode) {
+        fullPartParts.push(finishCode)
+      }
+      if (stockLengthInches > 0) {
+        fullPartParts.push(String(stockLengthInches))
+      }
+      lineItemRefName = fullPartParts.join('-')
 
-      // Build full description: Part# - Description - Finish - Length
-      const parts = [masterPart.partNumber, baseDescription]
-      if (finishName && finishName !== 'Mill Finish') {
-        parts.push(finishName)
-      }
-      if (lengthStr) {
-        parts.push(lengthStr)
-      }
-      lineDescription = parts.join(' - ')
+      // Build description: Base Description - Full Part#
+      const baseDescription = masterPart.description || masterPart.baseName
+      lineDescription = `${baseDescription} - ${lineItemRefName}`
     }
 
     // Create the purchase order
@@ -282,7 +281,7 @@ export async function POST(request: NextRequest) {
             lineNum: 1,
             quickbooksItemId: masterPart.quickbooksItem?.id || null,
             itemRefId: masterPart.quickbooksItem?.quickbooksId || null,
-            itemRefName: masterPart.partNumber,
+            itemRefName: lineItemRefName,
             description: lineDescription,
             quantity,
             unitPrice,

@@ -299,7 +299,7 @@ export interface ComponentInstance {
   updatedAt: Date
 }
 
-export type MenuOption = 'dashboard' | 'crm' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'purchasingDashboard' | 'receiving' | 'salesOrders' | 'invoices' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments' | 'production' | 'logistics'
+export type MenuOption = 'dashboard' | 'customers' | 'crm' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'purchasingDashboard' | 'receiving' | 'salesOrders' | 'invoices' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments' | 'production' | 'logistics'
 
 // Vendor Management Types
 export interface Vendor {
@@ -591,3 +591,6 @@ export interface LeadDetail {
     name: string
   } | null
 }
+
+// Customer exports
+export * from './customer'

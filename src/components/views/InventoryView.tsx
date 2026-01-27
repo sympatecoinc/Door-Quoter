@@ -214,6 +214,33 @@ export default function InventoryView() {
     }
   }
 
+  function getRowBackgroundClass(status: string, qtyOnHand?: number | null, qtyReserved?: number | null, reorderPoint?: number | null) {
+    const onHand = qtyOnHand ?? 0
+    const reserved = qtyReserved ?? 0
+    const reorder = reorderPoint ?? 0
+
+    // Over-reserved takes priority
+    if (reserved > onHand) {
+      return 'bg-blue-100 hover:bg-blue-200'
+    }
+
+    // Below reorder point
+    if (reorder > 0 && onHand < reorder) {
+      return 'bg-red-100 hover:bg-red-200'
+    }
+
+    switch (status) {
+      case 'in_stock':
+        return 'bg-green-50 hover:bg-green-100'
+      case 'low_stock':
+        return 'bg-yellow-100 hover:bg-yellow-200'
+      case 'out_of_stock':
+        return 'bg-red-100 hover:bg-red-200'
+      default:
+        return 'hover:bg-gray-50'
+    }
+  }
+
   return (
     <div className="p-6">
       {/* Notification */}
@@ -443,7 +470,7 @@ export default function InventoryView() {
                   {parts.map(part => (
                     <tr
                       key={part.id}
-                      className="hover:bg-gray-50 cursor-pointer"
+                      className={`${getRowBackgroundClass(part.stockStatus, part.qtyOnHand, part.qtyReserved, part.reorderPoint)} cursor-pointer`}
                       onClick={() => setEditingPart(part)}
                     >
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{part.partNumber}</td>

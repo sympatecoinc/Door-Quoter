@@ -24,12 +24,14 @@ import {
   PackageCheck,
   LayoutDashboard,
   PackageOpen,
+  Building2,
   LucideIcon
 } from 'lucide-react'
 
 // Menu item metadata (icons and labels)
 const menuItemsMap: Record<string, { label: string; icon: LucideIcon }> = {
   dashboard: { label: 'Dashboard (Sales)', icon: Home },
+  customers: { label: 'Customers', icon: Building2 },
   crm: { label: 'CRM', icon: Users },
   projects: { label: 'Projects', icon: Folder },
   production: { label: 'Production', icon: Factory },
@@ -50,7 +52,7 @@ const menuItemsMap: Record<string, { label: string; icon: LucideIcon }> = {
 
 // Default order (used when no profile ordering is set)
 const defaultMenuOrder: MenuOption[] = [
-  'dashboard', 'crm', 'projects', 'production', 'logistics', 'products',
+  'dashboard', 'customers', 'crm', 'projects', 'production', 'logistics', 'products',
   'masterParts', 'inventory', 'vendors', 'purchaseOrders', 'receiving',
   'purchasingDashboard', 'salesOrders', 'invoices', 'quoteDocuments',
   'accounting', 'settings'

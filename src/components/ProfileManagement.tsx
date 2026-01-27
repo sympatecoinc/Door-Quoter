@@ -21,6 +21,7 @@ interface Profile {
 
 const TAB_LABELS: Record<string, string> = {
   dashboard: 'Dashboard (Sales)',
+  customers: 'Customers',
   crm: 'CRM',
   projects: 'Projects',
   production: 'Production',
