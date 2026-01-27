@@ -17,8 +17,8 @@ Staging DB → Staging DB → Production DB
 | Environment    | URL                                                          | Database                    |
 | -------------- | ------------------------------------------------------------ | --------------------------- |
 | **Local Dev**  | http://localhost:3000                                        | door-app-staging (postgres) |
-| **Staging**    | https://door-quoter-staging-259524707165.us-central1.run.app | door-app-staging (postgres) |
-| **Production** | https://door-quoter-app-259524707165.us-central1.run.app     | door-app-db (door_quoter)   |
+| **Staging**    | https://door-quoter-staging-419240735293.us-central1.run.app | door-app-staging (postgres) |
+| **Production** | https://door-quoter-app-419240735293.us-central1.run.app     | door-app-db (door_quoter)   |
 
 ## 🚀 Deployment Workflow
 
@@ -128,7 +128,7 @@ git push origin staging
 - **Trigger**: Push to `staging` branch
 - **Deployment**: Automatic via GitHub Actions
 - **Result**: Updates staging environment
-- **Test**: https://door-quoter-staging-259524707165.us-central1.run.app
+- **Test**: https://door-quoter-staging-419240735293.us-central1.run.app
 
 ### **Step 4: Deploy to Production**
 
@@ -142,7 +142,7 @@ git push origin main
 - **Trigger**: Push to `main` branch
 - **Deployment**: Automatic via GitHub Actions
 - **Result**: Updates production environment
-- **Result**: https://door-quoter-app-259524707165.us-central1.run.app
+- **URL**: https://door-quoter-app-419240735293.us-central1.run.app
 
 ## 📋 Prerequisites Checklist
 
@@ -156,10 +156,12 @@ git push origin main
 
 ### **Google Cloud Resources** (Already Configured ✅)
 
+- **GCP Project**: linea-door-quoter
 - **Cloud SQL Instances**: door-app-staging, door-app-db
 - **Cloud Run Services**: door-quoter-staging, door-quoter-app
 - **Artifact Registry**: door-quoter-app repository
-- **Service Account**: github-actions@door-quoter.iam.gserviceaccount.com
+- **GCS Bucket**: linea-door-quoter-uploads
+- **Service Account**: github-actions@linea-door-quoter.iam.gserviceaccount.com
 
 ## 🛠️ Development Commands
 
@@ -205,20 +207,20 @@ SELECT COUNT(*) FROM "Projects";
 
 ```bash
 # Staging logs
-gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=door-quoter-staging" --limit=20
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=door-quoter-staging" --limit=20 --project=linea-door-quoter
 
 # Production logs
-gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=door-quoter-app" --limit=20
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=door-quoter-app" --limit=20 --project=linea-door-quoter
 ```
 
 ### **Cloud Run Status**
 
 ```bash
 # List services
-gcloud run services list --region=us-central1
+gcloud run services list --region=us-central1 --project=linea-door-quoter
 
 # Describe service
-gcloud run services describe door-quoter-app --region=us-central1
+gcloud run services describe door-quoter-app --region=us-central1 --project=linea-door-quoter
 ```
 
 ## 🚨 Troubleshooting
@@ -255,10 +257,10 @@ lsof -ti:3000 | xargs kill -9
 
 ```bash
 # Check Cloud Run environment variables
-gcloud run services describe door-quoter-app --region=us-central1 --format="export" | grep DATABASE_URL
+gcloud run services describe door-quoter-app --region=us-central1 --project=linea-door-quoter --format="export" | grep DATABASE_URL
 
 # Check Cloud SQL instance status
-gcloud sql instances list
+gcloud sql instances list --project=linea-door-quoter
 ```
 
 ### **Database Issues**
@@ -267,8 +269,8 @@ gcloud sql instances list
 
 ```bash
 # Reset database passwords if needed
-gcloud sql users set-password postgres --instance=door-app-staging --password=StagingDB123
-gcloud sql users set-password postgres --instance=door-app-db --password=SimplePass123
+gcloud sql users set-password postgres --instance=door-app-staging --password=StagingDB123 --project=linea-door-quoter
+gcloud sql users set-password postgres --instance=door-app-db --password=SimplePass123 --project=linea-door-quoter
 ```
 
 ## 🔄 Common Workflows
@@ -320,6 +322,7 @@ gcloud sql users set-password postgres --instance=door-app-db --password=SimpleP
 - **Database**: `postgres`
 - **User**: `postgres`
 - **Password**: `StagingDB123`
+- **Instance**: `linea-door-quoter:us-central1:door-app-staging`
 - **Used by**: Local development + Staging Cloud Run
 
 ### **Production Database** (`door-app-db`)
@@ -328,10 +331,12 @@ gcloud sql users set-password postgres --instance=door-app-db --password=SimpleP
 - **Database**: `door_quoter`
 - **User**: `postgres`
 - **Password**: `SimplePass123`
+- **Instance**: `linea-door-quoter:us-central1:door-app-db`
 - **Used by**: Production Cloud Run only
 
 ---
 
-**Last Updated**: December 2024
+**Last Updated**: January 2026
+**GCP Project**: linea-door-quoter
 **Architecture**: 3-tier (Local → Staging → Production)
 **Status**: ✅ All environments operational
