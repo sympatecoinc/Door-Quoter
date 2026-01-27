@@ -5,7 +5,7 @@ on:
     branches: [ main ]
 
 env:
-  PROJECT_ID: door-quoter
+  PROJECT_ID: linea-door-quoter
   GAR_LOCATION: us-central1
   SERVICE: door-quoter-app
   REGION: us-central1
@@ -47,8 +47,8 @@ jobs:
 
       - name: Build and Push Container
         run: |-
-          docker build -t "us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:production-latest" ./
-          docker push "us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:production-latest"
+          docker build -t "us-central1-docker.pkg.dev/linea-door-quoter/door-quoter-app/door-quoter-app:production-latest" ./
+          docker push "us-central1-docker.pkg.dev/linea-door-quoter/door-quoter-app/door-quoter-app:production-latest"
 
       - name: Deploy to Cloud Run
         id: deploy
@@ -56,9 +56,9 @@ jobs:
         with:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}
-          image: us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:production-latest
+          image: us-central1-docker.pkg.dev/linea-door-quoter/door-quoter-app/door-quoter-app:production-latest
           env_vars: |
-            DATABASE_URL=postgresql://postgres:SimplePass123@localhost/door_quoter?host=/cloudsql/door-quoter:us-central1:door-app-db
+            DATABASE_URL=postgresql://postgres:SimplePass123@localhost/door_quoter?host=/cloudsql/linea-door-quoter:us-central1:door-app-db
             NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}
             NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
             NODE_ENV=production

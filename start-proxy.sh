@@ -5,7 +5,7 @@ if ! ss -tlnp | grep -q ':5432 '; then
     echo '🔄 Starting Cloud SQL proxy...'
     
     # Start the proxy in background
-    nohup ~/cloud_sql_proxy -instances=door-quoter:us-central1:door-app-staging=tcp:5432 > proxy.log 2>&1 &
+    nohup ~/cloud_sql_proxy -instances=linea-door-quoter:us-central1:door-app-staging=tcp:5432 > proxy.log 2>&1 &
     
     # Wait a moment for it to start
     sleep 3

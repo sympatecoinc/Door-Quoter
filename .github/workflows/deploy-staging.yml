@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 env:
-  PROJECT_ID: door-quoter
+  PROJECT_ID: linea-door-quoter
   GAR_LOCATION: us-central1
   SERVICE: door-quoter-staging
   REGION: us-central1
@@ -40,8 +40,8 @@ jobs:
 
       - name: Build and Push Container
         run: |-
-          docker build -t "us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:staging-latest" ./
-          docker push "us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:staging-latest"
+          docker build -t "us-central1-docker.pkg.dev/linea-door-quoter/door-quoter-app/door-quoter-app:staging-latest" ./
+          docker push "us-central1-docker.pkg.dev/linea-door-quoter/door-quoter-app/door-quoter-app:staging-latest"
 
       - name: Deploy to Staging Cloud Run
         id: deploy
@@ -49,10 +49,10 @@ jobs:
         with:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}
-          image: us-central1-docker.pkg.dev/door-quoter/door-quoter-app/door-quoter-app:staging-latest
+          image: us-central1-docker.pkg.dev/linea-door-quoter/door-quoter-app/door-quoter-app:staging-latest
           env_vars: |
-            DATABASE_URL=postgresql://postgres:StagingDB123@localhost/postgres?host=/cloudsql/door-quoter:us-central1:door-app-staging
-            NEXTAUTH_URL=https://door-quoter-staging-259524707165.us-central1.run.app
+            DATABASE_URL=postgresql://postgres:StagingDB123@localhost/postgres?host=/cloudsql/linea-door-quoter:us-central1:door-app-staging
+            NEXTAUTH_URL=${{ steps.deploy.outputs.url }}
             NEXTAUTH_SECRET=staging-secret-key
             NODE_ENV=staging
 
