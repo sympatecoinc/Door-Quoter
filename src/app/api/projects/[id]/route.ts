@@ -460,6 +460,17 @@ export async function PUT(
 
         // Add customerId to update data
         updateData.customerId = newCustomerId
+      } else if (isConvertingToQuoteAccepted && currentProject.customerId) {
+        // Update existing customer status from Lead to Active when lead is won
+        await tx.customer.updateMany({
+          where: {
+            id: currentProject.customerId,
+            status: 'Lead'
+          },
+          data: {
+            status: 'Active'
+          }
+        })
       }
 
       // Note: Sales Orders are now created manually from the "Pending from Quotes" tab

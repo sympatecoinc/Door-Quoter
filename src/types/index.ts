@@ -470,6 +470,7 @@ export interface ExtrusionVariantGroup {
   masterPart: Pick<MasterPart, 'id' | 'partNumber' | 'baseName' | 'description' | 'partType' | 'weightPerFoot' | 'perimeterInches' | 'customPricePerLb' | 'isMillFinish'>
   variants: ExtrusionVariantDisplay[]
   lengths: number[]
+  ruleLengths: number[]
   finishes: FinishOption[]
 }
 

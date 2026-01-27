@@ -153,6 +153,27 @@ export default function ExtrusionInventoryTab() {
     fetchData()
   }
 
+  const handleRemoveLength = async (masterPartId: number, stockLength: number) => {
+    try {
+      const response = await fetch(`/api/extrusion-variants/by-length?masterPartId=${masterPartId}&stockLength=${stockLength}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to remove length')
+      }
+
+      setNotification({ type: 'success', message: 'Length removed from inventory' })
+      fetchData()
+    } catch (err) {
+      setNotification({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to remove length'
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
@@ -283,6 +304,7 @@ export default function ExtrusionInventoryTab() {
               materialPricePerLb={materialPricePerLb}
               onEditVariant={handleEditVariant}
               onAddVariant={handleAddVariant}
+              onRemoveLength={handleRemoveLength}
             />
           ))}
         </div>

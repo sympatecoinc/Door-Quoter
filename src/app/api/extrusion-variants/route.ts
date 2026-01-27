@@ -114,6 +114,7 @@ export async function GET(request: Request) {
         },
         variants: filteredVariants,
         lengths,
+        ruleLengths,
         finishes: finishOptions
       }
     })

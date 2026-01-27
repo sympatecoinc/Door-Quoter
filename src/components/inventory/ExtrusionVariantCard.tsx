@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Package, ChevronDown, ChevronUp, DollarSign } from 'lucide-react'
+import { Package, ChevronDown, ChevronUp, DollarSign, X } from 'lucide-react'
 import { ExtrusionVariantGroup, ExtrusionVariantDisplay, FinishOption, ExtrusionFinishPricing } from '@/types'
 
 interface ExtrusionVariantCardProps {
@@ -10,6 +10,7 @@ interface ExtrusionVariantCardProps {
   materialPricePerLb: number
   onEditVariant: (variant: ExtrusionVariantDisplay) => void
   onAddVariant: (masterPartId: number, stockLength: number, finishPricingId: number | null) => void
+  onRemoveLength?: (masterPartId: number, stockLength: number) => void
 }
 
 // Helper to display inches
@@ -61,11 +62,25 @@ export default function ExtrusionVariantCard({
   finishPricing,
   materialPricePerLb,
   onEditVariant,
-  onAddVariant
+  onAddVariant,
+  onRemoveLength
 }: ExtrusionVariantCardProps) {
   const [isExpanded, setIsExpanded] = useState(true)
 
-  const { masterPart, variants, lengths, finishes: allFinishes } = group
+  const { masterPart, variants, lengths, ruleLengths = [], finishes: allFinishes } = group
+
+  // Check if a length can be removed (orphaned length with no stock)
+  // Only allow removal if: no active rule exists AND (no variants OR all variants have 0 stock)
+  const canRemoveLength = (length: number): boolean => {
+    // If there's an active rule for this length, don't allow removal from inventory
+    // User should manage rules in Master Parts
+    if (ruleLengths.includes(length)) return false
+
+    const variantsAtLength = variants.filter(v => v.stockLength === length)
+    // Can remove orphaned length if no variants or all variants have no stock
+    if (variantsAtLength.length === 0) return true
+    return variantsAtLength.every(v => v.qtyOnHand === 0)
+  }
 
   // If isMillFinish is true, only show Mill Finish (id: null)
   const finishes = masterPart.isMillFinish
@@ -197,7 +212,18 @@ export default function ExtrusionVariantCard({
               {lengths.map((length, idx) => (
                 <tr key={length} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="px-3 py-2 text-sm font-medium text-gray-900 border-b whitespace-nowrap">
-                    {inchesDisplay(length)}
+                    <div className="flex items-center gap-1">
+                      {inchesDisplay(length)}
+                      {onRemoveLength && canRemoveLength(length) && (
+                        <button
+                          onClick={() => onRemoveLength(masterPart.id, length)}
+                          className="p-0.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                          title="Remove this length (no stock)"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                   {finishes.map(finish => {
                     const variant = getVariant(length, finish.id)

@@ -201,8 +201,8 @@ async function generateProjectBomItems(projectId: number): Promise<BomItem[]> {
           }
         }
 
-        // Apply finish code for Hardware parts with addFinishToPartNumber flag
-        if (bom.partType === 'Hardware' && fullPartNumber && bom.addFinishToPartNumber && opening.finishColor) {
+        // Apply finish code for Hardware/CutStock parts with addFinishToPartNumber flag
+        if ((bom.partType === 'Hardware' || bom.partType === 'CutStock') && fullPartNumber && bom.addFinishToPartNumber && opening.finishColor) {
           const finishCode = await getFinishCode(opening.finishColor)
           if (finishCode) {
             fullPartNumber = `${fullPartNumber}${finishCode}`
@@ -510,7 +510,8 @@ async function generateProjectBomItems(projectId: number): Promise<BomItem[]> {
                   let linkedPartNumber = linkedPart.masterPart.partNumber
                   let linkedBasePartNumber = linkedPart.masterPart.partNumber
 
-                  if ((linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') && opening.finishColor && !linkedIsMillFinish) {
+                  // For extrusions only (not CutStock), apply finish code based on isMillFinish
+                  if (linkedPart.masterPart.partType === 'Extrusion' && opening.finishColor && !linkedIsMillFinish) {
                     const finishCode = await getFinishCode(opening.finishColor)
                     if (finishCode) {
                       linkedPartNumber = `${linkedPartNumber}${finishCode}`

@@ -1663,12 +1663,11 @@ export default function MasterPartsView() {
                               </div>
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-900">
-                              {rule.stockLength && (
+                              {rule.stockLength ? (
                                 <span className="font-medium">{rule.stockLength}"</span>
-                              )}
-                              {rule.piecesPerUnit && (
+                              ) : rule.piecesPerUnit ? (
                                 <span className="font-medium">{rule.piecesPerUnit}</span>
-                              )}
+                              ) : null}
                               {rule.maxLength && (
                                 <div className="text-xs text-gray-600 mt-1">
                                   Max: {rule.maxLength}" ({rule.maxLengthAppliesTo})

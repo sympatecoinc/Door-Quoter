@@ -368,8 +368,8 @@ export async function GET(
               stockLengthOptions = stockInfo.stockLengthOptions
             }
 
-            // Only append finish color code if NOT mill finish (using masterPart.isMillFinish)
-            if (opening.finishColor && !isMillFinish) {
+            // Only append finish color code for Extrusions (not CutStock) if NOT mill finish
+            if (bom.partType === 'Extrusion' && opening.finishColor && !isMillFinish) {
               const finishCode = await getFinishCode(opening.finishColor)
               if (finishCode) {
                 fullPartNumber = `${fullPartNumber}${finishCode}`
@@ -389,8 +389,8 @@ export async function GET(
             percentOfStock = percentage.toFixed(1) + '%'
           }
 
-          // Apply finish code for Hardware parts with addFinishToPartNumber flag
-          if (bom.partType === 'Hardware' && fullPartNumber && bom.addFinishToPartNumber && opening.finishColor) {
+          // Apply finish code for Hardware/CutStock parts with addFinishToPartNumber flag
+          if ((bom.partType === 'Hardware' || bom.partType === 'CutStock') && fullPartNumber && bom.addFinishToPartNumber && opening.finishColor) {
             const finishCode = await getFinishCode(opening.finishColor)
             if (finishCode) {
               fullPartNumber = `${fullPartNumber}${finishCode}`
@@ -673,8 +673,8 @@ export async function GET(
                       // Build part number with finish code if applicable
                       let linkedPartNumber = linkedPart.masterPart.partNumber
 
-                      // For extrusions, apply finish code based on isMillFinish
-                      if ((linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') && opening.finishColor && !linkedIsMillFinish) {
+                      // For extrusions only (not CutStock), apply finish code based on isMillFinish
+                      if (linkedPart.masterPart.partType === 'Extrusion' && opening.finishColor && !linkedIsMillFinish) {
                         const finishCode = await getFinishCode(opening.finishColor)
                         if (finishCode) {
                           linkedPartNumber = `${linkedPartNumber}${finishCode}`
@@ -912,8 +912,8 @@ export async function GET(
                     // Build part number with finish code if applicable
                     let linkedPartNumber = linkedPart.masterPart.partNumber
 
-                    // For extrusions, apply finish code based on isMillFinish
-                    if ((linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') && opening.finishColor && !linkedIsMillFinish) {
+                    // For extrusions only (not CutStock), apply finish code based on isMillFinish
+                    if (linkedPart.masterPart.partType === 'Extrusion' && opening.finishColor && !linkedIsMillFinish) {
                       const finishCode = await getFinishCode(opening.finishColor)
                       if (finishCode) {
                         linkedPartNumber = `${linkedPartNumber}${finishCode}`
@@ -1131,8 +1131,8 @@ export async function GET(
                   // Build part number with finish code if applicable
                   let linkedPartNumber = linkedPart.masterPart.partNumber
 
-                  // For extrusions, apply finish code based on isMillFinish
-                  if ((linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock') && opening.finishColor && !linkedIsMillFinish) {
+                  // For extrusions only (not CutStock), apply finish code based on isMillFinish
+                  if (linkedPart.masterPart.partType === 'Extrusion' && opening.finishColor && !linkedIsMillFinish) {
                     const finishCode = await getFinishCode(opening.finishColor)
                     if (finishCode) {
                       linkedPartNumber = `${linkedPartNumber}${finishCode}`

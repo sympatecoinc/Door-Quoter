@@ -1,8 +1,17 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Package, Search, Download, CheckSquare, Square, ChevronDown, Loader2 } from 'lucide-react'
-import type { CombinedSummaryResponse, CombinedSummaryItem } from './types'
+import { Package, Search, Download, CheckSquare, Square, Loader2 } from 'lucide-react'
+
+const FILTER_STATUSES = [
+  { value: 'STAGING', label: 'Staging' },
+  { value: 'APPROVED', label: 'Approved' },
+  { value: 'REVISE', label: 'Revise' },
+  { value: 'QUOTE_SENT', label: 'Quote Sent' },
+  { value: 'QUOTE_ACCEPTED', label: 'Quote Accepted' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'COMPLETE', label: 'Complete' }
+] as const
 
 interface CombinedPurchaseSummaryWidgetProps {
   refreshKey?: number
@@ -15,27 +24,17 @@ interface ProjectOption {
   status: string
 }
 
-const STATUS_OPTIONS = [
-  { value: '', label: 'All Statuses' },
-  { value: 'STAGING', label: 'Staging' },
-  { value: 'APPROVED', label: 'Approved' },
-  { value: 'REVISE', label: 'Revise' },
-  { value: 'QUOTE_SENT', label: 'Quote Sent' },
-  { value: 'QUOTE_ACCEPTED', label: 'Quote Accepted' },
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'COMPLETE', label: 'Complete' }
-]
 
 export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: CombinedPurchaseSummaryWidgetProps) {
   const [projects, setProjects] = useState<ProjectOption[]>([])
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<number>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+  const [statusFilters, setStatusFilters] = useState<string[]>(['QUOTE_ACCEPTED', 'APPROVED', 'ACTIVE'])
   const [loading, setLoading] = useState(true)
-  const [generating, setGenerating] = useState(false)
   const [downloading, setDownloading] = useState(false)
-  const [summaryData, setSummaryData] = useState<CombinedSummaryResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [searchExpanded, setSearchExpanded] = useState(false)
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
 
   // Fetch projects on mount and refresh
   useEffect(() => {
@@ -65,6 +64,15 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
     }
   }
 
+  // Toggle status filter
+  const toggleStatusFilter = (status: string) => {
+    setStatusFilters(prev =>
+      prev.includes(status)
+        ? prev.filter(s => s !== status)
+        : [...prev, status]
+    )
+  }
+
   // Filter projects based on search and status (always exclude archived)
   const filteredProjects = useMemo(() => {
     return projects.filter(project => {
@@ -72,10 +80,10 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
       const matchesSearch = searchQuery === '' ||
         project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         project.customerName.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesStatus = statusFilter === '' || project.status === statusFilter
+      const matchesStatus = statusFilters.length === 0 || statusFilters.includes(project.status)
       return matchesSearch && matchesStatus
     })
-  }, [projects, searchQuery, statusFilter])
+  }, [projects, searchQuery, statusFilters])
 
   // Toggle individual project selection
   const toggleProject = (projectId: number) => {
@@ -94,38 +102,6 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
       setSelectedProjectIds(new Set())
     } else {
       setSelectedProjectIds(new Set(filteredProjects.map(p => p.id)))
-    }
-  }
-
-  // Generate summary
-  async function generateSummary() {
-    if (selectedProjectIds.size === 0) {
-      setError('Please select at least one project')
-      return
-    }
-
-    try {
-      setGenerating(true)
-      setError(null)
-
-      const response = await fetch('/api/purchasing/combined-summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectIds: Array.from(selectedProjectIds) })
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        setSummaryData(result)
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || 'Failed to generate summary')
-      }
-    } catch (error) {
-      console.error('Error generating summary:', error)
-      setError('Failed to generate summary')
-    } finally {
-      setGenerating(false)
     }
   }
 
@@ -168,37 +144,6 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
     }
   }
 
-  // Get unit display string
-  const getUnitDisplay = (item: CombinedSummaryItem): string => {
-    if (item.partType === 'Extrusion' || item.partType === 'CutStock' || item.partType === 'Glass') {
-      return 'EA'
-    }
-    return item.unit
-  }
-
-  // Get pieces display value
-  const getPiecesDisplay = (item: CombinedSummaryItem): number | string => {
-    if ((item.partType === 'Extrusion' || item.partType === 'CutStock') && item.stockPiecesNeeded !== null) {
-      return item.stockPiecesNeeded
-    }
-    if ((item.partType === 'Hardware' || item.partType === 'Fastener') && item.totalCalculatedLength) {
-      return Math.ceil(item.totalCalculatedLength * 1.05) // 5% overage
-    }
-    return item.totalQuantity
-  }
-
-  // Get size display string
-  const getSizeDisplay = (item: CombinedSummaryItem): string => {
-    if (item.partType === 'Glass' && item.glassWidth && item.glassHeight) {
-      return `${item.glassWidth.toFixed(3)}" x ${item.glassHeight.toFixed(3)}"`
-    }
-    if (item.cutLengths && item.cutLengths.length > 0) {
-      const uniqueCuts = [...new Set(item.cutLengths.map(l => l.toFixed(3)))]
-      return uniqueCuts.slice(0, 3).join('; ') + (uniqueCuts.length > 3 ? '...' : '')
-    }
-    return '-'
-  }
-
   if (loading) {
     return (
       <div className="bg-white rounded-lg shadow p-6 animate-pulse">
@@ -226,28 +171,76 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
 
       <div className="p-4">
         {/* Search and Filter Row */}
-        <div className="flex gap-3 mb-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search projects..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div className="relative">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="appearance-none pl-3 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+        <div className="flex items-center gap-4 mb-4 flex-wrap">
+          {/* Expandable Search Bar */}
+          <div className="relative flex items-center">
+            <button
+              onClick={() => setSearchExpanded(true)}
+              className={`p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200 ${searchExpanded ? 'opacity-0 pointer-events-none absolute' : ''}`}
+              title="Search projects"
             >
-              {STATUS_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <Search className="w-4 h-4" />
+            </button>
+            {searchExpanded && (
+              <div className="relative animate-expand-search">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search projects..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onBlur={() => {
+                    if (!searchQuery) {
+                      setSearchExpanded(false)
+                    }
+                  }}
+                  autoFocus
+                  className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm text-gray-900 placeholder-gray-400 w-48"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Status Filter Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setFiltersExpanded(!filtersExpanded)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${
+                filtersExpanded || statusFilters.length > 0
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Filter {statusFilters.length > 0 && `(${statusFilters.length})`}
+            </button>
+            <div className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out ${
+              filtersExpanded ? 'max-w-[800px] opacity-100' : 'max-w-0 opacity-0'
+            }`}>
+              {FILTER_STATUSES.map((status) => {
+                const isActive = statusFilters.includes(status.value)
+                return (
+                  <button
+                    key={status.value}
+                    onClick={() => toggleStatusFilter(status.value)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 whitespace-nowrap ${
+                      isActive
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+                    }`}
+                  >
+                    {status.label}
+                  </button>
+                )
+              })}
+              {statusFilters.length > 0 && (
+                <button
+                  onClick={() => setStatusFilters([])}
+                  className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -320,124 +313,25 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
           </div>
         )}
 
-        {/* Generate Button */}
-        <button
-          onClick={generateSummary}
-          disabled={generating || selectedProjectIds.size === 0}
-          className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {generating ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Generating...
-            </>
-          ) : (
-            'Generate Summary'
-          )}
-        </button>
-
-        {/* Summary Results */}
-        {summaryData && (
-          <div className="mt-6">
-            {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <div className="text-xs text-blue-600 font-medium">Extrusions</div>
-                <div className="text-xl font-bold text-blue-900">{summaryData.totals.totalExtrusions}</div>
-              </div>
-              <div className="p-3 bg-green-50 rounded-lg">
-                <div className="text-xs text-green-600 font-medium">Hardware</div>
-                <div className="text-xl font-bold text-green-900">{summaryData.totals.totalHardware}</div>
-              </div>
-              <div className="p-3 bg-purple-50 rounded-lg">
-                <div className="text-xs text-purple-600 font-medium">Glass</div>
-                <div className="text-xl font-bold text-purple-900">{summaryData.totals.totalGlass}</div>
-              </div>
-              <div className="p-3 bg-orange-50 rounded-lg">
-                <div className="text-xs text-orange-600 font-medium">Options</div>
-                <div className="text-xl font-bold text-orange-900">{summaryData.totals.totalOptions}</div>
-              </div>
-            </div>
-
-            {/* Stock Pieces to Order */}
-            {summaryData.totals.totalStockPiecesToOrder > 0 && (
-              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-600">Total Stock Pieces to Order: </span>
-                <span className="font-bold text-gray-900">{summaryData.totals.totalStockPiecesToOrder}</span>
-              </div>
+        {/* Download Button - appears when projects are selected */}
+        {selectedProjectIds.size > 0 && (
+          <button
+            onClick={downloadCSV}
+            disabled={downloading}
+            className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {downloading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Downloading...
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                Download Combined Purchase Summary
+              </>
             )}
-
-            {/* Projects Included */}
-            <div className="mb-4">
-              <div className="text-xs text-gray-500 mb-1">Projects included:</div>
-              <div className="flex flex-wrap gap-1">
-                {summaryData.projects.map(p => (
-                  <span key={p.id} className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
-                    {p.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Summary Table */}
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="max-h-80 overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-medium text-gray-700">Part #</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-700">Name</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-700">Type</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-700">Size</th>
-                      <th className="text-right px-3 py-2 font-medium text-gray-700">Qty</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-700">Unit</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {summaryData.summaryItems.map((item, index) => (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 font-mono text-xs">{item.partNumber}</td>
-                        <td className="px-3 py-2 truncate max-w-[200px]">{item.partName}</td>
-                        <td className="px-3 py-2">
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${
-                            item.partType === 'Extrusion' ? 'bg-blue-100 text-blue-700' :
-                            item.partType === 'Hardware' ? 'bg-green-100 text-green-700' :
-                            item.partType === 'Glass' ? 'bg-purple-100 text-purple-700' :
-                            item.partType === 'Option' ? 'bg-orange-100 text-orange-700' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
-                            {item.partType}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-xs text-gray-600">{getSizeDisplay(item)}</td>
-                        <td className="px-3 py-2 text-right font-medium">{getPiecesDisplay(item)}</td>
-                        <td className="px-3 py-2 text-xs text-gray-600">{getUnitDisplay(item)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Download CSV Button */}
-            <button
-              onClick={downloadCSV}
-              disabled={downloading}
-              className="mt-4 w-full py-2 px-4 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {downloading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Downloading...
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  Download CSV
-                </>
-              )}
-            </button>
-          </div>
+          </button>
         )}
       </div>
     </div>
