@@ -292,7 +292,7 @@ npx prisma generate                   # Regenerates client (no DB changes)
 
 ### Recovery
 If data is lost, restore from staging:
-1. Start Cloud SQL proxy: `~/cloud_sql_proxy door-quoter:us-central1:door-app-staging --port 5434 &`
+1. Start Cloud SQL proxy: `~/cloud_sql_proxy linea-door-quoter:us-central1:door-app-staging --port 5434 &`
 2. Use pg_dump/pg_restore or the /db-sync skills to restore data
 
 **Local backup available:** `backups/staging_backup_2026-01-20.dump`

@@ -47,7 +47,7 @@ cd /home/kylepalmer/Door-Quoter && npx prisma validate
 ls /home/kylepalmer/Door-Quoter/prisma/migrations/ | grep -v "migration_lock" | tail -1
 ```
 
-**Expected project:** `door-quoter`
+**Expected project:** `linea-door-quoter`
 
 If not authenticated or wrong project, fix before continuing.
 
@@ -66,7 +66,7 @@ sleep 2
 
 ```bash
 # v2 syntax (cloud-sql-proxy 2.x)
-~/cloud_sql_proxy door-quoter:us-central1:door-app-db --port 5433 > /tmp/prod-proxy.log 2>&1 &
+~/cloud_sql_proxy linea-door-quoter:us-central1:door-app-db --port 5433 > /tmp/prod-proxy.log 2>&1 &
 sleep 3
 ```
 
@@ -287,7 +287,7 @@ pkill -f "cloud_sql_proxy.*door-app-db"
 
 ```bash
 # Start proxy manually
-~/cloud_sql_proxy door-quoter:us-central1:door-app-db --port 5433 &
+~/cloud_sql_proxy linea-door-quoter:us-central1:door-app-db --port 5433 &
 
 # Check status
 DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate status
@@ -314,7 +314,7 @@ pkill -f "cloud_sql_proxy.*door-app-db"
 | User | postgres |
 | Database | door_quoter |
 | Password | SimplePass123 |
-| Instance | door-quoter:us-central1:door-app-db |
+| Instance | linea-door-quoter:us-central1:door-app-db |
 
 ---
 
