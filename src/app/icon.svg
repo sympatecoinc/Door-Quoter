@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Solid doorway -->
+  <rect x="4" y="1" width="24" height="30" fill="#50616b"/>
+
+  <!-- Open door -->
+  <path d="M4 1 L16 4 L16 28 L4 31" fill="#f4f1ec"/>
+</svg>
