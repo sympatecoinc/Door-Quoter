@@ -50,11 +50,13 @@ jobs:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}
           image: us-central1-docker.pkg.dev/linea-door-quoter/door-quoter-app/door-quoter-app:staging-latest
+          flags: '--allow-unauthenticated --add-cloudsql-instances=linea-door-quoter:us-central1:door-app-staging'
           env_vars: |
             DATABASE_URL=postgresql://postgres:StagingDB123@localhost/postgres?host=/cloudsql/linea-door-quoter:us-central1:door-app-staging
-            NEXTAUTH_URL=${{ steps.deploy.outputs.url }}
+            NEXTAUTH_URL=https://door-quoter-staging-419240735293.us-central1.run.app
             NEXTAUTH_SECRET=staging-secret-key
             NODE_ENV=staging
+            GCS_BUCKET_NAME=linea-door-quoter-uploads
 
       - name: Show Staging URL
         run: echo ${{ steps.deploy.outputs.url }}

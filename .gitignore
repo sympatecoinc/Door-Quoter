@@ -59,3 +59,4 @@ firebase-debug.log
 # External projects
 /Linea Motion Website/
 github-actions-key.json
+*.dump

@@ -57,11 +57,13 @@ jobs:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}
           image: us-central1-docker.pkg.dev/linea-door-quoter/door-quoter-app/door-quoter-app:production-latest
+          flags: '--allow-unauthenticated --add-cloudsql-instances=linea-door-quoter:us-central1:door-app-db'
           env_vars: |
             DATABASE_URL=postgresql://postgres:SimplePass123@localhost/door_quoter?host=/cloudsql/linea-door-quoter:us-central1:door-app-db
             NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}
             NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
             NODE_ENV=production
+            GCS_BUCKET_NAME=linea-door-quoter-uploads
 
       - name: Show Output
         run: echo ${{ steps.deploy.outputs.url }}
