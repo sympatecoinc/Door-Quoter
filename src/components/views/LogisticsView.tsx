@@ -10,25 +10,26 @@ import {
   Loader2,
   RefreshCw,
   Package2,
-  ChevronDown
+  ChevronDown,
+  Clock
 } from 'lucide-react'
-import { ProjectStatus } from '@/types'
-import StatusBadge from '@/components/projects/StatusBadge'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 import { useDownloadStore } from '@/stores/downloadStore'
 
+interface PackingStats {
+  total: number
+  packed: number
+  percentage: number
+}
+
 interface LogisticsProject {
   id: number
   name: string
-  status: ProjectStatus
   dueDate: string | null
-  customerId: number | null
-  customerName: string
-  customerContact: string | null
   openingsCount: number
-  value: number
   updatedAt: string
+  packingStats: PackingStats
 }
 
 type DownloadType = 'packinglist' | 'labels' | 'boxlist'
@@ -46,13 +47,7 @@ function ProjectRowSkeleton() {
         <div className="h-4 w-4 bg-gray-200 rounded" />
       </td>
       <td className="px-4 py-3">
-        <div className="h-4 w-40 bg-gray-200 rounded" />
-      </td>
-      <td className="px-4 py-3">
-        <div className="h-4 w-32 bg-gray-200 rounded" />
-      </td>
-      <td className="px-4 py-3">
-        <div className="h-5 w-20 bg-gray-200 rounded-full" />
+        <div className="h-4 w-3/4 bg-gray-200 rounded" />
       </td>
       <td className="px-4 py-3">
         <div className="h-4 w-8 bg-gray-200 rounded" />
@@ -61,10 +56,10 @@ function ProjectRowSkeleton() {
         <div className="h-4 w-20 bg-gray-200 rounded" />
       </td>
       <td className="px-4 py-3">
-        <div className="h-4 w-24 bg-gray-200 rounded" />
+        <div className="h-4 w-full bg-gray-200 rounded" />
       </td>
-      <td className="px-4 py-3">
-        <div className="h-8 w-44 bg-gray-200 rounded" />
+      <td className="px-4 py-3 text-right">
+        <div className="h-8 w-full bg-gray-200 rounded" />
       </td>
     </tr>
   )
@@ -549,19 +544,25 @@ export default function LogisticsView() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         {loading ? (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full table-fixed">
+              <colgroup>
+                <col className="w-12" />
+                <col className="w-[25%]" />
+                <col className="w-[12%]" />
+                <col className="w-[15%]" />
+                <col className="w-[23%]" />
+                <col className="w-[25%]" />
+              </colgroup>
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left w-10">
+                  <th className="px-4 py-3 text-left">
                     <div className="h-4 w-4 bg-gray-200 rounded" />
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Project</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Openings</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Downloads</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Packing Status</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Downloads</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -573,10 +574,18 @@ export default function LogisticsView() {
           </div>
         ) : projects.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full table-fixed">
+              <colgroup>
+                <col className="w-12" />
+                <col className="w-[25%]" />
+                <col className="w-[12%]" />
+                <col className="w-[15%]" />
+                <col className="w-[23%]" />
+                <col className="w-[25%]" />
+              </colgroup>
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left w-10">
+                  <th className="px-4 py-3 text-left">
                     <input
                       type="checkbox"
                       checked={selectedIds.size === projects.length && projects.length > 0}
@@ -588,21 +597,15 @@ export default function LogisticsView() {
                     Project
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Customer
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Openings
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Due Date
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Value
+                    Packing Status
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Downloads
                   </th>
                 </tr>
@@ -627,25 +630,42 @@ export default function LogisticsView() {
                         {project.name}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm text-gray-900">{project.customerName}</div>
-                      {project.customerContact && (
-                        <div className="text-xs text-gray-500">{project.customerContact}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={project.status} />
-                    </td>
                     <td className="px-4 py-3 text-sm text-gray-900">
                       {project.openingsCount}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {formatDate(project.dueDate)}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      ${project.value.toLocaleString()}
-                    </td>
                     <td className="px-4 py-3">
+                      {project.packingStats.packed === 0 ? (
+                        <div className="flex items-center text-sm text-gray-500">
+                          <Clock className="w-4 h-4 mr-1.5 text-gray-400" />
+                          Awaiting Packing
+                        </div>
+                      ) : (
+                        <div className="pr-4">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium text-gray-700">
+                              {project.packingStats.percentage}%
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {project.packingStats.packed}/{project.packingStats.total}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full transition-all ${
+                                project.packingStats.percentage === 100
+                                  ? 'bg-green-500'
+                                  : 'bg-blue-500'
+                              }`}
+                              style={{ width: `${project.packingStats.percentage}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
                       <DownloadDropdown
                         projectId={project.id}
                         projectName={project.name}

@@ -19,7 +19,7 @@ export async function POST(
     // Find project by packing access token
     const project = await prisma.project.findUnique({
       where: { packingAccessToken: token },
-      select: { id: true, name: true }
+      select: { id: true, name: true, customerId: true }
     })
 
     if (!project) {
@@ -29,25 +29,36 @@ export async function POST(
       )
     }
 
-    // Parse QR data: format is "partNumber|openingName|itemName" or "JAMB-KIT|openingName"
+    // Parse QR data based on format:
+    // - Jamb kit: "JAMB-KIT|openingName" (2 parts, starts with JAMB-KIT)
+    // - Component (no partNumber): "openingName|itemName" (2 parts)
+    // - Hardware (with partNumber): "partNumber|openingName|itemName" (3 parts)
     const parts = qrData.split('|')
     let partNumber: string | null = null
     let openingName: string | null = null
     let itemName: string | null = null
+    let itemType: 'component' | 'hardware' | 'jambkit' = 'hardware'
 
     if (parts[0] === 'JAMB-KIT') {
       // Jamb kit format: JAMB-KIT|openingName
+      // Store with JAMB-KIT as partNumber so lookup key matches: JAMB-KIT|openingName
+      itemType = 'jambkit'
       openingName = parts[1] || null
-      itemName = 'Jamb Kit'
-    } else if (parts.length >= 2) {
-      // Hardware/component format: partNumber|openingName|itemName
-      // Note: partNumber might be empty string for components
+      itemName = '' // Empty so lookup key is just JAMB-KIT|openingName
+      partNumber = 'JAMB-KIT'
+    } else if (parts.length === 2) {
+      // Component format (no partNumber): openingName|itemName
+      itemType = 'component'
+      partNumber = null
+      openingName = parts[0] || null
+      itemName = parts[1] || null
+    } else if (parts.length >= 3) {
+      // Hardware format: partNumber|openingName|itemName
+      itemType = 'hardware'
       partNumber = parts[0] || null
       openingName = parts[1] || null
       itemName = parts[2] || null
-    }
-
-    if (!openingName) {
+    } else {
       return NextResponse.json(
         {
           error: 'Invalid QR code format',
@@ -58,137 +69,127 @@ export async function POST(
       )
     }
 
-    // Find matching SalesOrderPart
-    // First, try to find by exact match
-    const whereClause: {
-      salesOrder: { projectId: number }
-      openingName: string
-      status: { not: string }
-      partNumber?: string | null
-      partName?: string
-    } = {
-      salesOrder: { projectId: project.id },
-      openingName: openingName,
-      status: { not: 'PACKED' }
+    // Jamb kits don't have itemName, others require it
+    if (!openingName || (itemType !== 'jambkit' && !itemName)) {
+      return NextResponse.json(
+        {
+          error: 'Invalid QR code format - missing opening or item name',
+          success: false,
+          scannedData: qrData
+        },
+        { status: 400 }
+      )
     }
 
-    if (partNumber) {
-      whereClause.partNumber = partNumber
-    }
-    if (itemName) {
-      whereClause.partName = itemName
+    // Find or create a SalesOrder for this project
+    let salesOrder = await prisma.salesOrder.findFirst({
+      where: { projectId: project.id }
+    })
+
+    if (!salesOrder) {
+      // Create a minimal sales order for tracking packing
+      const orderNumber = `SO-PACK-${project.id}-${Date.now()}`
+      salesOrder = await prisma.salesOrder.create({
+        data: {
+          orderNumber,
+          customerId: project.customerId,
+          projectId: project.id,
+          status: 'IN_PROGRESS'
+        }
+      })
     }
 
-    let salesOrderPart = await prisma.salesOrderPart.findFirst({
-      where: whereClause,
-      include: {
-        salesOrder: true
+    // Check if this item was already packed
+    // Match using the same fields that will be used to build the lookup key
+    // partNumber is required in schema, so use empty string for components
+    const storedPartNumber = partNumber || ''
+    const existingPart = await prisma.salesOrderPart.findFirst({
+      where: {
+        salesOrderId: salesOrder.id,
+        openingName: openingName,
+        partName: itemName,
+        partNumber: storedPartNumber
       }
     })
 
-    // If no match found with exact criteria, try fuzzy matching
-    if (!salesOrderPart) {
-      // Try to find any unpacked part in this opening
-      const matchingParts = await prisma.salesOrderPart.findMany({
-        where: {
-          salesOrder: { projectId: project.id },
-          openingName: openingName,
-          status: { not: 'PACKED' }
-        },
-        include: {
-          salesOrder: true
+    // Display name for responses (use 'Jamb Kit' for jamb kits since itemName is empty for matching)
+    const displayName = itemType === 'jambkit' ? 'Jamb Kit' : itemName
+
+    if (existingPart) {
+      if (existingPart.status === 'PACKED') {
+        // Already packed
+        const stats = await getPackingStats(project.id, salesOrder.id)
+        return NextResponse.json({
+          success: false,
+          alreadyPacked: true,
+          message: 'Item already packed',
+          item: {
+            partNumber: existingPart.partNumber,
+            itemName: existingPart.partName || displayName,
+            openingName: existingPart.openingName,
+            packedAt: existingPart.packedAt?.toISOString()
+          },
+          stats
+        })
+      }
+
+      // Update existing part to packed
+      const updatedPart = await prisma.salesOrderPart.update({
+        where: { id: existingPart.id },
+        data: {
+          status: 'PACKED',
+          packedAt: new Date(),
+          qtyPacked: existingPart.quantity
         }
       })
 
-      // Try to find best match
-      for (const part of matchingParts) {
-        const partQrData = [part.partNumber || '', part.openingName || '', part.partName || '']
-          .filter(Boolean)
-          .join('|')
-
-        if (partQrData === qrData) {
-          salesOrderPart = part
-          break
-        }
-      }
-
-      // If still no match, check if it's a jamb kit
-      if (!salesOrderPart && parts[0] === 'JAMB-KIT') {
-        salesOrderPart = matchingParts.find(p =>
-          p.partName?.toLowerCase().includes('jamb') ||
-          p.partName?.toLowerCase().includes('kit')
-        ) || null
-      }
-    }
-
-    // Check if item was already packed
-    const alreadyPackedPart = await prisma.salesOrderPart.findFirst({
-      where: {
-        salesOrder: { projectId: project.id },
-        openingName: openingName,
-        status: 'PACKED',
-        ...(partNumber ? { partNumber } : {}),
-        ...(itemName ? { partName: itemName } : {})
-      }
-    })
-
-    if (alreadyPackedPart) {
-      // Get updated stats
-      const stats = await getPackingStats(project.id)
-
+      const stats = await getPackingStats(project.id, salesOrder.id)
       return NextResponse.json({
-        success: false,
-        alreadyPacked: true,
-        message: 'Item already packed',
+        success: true,
+        message: 'Item packed successfully',
         item: {
-          partNumber: alreadyPackedPart.partNumber,
-          itemName: alreadyPackedPart.partName,
-          openingName: alreadyPackedPart.openingName,
-          packedAt: alreadyPackedPart.packedAt?.toISOString()
+          id: updatedPart.id,
+          partNumber: updatedPart.partNumber,
+          itemName: updatedPart.partName || displayName,
+          openingName: updatedPart.openingName,
+          status: 'packed',
+          packedAt: updatedPart.packedAt?.toISOString()
         },
         stats
       })
     }
 
-    if (!salesOrderPart) {
-      // Get updated stats
-      const stats = await getPackingStats(project.id)
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Item not found in packing list',
-          scannedData: qrData,
-          parsedData: { partNumber, openingName, itemName },
-          stats
-        },
-        { status: 404 }
-      )
-    }
-
-    // Update the SalesOrderPart status to PACKED
-    const updatedPart = await prisma.salesOrderPart.update({
-      where: { id: salesOrderPart.id },
+    // Create new SalesOrderPart and mark as packed
+    // Store with the exact values so the lookup in GET route will match
+    // partName stores the matching key (empty for jamb kits), productName stores display name
+    const newPart = await prisma.salesOrderPart.create({
       data: {
+        salesOrderId: salesOrder.id,
+        partNumber: storedPartNumber, // 'JAMB-KIT' for jamb kits, empty for components, value for hardware
+        partName: itemName || '', // Empty for jamb kits (for matching), actual name for others
+        partType: itemType === 'jambkit' ? 'Jamb Kit' : (itemType === 'component' ? 'Component' : 'Hardware'),
+        openingName: openingName,
+        productName: displayName, // Display name (Jamb Kit for jamb kits)
+        quantity: 1,
+        unit: 'EA',
         status: 'PACKED',
         packedAt: new Date(),
-        qtyPacked: salesOrderPart.quantity
+        qtyPacked: 1
       }
     })
 
-    // Get updated stats
-    const stats = await getPackingStats(project.id)
+    const stats = await getPackingStats(project.id, salesOrder.id)
 
     return NextResponse.json({
       success: true,
       message: 'Item packed successfully',
       item: {
-        id: updatedPart.id,
-        partNumber: updatedPart.partNumber,
-        itemName: updatedPart.partName,
-        openingName: updatedPart.openingName,
+        id: newPart.id,
+        partNumber: newPart.partNumber,
+        itemName: newPart.productName || displayName,
+        openingName: newPart.openingName,
         status: 'packed',
-        packedAt: updatedPart.packedAt?.toISOString()
+        packedAt: newPart.packedAt?.toISOString()
       },
       stats
     })
@@ -202,16 +203,126 @@ export async function POST(
   }
 }
 
-async function getPackingStats(projectId: number) {
-  const allParts = await prisma.salesOrderPart.findMany({
-    where: {
-      salesOrder: { projectId }
-    },
+async function getPackingStats(projectId: number, salesOrderId: number) {
+  // Get count of packed items from SalesOrderParts
+  const packedParts = await prisma.salesOrderPart.findMany({
+    where: { salesOrderId },
     select: { status: true }
   })
 
-  const total = allParts.length
-  const packed = allParts.filter(p => p.status === 'PACKED').length
+  const packed = packedParts.filter(p => p.status === 'PACKED').length
+
+  // Get total expected items by counting from project openings/BOMs
+  // This matches the logic in the packing list route
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: {
+      openings: {
+        include: {
+          panels: {
+            include: {
+              componentInstance: {
+                include: {
+                  product: {
+                    include: {
+                      productBOMs: {
+                        where: {
+                          partType: 'Hardware',
+                          addToPackingList: true
+                        }
+                      },
+                      productSubOptions: {
+                        include: {
+                          category: {
+                            include: {
+                              individualOptions: {
+                                where: { addToPackingList: true }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+
+  let total = 0
+  if (project) {
+    for (const opening of project.openings) {
+      let hasJambKitItems = false
+
+      for (const panel of opening.panels) {
+        // Count component
+        total++
+
+        // Count hardware from BOMs
+        if (panel.componentInstance?.product?.productBOMs) {
+          for (const bom of panel.componentInstance.product.productBOMs) {
+            if (bom.addToPackingList) {
+              total += bom.quantity || 1
+            }
+          }
+        }
+
+        // Count hardware from individual options
+        if (panel.componentInstance?.subOptionSelections && panel.componentInstance.product?.productSubOptions) {
+          try {
+            const selections = JSON.parse(panel.componentInstance.subOptionSelections)
+            for (const [categoryIdStr, optionId] of Object.entries(selections)) {
+              if (!optionId) continue
+              const categoryId = parseInt(categoryIdStr)
+              const productSubOption = panel.componentInstance.product.productSubOptions.find(
+                (pso: { category: { id: number } }) => pso.category.id === categoryId
+              )
+              if (productSubOption) {
+                const selectedOption = productSubOption.category.individualOptions?.find(
+                  (opt: { id: number; addToPackingList: boolean; partNumber: string | null }) =>
+                    opt.id === Number(optionId) && opt.addToPackingList && opt.partNumber
+                )
+                if (selectedOption) {
+                  total++
+                }
+              }
+            }
+          } catch {
+            // Ignore parsing errors
+          }
+        }
+
+        // Check for jamb kit items
+        if (panel.componentInstance?.product) {
+          const allBoms = await prisma.productBOM.findMany({
+            where: { productId: panel.componentInstance.product.id },
+            select: { partNumber: true }
+          })
+          for (const bom of allBoms) {
+            if (bom.partNumber) {
+              const masterPart = await prisma.masterPart.findUnique({
+                where: { partNumber: bom.partNumber },
+                select: { includeInJambKit: true }
+              })
+              if (masterPart?.includeInJambKit) {
+                hasJambKitItems = true
+                break
+              }
+            }
+          }
+        }
+      }
+
+      // Count jamb kit as one item per opening
+      if (hasJambKitItems) {
+        total++
+      }
+    }
+  }
 
   return {
     total,
