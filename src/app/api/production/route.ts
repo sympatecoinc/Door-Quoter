@@ -2,6 +2,140 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ProjectStatus } from '@prisma/client'
 
+async function getPackingStats(projectId: number) {
+  // Find sales order for this project
+  const salesOrder = await prisma.salesOrder.findFirst({
+    where: { projectId },
+    select: { id: true }
+  })
+
+  if (!salesOrder) {
+    return { total: 0, packed: 0, percentage: 0 }
+  }
+
+  // Get count of packed items from SalesOrderParts
+  const packedParts = await prisma.salesOrderPart.findMany({
+    where: { salesOrderId: salesOrder.id },
+    select: { status: true }
+  })
+
+  const packed = packedParts.filter(p => p.status === 'PACKED').length
+
+  // Get total expected items by counting from project openings/BOMs
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: {
+      openings: {
+        include: {
+          panels: {
+            include: {
+              componentInstance: {
+                include: {
+                  product: {
+                    include: {
+                      productBOMs: {
+                        where: {
+                          partType: 'Hardware',
+                          addToPackingList: true
+                        }
+                      },
+                      productSubOptions: {
+                        include: {
+                          category: {
+                            include: {
+                              individualOptions: {
+                                where: { addToPackingList: true }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+
+  let total = 0
+  if (project) {
+    for (const opening of project.openings) {
+      let hasJambKitItems = false
+
+      for (const panel of opening.panels) {
+        // Count component
+        total++
+
+        // Count hardware from BOMs
+        if (panel.componentInstance?.product?.productBOMs) {
+          for (const bom of panel.componentInstance.product.productBOMs) {
+            if (bom.addToPackingList) {
+              total += bom.quantity || 1
+            }
+          }
+        }
+
+        // Count hardware from individual options
+        if (panel.componentInstance?.subOptionSelections && panel.componentInstance.product?.productSubOptions) {
+          try {
+            const selections = JSON.parse(panel.componentInstance.subOptionSelections)
+            for (const [categoryIdStr, optionId] of Object.entries(selections)) {
+              if (!optionId) continue
+              const categoryId = parseInt(categoryIdStr)
+              const productSubOption = panel.componentInstance.product.productSubOptions.find(
+                (pso: { category: { id: number } }) => pso.category.id === categoryId
+              )
+              if (productSubOption) {
+                const selectedOption = productSubOption.category.individualOptions?.find(
+                  (opt: { id: number; addToPackingList: boolean; partNumber: string | null }) =>
+                    opt.id === Number(optionId) && opt.addToPackingList && opt.partNumber
+                )
+                if (selectedOption) {
+                  total++
+                }
+              }
+            }
+          } catch {
+            // Ignore parsing errors
+          }
+        }
+
+        // Check for jamb kit items
+        if (panel.componentInstance?.product) {
+          const allBoms = await prisma.productBOM.findMany({
+            where: { productId: panel.componentInstance.product.id },
+            select: { partNumber: true }
+          })
+          for (const bom of allBoms) {
+            if (bom.partNumber) {
+              const masterPart = await prisma.masterPart.findUnique({
+                where: { partNumber: bom.partNumber },
+                select: { includeInJambKit: true }
+              })
+              if (masterPart?.includeInJambKit) {
+                hasJambKitItems = true
+                break
+              }
+            }
+          }
+        }
+      }
+
+      // Count jamb kit as one item per opening
+      if (hasJambKitItems) {
+        total++
+      }
+    }
+  }
+
+  const percentage = total > 0 ? Math.round((packed / total) * 100) : 0
+  return { total, packed, percentage }
+}
+
 export async function GET(request: NextRequest) {
   try {
     // Production-ready statuses
@@ -53,8 +187,8 @@ export async function GET(request: NextRequest) {
       ]
     })
 
-    // Format the response data
-    const formattedProjects = projects.map((project) => {
+    // Format the response data with packing stats
+    const formattedProjects = await Promise.all(projects.map(async (project) => {
       // Calculate COG (cost of goods) - sum of base costs
       const costValue = project.openings.reduce((sum, opening) => sum + (opening.price || 0), 0)
 
@@ -86,6 +220,9 @@ export async function GET(request: NextRequest) {
           totalHybridRemainingCost
       }
 
+      // Get packing stats for this project
+      const packingStats = await getPackingStats(project.id)
+
       return {
         id: project.id,
         name: project.name,
@@ -97,9 +234,10 @@ export async function GET(request: NextRequest) {
         openingsCount: project.openings.length,
         value: saleValue,
         batchSize: project.batchSize,
-        updatedAt: project.updatedAt
+        updatedAt: project.updatedAt,
+        packingStats
       }
-    })
+    }))
 
     return NextResponse.json(formattedProjects)
   } catch (error) {

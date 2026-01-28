@@ -36,7 +36,7 @@ export default function PackingScanner({
     return audioContextRef.current
   }, [])
 
-  const playSound = useCallback((success: boolean) => {
+  const playSound = useCallback(async (success: boolean) => {
     if (!soundEnabled) return
 
     try {
@@ -45,7 +45,12 @@ export default function PackingScanner({
 
       // Resume audio context if suspended (browser autoplay policy)
       if (audioContext.state === 'suspended') {
-        audioContext.resume()
+        try {
+          await audioContext.resume()
+        } catch {
+          // Ignore resume errors (NotAllowedError)
+          return
+        }
       }
 
       const oscillator = audioContext.createOscillator()
@@ -76,12 +81,16 @@ export default function PackingScanner({
   }, [soundEnabled, getAudioContext])
 
   const triggerVibration = useCallback((success: boolean) => {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      if (success) {
-        navigator.vibrate([100, 50, 100]) // Success pattern: short-pause-short
-      } else {
-        navigator.vibrate([300]) // Error pattern: long vibration
+    try {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        if (success) {
+          navigator.vibrate([100, 50, 100]) // Success pattern: short-pause-short
+        } else {
+          navigator.vibrate([300]) // Error pattern: long vibration
+        }
       }
+    } catch {
+      // Ignore vibration errors (NotAllowedError on some devices)
     }
   }, [])
 
