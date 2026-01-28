@@ -131,6 +131,10 @@ export async function POST(
             multiplier: originalOpening.multiplier,
             finishColor: originalOpening.finishColor,
             includeStarterChannels: originalOpening.includeStarterChannels,
+            isFinishedOpening: originalOpening.isFinishedOpening,
+            openingType: originalOpening.openingType,
+            widthToleranceTotal: originalOpening.widthToleranceTotal,
+            heightToleranceTotal: originalOpening.heightToleranceTotal,
             price: 0,
             priceCalculatedAt: null,
             panels: {
@@ -223,6 +227,10 @@ export async function POST(
             multiplier: originalOpening.multiplier,
             finishColor: originalOpening.finishColor,
             includeStarterChannels: originalOpening.includeStarterChannels,
+            isFinishedOpening: originalOpening.isFinishedOpening,
+            openingType: originalOpening.openingType,
+            widthToleranceTotal: originalOpening.widthToleranceTotal,
+            heightToleranceTotal: originalOpening.heightToleranceTotal,
             price: 0,
             priceCalculatedAt: null,
             panels: {

@@ -4,6 +4,28 @@
 import { jsPDF } from 'jspdf'
 import { rotateImage } from './image-rotator'
 
+// Natural sort comparison for opening names (handles "2" before "10", "Office 1" before "Office 10")
+function naturalSortCompare(a: string, b: string): number {
+  const aParts = a.split(/(\d+)/)
+  const bParts = b.split(/(\d+)/)
+
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const aPart = aParts[i] || ''
+    const bPart = bParts[i] || ''
+
+    const aNum = parseInt(aPart, 10)
+    const bNum = parseInt(bPart, 10)
+
+    if (!isNaN(aNum) && !isNaN(bNum)) {
+      if (aNum !== bNum) return aNum - bNum
+    } else {
+      const cmp = aPart.localeCompare(bPart, undefined, { sensitivity: 'base' })
+      if (cmp !== 0) return cmp
+    }
+  }
+  return 0
+}
+
 export interface DrawingImageData {
   productName: string
   imageData: string // base64 PNG data
@@ -283,8 +305,11 @@ export function createMultiOpeningPDF(projectData: ProjectDrawingData): jsPDF {
   // Page 1: Cover page
   addCoverPage(pdf, projectData)
 
+  // Sort openings by name (natural alphanumeric sort)
+  const sortedOpenings = [...projectData.openings].sort((a, b) => naturalSortCompare(a.openingName, b.openingName))
+
   // Add pages for each opening (2 pages per opening: elevation + plan)
-  projectData.openings.forEach((opening, index) => {
+  sortedOpenings.forEach((opening, index) => {
     // Elevation view
     if (opening.elevationImages && opening.elevationImages.length > 0) {
       pdf.addPage()
@@ -1076,7 +1101,10 @@ function addCoverPage(pdf: jsPDF, projectData: ProjectDrawingData): void {
   let tocY = infoY + 45
   let pageCounter = 2 // Start after cover page
 
-  projectData.openings.forEach((opening) => {
+  // Sort openings by name (natural alphanumeric sort) - same order as main content
+  const sortedOpeningsForToc = [...projectData.openings].sort((a, b) => naturalSortCompare(a.openingName, b.openingName))
+
+  sortedOpeningsForToc.forEach((opening) => {
     if (tocY > pageHeight - 30) {
       pdf.addPage()
       tocY = 30

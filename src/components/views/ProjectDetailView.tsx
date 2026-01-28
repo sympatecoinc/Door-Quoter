@@ -14,6 +14,28 @@ import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 import DrawingViewer from '../ui/DrawingViewer'
 import { ProjectStatus, STATUS_CONFIG, isProjectLocked, ProjectVersion, ProjectVersionsResponse } from '@/types'
 
+// Natural sort comparison for opening names (handles "2" before "10", "Office 1" before "Office 10")
+function naturalSortCompare(a: string, b: string): number {
+  const aParts = a.split(/(\d+)/)
+  const bParts = b.split(/(\d+)/)
+
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const aPart = aParts[i] || ''
+    const bPart = bParts[i] || ''
+
+    const aNum = parseInt(aPart, 10)
+    const bNum = parseInt(bPart, 10)
+
+    if (!isNaN(aNum) && !isNaN(bNum)) {
+      if (aNum !== bNum) return aNum - bNum
+    } else {
+      const cmp = aPart.localeCompare(bPart, undefined, { sensitivity: 'base' })
+      if (cmp !== 0) return cmp
+    }
+  }
+  return 0
+}
+
 interface Project {
   id: number
   name: string
@@ -2928,7 +2950,7 @@ export default function ProjectDetailView() {
       {/* Openings Section */}
       {project.openings.length > 0 ? (
           <div className="space-y-4">
-            {project.openings.map((opening) => (
+            {[...project.openings].sort((a, b) => naturalSortCompare(a.name, b.name)).map((opening) => (
               <div key={opening.id} className="bg-white border border-gray-200 rounded-lg p-4">
                 <div className="mb-3">
                   <div className="flex items-center justify-between mb-1">
@@ -5794,7 +5816,7 @@ export default function ProjectDetailView() {
                     </label>
                   </div>
                   <div className="max-h-32 overflow-y-auto space-y-2 border border-gray-200 rounded-lg p-2">
-                    {project.openings.map((opening) => (
+                    {[...project.openings].sort((a, b) => naturalSortCompare(a.name, b.name)).map((opening) => (
                       <div key={opening.id} className="flex items-center justify-between bg-gray-50 rounded p-2">
                         <div className="flex items-center gap-2 flex-1">
                           <input

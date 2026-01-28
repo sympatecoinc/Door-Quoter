@@ -91,6 +91,28 @@ function calculateMarkupPrice(
   return price
 }
 
+// Natural sort comparison for opening names (handles "2" before "10", "Office 1" before "Office 10")
+function naturalSortCompare(a: string, b: string): number {
+  const aParts = a.split(/(\d+)/)
+  const bParts = b.split(/(\d+)/)
+
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const aPart = aParts[i] || ''
+    const bPart = bParts[i] || ''
+
+    const aNum = parseInt(aPart, 10)
+    const bNum = parseInt(bPart, 10)
+
+    if (!isNaN(aNum) && !isNaN(bNum)) {
+      if (aNum !== bNum) return aNum - bNum
+    } else {
+      const cmp = aPart.localeCompare(bPart, undefined, { sensitivity: 'base' })
+      if (cmp !== 0) return cmp
+    }
+  }
+  return 0
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
@@ -242,9 +264,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const baseUrl = `${protocol}://${host}`
     const cookieHeader = request.headers.get('cookie') || ''
 
+    // Sort openings by name (natural alphanumeric sort) for consistent display
+    const sortedOpenings = [...project.openings].sort((a, b) => naturalSortCompare(a.name, b.name))
+
     // Generate quote data for each opening
     const quoteItems = await Promise.all(
-      project.openings.map(async (opening) => {
+      sortedOpenings.map(async (opening) => {
         // Get drawing images based on quoteDrawingView setting
         const elevationImages: string[] = []
 

@@ -2,6 +2,28 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import JSZip from 'jszip'
 
+// Natural sort comparison for opening names (handles "2" before "10", "Office 1" before "Office 10")
+function naturalSortCompare(a: string, b: string): number {
+  const aParts = a.split(/(\d+)/)
+  const bParts = b.split(/(\d+)/)
+
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const aPart = aParts[i] || ''
+    const bPart = bParts[i] || ''
+
+    const aNum = parseInt(aPart, 10)
+    const bNum = parseInt(bPart, 10)
+
+    if (!isNaN(aNum) && !isNaN(bNum)) {
+      if (aNum !== bNum) return aNum - bNum
+    } else {
+      const cmp = aPart.localeCompare(bPart, undefined, { sensitivity: 'base' })
+      if (cmp !== 0) return cmp
+    }
+  }
+  return 0
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
@@ -43,21 +65,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Mode 1: List openings for modal display
     if (listOnly) {
-      const openings = project.openings.map(opening => {
-        // Calculate total width and height from panels
-        const totalWidth = opening.panels.reduce((sum, panel) => sum + panel.width, 0)
-        const totalHeight = opening.panels.length > 0
-          ? Math.max(...opening.panels.map(panel => panel.height))
-          : 0
+      const openings = [...project.openings]
+        .sort((a, b) => naturalSortCompare(a.name || '', b.name || ''))
+        .map(opening => {
+          // Calculate total width and height from panels
+          const totalWidth = opening.panels.reduce((sum, panel) => sum + panel.width, 0)
+          const totalHeight = opening.panels.length > 0
+            ? Math.max(...opening.panels.map(panel => panel.height))
+            : 0
 
-        return {
-          id: opening.id,
-          name: opening.name || `Opening ${opening.id}`,
-          totalWidth,
-          totalHeight,
-          panelCount: opening.panels.length
-        }
-      })
+          return {
+            id: opening.id,
+            name: opening.name || `Opening ${opening.id}`,
+            totalWidth,
+            totalHeight,
+            panelCount: opening.panels.length
+          }
+        })
 
       return NextResponse.json({ openings })
     }
