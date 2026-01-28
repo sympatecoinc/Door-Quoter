@@ -8,6 +8,7 @@ import QRCode from 'qrcode'
 export interface StickerData {
   openingName: string
   projectName: string
+  projectId: number // Project ID for unique QR codes
   itemType: 'component' | 'hardware' | 'jambkit'
   itemName: string
   partNumber?: string | null
@@ -235,14 +236,17 @@ export async function createStickersPDF(
   }
 
   // Generate QR codes for all stickers first
+  // QR format includes projectId for uniqueness: P{projectId}|...
   const qrCodes: string[] = []
   for (const sticker of stickers) {
     let qrData: string
+    const projectPrefix = `P${sticker.projectId}`
     if (sticker.itemType === 'jambkit') {
-      // Jamb kit QR format: JAMB-KIT|{openingName}
-      qrData = `JAMB-KIT|${sticker.openingName}`
+      // Jamb kit QR format: P{projectId}|JAMB-KIT|{openingName}
+      qrData = `${projectPrefix}|JAMB-KIT|${sticker.openingName}`
     } else {
-      qrData = [sticker.partNumber || '', sticker.openingName, sticker.itemName]
+      // Component/Hardware QR format: P{projectId}|{partNumber}|{openingName}|{itemName}
+      qrData = [projectPrefix, sticker.partNumber || '', sticker.openingName, sticker.itemName]
         .filter(Boolean)
         .join('|')
     }

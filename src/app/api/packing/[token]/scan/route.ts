@@ -29,51 +29,103 @@ export async function POST(
       )
     }
 
-    // Parse QR data based on format:
-    // - Jamb kit: "JAMB-KIT|openingName" (2 parts, starts with JAMB-KIT)
-    // - Component (no partNumber): "openingName|itemName" (2 parts)
-    // - Hardware (with partNumber): "partNumber|openingName|itemName" (3 parts)
+    // Parse QR data - new format includes project ID:
+    // - Component: "P{projectId}|{openingName}|{itemName}" (3 parts, starts with P)
+    // - Hardware: "P{projectId}|{partNumber}|{openingName}|{itemName}" (4 parts)
+    // - Jamb kit: "P{projectId}|JAMB-KIT|{openingName}" (3 parts)
+    // Also support legacy format without project ID for backwards compatibility
     const parts = qrData.split('|')
+    let qrProjectId: number | null = null
     let partNumber: string | null = null
     let openingName: string | null = null
     let itemName: string | null = null
     let itemType: 'component' | 'hardware' | 'jambkit' = 'hardware'
 
-    if (parts[0] === 'JAMB-KIT') {
-      // Jamb kit format: JAMB-KIT|openingName
-      // Store with JAMB-KIT as partNumber so lookup key matches: JAMB-KIT|openingName
-      itemType = 'jambkit'
-      openingName = parts[1] || null
-      itemName = '' // Empty so lookup key is just JAMB-KIT|openingName
-      partNumber = 'JAMB-KIT'
-    } else if (parts.length === 2) {
-      // Component format (no partNumber): openingName|itemName
-      itemType = 'component'
-      partNumber = null
-      openingName = parts[0] || null
-      itemName = parts[1] || null
-    } else if (parts.length >= 3) {
-      // Hardware format: partNumber|openingName|itemName
-      itemType = 'hardware'
-      partNumber = parts[0] || null
-      openingName = parts[1] || null
-      itemName = parts[2] || null
+    // Check if first part is a project ID (starts with 'P' followed by number)
+    const projectIdMatch = parts[0]?.match(/^P(\d+)$/)
+
+    if (projectIdMatch) {
+      // New format with project ID
+      qrProjectId = parseInt(projectIdMatch[1])
+
+      // Validate project ID matches
+      if (qrProjectId !== project.id) {
+        return NextResponse.json(
+          {
+            error: `This sticker belongs to a different project.`,
+            success: false,
+            wrongProject: true,
+            scannedData: qrData
+          },
+          { status: 400 }
+        )
+      }
+
+      if (parts[1] === 'JAMB-KIT') {
+        // Jamb kit: P{projectId}|JAMB-KIT|{openingName}
+        itemType = 'jambkit'
+        openingName = parts[2] || null
+        itemName = 'Jamb Kit'
+        partNumber = 'JAMB-KIT'
+      } else if (parts.length === 3) {
+        // Component: P{projectId}|{openingName}|{itemName}
+        itemType = 'component'
+        partNumber = null
+        openingName = parts[1] || null
+        itemName = parts[2] || null
+      } else if (parts.length >= 4) {
+        // Hardware: P{projectId}|{partNumber}|{openingName}|{itemName}
+        itemType = 'hardware'
+        partNumber = parts[1] || null
+        openingName = parts[2] || null
+        itemName = parts[3] || null
+      }
     } else {
-      return NextResponse.json(
-        {
-          error: 'Invalid QR code format',
-          success: false,
-          scannedData: qrData
-        },
-        { status: 400 }
-      )
+      // Legacy format without project ID - validate by opening name
+      if (parts[0] === 'JAMB-KIT') {
+        itemType = 'jambkit'
+        openingName = parts[1] || null
+        itemName = 'Jamb Kit'
+        partNumber = 'JAMB-KIT'
+      } else if (parts.length === 2) {
+        itemType = 'component'
+        partNumber = null
+        openingName = parts[0] || null
+        itemName = parts[1] || null
+      } else if (parts.length >= 3) {
+        itemType = 'hardware'
+        partNumber = parts[0] || null
+        openingName = parts[1] || null
+        itemName = parts[2] || null
+      }
+
+      // For legacy format, validate opening exists in this project
+      if (openingName) {
+        const opening = await prisma.opening.findFirst({
+          where: {
+            projectId: project.id,
+            name: openingName
+          }
+        })
+
+        if (!opening) {
+          return NextResponse.json(
+            {
+              error: `This item belongs to a different project. Opening "${openingName}" not found in "${project.name}".`,
+              success: false,
+              wrongProject: true,
+              scannedData: qrData
+            },
+            { status: 400 }
+          )
+        }
+      }
     }
 
-    // Jamb kits don't have itemName, others require it
-    if (!openingName || (itemType !== 'jambkit' && !itemName)) {
+    if (!openingName) {
       return NextResponse.json(
         {
-          error: 'Invalid QR code format - missing opening or item name',
+          error: 'Invalid QR code format - missing opening name',
           success: false,
           scannedData: qrData
         },
@@ -87,7 +139,6 @@ export async function POST(
     })
 
     if (!salesOrder) {
-      // Create a minimal sales order for tracking packing
       const orderNumber = `SO-PACK-${project.id}-${Date.now()}`
       salesOrder = await prisma.salesOrder.create({
         data: {
@@ -99,25 +150,19 @@ export async function POST(
       })
     }
 
-    // Check if this item was already packed
-    // Match using the same fields that will be used to build the lookup key
-    // partNumber is required in schema, so use empty string for components
-    const storedPartNumber = partNumber || ''
+    // Check if this item was already packed using qrData as the key (stored in productName)
     const existingPart = await prisma.salesOrderPart.findFirst({
       where: {
         salesOrderId: salesOrder.id,
-        openingName: openingName,
-        partName: itemName,
-        partNumber: storedPartNumber
+        productName: qrData  // Use full qrData as the unique key
       }
     })
 
-    // Display name for responses (use 'Jamb Kit' for jamb kits since itemName is empty for matching)
-    const displayName = itemType === 'jambkit' ? 'Jamb Kit' : itemName
+    // Display name for responses
+    const displayName = itemType === 'jambkit' ? 'Jamb Kit' : (itemName || 'Unknown')
 
     if (existingPart) {
       if (existingPart.status === 'PACKED') {
-        // Already packed
         const stats = await getPackingStats(project.id, salesOrder.id)
         return NextResponse.json({
           success: false,
@@ -125,7 +170,7 @@ export async function POST(
           message: 'Item already packed',
           item: {
             partNumber: existingPart.partNumber,
-            itemName: existingPart.partName || displayName,
+            itemName: displayName,
             openingName: existingPart.openingName,
             packedAt: existingPart.packedAt?.toISOString()
           },
@@ -150,7 +195,7 @@ export async function POST(
         item: {
           id: updatedPart.id,
           partNumber: updatedPart.partNumber,
-          itemName: updatedPart.partName || displayName,
+          itemName: displayName,
           openingName: updatedPart.openingName,
           status: 'packed',
           packedAt: updatedPart.packedAt?.toISOString()
@@ -160,16 +205,15 @@ export async function POST(
     }
 
     // Create new SalesOrderPart and mark as packed
-    // Store with the exact values so the lookup in GET route will match
-    // partName stores the matching key (empty for jamb kits), productName stores display name
+    // Store qrData in productName for exact lookup matching
     const newPart = await prisma.salesOrderPart.create({
       data: {
         salesOrderId: salesOrder.id,
-        partNumber: storedPartNumber, // 'JAMB-KIT' for jamb kits, empty for components, value for hardware
-        partName: itemName || '', // Empty for jamb kits (for matching), actual name for others
+        partNumber: partNumber || '',
+        partName: itemName || '',
         partType: itemType === 'jambkit' ? 'Jamb Kit' : (itemType === 'component' ? 'Component' : 'Hardware'),
         openingName: openingName,
-        productName: displayName, // Display name (Jamb Kit for jamb kits)
+        productName: qrData,  // Store full qrData for exact matching
         quantity: 1,
         unit: 'EA',
         status: 'PACKED',
@@ -186,7 +230,7 @@ export async function POST(
       item: {
         id: newPart.id,
         partNumber: newPart.partNumber,
-        itemName: newPart.productName || displayName,
+        itemName: displayName,
         openingName: newPart.openingName,
         status: 'packed',
         packedAt: newPart.packedAt?.toISOString()
@@ -204,7 +248,6 @@ export async function POST(
 }
 
 async function getPackingStats(projectId: number, salesOrderId: number) {
-  // Get count of packed items from SalesOrderParts
   const packedParts = await prisma.salesOrderPart.findMany({
     where: { salesOrderId },
     select: { status: true }
@@ -212,8 +255,6 @@ async function getPackingStats(projectId: number, salesOrderId: number) {
 
   const packed = packedParts.filter(p => p.status === 'PACKED').length
 
-  // Get total expected items by counting from project openings/BOMs
-  // This matches the logic in the packing list route
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: {
@@ -259,10 +300,8 @@ async function getPackingStats(projectId: number, salesOrderId: number) {
       let hasJambKitItems = false
 
       for (const panel of opening.panels) {
-        // Count component
         total++
 
-        // Count hardware from BOMs
         if (panel.componentInstance?.product?.productBOMs) {
           for (const bom of panel.componentInstance.product.productBOMs) {
             if (bom.addToPackingList) {
@@ -271,7 +310,6 @@ async function getPackingStats(projectId: number, salesOrderId: number) {
           }
         }
 
-        // Count hardware from individual options
         if (panel.componentInstance?.subOptionSelections && panel.componentInstance.product?.productSubOptions) {
           try {
             const selections = JSON.parse(panel.componentInstance.subOptionSelections)
@@ -296,7 +334,6 @@ async function getPackingStats(projectId: number, salesOrderId: number) {
           }
         }
 
-        // Check for jamb kit items
         if (panel.componentInstance?.product) {
           const allBoms = await prisma.productBOM.findMany({
             where: { productId: panel.componentInstance.product.id },
@@ -317,7 +354,6 @@ async function getPackingStats(projectId: number, salesOrderId: number) {
         }
       }
 
-      // Count jamb kit as one item per opening
       if (hasJambKitItems) {
         total++
       }
