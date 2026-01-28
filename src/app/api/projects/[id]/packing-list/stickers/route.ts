@@ -134,6 +134,7 @@ export async function GET(
         stickersWithoutIndex.push({
           openingName: opening.name,
           projectName: project.name,
+          projectId: projectId,
           itemType: 'component',
           itemName: productName,
           dimensions: `${panel.width}" x ${panel.height}"`,
@@ -177,6 +178,7 @@ export async function GET(
               stickersWithoutIndex.push({
                 openingName: opening.name,
                 projectName: project.name,
+                projectId: projectId,
                 itemType: 'hardware',
                 itemName: bom.partName,
                 partNumber: partNumber,
@@ -219,6 +221,7 @@ export async function GET(
                 stickersWithoutIndex.push({
                   openingName: opening.name,
                   projectName: project.name,
+                  projectId: projectId,
                   itemType: 'hardware',
                   itemName: selectedOption.name,
                   partNumber: partNumber,
@@ -238,6 +241,7 @@ export async function GET(
         stickersWithoutIndex.push({
           openingName: opening.name,
           projectName: project.name,
+          projectId: projectId,
           itemType: 'jambkit',
           itemName: 'Jamb Kit',
           itemCount: jambKitItemCount,
