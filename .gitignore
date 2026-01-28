@@ -60,3 +60,4 @@ firebase-debug.log
 /Linea Motion Website/
 github-actions-key.json
 *.dump
+.playwright-mcp/
