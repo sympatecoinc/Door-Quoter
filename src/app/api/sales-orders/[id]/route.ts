@@ -247,13 +247,34 @@ export async function DELETE(
       )
     }
 
+    // If sales order is synced to QuickBooks, void the Estimate in QB first
+    let qbWarning: string | null = null
+    if (salesOrder.quickbooksId) {
+      try {
+        const { getStoredRealmId, getQBEstimate, voidQBEstimate } = await import('@/lib/quickbooks')
+        const realmId = await getStoredRealmId()
+        if (realmId) {
+          // Get current sync token from QB
+          const qbEstimate = await getQBEstimate(realmId, salesOrder.quickbooksId)
+          await voidQBEstimate(realmId, salesOrder.quickbooksId, qbEstimate.SyncToken!)
+          console.log(`[QB Sync] Voided estimate ${salesOrder.orderNumber} in QuickBooks`)
+        }
+      } catch (qbError) {
+        console.error(`[QB Sync] Failed to void estimate ${salesOrder.orderNumber} in QB:`, qbError)
+        qbWarning = `Sales order cancelled locally but QuickBooks void failed: ${qbError instanceof Error ? qbError.message : 'Unknown error'}`
+      }
+    }
+
     // Update status to cancelled (soft delete)
     await prisma.salesOrder.update({
       where: { id: salesOrderId },
       data: { status: 'CANCELLED' }
     })
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({
+      success: true,
+      warning: qbWarning
+    })
   } catch (error) {
     console.error('Error cancelling sales order:', error)
     return NextResponse.json(

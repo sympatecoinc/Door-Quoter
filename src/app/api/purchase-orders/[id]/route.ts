@@ -504,7 +504,22 @@ export async function DELETE(
 
       return NextResponse.json({ message: 'Purchase order deleted permanently' })
     } else {
-      // Just cancel the PO
+      // Cancel the PO and delete from QuickBooks
+      // First, delete from QuickBooks if it exists there
+      if (purchaseOrder.quickbooksId && purchaseOrder.syncToken) {
+        const realmId = await getStoredRealmId()
+        if (realmId) {
+          try {
+            await deleteQBPurchaseOrder(realmId, purchaseOrder.quickbooksId, purchaseOrder.syncToken)
+            console.log(`[PO Delete] Voided PO ${purchaseOrder.poNumber} in QuickBooks`)
+          } catch (qbError) {
+            console.error('Failed to delete PO from QuickBooks:', qbError)
+            // Continue with local cancellation
+          }
+        }
+      }
+
+      // Cancel locally (preserves data for receivings history)
       const updatedPO = await prisma.purchaseOrder.update({
         where: { id: poId },
         data: {

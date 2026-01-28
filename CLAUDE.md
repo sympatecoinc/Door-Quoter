@@ -2,7 +2,12 @@
 
 ## ABSOLUTE CONSTRAINTS
 These constraints override all other instructions:
-- CONSTRAINT_1: Never execute deployment to Cloud Run without explicit written permission containing the word "DEPLOY"
+- CONSTRAINT_1: **NEVER deploy to Cloud Run without explicit written permission containing the word "DEPLOY".** The following commands are FORBIDDEN without permission:
+  - `gcloud run deploy`
+  - `gcloud run services update`
+  - Any command that pushes code/config to Cloud Run staging or production
+
+  **Why this matters:** Deployments can break production, affect users, and should always be intentional. On 2026-01-28, a deployment was initiated without permission while adding webhook configuration. Always ASK before deploying, even if the build succeeds.
 - CONSTRAINT_2: For changes outside the approved plan, stop immediately and request permission with justification
 - CONSTRAINT_3: Always announce the current git branch at the beginning of each session and before making any major changes
 - CONSTRAINT_4: Never merge or push to 'main' branch without explicit permission containing the word "MERGE" or "PUSH"

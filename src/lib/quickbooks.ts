@@ -2040,6 +2040,43 @@ export async function voidQBEstimate(realmId: string, estimateId: string, syncTo
   })
 }
 
+// ============ DEACTIVATION FUNCTIONS ============
+// QuickBooks doesn't allow deleting Vendors, Customers, or Items that have transactions
+// Instead, we deactivate them by setting Active: false
+
+// Deactivate a vendor in QuickBooks (set Active: false)
+export async function deactivateQBVendor(realmId: string, vendorId: string, syncToken: string): Promise<QBVendor> {
+  const response = await qbApiRequest(realmId, 'vendor', 'POST', {
+    Id: vendorId,
+    SyncToken: syncToken,
+    Active: false,
+    sparse: true
+  })
+  return response.Vendor
+}
+
+// Deactivate a customer in QuickBooks (set Active: false)
+export async function deactivateQBCustomer(realmId: string, customerId: string, syncToken: string): Promise<QBCustomer> {
+  const response = await qbApiRequest(realmId, 'customer', 'POST', {
+    Id: customerId,
+    SyncToken: syncToken,
+    Active: false,
+    sparse: true
+  })
+  return response.Customer
+}
+
+// Deactivate an item in QuickBooks (set Active: false)
+export async function deactivateQBItem(realmId: string, itemId: string, syncToken: string): Promise<QBItem> {
+  const response = await qbApiRequest(realmId, 'item', 'POST', {
+    Id: itemId,
+    SyncToken: syncToken,
+    Active: false,
+    sparse: true
+  })
+  return response.Item
+}
+
 // Convert local SalesOrder to QuickBooks Estimate format
 export function localSOToQBEstimate(salesOrder: any, customerQBId: string): QBEstimate {
   const qbEstimate: QBEstimate = {

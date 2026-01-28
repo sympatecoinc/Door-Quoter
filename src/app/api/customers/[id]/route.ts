@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { SOStatus, InvoiceStatus, ProjectStatus } from '@prisma/client'
-import { pushCustomerToQB, getStoredRealmId } from '@/lib/quickbooks'
+import { pushCustomerToQB, getStoredRealmId, fetchQBCustomer, deactivateQBCustomer } from '@/lib/quickbooks'
 
 export async function GET(
   request: NextRequest,
@@ -192,6 +192,35 @@ export async function DELETE(
       )
     }
 
+    // Get the customer to check if it has a QuickBooks ID
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId }
+    })
+
+    if (!customer) {
+      return NextResponse.json(
+        { error: 'Customer not found' },
+        { status: 404 }
+      )
+    }
+
+    // If customer is synced to QuickBooks, deactivate in QB first
+    let qbWarning: string | null = null
+    if (customer.quickbooksId) {
+      try {
+        const realmId = await getStoredRealmId()
+        if (realmId) {
+          // Get current sync token from QB
+          const qbCustomer = await fetchQBCustomer(realmId, customer.quickbooksId)
+          await deactivateQBCustomer(realmId, customer.quickbooksId, qbCustomer.SyncToken!)
+          console.log(`[QB Sync] Deactivated customer ${customer.companyName} in QuickBooks`)
+        }
+      } catch (qbError) {
+        console.error(`[QB Sync] Failed to deactivate customer ${customer.companyName} in QB:`, qbError)
+        qbWarning = `Customer archived locally but QuickBooks deactivation failed: ${qbError instanceof Error ? qbError.message : 'Unknown error'}`
+      }
+    }
+
     // Archive related records instead of deleting (preserves historical data)
 
     // Archive sales orders (set to CANCELLED)
@@ -218,7 +247,10 @@ export async function DELETE(
       data: { status: 'Archived' }
     })
 
-    return NextResponse.json({ message: 'Customer archived successfully' })
+    return NextResponse.json({
+      message: 'Customer archived successfully',
+      warning: qbWarning
+    })
   } catch (error) {
     console.error('Error archiving customer:', error)
 

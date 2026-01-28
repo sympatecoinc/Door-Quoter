@@ -392,6 +392,14 @@ export default function VendorDetailView({ vendorId, onBack, onEdit, onRefresh }
                   {vendor.isActive ? 'Active' : 'Inactive'}
                 </span>
               </div>
+              {vendor.quickbooksId && (
+                <div className="flex justify-between pt-2 border-t border-gray-100">
+                  <span className="text-gray-500">Default Expense Account</span>
+                  <span className={vendor.defaultExpenseAccountName ? 'text-gray-900' : 'text-gray-400'}>
+                    {vendor.defaultExpenseAccountName || 'System default'}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

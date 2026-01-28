@@ -211,17 +211,34 @@ export async function DELETE(
       )
     }
 
-    // If vendor has QuickBooks ID, just mark as inactive instead of deleting
-    // (QB vendors cannot be deleted if they have transactions)
+    // If vendor has QuickBooks ID, mark as inactive locally and in QuickBooks
+    // (QB vendors cannot be deleted if they have transactions - they can only be deactivated)
     if (vendor.quickbooksId) {
+      // Try to deactivate in QuickBooks
+      let qbWarning: string | null = null
+      try {
+        const { getStoredRealmId, fetchQBVendor, deactivateQBVendor } = await import('@/lib/quickbooks')
+        const realmId = await getStoredRealmId()
+        if (realmId) {
+          // Get current sync token from QB
+          const qbVendor = await fetchQBVendor(realmId, vendor.quickbooksId)
+          await deactivateQBVendor(realmId, vendor.quickbooksId, qbVendor.SyncToken!)
+          console.log(`[QB Sync] Deactivated vendor ${vendor.displayName} in QuickBooks`)
+        }
+      } catch (qbError) {
+        console.error(`[QB Sync] Failed to deactivate vendor ${vendor.displayName} in QB:`, qbError)
+        qbWarning = `Vendor marked inactive locally but QuickBooks deactivation failed: ${qbError instanceof Error ? qbError.message : 'Unknown error'}`
+      }
+
       const updatedVendor = await prisma.vendor.update({
         where: { id: vendorId },
         data: { isActive: false },
         include: { contacts: true }
       })
       return NextResponse.json({
-        message: 'Vendor marked as inactive (QuickBooks vendors cannot be deleted)',
-        vendor: updatedVendor
+        message: 'Vendor marked as inactive',
+        vendor: updatedVendor,
+        warning: qbWarning
       })
     }
 
