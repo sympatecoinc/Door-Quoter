@@ -8,8 +8,8 @@ const SESSION_DURATION_DAYS = 7
 
 /**
  * Get the cookie domain for cross-subdomain authentication.
- * In production, this returns '.lineamotion.com' so cookies work across all subdomains.
- * In development (localhost), returns undefined so cookies work normally.
+ * Only returns '.lineamotion.com' when actually on a lineamotion.com host.
+ * Returns undefined for localhost, staging (*.run.app), and other domains.
  */
 async function getCookieDomain(): Promise<string | undefined> {
   if (process.env.NODE_ENV !== 'production') {
@@ -18,7 +18,15 @@ async function getCookieDomain(): Promise<string | undefined> {
 
   const headerStore = await headers()
   const host = headerStore.get('host') || ''
-  return getBaseDomain(host)
+  const hostWithoutPort = host.split(':')[0]
+
+  // Only set cross-subdomain cookie for lineamotion.com
+  // Don't set domain for Cloud Run staging (*.run.app) or other hosts
+  if (hostWithoutPort.endsWith('lineamotion.com')) {
+    return '.lineamotion.com'
+  }
+
+  return undefined
 }
 
 /**
