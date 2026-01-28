@@ -148,7 +148,14 @@ export default function Sidebar() {
 
   async function fetchCurrentUser() {
     try {
-      const response = await fetch('/api/auth/session')
+      // Check for portal query parameter override (for testing on staging)
+      const urlParams = new URLSearchParams(window.location.search)
+      const portalOverride = urlParams.get('portal')
+      const sessionUrl = portalOverride
+        ? `/api/auth/session?portal=${encodeURIComponent(portalOverride)}`
+        : '/api/auth/session'
+
+      const response = await fetch(sessionUrl)
       if (response.ok) {
         const data = await response.json()
         setCurrentUser(data.user)

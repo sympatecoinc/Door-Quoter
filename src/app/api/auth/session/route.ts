@@ -43,18 +43,31 @@ export async function GET(request: NextRequest) {
     // Detect subdomain from request headers
     const headerStore = await headers()
     const host = headerStore.get('host') || ''
-    const subdomain = getSubdomainFromHostname(host)
+    let subdomain = getSubdomainFromHostname(host)
 
-    // If main app subdomain (or no subdomain), return user with full permissions
-    if (isMainAppSubdomain(subdomain)) {
+    // Allow query parameter override for testing (e.g., ?portal=purchasing)
+    const url = new URL(request.url)
+    const portalOverride = url.searchParams.get('portal')
+    if (portalOverride) {
+      subdomain = portalOverride
+    }
+
+    // If main app subdomain (or no subdomain) and no override, return user with full permissions
+    if (isMainAppSubdomain(subdomain) && !portalOverride) {
       return NextResponse.json({
         user: session.user,
         portal: null
       })
     }
 
-    // Lookup portal for this subdomain
-    const portalConfig = await getPortalBySubdomain(subdomain)
+    // Lookup portal for this subdomain (with graceful fallback if Portals table doesn't exist)
+    let portalConfig = null
+    try {
+      portalConfig = await getPortalBySubdomain(subdomain)
+    } catch (portalError) {
+      // If Portals table doesn't exist or other DB error, continue without portal context
+      console.warn('Portal lookup failed (table may not exist):', portalError)
+    }
 
     // If no portal found for this subdomain, treat as main app
     if (!portalConfig) {
