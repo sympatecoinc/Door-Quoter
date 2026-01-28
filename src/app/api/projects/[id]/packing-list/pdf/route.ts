@@ -249,8 +249,11 @@ export async function GET(
     // Get company logo for branding
     const companyLogo = await getCompanyLogo()
 
-    // Build packing URL for QR code
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    // Build packing URL for QR code using request headers
+    const headers = request.headers
+    const host = headers.get('host') || 'localhost:3000'
+    const protocol = headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https')
+    const baseUrl = `${protocol}://${host}`
     const packingUrl = `${baseUrl}/packing/${packingAccessToken}`
 
     // Build the data structure for the PDF
