@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Download, Save, Upload, FileUp, Plus, Trash2, Edit, RefreshCw, Link as LinkIcon, CheckCircle, AlertCircle, X, Image as ImageIcon } from 'lucide-react'
 import UserManagement from '../UserManagement'
 import ProfileManagement from '../ProfileManagement'
+import PortalManagement from '../PortalManagement'
 
 export default function SettingsView() {
   const [currentUser, setCurrentUser] = useState<any>(null)
@@ -1095,7 +1096,7 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,,3.2,TRUE,
           </div>
         </div>
 
-        {/* Profile & User Management Sections (Admin Only) */}
+        {/* Profile, User & Portal Management Sections (Admin Only) */}
         {currentUser?.role === 'ADMIN' && (
           <>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -1103,6 +1104,9 @@ ALU-003,Header Extrusion,Extrusion,Top frame horizontal extrusion,IN,,,3.2,TRUE,
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <UserManagement />
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <PortalManagement />
             </div>
           </>
         )}

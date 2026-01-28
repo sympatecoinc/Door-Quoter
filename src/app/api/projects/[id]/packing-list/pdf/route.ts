@@ -37,10 +37,11 @@ export async function GET(
     const projectId = parseInt(id)
 
     // Get project info with customer
-    const project = await prisma.project.findUnique({
+    let project = await prisma.project.findUnique({
       where: { id: projectId },
       select: {
         name: true,
+        packingAccessToken: true,
         customer: {
           select: { companyName: true }
         }
@@ -49,6 +50,16 @@ export async function GET(
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    // Generate packing access token if not exists
+    let packingAccessToken = project.packingAccessToken
+    if (!packingAccessToken) {
+      packingAccessToken = crypto.randomUUID()
+      await prisma.project.update({
+        where: { id: projectId },
+        data: { packingAccessToken }
+      })
     }
 
     // Get all openings for this project with their panels and component instances
@@ -238,6 +249,10 @@ export async function GET(
     // Get company logo for branding
     const companyLogo = await getCompanyLogo()
 
+    // Build packing URL for QR code
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const packingUrl = `${baseUrl}/packing/${packingAccessToken}`
+
     // Build the data structure for the PDF
     const pdfData: PackingListData = {
       projectName: project.name,
@@ -251,7 +266,8 @@ export async function GET(
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
-      })
+      }),
+      packingUrl
     }
 
     // Generate the PDF

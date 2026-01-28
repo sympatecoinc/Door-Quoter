@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/stores/appStore'
-import { MenuOption } from '@/types'
+import { MenuOption, PortalContext } from '@/types'
 import {
   Home,
   Folder,
@@ -25,6 +25,7 @@ import {
   LayoutDashboard,
   PackageOpen,
   Building2,
+  Globe,
   LucideIcon
 } from 'lucide-react'
 
@@ -62,6 +63,7 @@ export default function Sidebar() {
   const router = useRouter()
   const { currentMenu, setCurrentMenu, notificationRefreshTrigger } = useAppStore()
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [portalContext, setPortalContext] = useState<PortalContext | null>(null)
   const [inventoryNotificationCount, setInventoryNotificationCount] = useState(0)
   const [pendingQuotesCount, setPendingQuotesCount] = useState(0)
   const [receivingCount, setReceivingCount] = useState(0)
@@ -150,23 +152,33 @@ export default function Sidebar() {
       if (response.ok) {
         const data = await response.json()
         setCurrentUser(data.user)
+        setPortalContext(data.portal || null)
 
         // Set default tab on first load (only once)
         if (!hasSetDefaultTab.current && data.user) {
           hasSetDefaultTab.current = true
           const profile = data.user.profile
           const effectivePermissions = data.user.effectivePermissions || data.user.permissions || []
+          const portal = data.portal
 
-          // Use profile's defaultTab if set and user has access to it
-          if (profile?.defaultTab && effectivePermissions.includes(profile.defaultTab)) {
+          // Priority 1: Portal's defaultTab (if in portal mode and user has access)
+          if (portal?.defaultTab && effectivePermissions.includes(portal.defaultTab)) {
+            setCurrentMenu(portal.defaultTab as MenuOption)
+          }
+          // Priority 2: Profile's defaultTab (if set and user has access)
+          else if (profile?.defaultTab && effectivePermissions.includes(profile.defaultTab)) {
             setCurrentMenu(profile.defaultTab as MenuOption)
           }
-          // Otherwise, use the first available tab from the profile's ordered tabs
+          // Priority 3: First available tab from the profile's ordered tabs
           else if (profile?.tabs?.length > 0) {
             const firstAccessibleTab = profile.tabs.find((tab: string) => effectivePermissions.includes(tab))
             if (firstAccessibleTab) {
               setCurrentMenu(firstAccessibleTab as MenuOption)
             }
+          }
+          // Priority 4: First permission the user has
+          else if (effectivePermissions.length > 0) {
+            setCurrentMenu(effectivePermissions[0] as MenuOption)
           }
         }
       }
@@ -224,8 +236,16 @@ export default function Sidebar() {
 
   return (
     <div className="w-64 bg-white shadow-lg border-r border-gray-200 flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200 flex-shrink-0 min-h-[64px] flex justify-center items-center">
+      {/* Header with Portal Context */}
+      <div className="p-4 border-b border-gray-200 flex-shrink-0 min-h-[64px] flex flex-col justify-center items-center">
+        {/* Portal Header Title (if in portal mode) */}
+        {portalContext?.headerTitle && (
+          <div className="flex items-center gap-2 text-sm font-medium text-blue-700 mb-2">
+            <Globe className="w-4 h-4" />
+            <span>{portalContext.headerTitle}</span>
+          </div>
+        )}
+        {/* Company Logo */}
         {companyLogo && (
           <img
             src={companyLogo}
@@ -237,43 +257,52 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-        {visibleMenuItems.map((item: { id: MenuOption; label: string; icon: LucideIcon }) => {
-          const Icon = item.icon
-          const isActive = currentMenu === item.id
-          const showInventoryBadge = item.id === 'inventory' && inventoryNotificationCount > 0
-          const showSalesOrdersBadge = item.id === 'salesOrders' && pendingQuotesCount > 0
-          const showReceivingBadge = item.id === 'receiving' && receivingCount > 0
+        {visibleMenuItems.length === 0 ? (
+          <div className="text-center py-4 text-gray-500 text-sm">
+            <p>No tabs available</p>
+            {portalContext && (
+              <p className="text-xs mt-1">You don't have access to any tabs in this portal</p>
+            )}
+          </div>
+        ) : (
+          visibleMenuItems.map((item: { id: MenuOption; label: string; icon: LucideIcon }) => {
+            const Icon = item.icon
+            const isActive = currentMenu === item.id
+            const showInventoryBadge = item.id === 'inventory' && inventoryNotificationCount > 0
+            const showSalesOrdersBadge = item.id === 'salesOrders' && pendingQuotesCount > 0
+            const showReceivingBadge = item.id === 'receiving' && receivingCount > 0
 
-          return (
-            <button
-              key={item.id}
-              onClick={() => setCurrentMenu(item.id)}
-              className={`w-full flex items-center px-3 py-2 rounded-lg text-left transition-colors ${
-                isActive
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                  : 'text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <Icon className="w-5 h-5 mr-3" />
-              <span className="flex-1">{item.label}</span>
-              {showInventoryBadge && (
-                <span className="bg-red-100 text-red-700 rounded-full px-2 py-0.5 text-xs font-medium">
-                  {inventoryNotificationCount}
-                </span>
-              )}
-              {showSalesOrdersBadge && (
-                <span className="bg-red-100 text-red-700 rounded-full px-2 py-0.5 text-xs font-medium">
-                  {pendingQuotesCount}
-                </span>
-              )}
-              {showReceivingBadge && (
-                <span className="bg-orange-100 text-orange-700 rounded-full px-2 py-0.5 text-xs font-medium">
-                  {receivingCount}
-                </span>
-              )}
-            </button>
-          )
-        })}
+            return (
+              <button
+                key={item.id}
+                onClick={() => setCurrentMenu(item.id)}
+                className={`w-full flex items-center px-3 py-2 rounded-lg text-left transition-colors ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Icon className="w-5 h-5 mr-3" />
+                <span className="flex-1">{item.label}</span>
+                {showInventoryBadge && (
+                  <span className="bg-red-100 text-red-700 rounded-full px-2 py-0.5 text-xs font-medium">
+                    {inventoryNotificationCount}
+                  </span>
+                )}
+                {showSalesOrdersBadge && (
+                  <span className="bg-red-100 text-red-700 rounded-full px-2 py-0.5 text-xs font-medium">
+                    {pendingQuotesCount}
+                  </span>
+                )}
+                {showReceivingBadge && (
+                  <span className="bg-orange-100 text-orange-700 rounded-full px-2 py-0.5 text-xs font-medium">
+                    {receivingCount}
+                  </span>
+                )}
+              </button>
+            )
+          })
+        )}
       </nav>
 
       {/* User Section */}

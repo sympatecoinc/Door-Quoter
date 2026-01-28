@@ -7,6 +7,7 @@ import fs from 'fs'
 import path from 'path'
 import sharp from 'sharp'
 import { downloadFile } from './gcs-storage'
+import QRCode from 'qrcode'
 
 export interface PackingListLineItem {
   openingName: string
@@ -33,6 +34,7 @@ export interface PackingListData {
   lineItems: PackingListLineItem[]
   jambKits?: JambKitEntry[]
   generatedDate: string
+  packingUrl?: string  // URL for mobile scanning interface
 }
 
 // Legacy interfaces for backwards compatibility
@@ -184,6 +186,33 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
       }
     } catch (error) {
       console.error('Error adding company logo to Packing List PDF:', error)
+    }
+  }
+
+  // Add QR code for mobile scanning interface (top right, below logo)
+  if (data.packingUrl) {
+    try {
+      const qrCodeDataUrl = await QRCode.toDataURL(data.packingUrl, {
+        width: 200,
+        margin: 1,
+        errorCorrectionLevel: 'M'
+      })
+
+      // Position QR code in top right area
+      const qrSize = 22  // 22mm square
+      const qrX = PAGE_WIDTH - MARGIN - qrSize
+      const qrY = yPos + (data.companyLogo ? 18 : 0)  // Below logo if present
+
+      pdf.addImage(qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize)
+
+      // Label below QR code
+      pdf.setFontSize(6)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setTextColor(100, 100, 100)
+      pdf.text('Scan to verify', qrX + qrSize / 2, qrY + qrSize + 3, { align: 'center' })
+      pdf.setTextColor(0, 0, 0)
+    } catch (error) {
+      console.error('Error adding QR code to Packing List PDF:', error)
     }
   }
 

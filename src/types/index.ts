@@ -595,5 +595,27 @@ export interface LeadDetail {
   } | null
 }
 
+// Portal Types
+export interface Portal {
+  id: number
+  subdomain: string
+  name: string
+  description: string | null
+  tabs: string[]
+  defaultTab: string | null
+  headerTitle: string | null
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface PortalContext {
+  id: number
+  name: string
+  subdomain: string
+  defaultTab: string | null
+  headerTitle: string | null
+}
+
 // Customer exports
 export * from './customer'

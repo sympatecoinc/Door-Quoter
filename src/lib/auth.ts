@@ -1,9 +1,25 @@
 import bcrypt from 'bcryptjs'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
+import { getBaseDomain } from './portals'
 
 const SALT_ROUNDS = 10
 const SESSION_COOKIE_NAME = 'session_token'
 const SESSION_DURATION_DAYS = 7
+
+/**
+ * Get the cookie domain for cross-subdomain authentication.
+ * In production, this returns '.lineamotion.com' so cookies work across all subdomains.
+ * In development (localhost), returns undefined so cookies work normally.
+ */
+async function getCookieDomain(): Promise<string | undefined> {
+  if (process.env.NODE_ENV !== 'production') {
+    return undefined
+  }
+
+  const headerStore = await headers()
+  const host = headerStore.get('host') || ''
+  return getBaseDomain(host)
+}
 
 /**
  * Hash a plain text password using bcrypt
@@ -47,11 +63,15 @@ export function validateEmail(email: string): string | null {
 
 /**
  * Set session cookie in response
+ * In production, the cookie is set with domain='.lineamotion.com' to allow
+ * cross-subdomain authentication (e.g., login once, access all portals)
  */
 export async function setSessionCookie(sessionId: string): Promise<void> {
   const cookieStore = await cookies()
   const expiresAt = new Date()
   expiresAt.setDate(expiresAt.getDate() + SESSION_DURATION_DAYS)
+
+  const domain = await getCookieDomain()
 
   cookieStore.set(SESSION_COOKIE_NAME, sessionId, {
     httpOnly: true,
@@ -59,6 +79,7 @@ export async function setSessionCookie(sessionId: string): Promise<void> {
     sameSite: 'lax',
     expires: expiresAt,
     path: '/',
+    ...(domain && { domain }), // Only set domain in production
   })
 }
 
@@ -72,9 +93,25 @@ export async function getSessionToken(): Promise<string | undefined> {
 
 /**
  * Delete session cookie
+ * Also clears the cookie with the production domain to ensure full logout
  */
 export async function deleteSessionCookie(): Promise<void> {
   const cookieStore = await cookies()
+  const domain = await getCookieDomain()
+
+  // Delete with domain to clear cross-subdomain cookie
+  if (domain) {
+    cookieStore.set(SESSION_COOKIE_NAME, '', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      expires: new Date(0),
+      path: '/',
+      domain,
+    })
+  }
+
+  // Also delete without domain (for localhost/direct deletion)
   cookieStore.delete(SESSION_COOKIE_NAME)
 }
 

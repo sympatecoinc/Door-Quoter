@@ -32,6 +32,7 @@
     "@types/sqlite3": "^3.1.11",
     "@types/uuid": "^10.0.0",
     "@xmldom/xmldom": "^0.8.11",
+    "@yudiel/react-qr-scanner": "^2.5.1",
     "archiver": "^7.0.1",
     "bcryptjs": "^3.0.2",
     "canvas": "^3.2.0",

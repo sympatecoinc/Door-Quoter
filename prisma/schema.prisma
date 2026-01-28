@@ -61,6 +61,9 @@ model Project {
   parentProject          Project?    @relation("ProjectRevisions", fields: [parentProjectId], references: [id], onDelete: SetNull)
   revisions              Project[]   @relation("ProjectRevisions")
 
+  // Packing list access token for public QR scanning interface
+  packingAccessToken     String?     @unique @default(uuid())
+
   @@map("Projects")
 }
 
@@ -1480,6 +1483,22 @@ model InvoiceLine {
   updatedAt             DateTime  @updatedAt
 
   @@map("InvoiceLines")
+}
+
+// Portal - Subdomain-based access portals with restricted tabs
+model Portal {
+  id          Int      @id @default(autoincrement())
+  subdomain   String   @unique  // "purchasing", "sales", "admin", etc.
+  name        String             // "Purchasing Portal"
+  description String?
+  tabs        String[] @default([])  // Allowed tabs for this portal
+  defaultTab  String?            // Landing tab (must be in tabs array)
+  headerTitle String?            // Custom header text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("Portals")
 }
 
 // Price History - Track price changes for purchasing analytics
