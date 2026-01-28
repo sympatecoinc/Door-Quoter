@@ -16,6 +16,7 @@ import { ProjectStatus } from '@/types'
 import StatusBadge from '@/components/projects/StatusBadge'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
+import { useDownloadStore } from '@/stores/downloadStore'
 
 interface LogisticsProject {
   id: number
@@ -76,6 +77,7 @@ export default function LogisticsView() {
   const [downloading, setDownloading] = useState<DownloadingState>({})
   const [bulkDownloading, setBulkDownloading] = useState(false)
   const { toasts, removeToast, showSuccess, showError } = useToast()
+  const { startDownload, updateProgress, completeDownload, failDownload } = useDownloadStore()
 
   useEffect(() => {
     fetchProjects()
@@ -119,33 +121,43 @@ export default function LogisticsView() {
   }
 
   async function downloadDocument(projectId: number, type: DownloadType, projectName: string) {
-    setDownloading(prev => ({
-      ...prev,
-      [projectId]: { ...prev[projectId], [type]: true }
-    }))
+    let url: string
+    let filename: string
+    let toastName: string
+    let toastType: 'packing-list' | 'labels' | 'box-list'
+    const safeProjectName = projectName.replace(/[^a-zA-Z0-9]/g, '-')
+
+    switch (type) {
+      case 'packinglist':
+        url = `/api/projects/${projectId}/packing-list/pdf`
+        filename = `${safeProjectName}-packing-list.pdf`
+        toastName = `Packing List - ${projectName}`
+        toastType = 'packing-list'
+        break
+      case 'labels':
+        url = `/api/projects/${projectId}/packing-list/stickers`
+        filename = `${safeProjectName}-packing-stickers.pdf`
+        toastName = `Labels - ${projectName}`
+        toastType = 'labels'
+        break
+      case 'boxlist':
+        url = `/api/projects/${projectId}/bom?boxlist=true&format=pdf`
+        filename = `${safeProjectName}-box-cut-list.pdf`
+        toastName = `Box Cut List - ${projectName}`
+        toastType = 'box-list'
+        break
+      default:
+        showError('Invalid download type')
+        return
+    }
+
+    // Start download tracking
+    const downloadId = startDownload({
+      name: toastName,
+      type: toastType
+    })
 
     try {
-      let url: string
-      let filename: string
-      const safeProjectName = projectName.replace(/[^a-zA-Z0-9]/g, '-')
-
-      switch (type) {
-        case 'packinglist':
-          url = `/api/projects/${projectId}/packing-list/pdf`
-          filename = `${safeProjectName}-packing-list.pdf`
-          break
-        case 'labels':
-          url = `/api/projects/${projectId}/packing-list/stickers`
-          filename = `${safeProjectName}-packing-stickers.pdf`
-          break
-        case 'boxlist':
-          url = `/api/projects/${projectId}/bom?boxlist=true&format=pdf`
-          filename = `${safeProjectName}-box-cut-list.pdf`
-          break
-        default:
-          throw new Error('Invalid download type')
-      }
-
       const response = await fetch(url)
       if (!response.ok) {
         throw new Error(`Failed to download ${type}`)
@@ -160,14 +172,11 @@ export default function LogisticsView() {
       a.click()
       window.URL.revokeObjectURL(downloadUrl)
       document.body.removeChild(a)
+
+      completeDownload(downloadId)
     } catch (error) {
       console.error(`Error downloading ${type}:`, error)
-      showError(`Failed to download ${type}`)
-    } finally {
-      setDownloading(prev => ({
-        ...prev,
-        [projectId]: { ...prev[projectId], [type]: false }
-      }))
+      failDownload(downloadId, `Failed to download ${type}`)
     }
   }
 
@@ -177,8 +186,20 @@ export default function LogisticsView() {
       return
     }
 
-    setBulkDownloading(true)
     const selectedProjects = projects.filter(p => selectedIds.has(p.id))
+    const totalFiles = selectedProjects.length * 3 // 3 document types per project
+
+    // Build download name
+    const projectNames = selectedProjects.slice(0, 2).map(p => p.name).join(', ')
+    const downloadName = projectNames + (selectedProjects.length > 2 ? ` +${selectedProjects.length - 2} more` : '')
+
+    // Start download tracking
+    const downloadId = startDownload({
+      name: `Logistics - ${downloadName}`,
+      type: 'logistics'
+    })
+
+    setBulkDownloading(true)
     const zip = new JSZip()
     let fileCount = 0
     let errorCount = 0
@@ -201,6 +222,8 @@ export default function LogisticsView() {
             const blob = await response.blob()
             projectFolder?.file(doc.filename, blob)
             fileCount++
+            // Update progress
+            updateProgress(downloadId, (fileCount / totalFiles) * 100)
           } else {
             errorCount++
           }
@@ -212,7 +235,7 @@ export default function LogisticsView() {
     }
 
     if (fileCount === 0) {
-      showError('No files were downloaded')
+      failDownload(downloadId, 'No files were downloaded')
       setBulkDownloading(false)
       return
     }
@@ -229,13 +252,13 @@ export default function LogisticsView() {
       document.body.removeChild(a)
 
       if (errorCount === 0) {
-        showSuccess(`Downloaded ${fileCount} file${fileCount !== 1 ? 's' : ''} for ${selectedProjects.length} project${selectedProjects.length !== 1 ? 's' : ''}`)
+        completeDownload(downloadId)
       } else {
-        showSuccess(`Downloaded ${fileCount} file${fileCount !== 1 ? 's' : ''} (${errorCount} failed)`)
+        failDownload(downloadId, `${fileCount} downloaded, ${errorCount} failed`)
       }
     } catch (error) {
       console.error('Error creating ZIP:', error)
-      showError('Failed to create ZIP file')
+      failDownload(downloadId, 'Failed to create ZIP file')
     } finally {
       setBulkDownloading(false)
     }
@@ -329,59 +352,72 @@ export default function LogisticsView() {
 
       setIsDownloading(true)
       const safeProjectName = projectName.replace(/[^a-zA-Z0-9]/g, '-')
+      const typesArray = Array.from(selectedTypes)
+
+      if (selectedTypes.size === 1) {
+        // Single file - download directly (toast handled in downloadDocument)
+        const type = typesArray[0]
+        await downloadDocument(projectId, type, projectName)
+        setSelectedTypes(new Set())
+        setIsDownloading(false)
+        return
+      }
+
+      // Multiple files - create ZIP with toast
+      const downloadId = startDownload({
+        name: `Logistics - ${projectName}`,
+        type: 'logistics'
+      })
 
       try {
-        if (selectedTypes.size === 1) {
-          // Single file - download directly
-          const type = Array.from(selectedTypes)[0]
-          await downloadDocument(projectId, type, projectName)
-        } else {
-          // Multiple files - create ZIP
-          const zip = new JSZip()
-          const typesArray = Array.from(selectedTypes)
+        const zip = new JSZip()
+        let completedFiles = 0
 
-          for (const type of typesArray) {
-            let url: string
-            let filename: string
+        for (const type of typesArray) {
+          let url: string
+          let filename: string
 
-            switch (type) {
-              case 'packinglist':
-                url = `/api/projects/${projectId}/packing-list/pdf`
-                filename = `${safeProjectName}-packing-list.pdf`
-                break
-              case 'labels':
-                url = `/api/projects/${projectId}/packing-list/stickers`
-                filename = `${safeProjectName}-packing-stickers.pdf`
-                break
-              case 'boxlist':
-                url = `/api/projects/${projectId}/bom?boxlist=true&format=pdf`
-                filename = `${safeProjectName}-box-cut-list.pdf`
-                break
-              default:
-                continue
-            }
-
-            const response = await fetch(url)
-            if (response.ok) {
-              const blob = await response.blob()
-              zip.file(filename, blob)
-            }
+          switch (type) {
+            case 'packinglist':
+              url = `/api/projects/${projectId}/packing-list/pdf`
+              filename = `${safeProjectName}-packing-list.pdf`
+              break
+            case 'labels':
+              url = `/api/projects/${projectId}/packing-list/stickers`
+              filename = `${safeProjectName}-packing-stickers.pdf`
+              break
+            case 'boxlist':
+              url = `/api/projects/${projectId}/bom?boxlist=true&format=pdf`
+              filename = `${safeProjectName}-box-cut-list.pdf`
+              break
+            default:
+              continue
           }
 
-          const zipBlob = await zip.generateAsync({ type: 'blob' })
-          const downloadUrl = window.URL.createObjectURL(zipBlob)
-          const a = document.createElement('a')
-          a.href = downloadUrl
-          a.download = `${safeProjectName}-logistics-documents.zip`
-          document.body.appendChild(a)
-          a.click()
-          window.URL.revokeObjectURL(downloadUrl)
-          document.body.removeChild(a)
+          const response = await fetch(url)
+          if (response.ok) {
+            const blob = await response.blob()
+            zip.file(filename, blob)
+            completedFiles++
+            updateProgress(downloadId, (completedFiles / typesArray.length) * 100)
+          }
         }
+
+        const zipBlob = await zip.generateAsync({ type: 'blob' })
+        const downloadUrl = window.URL.createObjectURL(zipBlob)
+        const a = document.createElement('a')
+        a.href = downloadUrl
+        a.download = `${safeProjectName}-logistics-documents.zip`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(downloadUrl)
+        document.body.removeChild(a)
+
+        completeDownload(downloadId)
         setSelectedTypes(new Set())
       } catch (error) {
         console.error('Error downloading documents:', error)
-        showError('Failed to download documents')
+        failDownload(downloadId, 'Failed to download documents')
       } finally {
         setIsDownloading(false)
       }
