@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { Package, Search, Download, CheckSquare, Square, Loader2 } from 'lucide-react'
+import { useDownloadStore } from '@/stores/downloadStore'
 
 const FILTER_STATUSES = [
   { value: 'STAGING', label: 'Staging' },
@@ -33,6 +34,8 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const { startDownload, completeDownload, failDownload } = useDownloadStore()
   const [searchExpanded, setSearchExpanded] = useState(false)
   const [filtersExpanded, setFiltersExpanded] = useState(false)
 
@@ -112,6 +115,17 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
       return
     }
 
+    // Build download name from selected projects
+    const selectedProjects = projects.filter(p => selectedProjectIds.has(p.id))
+    const projectNames = selectedProjects.slice(0, 2).map(p => p.name).join(', ')
+    const downloadName = projectNames + (selectedProjects.length > 2 ? ` +${selectedProjects.length - 2} more` : '')
+
+    // Start download tracking
+    const downloadId = startDownload({
+      name: `Purchase Summary - ${downloadName}`,
+      type: 'purchase-summary'
+    })
+
     try {
       setDownloading(true)
       setError(null)
@@ -132,13 +146,17 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
         a.click()
         window.URL.revokeObjectURL(url)
         document.body.removeChild(a)
+        completeDownload(downloadId)
       } else {
         const errorData = await response.json()
-        setError(errorData.error || 'Failed to download CSV')
+        const errorMessage = errorData.error || 'Failed to download CSV'
+        setError(errorMessage)
+        failDownload(downloadId, errorMessage)
       }
     } catch (error) {
       console.error('Error downloading CSV:', error)
       setError('Failed to download CSV')
+      failDownload(downloadId, 'Failed to download CSV')
     } finally {
       setDownloading(false)
     }

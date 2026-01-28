@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { X, Loader2, Download } from 'lucide-react'
+import { useDownloadStore } from '@/stores/downloadStore'
 
 interface OpeningInfo {
   id: number
@@ -30,6 +31,8 @@ export default function ShopDrawingsDownloadModal({
   const [openings, setOpenings] = useState<OpeningInfo[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [downloading, setDownloading] = useState(false)
+
+  const { startDownload, completeDownload, failDownload } = useDownloadStore()
 
   useEffect(() => {
     fetchOpenings()
@@ -80,7 +83,13 @@ export default function ShopDrawingsDownloadModal({
       return
     }
 
-    setDownloading(true)
+    // Start download tracking and close modal immediately
+    const downloadId = startDownload({
+      name: `Shop Drawings - ${projectName}`,
+      type: 'shop-drawings'
+    })
+    onClose()
+
     try {
       const selectedParam = Array.from(selectedIds).join('|')
       const url = `/api/projects/${projectId}/shop-drawings?zip=true&selected=${encodeURIComponent(selectedParam)}`
@@ -109,13 +118,10 @@ export default function ShopDrawingsDownloadModal({
       document.body.removeChild(link)
       window.URL.revokeObjectURL(blobUrl)
 
-      showSuccess('Shop drawings downloaded successfully!')
-      onClose()
+      completeDownload(downloadId)
     } catch (error) {
       console.error('Error downloading shop drawings:', error)
-      showError('Failed to download shop drawings')
-    } finally {
-      setDownloading(false)
+      failDownload(downloadId, 'Failed to download shop drawings')
     }
   }
 

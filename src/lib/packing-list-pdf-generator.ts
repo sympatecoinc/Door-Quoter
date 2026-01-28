@@ -236,6 +236,15 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
   pdf.setTextColor(0, 0, 0)
   yPos += 10
 
+  // Ensure we don't overlap with QR code in top right corner
+  if (data.packingUrl) {
+    const qrStartY = MARGIN + (data.companyLogo ? 18 : 0)
+    const qrBottom = qrStartY + 22 + 6  // QR size (22mm) + label space (6mm)
+    if (yPos < qrBottom) {
+      yPos = qrBottom
+    }
+  }
+
   if (data.lineItems.length === 0) {
     pdf.setFontSize(12)
     pdf.setFont('helvetica', 'italic')

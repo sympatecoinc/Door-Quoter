@@ -25,29 +25,55 @@ export default function PackingScanner({
   const [scanCooldown, setScanCooldown] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
 
-  // Audio refs for feedback sounds
-  const successSoundRef = useRef<HTMLAudioElement | null>(null)
-  const errorSoundRef = useRef<HTMLAudioElement | null>(null)
+  // Audio context ref for generating beep sounds
+  const audioContextRef = useRef<AudioContext | null>(null)
 
-  useEffect(() => {
-    // Create audio elements for feedback
-    if (typeof window !== 'undefined') {
-      successSoundRef.current = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleTA7oeDYpnUfCEyn4c6cYhsRWbLn2ah0GAA/')
-      errorSoundRef.current = new Audio('data:audio/wav;base64,UklGRl9vT19teleXlpeam5ydnZ6telehoaGjpKWmpqamp6empqalpKOio6KhoaCfn5+enZ2cnJubmpqZmZiYl5eWlpaVlJSTk5KSkZGQkI+Pjo6NjYyMi4uKiomJiIiHh4aGhYWEhIODgoKBgYCAgH9/')
+  // Initialize audio context on first user interaction
+  const getAudioContext = useCallback(() => {
+    if (!audioContextRef.current && typeof window !== 'undefined') {
+      audioContextRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
     }
+    return audioContextRef.current
   }, [])
 
   const playSound = useCallback((success: boolean) => {
     if (!soundEnabled) return
 
-    const sound = success ? successSoundRef.current : errorSoundRef.current
-    if (sound) {
-      sound.currentTime = 0
-      sound.play().catch(() => {
-        // Ignore autoplay errors
-      })
+    try {
+      const audioContext = getAudioContext()
+      if (!audioContext) return
+
+      // Resume audio context if suspended (browser autoplay policy)
+      if (audioContext.state === 'suspended') {
+        audioContext.resume()
+      }
+
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+
+      if (success) {
+        // Success: two quick high beeps
+        oscillator.frequency.setValueAtTime(880, audioContext.currentTime) // A5
+        oscillator.frequency.setValueAtTime(1100, audioContext.currentTime + 0.1) // C#6
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2)
+        oscillator.start(audioContext.currentTime)
+        oscillator.stop(audioContext.currentTime + 0.2)
+      } else {
+        // Error: one low beep
+        oscillator.frequency.setValueAtTime(220, audioContext.currentTime) // A3
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+        oscillator.start(audioContext.currentTime)
+        oscillator.stop(audioContext.currentTime + 0.3)
+      }
+    } catch {
+      // Ignore audio errors
     }
-  }, [soundEnabled])
+  }, [soundEnabled, getAudioContext])
 
   const triggerVibration = useCallback((success: boolean) => {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {

@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
     // Allow query parameter override for testing (e.g., ?portal=purchasing)
     const url = new URL(request.url)
     const portalOverride = url.searchParams.get('portal')
+    console.log('[Session API] Host:', host, 'Subdomain:', subdomain, 'Portal override:', portalOverride)
     if (portalOverride) {
       subdomain = portalOverride
     }
@@ -64,13 +65,15 @@ export async function GET(request: NextRequest) {
     let portalConfig = null
     try {
       portalConfig = await getPortalBySubdomain(subdomain)
+      console.log('[Session API] Portal lookup for', subdomain, ':', portalConfig ? portalConfig.name : 'not found')
     } catch (portalError) {
       // If Portals table doesn't exist or other DB error, continue without portal context
-      console.warn('Portal lookup failed (table may not exist):', portalError)
+      console.warn('[Session API] Portal lookup failed (table may not exist):', portalError)
     }
 
     // If no portal found for this subdomain, treat as main app
     if (!portalConfig) {
+      console.log('[Session API] No portal found, returning full permissions')
       return NextResponse.json({
         user: session.user,
         portal: null

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { X, Loader2, Download, ChevronRight } from 'lucide-react'
+import { useDownloadStore } from '@/stores/downloadStore'
 
 interface UniqueComponent {
   hash: string
@@ -38,6 +39,8 @@ export default function BomDownloadModal({
   const [uniqueComponents, setUniqueComponents] = useState<UniqueComponent[]>([])
   const [selectedHashes, setSelectedHashes] = useState<Set<string>>(new Set())
   const [downloading, setDownloading] = useState(false)
+
+  const { startDownload, completeDownload, failDownload } = useDownloadStore()
 
   // Configure mode: don't download, just collect selections
   const isConfigureMode = !!onConfigure
@@ -102,7 +105,13 @@ export default function BomDownloadModal({
     }
 
     // Direct download mode (when not in bulk/configure flow)
-    setDownloading(true)
+    // Start download tracking and close modal immediately
+    const downloadId = startDownload({
+      name: `BOMs - ${projectName}`,
+      type: 'bom'
+    })
+    onClose()
+
     try {
       const selectedParam = Array.from(selectedHashes).join('|')
       const url = `/api/projects/${projectId}/bom/csv?zip=true&unique=true&selected=${encodeURIComponent(selectedParam)}`
@@ -131,13 +140,10 @@ export default function BomDownloadModal({
       document.body.removeChild(link)
       window.URL.revokeObjectURL(blobUrl)
 
-      showSuccess('BOMs downloaded successfully!')
-      onClose()
+      completeDownload(downloadId)
     } catch (error) {
       console.error('Error downloading BOMs:', error)
-      showError('Failed to download BOMs')
-    } finally {
-      setDownloading(false)
+      failDownload(downloadId, 'Failed to download BOMs')
     }
   }
 

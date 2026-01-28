@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { X, Loader2, Download, Scissors, ChevronRight } from 'lucide-react'
+import { useDownloadStore } from '@/stores/downloadStore'
 
 interface CutListItem {
   productName: string
@@ -70,6 +71,8 @@ export default function CutListDownloadModal({
   const [projectsData, setProjectsData] = useState<ProjectData[]>([])
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
+
+  const { startDownload, updateProgress, completeDownload, failDownload } = useDownloadStore()
 
   // Configure mode: don't download, just collect configurations
   const isConfigureMode = !!onConfigure
@@ -189,7 +192,31 @@ export default function CutListDownloadModal({
     }
 
     // Direct download mode (when not in bulk/configure flow)
-    setDownloading(true)
+    // Calculate total files to download
+    const totalFiles = projectsData.reduce((sum, pd) => {
+      if (pd.error || pd.productGroups.length === 0) return sum
+      return sum + pd.productGroups.length
+    }, 0)
+
+    if (totalFiles === 0) {
+      showError('No cut list files to download')
+      return
+    }
+
+    // Start download tracking and close modal immediately
+    const projectNames = projectsData
+      .filter(pd => !pd.error && pd.productGroups.length > 0)
+      .map(pd => pd.projectName)
+      .slice(0, 2)
+      .join(', ')
+    const downloadName = projectNames + (projectsData.length > 2 ? ` +${projectsData.length - 2} more` : '')
+
+    const downloadId = startDownload({
+      name: `Cut Lists - ${downloadName}`,
+      type: 'cutlist'
+    })
+    onClose()
+
     let successCount = 0
     let errorCount = 0
 
@@ -221,6 +248,8 @@ export default function CutListDownloadModal({
             document.body.removeChild(a)
 
             successCount++
+            // Update progress after each file completes
+            updateProgress(downloadId, (successCount / totalFiles) * 100)
 
             // Small delay between downloads to prevent browser issues
             await new Promise(resolve => setTimeout(resolve, 100))
@@ -232,16 +261,13 @@ export default function CutListDownloadModal({
       }
 
       if (errorCount === 0) {
-        showSuccess(`Downloaded ${successCount} cut list file${successCount !== 1 ? 's' : ''} successfully!`)
-        onClose()
+        completeDownload(downloadId)
       } else {
-        showError(`Some downloads failed. ${successCount} succeeded, ${errorCount} failed`)
+        failDownload(downloadId, `${successCount} succeeded, ${errorCount} failed`)
       }
     } catch (error) {
       console.error('Error during download:', error)
-      showError('Failed to download cut lists')
-    } finally {
-      setDownloading(false)
+      failDownload(downloadId, 'Failed to download cut lists')
     }
   }
 
