@@ -886,48 +886,120 @@ export async function syncItemsFromQB(realmId: string): Promise<{
 }
 
 // Cached default expense account for on-the-fly items
-let cachedExpenseAccountId: string | null = null
+let cachedDefaultExpenseAccount: { id: string; name: string } | null = null
 
 // Fetch expense accounts from QuickBooks
 export async function fetchExpenseAccounts(realmId: string): Promise<Array<{ Id: string; Name: string; AccountType: string }>> {
-  const query = `SELECT Id, Name, AccountType FROM Account WHERE AccountType IN ('Expense', 'Cost of Goods Sold') MAXRESULTS 100`
+  const query = `SELECT Id, Name, AccountType FROM Account WHERE AccountType IN ('Expense', 'Cost of Goods Sold') ORDER BY Name MAXRESULTS 100`
   const response = await qbApiRequest(realmId, `query?query=${encodeURIComponent(query)}`)
   return response.QueryResponse?.Account || []
 }
 
+// Preferred account names in order of preference (case-insensitive matching)
+const PREFERRED_EXPENSE_ACCOUNTS = [
+  'cost of goods sold',
+  'cogs',
+  'purchases',
+  'inventory',
+  'materials',
+  'supplies',
+  'job materials',
+  'job supplies',
+  'cost of sales'
+]
+
 // Get or fetch default expense account for on-the-fly items
+// Uses smart selection: prefers COGS-type accounts and specific named accounts
 export async function getDefaultExpenseAccount(realmId: string): Promise<string | null> {
-  if (cachedExpenseAccountId) {
-    return cachedExpenseAccountId
+  if (cachedDefaultExpenseAccount) {
+    return cachedDefaultExpenseAccount.id
   }
 
   try {
     const accounts = await fetchExpenseAccounts(realmId)
 
-    // Prefer "Cost of Goods Sold" type, then any expense account
-    const cogsAccount = accounts.find(a => a.AccountType === 'Cost of Goods Sold')
-    const expenseAccount = accounts.find(a => a.AccountType === 'Expense')
-
-    const defaultAccount = cogsAccount || expenseAccount
-    if (defaultAccount) {
-      cachedExpenseAccountId = defaultAccount.Id
-      console.log(`[QB Item] Using default expense account: ${defaultAccount.Name} (${defaultAccount.Id})`)
-      return defaultAccount.Id
+    if (accounts.length === 0) {
+      console.warn('[QB Item] No expense accounts found in QuickBooks')
+      return null
     }
 
-    console.warn('[QB Item] No expense account found in QuickBooks')
-    return null
+    // First priority: Look for preferred account names
+    for (const preferredName of PREFERRED_EXPENSE_ACCOUNTS) {
+      const match = accounts.find(a =>
+        a.Name.toLowerCase().includes(preferredName) ||
+        a.Name.toLowerCase() === preferredName
+      )
+      if (match) {
+        cachedDefaultExpenseAccount = { id: match.Id, name: match.Name }
+        console.log(`[QB Item] Using preferred expense account: ${match.Name} (${match.Id})`)
+        return match.Id
+      }
+    }
+
+    // Second priority: Any "Cost of Goods Sold" type account
+    const cogsAccount = accounts.find(a => a.AccountType === 'Cost of Goods Sold')
+    if (cogsAccount) {
+      cachedDefaultExpenseAccount = { id: cogsAccount.Id, name: cogsAccount.Name }
+      console.log(`[QB Item] Using COGS-type account: ${cogsAccount.Name} (${cogsAccount.Id})`)
+      return cogsAccount.Id
+    }
+
+    // Third priority: Any Expense account (but avoid common non-material accounts)
+    const avoidAccounts = ['advertising', 'bank charges', 'insurance', 'interest', 'legal', 'office', 'payroll', 'rent', 'utilities', 'travel']
+    const safeExpenseAccount = accounts.find(a =>
+      a.AccountType === 'Expense' &&
+      !avoidAccounts.some(avoid => a.Name.toLowerCase().includes(avoid))
+    )
+    if (safeExpenseAccount) {
+      cachedDefaultExpenseAccount = { id: safeExpenseAccount.Id, name: safeExpenseAccount.Name }
+      console.log(`[QB Item] Using expense account: ${safeExpenseAccount.Name} (${safeExpenseAccount.Id})`)
+      return safeExpenseAccount.Id
+    }
+
+    // Last resort: First available expense account
+    const firstAccount = accounts[0]
+    cachedDefaultExpenseAccount = { id: firstAccount.Id, name: firstAccount.Name }
+    console.log(`[QB Item] Using fallback expense account: ${firstAccount.Name} (${firstAccount.Id})`)
+    return firstAccount.Id
   } catch (error) {
     console.error('[QB Item] Failed to fetch expense accounts:', error)
     return null
   }
 }
 
+// Get expense account for a vendor (falls back to default if not set)
+export async function getVendorExpenseAccount(realmId: string, vendorId: number): Promise<string | null> {
+  try {
+    const vendor = await prisma.vendor.findUnique({
+      where: { id: vendorId },
+      select: { defaultExpenseAccountId: true, defaultExpenseAccountName: true, displayName: true }
+    })
+
+    if (vendor?.defaultExpenseAccountId) {
+      console.log(`[QB Item] Using vendor "${vendor.displayName}" expense account: ${vendor.defaultExpenseAccountName} (${vendor.defaultExpenseAccountId})`)
+      return vendor.defaultExpenseAccountId
+    }
+
+    // Fall back to system default
+    return getDefaultExpenseAccount(realmId)
+  } catch (error) {
+    console.error('[QB Item] Failed to get vendor expense account:', error)
+    return getDefaultExpenseAccount(realmId)
+  }
+}
+
+// Clear cached expense account (useful when settings change)
+export function clearExpenseAccountCache(): void {
+  cachedDefaultExpenseAccount = null
+}
+
 // Create a QB item on-the-fly for a PO line with free-text description
+// Accepts optional expenseAccountId to use vendor-specific or custom expense account
 export async function createQBItemForPOLine(
   realmId: string,
   description: string,
-  unitPrice?: number
+  unitPrice?: number,
+  expenseAccountId?: string | null
 ): Promise<{ qbItemId: string; localItemId: number }> {
   // Sanitize and truncate the name (QB max is 100 chars)
   let itemName = description.trim().substring(0, 100)
@@ -943,9 +1015,9 @@ export async function createQBItemForPOLine(
     itemName = itemName.substring(0, 100 - suffix.length) + suffix
   }
 
-  // Get default expense account for the item
-  const expenseAccountId = await getDefaultExpenseAccount(realmId)
-  if (!expenseAccountId) {
+  // Use provided expense account or fall back to default
+  const finalExpenseAccountId = expenseAccountId || await getDefaultExpenseAccount(realmId)
+  if (!finalExpenseAccountId) {
     throw new Error('No expense account available in QuickBooks. Please set up an expense account.')
   }
 
@@ -956,14 +1028,14 @@ export async function createQBItemForPOLine(
     Description: description,
     PurchaseDesc: description,
     Active: true,
-    ExpenseAccountRef: { value: expenseAccountId }
+    ExpenseAccountRef: { value: finalExpenseAccountId }
   }
 
   if (unitPrice !== undefined && unitPrice > 0) {
     qbItem.PurchaseCost = unitPrice
   }
 
-  console.log(`[QB Item] Creating on-the-fly item: "${itemName}" with expense account ${expenseAccountId}`)
+  console.log(`[QB Item] Creating on-the-fly item: "${itemName}" with expense account ${finalExpenseAccountId}`)
   const createdItem = await createQBItem(realmId, qbItem)
 
   // Store in local database
@@ -977,7 +1049,7 @@ export async function createQBItemForPOLine(
       active: createdItem.Active ?? true,
       purchaseCost: createdItem.PurchaseCost ?? null,
       purchaseDesc: createdItem.PurchaseDesc || null,
-      expenseAccountRefId: expenseAccountId,
+      expenseAccountRefId: finalExpenseAccountId,
       lastSyncedAt: new Date()
     }
   })
@@ -1600,8 +1672,8 @@ export async function pushPOToQB(poId: number): Promise<any> {
 
   console.log(`[QB Sync] Pushing PO ${po.poNumber} to QuickBooks`)
 
-  // Get default expense account for lines without items
-  const defaultExpenseAccountId = await getDefaultExpenseAccount(realmId)
+  // Get expense account - prefer vendor's account, then system default
+  const expenseAccountId = await getVendorExpenseAccount(realmId, po.vendor.id)
 
   // Create QB items on-the-fly for lines without item references
   // This ensures all lines use ItemBasedExpenseLineDetail which supports Qty
@@ -1613,7 +1685,8 @@ export async function pushPOToQB(poId: number): Promise<any> {
         const { qbItemId, localItemId } = await createQBItemForPOLine(
           realmId,
           line.description,
-          line.unitPrice
+          line.unitPrice,
+          expenseAccountId
         )
 
         // Update the local line with the new item reference
@@ -1654,16 +1727,19 @@ export async function pushPOToQB(poId: number): Promise<any> {
       quantity: line.quantity,
       unitPrice: line.unitPrice,
       amount: line.amount
-    }, defaultExpenseAccountId || undefined)
+    }, expenseAccountId || undefined)
     qbLines.push(qbLine)
   }
 
   let result: QBPurchaseOrder
+  // vendor.quickbooksId is guaranteed to be non-null (checked at start of function)
+  const vendorQBId = po.vendor.quickbooksId!
+
   if (po.quickbooksId) {
     // Update existing QB PO
     const currentQBPO = await fetchQBPurchaseOrder(realmId, po.quickbooksId)
 
-    const updatePayload = localPOToQB(po, po.vendor.quickbooksId, qbLines)
+    const updatePayload = localPOToQB(po, vendorQBId, qbLines)
     updatePayload.Id = currentQBPO.Id
     updatePayload.SyncToken = currentQBPO.SyncToken
     updatePayload.sparse = true
@@ -1671,7 +1747,7 @@ export async function pushPOToQB(poId: number): Promise<any> {
     result = await updateQBPurchaseOrder(realmId, updatePayload)
   } else {
     // Create new QB PO
-    const createPayload = localPOToQB(po, po.vendor.quickbooksId, qbLines)
+    const createPayload = localPOToQB(po, vendorQBId, qbLines)
     result = await createQBPurchaseOrder(realmId, createPayload)
   }
 

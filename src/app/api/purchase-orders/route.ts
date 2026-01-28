@@ -8,7 +8,7 @@ import {
   localPOLineToQB,
   generatePONumber,
   createQBItemForPOLine,
-  getDefaultExpenseAccount,
+  getVendorExpenseAccount,
   pushVendorToQB,
   QBPOLine
 } from '@/lib/quickbooks'
@@ -241,8 +241,8 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Get default expense account for lines without items
-          const defaultExpenseAccountId = await getDefaultExpenseAccount(realmId)
+          // Get expense account - prefer vendor's account, then system default
+          const expenseAccountId = await getVendorExpenseAccount(realmId, vendor.id)
 
           // Create QB items on-the-fly for lines without item references
           for (const line of purchaseOrder.lines) {
@@ -253,7 +253,8 @@ export async function POST(request: NextRequest) {
                 const { qbItemId, localItemId } = await createQBItemForPOLine(
                   realmId,
                   line.description,
-                  line.unitPrice
+                  line.unitPrice,
+                  expenseAccountId
                 )
 
                 // Update the local line with the new item reference
@@ -296,7 +297,7 @@ export async function POST(request: NextRequest) {
               quantity: line.quantity,
               unitPrice: line.unitPrice,
               amount: line.amount
-            }, defaultExpenseAccountId || undefined)
+            }, expenseAccountId || undefined)
             return qbLine
           })
 

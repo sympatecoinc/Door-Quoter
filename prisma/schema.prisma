@@ -933,6 +933,10 @@ model Vendor {
   code                String?         // Short code e.g., "SYMPATECO"
   isActive            Boolean         @default(true) // QB: Active
 
+  // Default expense account for PO line items (QB Account reference)
+  defaultExpenseAccountId   String?   // QB Account Id for expense categorization
+  defaultExpenseAccountName String?   // QB Account Name (for display)
+
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
   contacts            VendorContact[]

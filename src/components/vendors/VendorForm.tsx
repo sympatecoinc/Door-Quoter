@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { Vendor, VENDOR_CATEGORIES } from '@/types'
-import { X, Save, Loader2, Cloud, Building, User, Phone, Mail, MapPin, FileText, Tag } from 'lucide-react'
+import { X, Save, Loader2, Cloud, Building, User, Phone, Mail, MapPin, FileText, Tag, DollarSign } from 'lucide-react'
+
+interface ExpenseAccount {
+  id: string
+  name: string
+  type: string
+}
 
 interface VendorFormProps {
   vendor: Vendor | null
@@ -13,6 +19,8 @@ interface VendorFormProps {
 export default function VendorForm({ vendor, onClose, onSave }: VendorFormProps) {
   const isEditing = !!vendor
   const [qbConnected, setQbConnected] = useState(false)
+  const [expenseAccounts, setExpenseAccounts] = useState<ExpenseAccount[]>([])
+  const [loadingAccounts, setLoadingAccounts] = useState(false)
 
   useEffect(() => {
     async function checkQBStatus() {
@@ -28,6 +36,26 @@ export default function VendorForm({ vendor, onClose, onSave }: VendorFormProps)
     }
     checkQBStatus()
   }, [])
+
+  // Fetch expense accounts when QB is connected
+  useEffect(() => {
+    async function fetchExpenseAccounts() {
+      if (!qbConnected) return
+      setLoadingAccounts(true)
+      try {
+        const response = await fetch('/api/quickbooks/expense-accounts')
+        if (response.ok) {
+          const data = await response.json()
+          setExpenseAccounts(data.accounts || [])
+        }
+      } catch (error) {
+        console.error('Error fetching expense accounts:', error)
+      } finally {
+        setLoadingAccounts(false)
+      }
+    }
+    fetchExpenseAccounts()
+  }, [qbConnected])
 
   const [formData, setFormData] = useState({
     displayName: vendor?.displayName || '',
@@ -54,7 +82,9 @@ export default function VendorForm({ vendor, onClose, onSave }: VendorFormProps)
     notes: vendor?.notes || '',
     category: vendor?.category || '',
     code: vendor?.code || '',
-    isActive: vendor?.isActive ?? true
+    isActive: vendor?.isActive ?? true,
+    defaultExpenseAccountId: vendor?.defaultExpenseAccountId || '',
+    defaultExpenseAccountName: vendor?.defaultExpenseAccountName || ''
   })
 
   const [syncToQB, setSyncToQB] = useState(false)
@@ -73,6 +103,16 @@ export default function VendorForm({ vendor, onClose, onSave }: VendorFormProps)
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+    }))
+  }
+
+  function handleExpenseAccountChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const accountId = e.target.value
+    const account = expenseAccounts.find(a => a.id === accountId)
+    setFormData(prev => ({
+      ...prev,
+      defaultExpenseAccountId: accountId,
+      defaultExpenseAccountName: account?.name || ''
     }))
   }
 
@@ -555,6 +595,43 @@ export default function VendorForm({ vendor, onClose, onSave }: VendorFormProps)
               </div>
             </div>
           </div>
+
+          {/* QuickBooks Settings - Only show when QB is connected */}
+          {qbConnected && (
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                <DollarSign className="w-4 h-4" />
+                QuickBooks Settings
+              </h3>
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">
+                    Default Expense Account
+                  </label>
+                  <select
+                    value={formData.defaultExpenseAccountId}
+                    onChange={handleExpenseAccountChange}
+                    disabled={loadingAccounts}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                  >
+                    <option value="">Use system default</option>
+                    {expenseAccounts.map(account => (
+                      <option key={account.id} value={account.id}>
+                        {account.name} ({account.type})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {loadingAccounts ? (
+                      'Loading accounts from QuickBooks...'
+                    ) : (
+                      'Select which QuickBooks expense account to use for PO items from this vendor'
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Notes */}
           <div className="mb-6">

@@ -103,7 +103,10 @@ export async function PUT(
       quickbooksId,
       syncToken,
       balance,
-      lastSyncedAt
+      lastSyncedAt,
+      // Default expense account for POs
+      defaultExpenseAccountId,
+      defaultExpenseAccountName
     } = body
 
     if (displayName !== undefined && (!displayName || !displayName.trim())) {
@@ -158,7 +161,9 @@ export async function PUT(
         ...(quickbooksId !== undefined && { quickbooksId: quickbooksId || null }),
         ...(syncToken !== undefined && { syncToken: syncToken || null }),
         ...(balance !== undefined && { balance: balance ?? null }),
-        ...(lastSyncedAt !== undefined && { lastSyncedAt: lastSyncedAt ? new Date(lastSyncedAt) : null })
+        ...(lastSyncedAt !== undefined && { lastSyncedAt: lastSyncedAt ? new Date(lastSyncedAt) : null }),
+        ...(defaultExpenseAccountId !== undefined && { defaultExpenseAccountId: defaultExpenseAccountId || null }),
+        ...(defaultExpenseAccountName !== undefined && { defaultExpenseAccountName: defaultExpenseAccountName || null })
       },
       include: {
         contacts: {

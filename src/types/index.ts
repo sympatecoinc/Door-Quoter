@@ -334,6 +334,8 @@ export interface Vendor {
   category?: string | null
   code?: string | null
   isActive: boolean
+  defaultExpenseAccountId?: string | null
+  defaultExpenseAccountName?: string | null
   createdAt: Date
   updatedAt: Date
   contacts?: VendorContact[]
