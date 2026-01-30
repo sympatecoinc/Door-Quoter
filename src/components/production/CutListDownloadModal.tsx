@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Loader2, Download, Scissors, ChevronRight } from 'lucide-react'
+import { X, Loader2, Download, ChevronRight } from 'lucide-react'
+import SawBlade from '../icons/SawBlade'
 import { useDownloadStore } from '@/stores/downloadStore'
 
 interface CutListItem {
@@ -307,7 +308,7 @@ export default function CutListDownloadModal({
       <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 p-6 max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
-            <Scissors className="h-5 w-5 text-blue-600" />
+            <SawBlade className="h-5 w-5 text-blue-600" />
             <h3 className="text-xl font-semibold text-gray-900">
               Cut List Configuration {format === 'pdf' ? '(PDF)' : '(CSV)'}
             </h3>

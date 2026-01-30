@@ -183,8 +183,17 @@ export async function GET(request: NextRequest) {
         workOrders: {
           select: {
             id: true,
-            currentStage: true
+            currentStage: true,
+            items: {
+              select: {
+                id: true,
+                isCompleted: true
+              }
+            }
           }
+        },
+        fieldVerificationUploads: {
+          select: { id: true }
         }
       },
       orderBy: [
@@ -235,17 +244,34 @@ export async function GET(request: NextRequest) {
         const stageDistribution: Record<string, number> = {
           STAGED: 0,
           CUTTING: 0,
+          MILLING: 0,
           ASSEMBLY: 0,
           QC: 0,
           SHIP: 0,
           COMPLETE: 0
         }
+        // Individual work order progress for badges
+        const workOrderDetails: Array<{
+          id: string
+          stage: string
+          progressPercent: number
+        }> = []
+
         for (const wo of project.workOrders) {
           stageDistribution[wo.currentStage]++
+          const totalItems = wo.items.length
+          const completedItems = wo.items.filter(item => item.isCompleted).length
+          const progressPercent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
+          workOrderDetails.push({
+            id: wo.id,
+            stage: wo.currentStage,
+            progressPercent
+          })
         }
         workOrderProgress = {
           total: project.workOrders.length,
-          stageDistribution
+          stageDistribution,
+          workOrders: workOrderDetails
         }
       }
 
@@ -263,7 +289,8 @@ export async function GET(request: NextRequest) {
         batchSize: project.batchSize,
         updatedAt: project.updatedAt,
         packingStats,
-        workOrderProgress
+        workOrderProgress,
+        fieldVerificationCount: project.fieldVerificationUploads?.length || 0
       }
     }))
 

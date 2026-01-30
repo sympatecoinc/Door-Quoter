@@ -274,7 +274,8 @@ export async function generateWorkOrdersFromProject(
             height: panel.height,
             bomId: bom.id,
             formula: bom.formula,
-            isMilled: bom.isMilled
+            // Only extrusions and cut stock can be milled - other part types should never have isMilled=true
+            isMilled: (bom.partType === 'Extrusion' || bom.partType === 'CutStock') && bom.isMilled
           }
         })
       }

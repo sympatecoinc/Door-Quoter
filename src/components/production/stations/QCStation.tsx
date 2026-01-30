@@ -17,6 +17,7 @@ import {
   Check
 } from 'lucide-react'
 import WorkOrderTimer from '../WorkOrderTimer'
+import CallManagerButton from '../CallManagerButton'
 import QCChecklist, { QCChecklistItem, QCResult } from '../QCChecklist'
 import { WorkOrderStage } from '@prisma/client'
 
@@ -723,6 +724,16 @@ export default function QCStation() {
           </div>
         </div>
       )}
+
+      {/* Call Manager Button */}
+      <CallManagerButton
+        stationName="QC"
+        workOrderInfo={selectedWorkOrder ? {
+          id: selectedWorkOrder.id,
+          projectName: selectedWorkOrder.project.name,
+          batchNumber: selectedWorkOrder.batchNumber
+        } : null}
+      />
     </div>
   )
 }

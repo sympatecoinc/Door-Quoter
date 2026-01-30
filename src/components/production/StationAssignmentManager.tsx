@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import {
   Users,
   Boxes,
-  Scissors,
   Package,
   ClipboardCheck,
   Truck,
@@ -13,6 +12,7 @@ import {
   Loader2,
   Star
 } from 'lucide-react'
+import SawBlade from '../icons/SawBlade'
 import { WorkOrderStage } from '@prisma/client'
 
 interface User {
@@ -35,7 +35,7 @@ interface StationAssignmentManagerProps {
 
 const STATIONS: { stage: WorkOrderStage; label: string; icon: React.ReactNode; color: string }[] = [
   { stage: 'STAGED', label: 'Staging', icon: <Boxes className="w-4 h-4" />, color: 'gray' },
-  { stage: 'CUTTING', label: 'Cutting', icon: <Scissors className="w-4 h-4" />, color: 'orange' },
+  { stage: 'CUTTING', label: 'Cutting', icon: <SawBlade className="w-4 h-4" />, color: 'orange' },
   { stage: 'ASSEMBLY', label: 'Assembly', icon: <Package className="w-4 h-4" />, color: 'blue' },
   { stage: 'QC', label: 'QC', icon: <ClipboardCheck className="w-4 h-4" />, color: 'purple' },
   { stage: 'SHIP', label: 'Shipping', icon: <Truck className="w-4 h-4" />, color: 'green' },

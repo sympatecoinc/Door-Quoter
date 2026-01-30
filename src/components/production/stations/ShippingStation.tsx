@@ -20,6 +20,7 @@ import {
   ScanLine
 } from 'lucide-react'
 import WorkOrderTimer from '../WorkOrderTimer'
+import CallManagerButton from '../CallManagerButton'
 import { WorkOrderStage } from '@prisma/client'
 
 interface WorkOrderData {
@@ -617,6 +618,16 @@ export default function ShippingStation() {
           </div>
         )}
       </div>
+
+      {/* Call Manager Button */}
+      <CallManagerButton
+        stationName="Shipping"
+        workOrderInfo={selectedWorkOrder ? {
+          id: selectedWorkOrder.id,
+          projectName: selectedWorkOrder.project.name,
+          batchNumber: selectedWorkOrder.batchNumber
+        } : null}
+      />
     </div>
   )
 }

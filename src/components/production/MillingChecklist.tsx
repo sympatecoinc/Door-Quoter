@@ -129,6 +129,7 @@ export default function MillingChecklist({
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['all']))
   const [isLoading, setIsLoading] = useState<Set<string>>(new Set())
   const [copiedProgram, setCopiedProgram] = useState<string | null>(null)
+  const [showConfirmAll, setShowConfirmAll] = useState(false)
 
   // Filter to only milled items
   const millingItems = useMemo(() => {
@@ -238,7 +239,20 @@ export default function MillingChecklist({
   // Copy program name to clipboard
   const handleCopyProgram = async (programName: string) => {
     try {
-      await navigator.clipboard.writeText(programName)
+      // Use Clipboard API if available (requires secure context)
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(programName)
+      } else {
+        // Fallback for non-secure contexts (localhost over HTTP)
+        const textArea = document.createElement('textarea')
+        textArea.value = programName
+        textArea.style.position = 'fixed'
+        textArea.style.left = '-9999px'
+        document.body.appendChild(textArea)
+        textArea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textArea)
+      }
       setCopiedProgram(programName)
       setTimeout(() => setCopiedProgram(null), 2000)
     } catch (err) {
@@ -305,12 +319,19 @@ export default function MillingChecklist({
     const incompleteIds = millingItems.filter(i => !i.isCompleted).map(i => i.id)
     if (incompleteIds.length === 0) return
 
+    setShowConfirmAll(false)
     setIsLoading(new Set(incompleteIds))
     try {
       await onBulkComplete(incompleteIds, true)
     } finally {
       setIsLoading(new Set())
     }
+  }
+
+  const handleConfirmAllClick = () => {
+    const incompleteCount = millingItems.filter(i => !i.isCompleted).length
+    if (incompleteCount === 0) return
+    setShowConfirmAll(true)
   }
 
   const handleMarkGroupComplete = async (groupItems: AggregatedMillingItem[]) => {
@@ -487,7 +508,7 @@ export default function MillingChecklist({
             {/* Mark all complete */}
             {progress.completed < progress.total && (
               <button
-                onClick={handleMarkAllComplete}
+                onClick={handleConfirmAllClick}
                 disabled={disabled}
                 className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
               >
@@ -669,6 +690,32 @@ export default function MillingChecklist({
             <div>
               <div className="text-2xl font-bold text-green-600">{progress.completedQty}</div>
               <div className="text-sm text-gray-500">Pieces Done</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirmAll && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">Mark All Complete?</h3>
+            <p className="text-gray-600 mb-4">
+              This will mark {progress.total - progress.completed} remaining item{progress.total - progress.completed !== 1 ? 's' : ''} as complete. Are you sure?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowConfirmAll(false)}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleMarkAllComplete}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Yes, Complete All
+              </button>
             </div>
           </div>
         </div>

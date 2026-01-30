@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   RefreshCw,
-  Scissors,
   Package,
   ClipboardCheck,
   Truck,
@@ -13,6 +12,7 @@ import {
   ArrowLeft,
   Cpu
 } from 'lucide-react'
+import SawBlade from '../icons/SawBlade'
 import WorkOrderQueue from './WorkOrderQueue'
 import { WorkOrderData } from './WorkOrderCard'
 import { WorkOrderStage } from '@prisma/client'
@@ -30,7 +30,7 @@ interface StationViewProps {
 
 const STAGE_ICONS: Record<WorkOrderStage, React.ReactNode> = {
   STAGED: <Boxes className="w-6 h-6" />,
-  CUTTING: <Scissors className="w-6 h-6" />,
+  CUTTING: <SawBlade className="w-6 h-6" />,
   MILLING: <Cpu className="w-6 h-6" />,
   ASSEMBLY: <Package className="w-6 h-6" />,
   QC: <ClipboardCheck className="w-6 h-6" />,

@@ -78,11 +78,31 @@ export async function POST(
     }
 
     // Skip MILLING stage if work order has no milled items
+    // If going to MILLING, reset completion status for milled items
     if (nextStage === 'MILLING') {
       const hasMilled = await hasMilledItems(id)
       if (!hasMilled) {
         // Skip MILLING, go directly to ASSEMBLY
         nextStage = 'ASSEMBLY'
+      } else {
+        // Reset completion status for milled items so they can be tracked at milling station
+        await prisma.workOrderItem.updateMany({
+          where: {
+            workOrderId: id,
+            metadata: {
+              path: ['isMilled'],
+              equals: true
+            }
+          },
+          data: {
+            isCompleted: false,
+            completedAt: null,
+            completedById: null,
+            startedAt: null,
+            elapsedSeconds: 0,
+            startedById: null
+          }
+        })
       }
     }
 

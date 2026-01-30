@@ -11,12 +11,13 @@ import {
   AlertTriangle,
   Tag,
   ChevronRight,
-  Scissors,
   Package,
   AlertCircle,
   MapPin,
   Warehouse
 } from 'lucide-react'
+import SawBlade from '../../icons/SawBlade'
+import CallManagerButton from '../CallManagerButton'
 import { WorkOrderStage } from '@prisma/client'
 
 interface WorkOrderData {
@@ -497,7 +498,7 @@ export default function StagingStation() {
                     : 'bg-gray-400 cursor-not-allowed'
                 }`}
               >
-                <Scissors className="w-5 h-5" />
+                <SawBlade className="w-5 h-5" />
                 Release to Cutting
                 <ChevronRight className="w-5 h-5" />
               </button>
@@ -639,6 +640,16 @@ export default function StagingStation() {
           </div>
         </div>
       )}
+
+      {/* Call Manager Button */}
+      <CallManagerButton
+        stationName="Staging"
+        workOrderInfo={selectedWorkOrder ? {
+          id: selectedWorkOrder.id,
+          projectName: selectedWorkOrder.project.name,
+          batchNumber: selectedWorkOrder.batchNumber
+        } : null}
+      />
     </div>
   )
 }

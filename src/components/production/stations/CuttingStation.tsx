@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Scissors,
   RefreshCw,
   ArrowLeft,
   FileSpreadsheet,
@@ -12,6 +11,8 @@ import {
   Package,
   AlertCircle
 } from 'lucide-react'
+import SawBlade from '../../icons/SawBlade'
+import CallManagerButton from '../CallManagerButton'
 import CutListChecklist from '../CutListChecklist'
 import { WorkOrderStage } from '@prisma/client'
 
@@ -191,7 +192,7 @@ export default function CuttingStation() {
     }
   }
 
-  const handleAdvanceToAssembly = async () => {
+  const handleAdvance = async () => {
     if (!selectedWorkOrder) return
     try {
       const response = await fetch(`/api/work-orders/${selectedWorkOrder.id}/advance`, {
@@ -250,7 +251,7 @@ export default function CuttingStation() {
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="flex items-center gap-3">
-                <Scissors className="w-6 h-6" />
+                <SawBlade className="w-6 h-6" />
                 <div>
                   <h1 className="text-2xl font-bold">
                     {selectedWorkOrder
@@ -385,18 +386,18 @@ export default function CuttingStation() {
                 </div>
               </div>
 
-              {/* Send to Assembly */}
+              {/* Send to Next Stage */}
               <button
-                onClick={handleAdvanceToAssembly}
+                onClick={handleAdvance}
                 disabled={progressPercent < 100}
                 className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-white font-medium transition-colors ${
                   progressPercent >= 100
-                    ? 'bg-blue-600 hover:bg-blue-700'
+                    ? 'bg-violet-600 hover:bg-violet-700'
                     : 'bg-gray-400 cursor-not-allowed'
                 }`}
               >
                 <Package className="w-5 h-5" />
-                Send to Assembly
+                Send to Milling
                 <ChevronRight className="w-5 h-5" />
               </button>
 
@@ -422,7 +423,7 @@ export default function CuttingStation() {
               </div>
             ) : workOrders.length === 0 ? (
               <div className="bg-white rounded-lg border p-12 text-center">
-                <Scissors className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+                <SawBlade className="w-12 h-12 mx-auto text-gray-300 mb-4" />
                 <h3 className="text-lg font-medium text-gray-900">No work orders</h3>
                 <p className="text-gray-600">No work orders are ready for cutting</p>
               </div>
@@ -455,7 +456,7 @@ export default function CuttingStation() {
                     </div>
 
                     <div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
-                      <Scissors className="w-4 h-4" />
+                      <SawBlade className="w-4 h-4" />
                       Ready for cutting
                     </div>
 
@@ -469,6 +470,16 @@ export default function CuttingStation() {
           </div>
         )}
       </div>
+
+      {/* Call Manager Button */}
+      <CallManagerButton
+        stationName="Cutting"
+        workOrderInfo={selectedWorkOrder ? {
+          id: selectedWorkOrder.id,
+          projectName: selectedWorkOrder.project.name,
+          batchNumber: selectedWorkOrder.batchNumber
+        } : null}
+      />
     </div>
   )
 }

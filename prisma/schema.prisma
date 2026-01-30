@@ -342,7 +342,7 @@ model ProductBOM {
   stockLength Float?
   partNumber            String?
   cost                  Float?
-  isMilled              Boolean  @default(true) // Whether this extrusion requires milling (machining)
+  isMilled              Boolean  @default(false) // Whether this extrusion requires milling (machining) - only applies to Extrusion/CutStock part types
   addFinishToPartNumber Boolean  @default(false) // When true, append finish color code to hardware part number in BOM
   addToPackingList      Boolean  @default(false) // When true, this hardware item appears in the packing list
   quantityMode          String?  @default("FIXED") // "FIXED" or "RANGE" - determines if user can select quantity

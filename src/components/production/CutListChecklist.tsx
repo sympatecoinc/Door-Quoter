@@ -127,6 +127,7 @@ export default function CutListChecklist({
   const [groupBy, setGroupBy] = useState<GroupByOption>(initialGroupBy)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['all']))
   const [isLoading, setIsLoading] = useState<Set<string>>(new Set())
+  const [showConfirmAll, setShowConfirmAll] = useState(false)
 
   // Filter to only extrusion items (cut list items)
   const cutListItems = useMemo(() => {
@@ -295,12 +296,19 @@ export default function CutListChecklist({
     const incompleteIds = cutListItems.filter(i => !i.isCompleted).map(i => i.id)
     if (incompleteIds.length === 0) return
 
+    setShowConfirmAll(false)
     setIsLoading(new Set(incompleteIds))
     try {
       await onBulkComplete(incompleteIds, true)
     } finally {
       setIsLoading(new Set())
     }
+  }
+
+  const handleConfirmAllClick = () => {
+    const incompleteCount = cutListItems.filter(i => !i.isCompleted).length
+    if (incompleteCount === 0) return
+    setShowConfirmAll(true)
   }
 
   const handleMarkGroupComplete = async (groupItems: AggregatedCutItem[]) => {
@@ -481,7 +489,7 @@ export default function CutListChecklist({
             {/* Mark all complete */}
             {progress.completed < progress.total && (
               <button
-                onClick={handleMarkAllComplete}
+                onClick={handleConfirmAllClick}
                 disabled={disabled}
                 className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
               >
@@ -655,6 +663,32 @@ export default function CutListChecklist({
             <div>
               <div className="text-2xl font-bold text-green-600">{progress.completedQty}</div>
               <div className="text-sm text-gray-500">Pieces Done</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirmAll && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">Mark All Complete?</h3>
+            <p className="text-gray-600 mb-4">
+              This will mark {progress.total - progress.completed} remaining item{progress.total - progress.completed !== 1 ? 's' : ''} as complete. Are you sure?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowConfirmAll(false)}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleMarkAllComplete}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Yes, Complete All
+              </button>
             </div>
           </div>
         </div>

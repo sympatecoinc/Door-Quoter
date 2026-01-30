@@ -14,6 +14,7 @@ import {
   Wrench
 } from 'lucide-react'
 import WorkOrderTimer from '../WorkOrderTimer'
+import CallManagerButton from '../CallManagerButton'
 import ReceivingVerification from '../ReceivingVerification'
 import AssemblyChecklist from '../AssemblyChecklist'
 import { WorkOrderStage } from '@prisma/client'
@@ -621,6 +622,16 @@ export default function AssemblyStation() {
           </div>
         </div>
       )}
+
+      {/* Call Manager Button */}
+      <CallManagerButton
+        stationName="Assembly"
+        workOrderInfo={selectedWorkOrder ? {
+          id: selectedWorkOrder.id,
+          projectName: selectedWorkOrder.project.name,
+          batchNumber: selectedWorkOrder.batchNumber
+        } : null}
+      />
     </div>
   )
 }

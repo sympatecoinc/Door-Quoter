@@ -11,6 +11,7 @@ import {
   AlertCircle
 } from 'lucide-react'
 import MillingChecklist from '../MillingChecklist'
+import CallManagerButton from '../CallManagerButton'
 import { WorkOrderStage } from '@prisma/client'
 
 interface WorkOrderData {
@@ -439,6 +440,16 @@ export default function MillingStation() {
           </div>
         )}
       </div>
+
+      {/* Call Manager Button */}
+      <CallManagerButton
+        stationName="Milling"
+        workOrderInfo={selectedWorkOrder ? {
+          id: selectedWorkOrder.id,
+          projectName: selectedWorkOrder.project.name,
+          batchNumber: selectedWorkOrder.batchNumber
+        } : null}
+      />
     </div>
   )
 }
