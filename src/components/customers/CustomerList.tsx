@@ -12,8 +12,8 @@ import {
   Mail,
   Building2,
   MoreVertical,
-  FileText,
-  ShoppingCart
+  Target,
+  Hammer
 } from 'lucide-react'
 
 const FILTER_STATUSES = ['Active', 'Lead', 'Archived'] as const
@@ -357,13 +357,13 @@ export default function CustomerList({
                       <div className="flex items-center gap-3">
                         {(customer.leadCount !== undefined && customer.leadCount > 0) && (
                           <div className="flex items-center gap-1 text-sm text-gray-600" title="Active Leads">
-                            <FileText className="w-3 h-3" />
+                            <Target className="w-3 h-3" />
                             <span>{customer.leadCount}</span>
                           </div>
                         )}
                         {(customer.projectCount !== undefined && customer.projectCount > 0) && (
                           <div className="flex items-center gap-1 text-sm text-gray-600" title="Active Projects">
-                            <ShoppingCart className="w-3 h-3" />
+                            <Hammer className="w-3 h-3" />
                             <span>{customer.projectCount}</span>
                           </div>
                         )}

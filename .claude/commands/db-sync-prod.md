@@ -102,82 +102,40 @@ cd /home/kylepalmer/Door-Quoter && DATABASE_URL="postgresql://postgres:SimplePas
 
 ---
 
-### 3.3 Schema Drift Detection (CRITICAL)
+### 3.3 Schema Drift Detection & Auto-Fix (CRITICAL)
 
 **IMPORTANT: Even if migrations show "up to date", schema drift can occur when schema.prisma is modified without creating migrations.**
 
-**Use Prisma's built-in drift detection - this is the most reliable method:**
+**This step automatically detects AND fixes drift - no manual intervention required.**
+
+#### Step 1: Detect drift and save to file
 
 ```bash
 DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate diff \
   --from-schema-datasource prisma/schema.prisma \
   --to-schema-datamodel prisma/schema.prisma \
-  --script
+  --script > /tmp/schema_drift.sql 2>&1
+cat /tmp/schema_drift.sql
 ```
 
-**Interpreting results:**
-- If output is `-- This is an empty migration.` → **No drift, schema is in sync!**
-- If output contains SQL statements → **Drift detected, must fix!**
+#### Step 2: Check if drift exists and auto-fix
 
-**If drift detected, the output will show exactly what SQL needs to run.** For example:
-```sql
--- AlterTable
-ALTER TABLE "Products" ADD COLUMN "productCategory" "ProductCategory" NOT NULL DEFAULT 'Both';
-ALTER TABLE "Products" ADD COLUMN "defaultWidth" DOUBLE PRECISION;
-ALTER TABLE "ProductSubOptions" ADD COLUMN "isMandatory" BOOLEAN NOT NULL DEFAULT false;
-```
+**If output is `-- This is an empty migration.`** → No drift, skip to Step 4.
 
----
-
-### 3.4 Fix Schema Drift (If Detected)
-
-**If drift was detected in Step 3.3, you MUST fix it before continuing.**
-
-#### Option A: Direct SQL Execution (Recommended for simple drift)
-
-Execute the SQL from the diff output directly using a heredoc:
+**If output contains SQL statements** → Execute the following to auto-fix:
 
 ```bash
-DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" node << 'SCRIPT'
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-
-async function fix() {
-  // Copy the SQL statements from the migrate diff output here
-  // Use IF NOT EXISTS to make idempotent
-
-  // Example:
-  // await prisma.$executeRawUnsafe(`ALTER TABLE "Products" ADD COLUMN IF NOT EXISTS "newColumn" TEXT`);
-
-  console.log('Schema drift fixed');
-  await prisma.$disconnect();
-}
-
-fix().catch(e => { console.error('Error:', e.message); prisma.$disconnect(); });
-SCRIPT
+# Check if there's actual drift (not just empty migration comment)
+if grep -q "ALTER TABLE\|CREATE TABLE\|CREATE INDEX\|DROP" /tmp/schema_drift.sql; then
+  echo "Drift detected - applying fix automatically..."
+  DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma db execute --url "postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" --file /tmp/schema_drift.sql
+  echo "Drift fix applied."
+else
+  echo "No drift detected - schema is in sync."
+fi
 ```
 
-#### Option B: Create Migration File (Recommended for tracking)
-
-1. Create migration folder:
-```bash
-mkdir -p prisma/migrations/$(date +%Y%m%d)_fix_schema_drift
-```
-
-2. Create `migration.sql` with the SQL from the diff output
-
-3. Apply to production and mark as applied:
-```bash
-# Apply the SQL directly first
-DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" node << 'SCRIPT'
-// Execute the SQL statements here
-SCRIPT
-
-# Then mark migration as applied
-DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate resolve --applied [MIGRATION_FOLDER_NAME]
-```
-
-#### After fixing drift, re-run Step 3.3 to verify:
+#### Step 3: Verify drift is fixed
 
 ```bash
 DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?sslmode=disable" npx prisma migrate diff \
@@ -188,7 +146,7 @@ DATABASE_URL="postgresql://postgres:SimplePass123@127.0.0.1:5433/door_quoter?ssl
 
 **Expected output:** `-- This is an empty migration.`
 
-**DO NOT PROCEED until drift is fixed!**
+**If drift still exists after auto-fix, STOP and report the error. Do not proceed.**
 
 ---
 
@@ -360,6 +318,6 @@ Check `/tmp/prod-proxy.log` for detailed error messages if the proxy fails to st
 
 ---
 
-*Last updated: 2026-01-27*
+*Last updated: 2026-01-28*
 
 *Syncs production database only. Use /db-sync-stage for staging.*

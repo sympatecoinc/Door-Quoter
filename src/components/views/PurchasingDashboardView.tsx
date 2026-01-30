@@ -15,7 +15,6 @@ import ReceivingQueueWidget from '@/components/purchasing-dashboard/ReceivingQue
 import SpendAnalyticsWidget from '@/components/purchasing-dashboard/SpendAnalyticsWidget'
 import OpenOrdersSummaryWidget from '@/components/purchasing-dashboard/OpenOrdersSummaryWidget'
 import VendorCommunicationWidget from '@/components/purchasing-dashboard/VendorCommunicationWidget'
-import CombinedPurchaseSummaryWidget from '@/components/purchasing-dashboard/CombinedPurchaseSummaryWidget'
 
 const TABS: { id: DashboardTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -151,6 +150,7 @@ export default function PurchasingDashboardView() {
           refreshKey={refreshKey}
         />
       )}
+
     </div>
   )
 }
@@ -171,9 +171,6 @@ function OverviewTab({ refreshKey, dateRange, onViewPO, onPOCreated }: OverviewT
       </div>
       <div className="break-inside-avoid">
         <MRPWidget refreshKey={refreshKey} />
-      </div>
-      <div className="break-inside-avoid">
-        <ReceivingQueueWidget refreshKey={refreshKey} compact onViewPO={onViewPO} />
       </div>
     </div>
   )
@@ -225,18 +222,12 @@ interface PricingTabProps {
 
 function PricingTab({ refreshKey, dateRange }: PricingTabProps) {
   return (
-    <div className="space-y-6">
-      {/* Combined Summary Widget - full width */}
-      <CombinedPurchaseSummaryWidget refreshKey={refreshKey} />
-
-      {/* Existing: 2-column grid */}
-      <div className="columns-1 xl:columns-2 gap-6 space-y-6">
-        <div className="break-inside-avoid">
-          <PriceTrackingWidget refreshKey={refreshKey} dateRange={dateRange} />
-        </div>
-        <div className="break-inside-avoid">
-          <SpendAnalyticsWidget refreshKey={refreshKey} dateRange={dateRange} />
-        </div>
+    <div className="columns-1 xl:columns-2 gap-6 space-y-6">
+      <div className="break-inside-avoid">
+        <PriceTrackingWidget refreshKey={refreshKey} dateRange={dateRange} />
+      </div>
+      <div className="break-inside-avoid">
+        <SpendAnalyticsWidget refreshKey={refreshKey} dateRange={dateRange} />
       </div>
     </div>
   )
@@ -254,3 +245,4 @@ function StockTab({ refreshKey }: StockTabProps) {
     </div>
   )
 }
+

@@ -14,6 +14,7 @@ import {
   applyYieldOptimizationToBomItems
 } from '@/lib/bom-utils'
 import { aggregateFromProjectData, createAssemblyListPDF } from '@/lib/assembly-list-pdf-generator'
+import { createCutListPDF, CutListPdfGroup, CutListPdfItem } from '@/lib/cutlist-pdf-generator'
 
 // Helper function to get company logo from branding settings
 async function getCompanyLogo(): Promise<string | null> {
@@ -586,6 +587,20 @@ export async function GET(
                     optionQuantity = optionBom?.quantity || 1
                   }
 
+                  // Look up MasterPart for option's jamb kit and pick list flags
+                  let optionPickListStation: string | null = null
+                  let optionIncludeInJambKit = false
+                  if (standardOption.partNumber) {
+                    const optionMasterPart = await prisma.masterPart.findUnique({
+                      where: { partNumber: standardOption.partNumber },
+                      select: { pickListStation: true, includeInJambKit: true }
+                    })
+                    if (optionMasterPart) {
+                      optionPickListStation = optionMasterPart.pickListStation
+                      optionIncludeInJambKit = optionMasterPart.includeInJambKit
+                    }
+                  }
+
                   bomItems.push({
                     openingName: opening.name,
                     panelId: panel.id,
@@ -607,6 +622,8 @@ export async function GET(
                     optionPrice: (standardOption as any).price ?? 0,
                     isMilled: optionBom?.isMilled !== false,
                     binLocation: optionBinLocation,
+                    pickListStation: optionPickListStation,
+                    includeInJambKit: optionIncludeInJambKit,
                     // For yield-based stock length optimization
                     basePartNumber: optionBom ? optionBasePartNumber : undefined,
                     stockLengthOptions: stockLengthOpts.length > 1 ? stockLengthOpts : undefined
@@ -734,6 +751,20 @@ export async function GET(
                 // Skip if quantity is 0 (user explicitly chose to exclude)
                 if (optionQuantity === 0) continue
 
+                // Look up MasterPart for option's jamb kit and pick list flags
+                let indivPickListStation: string | null = null
+                let indivIncludeInJambKit = false
+                if (individualOption.partNumber) {
+                  const indivMasterPart = await prisma.masterPart.findUnique({
+                    where: { partNumber: individualOption.partNumber },
+                    select: { pickListStation: true, includeInJambKit: true }
+                  })
+                  if (indivMasterPart) {
+                    indivPickListStation = indivMasterPart.pickListStation
+                    indivIncludeInJambKit = indivMasterPart.includeInJambKit
+                  }
+                }
+
                 bomItems.push({
                   openingName: opening.name,
                   panelId: panel.id,
@@ -755,6 +786,8 @@ export async function GET(
                   optionPrice: (individualOption as any).price ?? 0,
                   isMilled: optionBom?.isMilled !== false,
                   binLocation: optionBinLocation,
+                  pickListStation: indivPickListStation,
+                  includeInJambKit: indivIncludeInJambKit,
                   // For yield-based stock length optimization
                   basePartNumber: optionBom ? indivBasePartNumber : undefined,
                   stockLengthOptions: stockLengthOpts.length > 1 ? stockLengthOpts : undefined
@@ -1098,6 +1131,20 @@ export async function GET(
                 optionQuantity = optionBom?.quantity || 1
               }
 
+              // Look up MasterPart for option's jamb kit and pick list flags
+              let stdPickListStation: string | null = null
+              let stdIncludeInJambKit = false
+              if (standardOption.partNumber) {
+                const stdMasterPart = await prisma.masterPart.findUnique({
+                  where: { partNumber: standardOption.partNumber },
+                  select: { pickListStation: true, includeInJambKit: true }
+                })
+                if (stdMasterPart) {
+                  stdPickListStation = stdMasterPart.pickListStation
+                  stdIncludeInJambKit = stdMasterPart.includeInJambKit
+                }
+              }
+
               bomItems.push({
                 openingName: opening.name,
                 panelId: panel.id,
@@ -1119,6 +1166,8 @@ export async function GET(
                 optionPrice: (standardOption as any).price ?? 0,
                 isMilled: optionBom?.isMilled !== false,
                 binLocation: optionBinLocation,
+                pickListStation: stdPickListStation,
+                includeInJambKit: stdIncludeInJambKit,
                 // For yield-based stock length optimization
                 basePartNumber: optionBom ? stdBasePartNumber : undefined,
                 stockLengthOptions: stockLengthOpts2.length > 1 ? stockLengthOpts2 : undefined
@@ -1470,6 +1519,84 @@ export async function GET(
           status: 200,
           headers: {
             'Content-Type': 'text/csv',
+            'Content-Disposition': `attachment; filename="${filename}"`
+          }
+        })
+      }
+
+      // If PDF format requested, return as PDF file download
+      if (format === 'pdf') {
+        console.log('[CutList PDF] Generating PDF for project:', project.name, 'with', batchedCutListItems.length, 'items')
+        const companyLogo = await getCompanyLogo()
+
+        // Group cut list items by product + size for PDF sections
+        const groupMap = new Map<string, CutListPdfGroup>()
+        for (const item of batchedCutListItems) {
+          const key = `${item.productName || ''}|${item.sizeKey}`
+          if (!groupMap.has(key)) {
+            groupMap.set(key, {
+              productName: item.productName || '',
+              sizeKey: item.sizeKey,
+              unitCount: item.unitCount,
+              items: []
+            })
+          }
+          groupMap.get(key)!.items.push({
+            partNumber: item.partNumber,
+            partName: item.partName || '',
+            cutLength: item.cutLength ?? null,
+            qtyPerUnit: item.qtyPerUnit,
+            totalQty: item.totalQty,
+            isMilled: item.isMilled,
+            binLocation: item.binLocation ?? null,
+            stockLength: item.stockLength ?? null,
+            color: item.color
+          })
+        }
+
+        // Build remainder items for PDF if applicable
+        let pdfRemainderItems: CutListPdfItem[] | undefined
+        if (remainder > 0 && remainderItems && remainderItems.length > 0) {
+          pdfRemainderItems = remainderItems.map(item => ({
+            partNumber: item.partNumber,
+            partName: item.partName || '',
+            cutLength: item.cutLength ?? null,
+            qtyPerUnit: item.qtyPerUnit,
+            totalQty: item.totalQty,
+            isMilled: item.isMilled,
+            binLocation: item.binLocation ?? null,
+            stockLength: item.stockLength ?? null,
+            color: item.color
+          }))
+        }
+
+        const pdfBuffer = await createCutListPDF({
+          projectName: project.name,
+          customerName: project.customer?.companyName,
+          companyLogo,
+          groups: Array.from(groupMap.values()),
+          generatedDate: new Date().toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          batchSize: batchSize,
+          totalUnits: originalUnitCount || batchedCutListItems[0]?.unitCount || 1,
+          remainder: remainder,
+          remainderItems: pdfRemainderItems
+        })
+
+        const productSuffix = productFilter ? `-${productFilter.replace(/\s+/g, '-')}` : ''
+        const sizeSuffix = sizeFilter ? `-${sizeFilter}` : ''
+        const batchSuffix = (productFilter || sizeFilter) ? `-${batchSize}units` : ''
+        const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '-')}${productSuffix}${sizeSuffix}${batchSuffix}-cutlist.pdf`
+
+        return new NextResponse(pdfBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/pdf',
             'Content-Disposition': `attachment; filename="${filename}"`
           }
         })

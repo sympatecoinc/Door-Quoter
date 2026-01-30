@@ -1,15 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { UserPlus, Edit2, Trash2, Shield, Eye, Settings, X, Plus, Minus, Check } from 'lucide-react'
-import { ALL_TABS, parseTabOverrides, serializeTabOverrides, calculateEffectivePermissions, getPermissionSources, type TabOverrides } from '@/lib/permissions'
+import { UserPlus, Edit2, Trash2, Shield, Eye, Settings, X, Globe } from 'lucide-react'
 import { useToast } from '@/hooks/useToast'
 import { ToastContainer } from '@/components/ui/Toast'
 
-interface Profile {
+interface Portal {
   id: number
+  subdomain: string
   name: string
-  tabs: string[]
 }
 
 interface User {
@@ -18,37 +17,13 @@ interface User {
   name: string
   role: 'ADMIN' | 'MANAGER' | 'VIEWER'
   isActive: boolean
-  permissions: string[]
-  profileId: number | null
-  tabOverrides: string
-  profile: Profile | null
+  portals: Portal[]
   createdAt: string
 }
 
-const AVAILABLE_TABS = [
-  { id: 'dashboard', label: 'Dashboard (Sales)' },
-  { id: 'customers', label: 'Customers' },
-  { id: 'crm', label: 'CRM' },
-  { id: 'projects', label: 'Projects' },
-  { id: 'production', label: 'Production' },
-  { id: 'logistics', label: 'Shipping' },
-  { id: 'products', label: 'Products' },
-  { id: 'masterParts', label: 'Master Parts' },
-  { id: 'inventory', label: 'Inventory' },
-  { id: 'vendors', label: 'Vendors' },
-  { id: 'purchaseOrders', label: 'Purchase Orders' },
-  { id: 'receiving', label: 'Receiving' },
-  { id: 'purchasingDashboard', label: 'Purchasing Dashboard' },
-  { id: 'salesOrders', label: 'Sales Orders' },
-  { id: 'invoices', label: 'Invoices' },
-  { id: 'quoteDocuments', label: 'Quote Settings' },
-  { id: 'accounting', label: 'Pricing' },
-  { id: 'settings', label: 'Settings' },
-] as const
-
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([])
-  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [portals, setPortals] = useState<Portal[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -57,23 +32,18 @@ export default function UserManagement() {
 
   useEffect(() => {
     fetchUsers()
-    fetchProfiles()
+    fetchPortals()
   }, [])
 
-  const fetchProfiles = async () => {
+  const fetchPortals = async () => {
     try {
-      const response = await fetch('/api/profiles')
-      console.log('Profiles API response status:', response.status)
+      const response = await fetch('/api/portals')
       if (response.ok) {
         const data = await response.json()
-        console.log('Profiles received:', data.profiles)
-        setProfiles(data.profiles || [])
-      } else {
-        const errorData = await response.json()
-        console.error('Profiles API error:', errorData)
+        setPortals(data.portals || [])
       }
     } catch (error) {
-      console.error('Error fetching profiles:', error)
+      console.error('Error fetching portals:', error)
     }
   }
 
@@ -217,6 +187,9 @@ export default function UserManagement() {
                 Role
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Portals
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -238,6 +211,23 @@ export default function UserManagement() {
                     {getRoleIcon(user.role)}
                     <span className="ml-1">{user.role}</span>
                   </span>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex flex-wrap gap-1">
+                    {user.portals && user.portals.length > 0 ? (
+                      user.portals.map((portal) => (
+                        <span
+                          key={portal.id}
+                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                        >
+                          <Globe className="w-3 h-3 mr-1" />
+                          {portal.subdomain}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-gray-400">No portals assigned</span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -278,10 +268,9 @@ export default function UserManagement() {
       {showCreateModal && (
         <UserFormModal
           title="Create New User"
-          profiles={profiles}
+          portals={portals}
           onClose={() => setShowCreateModal(false)}
           onSubmit={handleCreateUser}
-          onRefreshProfiles={fetchProfiles}
         />
       )}
 
@@ -289,13 +278,12 @@ export default function UserManagement() {
         <UserFormModal
           title="Edit User"
           user={selectedUser}
-          profiles={profiles}
+          portals={portals}
           onClose={() => {
             setShowEditModal(false)
             setSelectedUser(null)
           }}
           onSubmit={(data) => handleUpdateUser(selectedUser.id, data)}
-          onRefreshProfiles={fetchProfiles}
         />
       )}
     </div>
@@ -305,112 +293,45 @@ export default function UserManagement() {
 function UserFormModal({
   title,
   user,
-  profiles,
+  portals,
   onClose,
   onSubmit,
-  onRefreshProfiles,
 }: {
   title: string
   user?: User
-  profiles: Profile[]
+  portals: Portal[]
   onClose: () => void
   onSubmit: (data: any) => void
-  onRefreshProfiles: () => void
 }) {
-  // Refresh profiles when modal opens to ensure we have latest data
-  useEffect(() => {
-    if (profiles.length === 0) {
-      console.log('Profiles empty on modal open, refreshing...')
-      onRefreshProfiles()
-    }
-  }, [])
   const [name, setName] = useState(user?.name || '')
   const [email, setEmail] = useState(user?.email || '')
   const [role, setRole] = useState(user?.role || 'VIEWER')
   const [password, setPassword] = useState('')
   const [isActive, setIsActive] = useState(user?.isActive ?? true)
-
-  // Profile-based permissions
-  const [profileId, setProfileId] = useState<number | null>(user?.profileId ?? null)
-  const [tabOverrides, setTabOverrides] = useState<TabOverrides>(
-    parseTabOverrides(user?.tabOverrides || '{}')
+  const [selectedPortalIds, setSelectedPortalIds] = useState<number[]>(
+    user?.portals?.map(p => p.id) || []
   )
 
-  // Legacy permissions (only used when no profile)
-  const [permissions, setPermissions] = useState<string[]>(
-    user?.permissions || ['dashboard', 'projects', 'crm', 'products', 'masterParts', 'quoteDocuments', 'accounting', 'settings']
-  )
-
-  // Get selected profile
-  const selectedProfile = profiles.find(p => p.id === profileId) || null
-
-  // Calculate effective permissions for display
-  const effectivePermissions = calculateEffectivePermissions(
-    selectedProfile,
-    serializeTabOverrides(tabOverrides),
-    permissions
-  )
-
-  // Get permission sources for visual display
-  const permissionSources = getPermissionSources(
-    selectedProfile,
-    serializeTabOverrides(tabOverrides),
-    permissions
-  )
-
-  const toggleLegacyPermission = (tabId: string) => {
-    setPermissions(prev =>
-      prev.includes(tabId)
-        ? prev.filter(p => p !== tabId)
-        : [...prev, tabId]
+  const togglePortal = (portalId: number) => {
+    setSelectedPortalIds(prev =>
+      prev.includes(portalId)
+        ? prev.filter(id => id !== portalId)
+        : [...prev, portalId]
     )
-  }
-
-  const toggleOverride = (tabId: string, type: 'add' | 'remove') => {
-    setTabOverrides(prev => {
-      const newOverrides = { ...prev }
-
-      if (type === 'add') {
-        // Toggle add override
-        if (prev.add.includes(tabId)) {
-          newOverrides.add = prev.add.filter(t => t !== tabId)
-        } else {
-          newOverrides.add = [...prev.add, tabId]
-          // Remove from 'remove' if it was there
-          newOverrides.remove = prev.remove.filter(t => t !== tabId)
-        }
-      } else {
-        // Toggle remove override
-        if (prev.remove.includes(tabId)) {
-          newOverrides.remove = prev.remove.filter(t => t !== tabId)
-        } else {
-          newOverrides.remove = [...prev.remove, tabId]
-          // Remove from 'add' if it was there
-          newOverrides.add = prev.add.filter(t => t !== tabId)
-        }
-      }
-
-      return newOverrides
-    })
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const data: any = { name, email, role, isActive }
+    const data: any = {
+      name,
+      email,
+      role,
+      isActive,
+      portalIds: selectedPortalIds
+    }
 
     if (password) {
       data.password = password
-    }
-
-    // If using a profile, send profileId and tabOverrides
-    if (profileId !== null) {
-      data.profileId = profileId
-      data.tabOverrides = serializeTabOverrides(tabOverrides)
-    } else {
-      // No profile - use legacy permissions and clear profile
-      data.profileId = null
-      data.permissions = permissions
-      data.tabOverrides = '{}'
     }
 
     onSubmit(data)
@@ -483,154 +404,39 @@ function UserFormModal({
             </select>
           </div>
 
-          {/* Profile Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Permission Profile {profiles.length > 0 && <span className="text-xs text-green-600">({profiles.length} available)</span>}
-            </label>
-            <select
-              value={profileId ?? ''}
-              onChange={(e) => {
-                const value = e.target.value
-                setProfileId(value === '' ? null : parseInt(value))
-                // Clear overrides when changing profile
-                if (value !== String(profileId)) {
-                  setTabOverrides({ add: [], remove: [] })
-                }
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-            >
-              <option value="">No Profile (Manual Permissions)</option>
-              {profiles.map(profile => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              {profileId ? 'Profile defines base tab access. Use overrides below to customize.' : 'Select individual tabs below when not using a profile.'}
-            </p>
-          </div>
-
-          {/* Tab Permissions */}
+          {/* Portal Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {profileId ? 'Tab Access (Profile + Overrides)' : 'Accessible Tabs'}
+              Portal Access
             </label>
-            <div className="space-y-1 border border-gray-200 rounded-lg p-3 max-h-60 overflow-y-auto">
-              {AVAILABLE_TABS.map(tab => {
-                const source = permissionSources[tab.id]
-                const hasAccess = effectivePermissions.includes(tab.id)
-                const isFromProfile = source === 'profile'
-                const isAddedOverride = source === 'override-add'
-                const isRemovedOverride = source === 'override-remove'
-
-                if (profileId !== null) {
-                  // Profile mode - show status and override controls
-                  return (
-                    <div key={tab.id} className="flex items-center justify-between py-1">
-                      <div className="flex items-center">
-                        {hasAccess ? (
-                          <Check className={`w-4 h-4 mr-2 ${isFromProfile ? 'text-green-600' : 'text-blue-600'}`} />
-                        ) : (
-                          <X className={`w-4 h-4 mr-2 ${isRemovedOverride ? 'text-red-500' : 'text-gray-300'}`} />
-                        )}
-                        <span className={`text-sm ${!hasAccess && isRemovedOverride ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                          {tab.label}
-                        </span>
-                        {isFromProfile && (
-                          <span className="ml-2 text-xs text-green-600">(profile)</span>
-                        )}
-                        {isAddedOverride && (
-                          <span className="ml-2 text-xs text-blue-600">(+added)</span>
-                        )}
-                        {isRemovedOverride && (
-                          <span className="ml-2 text-xs text-red-500">(-removed)</span>
-                        )}
-                      </div>
-                      <div className="flex gap-1">
-                        {/* Add override button - only show if not already in profile or added */}
-                        {!isFromProfile && !isAddedOverride && (
-                          <button
-                            type="button"
-                            onClick={() => toggleOverride(tab.id, 'add')}
-                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                            title="Add access"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        )}
-                        {/* Remove added override */}
-                        {isAddedOverride && (
-                          <button
-                            type="button"
-                            onClick={() => toggleOverride(tab.id, 'add')}
-                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                            title="Remove added override"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        )}
-                        {/* Remove override button - only show if in profile and not already removed */}
-                        {isFromProfile && !isRemovedOverride && (
-                          <button
-                            type="button"
-                            onClick={() => toggleOverride(tab.id, 'remove')}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded"
-                            title="Remove access"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                        )}
-                        {/* Undo remove override */}
-                        {isRemovedOverride && (
-                          <button
-                            type="button"
-                            onClick={() => toggleOverride(tab.id, 'remove')}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded"
-                            title="Undo removal"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
+            {portals.length === 0 ? (
+              <p className="text-sm text-gray-500 italic">
+                No portals configured. Create portals in Portal Management first.
+              </p>
+            ) : (
+              <div className="space-y-2 border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto">
+                {portals.map(portal => (
+                  <label
+                    key={portal.id}
+                    className="flex items-center p-2 hover:bg-gray-50 rounded cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedPortalIds.includes(portal.id)}
+                      onChange={() => togglePortal(portal.id)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <div className="ml-3">
+                      <span className="text-sm font-medium text-gray-900">{portal.name}</span>
+                      <span className="text-xs text-blue-600 ml-2">{portal.subdomain}.lineamotion.com</span>
                     </div>
-                  )
-                } else {
-                  // No profile - simple checkbox mode
-                  return (
-                    <div key={tab.id} className="flex items-center py-1">
-                      <input
-                        type="checkbox"
-                        id={`tab-${tab.id}`}
-                        checked={permissions.includes(tab.id)}
-                        onChange={() => toggleLegacyPermission(tab.id)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <label htmlFor={`tab-${tab.id}`} className="ml-2 text-sm text-gray-700">
-                        {tab.label}
-                      </label>
-                    </div>
-                  )
-                }
-              })}
-            </div>
-            {profileId !== null && (
-              <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                  From Profile
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                  Added Override
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                  Removed Override
-                </span>
+                  </label>
+                ))}
               </div>
             )}
+            <p className="text-xs text-gray-500 mt-1">
+              Select which portals this user can access. Tab permissions are defined by each portal.
+            </p>
           </div>
 
           {user && (

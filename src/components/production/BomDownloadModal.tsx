@@ -18,23 +18,26 @@ interface UniqueComponent {
 interface BomDownloadModalProps {
   projectId: number
   projectName: string
+  format?: 'csv' | 'pdf'  // Output format, defaults to 'csv'
   onClose: () => void
   showError: (message: string) => void
   showSuccess: (message: string) => void
   // Configure mode - don't download, just pass selection back
-  onConfigure?: (config: { projectId: number; projectName: string; selectedHashes: string[] }) => void
+  onConfigure?: (config: { projectId: number; projectName: string; selectedHashes: string[]; format?: 'csv' | 'pdf' }) => void
   hasMoreModals?: boolean  // If true, shows "Next" instead of "Finish"
 }
 
 export default function BomDownloadModal({
   projectId,
   projectName,
+  format = 'csv',
   onClose,
   showError,
   showSuccess,
   onConfigure,
   hasMoreModals
 }: BomDownloadModalProps) {
+  console.log('[BomDownloadModal] Opened with format:', format, 'for project:', projectName)
   const [loading, setLoading] = useState(true)
   const [uniqueComponents, setUniqueComponents] = useState<UniqueComponent[]>([])
   const [selectedHashes, setSelectedHashes] = useState<Set<string>>(new Set())
@@ -99,7 +102,8 @@ export default function BomDownloadModal({
       onConfigure({
         projectId,
         projectName,
-        selectedHashes: Array.from(selectedHashes)
+        selectedHashes: Array.from(selectedHashes),
+        format
       })
       return
     }
@@ -107,14 +111,15 @@ export default function BomDownloadModal({
     // Direct download mode (when not in bulk/configure flow)
     // Start download tracking and close modal immediately
     const downloadId = startDownload({
-      name: `BOMs - ${projectName}`,
+      name: `BOMs (${format.toUpperCase()}) - ${projectName}`,
       type: 'bom'
     })
     onClose()
 
     try {
       const selectedParam = Array.from(selectedHashes).join('|')
-      const url = `/api/projects/${projectId}/bom/csv?zip=true&unique=true&selected=${encodeURIComponent(selectedParam)}`
+      const url = `/api/projects/${projectId}/bom/csv?zip=true&unique=true&format=${format}&selected=${encodeURIComponent(selectedParam)}`
+      console.log('[BomDownloadModal] Fetching URL:', url)
       const response = await fetch(url)
 
       if (!response.ok) {
@@ -128,7 +133,8 @@ export default function BomDownloadModal({
 
       // Get filename from Content-Disposition header or use default
       const contentDisposition = response.headers.get('Content-Disposition')
-      let filename = `${projectName.replace(/[^a-zA-Z0-9]/g, '-')}-boms.zip`
+      const defaultExt = format === 'pdf' ? 'pdf' : 'zip'
+      let filename = `${projectName.replace(/[^a-zA-Z0-9]/g, '-')}-boms.${defaultExt}`
       if (contentDisposition && contentDisposition.includes('filename=')) {
         filename = contentDisposition.split('filename=')[1].replace(/"/g, '')
       }
@@ -175,7 +181,7 @@ export default function BomDownloadModal({
       <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-xl font-semibold text-gray-900">
-            Select BOMs to Download
+            Select BOMs to Download {format === 'pdf' ? '(PDF)' : '(CSV)'}
           </h3>
           <button
             onClick={onClose}

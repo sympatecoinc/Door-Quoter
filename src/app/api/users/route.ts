@@ -40,6 +40,13 @@ export async function GET() {
             tabs: true
           }
         },
+        portals: {
+          select: {
+            id: true,
+            subdomain: true,
+            name: true
+          }
+        },
         createdAt: true,
         updatedAt: true,
       },
@@ -76,7 +83,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { email, password, name, role, permissions, profileId, tabOverrides } = body
+    const { email, password, name, role, permissions, profileId, tabOverrides, portalIds } = body
 
     // Validate input
     if (!email || !password || !name || !role) {
@@ -140,6 +147,13 @@ export async function POST(request: Request) {
       userData.tabOverrides = typeof tabOverrides === 'string' ? tabOverrides : JSON.stringify(tabOverrides)
     }
 
+    // Add portal connections if provided
+    if (portalIds && Array.isArray(portalIds) && portalIds.length > 0) {
+      userData.portals = {
+        connect: portalIds.map((id: number) => ({ id }))
+      }
+    }
+
     const user = await prisma.user.create({
       data: userData,
       select: {
@@ -156,6 +170,13 @@ export async function POST(request: Request) {
             id: true,
             name: true,
             tabs: true
+          }
+        },
+        portals: {
+          select: {
+            id: true,
+            subdomain: true,
+            name: true
           }
         },
         createdAt: true,

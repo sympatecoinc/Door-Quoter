@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Loader2, Download, Scissors, ChevronRight } from 'lucide-react'
+import { X, Loader2, Download, ChevronRight } from 'lucide-react'
+import SawBlade from '../icons/SawBlade'
 import { useDownloadStore } from '@/stores/downloadStore'
 
 interface CutListItem {
@@ -41,6 +42,7 @@ interface ProjectData {
 export interface CutListConfigData {
   projectId: number
   projectName: string
+  format?: 'csv' | 'pdf'
   groups: Array<{
     productName: string
     sizeKey: string
@@ -51,6 +53,7 @@ export interface CutListConfigData {
 interface CutListDownloadModalProps {
   projects: Array<{ id: number; name: string; batchSize?: number | null }>
   defaultBatchSize?: number | null  // Global default from production settings
+  format?: 'csv' | 'pdf'  // Output format, defaults to 'csv'
   onClose: () => void
   showError: (message: string) => void
   showSuccess: (message: string) => void
@@ -62,12 +65,14 @@ interface CutListDownloadModalProps {
 export default function CutListDownloadModal({
   projects,
   defaultBatchSize,
+  format = 'csv',
   onClose,
   showError,
   showSuccess,
   onConfigure,
   hasMoreModals
 }: CutListDownloadModalProps) {
+  console.log('[CutListDownloadModal] Opened with format:', format)
   const [projectsData, setProjectsData] = useState<ProjectData[]>([])
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
@@ -180,6 +185,7 @@ export default function CutListDownloadModal({
         .map(pd => ({
           projectId: pd.projectId,
           projectName: pd.projectName,
+          format,
           groups: pd.productGroups.map(pg => ({
             productName: pg.productName,
             sizeKey: pg.sizeKey,
@@ -230,7 +236,7 @@ export default function CutListDownloadModal({
             const safeProductName = group.productName.replace(/\s+/g, '-')
 
             // Build the URL with product filter and batch size
-            const url = `/api/projects/${projectData.projectId}/bom?cutlist=true&format=csv&product=${encodeURIComponent(group.productName)}&size=${encodeURIComponent(group.sizeKey)}&batch=${group.batchSize}`
+            const url = `/api/projects/${projectData.projectId}/bom?cutlist=true&format=${format}&product=${encodeURIComponent(group.productName)}&size=${encodeURIComponent(group.sizeKey)}&batch=${group.batchSize}`
 
             const response = await fetch(url)
             if (!response.ok) {
@@ -241,7 +247,7 @@ export default function CutListDownloadModal({
             const downloadUrl = window.URL.createObjectURL(blob)
             const a = document.createElement('a')
             a.href = downloadUrl
-            a.download = `${safeProjectName}-${safeProductName}-${group.sizeKey}-${group.batchSize}units-cutlist.csv`
+            a.download = `${safeProjectName}-${safeProductName}-${group.sizeKey}-${group.batchSize}units-cutlist.${format}`
             document.body.appendChild(a)
             a.click()
             window.URL.revokeObjectURL(downloadUrl)
@@ -302,9 +308,9 @@ export default function CutListDownloadModal({
       <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 p-6 max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
-            <Scissors className="h-5 w-5 text-blue-600" />
+            <SawBlade className="h-5 w-5 text-blue-600" />
             <h3 className="text-xl font-semibold text-gray-900">
-              Cut List Configuration
+              Cut List Configuration {format === 'pdf' ? '(PDF)' : '(CSV)'}
             </h3>
           </div>
           <button

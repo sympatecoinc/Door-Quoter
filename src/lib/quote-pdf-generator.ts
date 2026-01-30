@@ -462,8 +462,8 @@ async function addQuotePage(pdf: jsPDF, quoteData: QuoteData): Promise<void> {
 
   // Header section - Project name on left, logo and date on right
   let headerY = 15
-  const logoMaxWidth = 40 // Maximum logo width in mm
-  const logoMaxHeight = 15 // Maximum logo height in mm
+  const logoMaxWidth = 80 // Maximum logo width in mm
+  const logoMaxHeight = 30 // Maximum logo height in mm
   let logoActualHeight = 0
 
   // Right side: Company logo above the date
@@ -836,17 +836,12 @@ async function addQuoteItemsTable(
 
     contentY += 5
 
-    // Opening type (description - e.g., "1 Sliding Door") with direction after
-    // Format: "1 Fixed Panel, 1 Swing Door (LO / RI)"
+    // Opening type description with directions inline for each component
+    // Format: "Sliding Door (SL), Fixed Panel, Swing Door (LH)"
     pdf.setFontSize(9)
     pdf.setFont('helvetica', 'normal')
     pdf.setTextColor(100, 100, 100)
-    let descriptionText = item.description
-    // Add opening directions after the component type description
-    if (item.openingDirections && item.openingDirections.length > 0) {
-      descriptionText += ` (${item.openingDirections.join(' / ')})`
-    }
-    pdf.text(descriptionText, marginX + cellPadding, contentY)
+    pdf.text(item.description, marginX + cellPadding, contentY)
     pdf.setTextColor(0, 0, 0)
     contentY += 8
 

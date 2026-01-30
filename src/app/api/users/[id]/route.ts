@@ -32,7 +32,7 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { email, name, role, isActive, password, permissions, profileId, tabOverrides } = body
+    const { email, name, role, isActive, password, permissions, profileId, tabOverrides, portalIds } = body
 
     // Build update data
     const updateData: any = {}
@@ -105,6 +105,13 @@ export async function PUT(
       updateData.passwordHash = await hashPassword(password)
     }
 
+    // Handle portal assignments - set replaces all current assignments
+    if (portalIds !== undefined && Array.isArray(portalIds)) {
+      updateData.portals = {
+        set: portalIds.map((id: number) => ({ id }))
+      }
+    }
+
     // Update user
     const user = await prisma.user.update({
       where: { id: userId },
@@ -123,6 +130,13 @@ export async function PUT(
             id: true,
             name: true,
             tabs: true
+          }
+        },
+        portals: {
+          select: {
+            id: true,
+            subdomain: true,
+            name: true
           }
         },
         createdAt: true,

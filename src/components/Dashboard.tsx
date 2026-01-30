@@ -15,6 +15,7 @@ import InventoryView from './views/InventoryView'
 import VendorsView from './views/VendorsView'
 import PurchaseOrdersView from './views/PurchaseOrdersView'
 import PurchasingDashboardView from './views/PurchasingDashboardView'
+import PurchaseSummaryView from './views/PurchaseSummaryView'
 import ReceivingView from './views/ReceivingView'
 import SalesOrdersView from './views/SalesOrdersView'
 import InvoicesView from './views/InvoicesView'
@@ -52,6 +53,8 @@ export default function Dashboard() {
         return <PurchaseOrdersView />
       case 'purchasingDashboard':
         return <PurchasingDashboardView />
+      case 'purchaseSummary':
+        return <PurchaseSummaryView />
       case 'receiving':
         return <ReceivingView />
       case 'salesOrders':

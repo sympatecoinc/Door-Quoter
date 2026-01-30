@@ -142,8 +142,8 @@ export async function GET(
       for (const panel of opening.panels) {
         stickerNumber++
         const productName = panel.componentInstance?.product?.name || panel.type || 'Unknown'
-        // QR format: P{projectId}|{openingName}|{itemName} for components (no partNumber)
-        const qrData = [`P${project.id}`, opening.name, productName].join('|')
+        // QR format: P{projectId}|S{stickerNumber}|{openingName}|{itemName} for components
+        const qrData = `P${project.id}|S${stickerNumber}|${opening.name}|${productName}`
         const packedInfo = packedStatusMap.get(qrData)
 
         items.push({
@@ -192,8 +192,8 @@ export async function GET(
             const quantity = bom.quantity || 1
             for (let i = 0; i < quantity; i++) {
               stickerNumber++
-              // QR format: P{projectId}|{partNumber}|{openingName}|{itemName}
-              const qrData = [`P${project.id}`, partNumber || '', opening.name, bom.partName]
+              // QR format: P{projectId}|S{stickerNumber}|{partNumber}|{openingName}|{itemName}
+              const qrData = [`P${project.id}`, `S${stickerNumber}`, partNumber || '', opening.name, bom.partName]
                 .filter(Boolean)
                 .join('|')
               const packedInfo = packedStatusMap.get(qrData)
@@ -241,8 +241,8 @@ export async function GET(
                   partNumber = `${partNumber}${finishCode}`
                 }
 
-                // QR format: P{projectId}|{partNumber}|{openingName}|{itemName}
-                const qrData = [`P${project.id}`, partNumber, opening.name, selectedOption.name]
+                // QR format: P{projectId}|S{stickerNumber}|{partNumber}|{openingName}|{itemName}
+                const qrData = [`P${project.id}`, `S${stickerNumber}`, partNumber, opening.name, selectedOption.name]
                   .filter(Boolean)
                   .join('|')
                 const packedInfo = packedStatusMap.get(qrData)
@@ -269,8 +269,8 @@ export async function GET(
       // 4. Add jamb kit for this opening
       if (jambKitItemCount > 0) {
         stickerNumber++
-        // QR format: P{projectId}|JAMB-KIT|{openingName}
-        const qrData = `P${project.id}|JAMB-KIT|${opening.name}`
+        // QR format: P{projectId}|S{stickerNumber}|JAMB-KIT|{openingName}
+        const qrData = `P${project.id}|S${stickerNumber}|JAMB-KIT|${opening.name}`
         const packedInfo = packedStatusMap.get(qrData)
 
         items.push({

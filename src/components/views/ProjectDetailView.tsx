@@ -2780,7 +2780,7 @@ export default function ProjectDetailView() {
               >
                 <FileText className="w-4 h-4" />
               </button>
-              {isViewingCurrentVersion && needsSync && !calculatingPrices && project.status !== 'QUOTE_ACCEPTED' && (
+              {isViewingCurrentVersion && needsSync && !calculatingPrices && !isProjectLocked(project.status as ProjectStatus) && (
                 <button
                   onClick={() => setShowSyncConfirmation(true)}
                   className="ml-3 flex items-center text-sm text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg transition-colors"

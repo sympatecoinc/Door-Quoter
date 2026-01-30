@@ -44,6 +44,7 @@ const menuItemsMap: Record<string, { label: string; icon: LucideIcon }> = {
   purchaseOrders: { label: 'Purchase Orders', icon: ShoppingCart },
   receiving: { label: 'Receiving', icon: PackageOpen },
   purchasingDashboard: { label: 'Purchasing Dashboard', icon: LayoutDashboard },
+  purchaseSummary: { label: 'Purchase Summary', icon: ClipboardList },
   salesOrders: { label: 'Sales Orders', icon: ClipboardList },
   invoices: { label: 'Invoices', icon: Receipt },
   quoteDocuments: { label: 'Quote Settings', icon: FileText },
@@ -55,20 +56,48 @@ const menuItemsMap: Record<string, { label: string; icon: LucideIcon }> = {
 const defaultMenuOrder: MenuOption[] = [
   'dashboard', 'customers', 'crm', 'projects', 'production', 'logistics', 'products',
   'masterParts', 'inventory', 'vendors', 'purchaseOrders', 'receiving',
-  'purchasingDashboard', 'salesOrders', 'invoices', 'quoteDocuments',
+  'purchasingDashboard', 'purchaseSummary', 'salesOrders', 'invoices', 'quoteDocuments',
   'accounting', 'settings'
 ]
+
+// Get cached skeleton count from localStorage
+function getCachedTabCount(): number {
+  if (typeof window === 'undefined') return 5
+  try {
+    const cached = localStorage.getItem('sidebar-tab-count')
+    return cached ? parseInt(cached, 10) : 5
+  } catch {
+    return 5
+  }
+}
+
+// Cache tab count to localStorage
+function setCachedTabCount(count: number) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem('sidebar-tab-count', count.toString())
+  } catch {
+    // Ignore localStorage errors
+  }
+}
 
 export default function Sidebar() {
   const router = useRouter()
   const { currentMenu, setCurrentMenu, notificationRefreshTrigger } = useAppStore()
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [portalContext, setPortalContext] = useState<PortalContext | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [skeletonCount, setSkeletonCount] = useState(5)
   const [inventoryNotificationCount, setInventoryNotificationCount] = useState(0)
   const [pendingQuotesCount, setPendingQuotesCount] = useState(0)
   const [receivingCount, setReceivingCount] = useState(0)
   const [companyLogo, setCompanyLogo] = useState<string | null>(null)
   const hasSetDefaultTab = useRef(false)
+
+  // Load cached skeleton count on mount
+  useEffect(() => {
+    setSkeletonCount(getCachedTabCount())
+  }, [])
 
   useEffect(() => {
     fetchCurrentUser()
@@ -191,24 +220,34 @@ export default function Sidebar() {
       }
     } catch (error) {
       console.error('Error fetching current user:', error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  // Build visible menu items based on user permissions and profile tab ordering
+  // Build visible menu items based on user permissions and portal/profile tab ordering
   const visibleMenuItems = (() => {
-    if (!currentUser) {
-      // No user yet - show default order
-      return defaultMenuOrder.map(id => ({
-        id,
-        label: menuItemsMap[id]?.label || id,
-        icon: menuItemsMap[id]?.icon || Home
-      }))
+    // While loading, don't show any tabs to prevent flash
+    if (isLoading || !currentUser) {
+      return []
     }
 
     const effectivePermissions = currentUser.effectivePermissions || currentUser.permissions || []
     const profile = currentUser.profile
 
-    // If user has a profile with ordered tabs, use that order
+    // Priority 1: If in portal mode, use portal's tab ordering
+    if (portalContext?.tabs?.length > 0) {
+      // Filter portal tabs to only those the user has access to, preserving portal order
+      return portalContext.tabs
+        .filter((tabId: string) => effectivePermissions.includes(tabId))
+        .map((tabId: string) => ({
+          id: tabId as MenuOption,
+          label: menuItemsMap[tabId]?.label || tabId,
+          icon: menuItemsMap[tabId]?.icon || Home
+        }))
+    }
+
+    // Priority 2: If user has a profile with ordered tabs, use that order
     if (profile?.tabs?.length > 0) {
       // Filter to only tabs the user has access to, preserving profile order
       return profile.tabs
@@ -229,6 +268,13 @@ export default function Sidebar() {
         icon: menuItemsMap[id]?.icon || Home
       }))
   })()
+
+  // Cache tab count when menu items change
+  useEffect(() => {
+    if (visibleMenuItems.length > 0) {
+      setCachedTabCount(visibleMenuItems.length)
+    }
+  }, [visibleMenuItems.length])
 
   async function handleLogout() {
     try {
@@ -264,7 +310,19 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-        {visibleMenuItems.length === 0 ? (
+        {isLoading ? (
+          <div className="space-y-2">
+            {[...Array(skeletonCount)].map((_, i) => (
+              <div key={i} className="flex items-center px-3 py-2 rounded-lg animate-pulse">
+                <div className="w-5 h-5 bg-gray-200 rounded mr-3"></div>
+                <div
+                  className="h-4 bg-gray-200 rounded"
+                  style={{ width: `${65 + (i % 3) * 15}%` }}
+                ></div>
+              </div>
+            ))}
+          </div>
+        ) : visibleMenuItems.length === 0 ? (
           <div className="text-center py-4 text-gray-500 text-sm">
             <p>No tabs available</p>
             {portalContext && (

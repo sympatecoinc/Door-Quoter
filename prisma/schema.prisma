@@ -53,6 +53,7 @@ model Project {
   primaryContact         Contact?           @relation("ProjectPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
   primaryProjectContact  ProjectContact?    @relation("ProjectPrimaryProjectContact", fields: [primaryProjectContactId], references: [id], onDelete: SetNull)
   salesOrders            SalesOrder[]
+  workOrders             WorkOrder[]
 
   // Version tracking fields for project revisions
   version                Int         @default(1)
@@ -63,6 +64,15 @@ model Project {
 
   // Packing list access token for public QR scanning interface
   packingAccessToken     String?     @unique @default(uuid())
+
+  // Field verification access token for public photo upload interface
+  fieldVerificationToken String?     @unique @default(uuid())
+
+  // Production color for visual identification
+  productionColor        String?     // Hex color for production tracking (auto-assigned)
+
+  // Field verification uploads
+  fieldVerificationUploads FieldVerificationUpload[]
 
   @@map("Projects")
 }
@@ -187,6 +197,17 @@ enum ProjectStatus {
   ACTIVE         @map("Active")
   COMPLETE       @map("Complete")
   ARCHIVE        @map("Archive")
+}
+
+// Work Order Production Stages
+enum WorkOrderStage {
+  STAGED
+  CUTTING
+  MILLING
+  ASSEMBLY
+  QC
+  SHIP
+  COMPLETE
 }
 
 enum ProductType {
@@ -321,7 +342,7 @@ model ProductBOM {
   stockLength Float?
   partNumber            String?
   cost                  Float?
-  isMilled              Boolean  @default(true) // Whether this extrusion requires milling (machining)
+  isMilled              Boolean  @default(false) // Whether this extrusion requires milling (machining) - only applies to Extrusion/CutStock part types
   addFinishToPartNumber Boolean  @default(false) // When true, append finish color code to hardware part number in BOM
   addToPackingList      Boolean  @default(false) // When true, this hardware item appears in the packing list
   quantityMode          String?  @default("FIXED") // "FIXED" or "RANGE" - determines if user can select quantity
@@ -781,10 +802,11 @@ model User {
   name         String
   role         Role      @default(VIEWER)
   isActive     Boolean   @default(true)
-  permissions  String[]  @default(["dashboard", "projects", "crm", "products", "masterParts", "vendors", "quoteDocuments", "accounting", "settings"]) // Available tabs for user (legacy, fallback when no profile)
-  profileId    Int?
+  permissions  String[]  @default(["dashboard", "projects", "crm", "products", "masterParts", "vendors", "quoteDocuments", "accounting", "settings"]) // Legacy - kept for backwards compatibility
+  profileId    Int?      // Legacy - kept for backwards compatibility
   profile      Profile?  @relation(fields: [profileId], references: [id], onDelete: SetNull)
-  tabOverrides String    @default("{}") // JSON: {"add": [], "remove": []} - overrides beyond profile
+  tabOverrides String    @default("{}") // Legacy - kept for backwards compatibility
+  portals      Portal[]  @relation("UserPortals") // Portals this user can access
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   sessions     Session[]
@@ -800,6 +822,15 @@ model User {
 
   // Invoice Relations
   createdInvoices   Invoice[]         @relation("InvoiceCreatedBy")
+
+  // Work Order Relations
+  stationAssignments    UserStationAssignment[]
+  stagesEntered         WorkOrderStageHistory[] @relation("StageEnteredBy")
+  stagesExited          WorkOrderStageHistory[] @relation("StageExitedBy")
+  stagesStarted         WorkOrderStageHistory[] @relation("StageStartedBy")
+  itemsCompleted        WorkOrderItem[]         @relation("ItemCompletedBy")
+  itemsReceived         WorkOrderItem[]         @relation("ItemReceivedBy")
+  itemsStarted          WorkOrderItem[]         @relation("ItemStartedBy")
 
   @@map("Users")
 }
@@ -854,6 +885,7 @@ model ExtrusionFinishPricing {
   finishType        String             @unique // e.g., "Mill Finish", "Powder Coated", "Anodized"
   finishCode        String?            // Part number suffix code (e.g., "BL", "C2", "AL")
   costPerSqFt       Float              @default(0) // Cost per square foot of surface
+  costPerFoot       Float?             // Legacy: Cost per linear foot (deprecated)
   isActive          Boolean            @default(true)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
@@ -1495,6 +1527,7 @@ model Portal {
   defaultTab  String?            // Landing tab (must be in tabs array)
   headerTitle String?            // Custom header text
   isActive    Boolean  @default(true)
+  users       User[]   @relation("UserPortals") // Users who can access this portal
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1523,4 +1556,120 @@ model PriceHistory {
   @@index([masterPartId])
   @@index([effectiveDate])
   @@map("PriceHistory")
+}
+
+// Work Order - Production tracking from cut list batches
+model WorkOrder {
+  id            String                  @id @default(cuid())
+  projectId     Int
+  project       Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  batchNumber   Int                     // Cut list batch number
+  currentStage  WorkOrderStage          @default(STAGED)
+  priority      Int                     @default(0)
+  notes         String?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  stageHistory  WorkOrderStageHistory[]
+  items         WorkOrderItem[]
+
+  @@index([projectId])
+  @@index([currentStage])
+  @@map("WorkOrders")
+}
+
+// Work Order Stage History - Track time spent at each production stage
+model WorkOrderStageHistory {
+  id            String          @id @default(cuid())
+  workOrderId   String
+  workOrder     WorkOrder       @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  stage         WorkOrderStage
+  enteredAt     DateTime        @default(now())
+  exitedAt      DateTime?
+  durationMins  Int?            // Calculated on exit
+  enteredById   Int?
+  enteredBy     User?           @relation("StageEnteredBy", fields: [enteredById], references: [id], onDelete: SetNull)
+  exitedById    Int?
+  exitedBy      User?           @relation("StageExitedBy", fields: [exitedById], references: [id], onDelete: SetNull)
+
+  // Timer tracking - when actual work started (vs just entering stage)
+  startedAt     DateTime?       // When work actually started
+  startedById   Int?
+  startedBy     User?           @relation("StageStartedBy", fields: [startedById], references: [id], onDelete: SetNull)
+
+  @@index([workOrderId])
+  @@index([stage])
+  @@map("WorkOrderStageHistory")
+}
+
+// Work Order Item - Parts/items in a work order batch
+model WorkOrderItem {
+  id            String          @id @default(cuid())
+  workOrderId   String
+  workOrder     WorkOrder       @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  partNumber    String
+  partName      String
+  partType      String?         // FRAME, SLAB, HARDWARE, etc.
+  quantity      Int
+  openingName   String?         // Source opening
+  productName   String?         // Source product
+  metadata      Json?           // Additional context-specific data
+
+  // Cut list details (for extrusions)
+  cutLength     Float?          // Cut length in inches
+  stockLength   Float?          // Stock length in inches
+  binLocation   String?         // Bin location for picking
+
+  // Progress tracking - item completion
+  isCompleted   Boolean         @default(false)
+  completedAt   DateTime?
+  completedById Int?
+  completedBy   User?           @relation("ItemCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+
+  // Receiving verification at Assembly
+  isReceived    Boolean         @default(false)
+  receivedAt    DateTime?
+  receivedById  Int?
+  receivedBy    User?           @relation("ItemReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+  receivingNotes String?        // Damage notes, missing qty, etc.
+
+  // Per-item timing (for cutting station)
+  startedAt      DateTime?      // When active timing began (null = not active)
+  elapsedSeconds Int            @default(0)  // Accumulated time in seconds
+  startedById    Int?
+  startedBy      User?          @relation("ItemStartedBy", fields: [startedById], references: [id], onDelete: SetNull)
+
+  @@index([workOrderId])
+  @@map("WorkOrderItems")
+}
+
+// User Station Assignment - Assign users to production stations
+model UserStationAssignment {
+  id            String          @id @default(cuid())
+  userId        Int
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  station       WorkOrderStage  // Which station they can operate
+  isPrimary     Boolean         @default(false)  // Their main station
+  createdAt     DateTime        @default(now())
+
+  @@unique([userId, station])
+  @@index([userId])
+  @@index([station])
+  @@map("UserStationAssignments")
+}
+
+// Field Verification Upload - Photos of completed field verification forms
+model FieldVerificationUpload {
+  id           Int      @id @default(autoincrement())
+  projectId    Int
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  gcsPath      String   // GCS path: field-verification/{projectId}/{timestamp}.{ext}
+  originalName String   // Original filename uploaded
+  mimeType     String   // image/jpeg, image/png, etc.
+  size         Int      // File size in bytes
+  uploadedAt   DateTime @default(now())
+  uploadedBy   String?  // Device/user info if available
+
+  @@index([projectId])
+  @@map("FieldVerificationUploads")
 }

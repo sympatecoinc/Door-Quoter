@@ -33,6 +33,7 @@ export interface PortalContext {
   id: number
   name: string
   subdomain: string
+  tabs: string[]
   defaultTab: string | null
   headerTitle: string | null
 }
@@ -203,6 +204,7 @@ export function toPortalContext(portal: PortalConfig): PortalContext {
     id: portal.id,
     name: portal.name,
     subdomain: portal.subdomain,
+    tabs: portal.tabs,
     defaultTab: portal.defaultTab,
     headerTitle: portal.headerTitle
   }

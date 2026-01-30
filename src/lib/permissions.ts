@@ -13,6 +13,7 @@ export const ALL_TABS = [
   'purchaseOrders',
   'receiving',
   'purchasingDashboard',
+  'purchaseSummary',
   'salesOrders',
   'invoices',
   'quoteDocuments',

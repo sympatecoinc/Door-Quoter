@@ -179,6 +179,21 @@ export async function GET(request: NextRequest) {
             glassMarkup: true,
             discount: true
           }
+        },
+        workOrders: {
+          select: {
+            id: true,
+            currentStage: true,
+            items: {
+              select: {
+                id: true,
+                isCompleted: true
+              }
+            }
+          }
+        },
+        fieldVerificationUploads: {
+          select: { id: true }
         }
       },
       orderBy: [
@@ -223,9 +238,47 @@ export async function GET(request: NextRequest) {
       // Get packing stats for this project
       const packingStats = await getPackingStats(project.id)
 
+      // Calculate work order progress
+      let workOrderProgress = undefined
+      if (project.workOrders && project.workOrders.length > 0) {
+        const stageDistribution: Record<string, number> = {
+          STAGED: 0,
+          CUTTING: 0,
+          MILLING: 0,
+          ASSEMBLY: 0,
+          QC: 0,
+          SHIP: 0,
+          COMPLETE: 0
+        }
+        // Individual work order progress for badges
+        const workOrderDetails: Array<{
+          id: string
+          stage: string
+          progressPercent: number
+        }> = []
+
+        for (const wo of project.workOrders) {
+          stageDistribution[wo.currentStage]++
+          const totalItems = wo.items.length
+          const completedItems = wo.items.filter(item => item.isCompleted).length
+          const progressPercent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
+          workOrderDetails.push({
+            id: wo.id,
+            stage: wo.currentStage,
+            progressPercent
+          })
+        }
+        workOrderProgress = {
+          total: project.workOrders.length,
+          stageDistribution,
+          workOrders: workOrderDetails
+        }
+      }
+
       return {
         id: project.id,
         name: project.name,
+        version: project.version,
         status: project.status,
         dueDate: project.dueDate,
         customerId: project.customer?.id || null,
@@ -235,7 +288,9 @@ export async function GET(request: NextRequest) {
         value: saleValue,
         batchSize: project.batchSize,
         updatedAt: project.updatedAt,
-        packingStats
+        packingStats,
+        workOrderProgress,
+        fieldVerificationCount: project.fieldVerificationUploads?.length || 0
       }
     }))
 

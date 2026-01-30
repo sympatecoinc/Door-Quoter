@@ -268,8 +268,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const sortedOpenings = [...project.openings].sort((a, b) => naturalSortCompare(a.name, b.name))
 
     // Generate quote data for each opening
-    const quoteItems = await Promise.all(
-      sortedOpenings.map(async (opening) => {
+    // Process in batches to reduce peak memory usage (prevents OOM on large projects)
+    const BATCH_SIZE = 3
+    const quoteItems: any[] = []
+
+    for (let i = 0; i < sortedOpenings.length; i += BATCH_SIZE) {
+      const batch = sortedOpenings.slice(i, i + BATCH_SIZE)
+      const batchResults = await Promise.all(
+        batch.map(async (opening) => {
         // Get drawing images based on quoteDrawingView setting
         const elevationImages: string[] = []
 
@@ -554,51 +560,47 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         // Standard hardware costs are added back WITHOUT markup (at cost)
         const markedUpPrice = markedUpExtrusionCost + markedUpHardwareCost + markedUpGlassCost + markedUpPackagingCost + markedUpOtherCost + hybridRemainingCost + standardOptionCost
 
-        // Generate description
-        const panelTypes = opening.panels
-          .filter(p => p.componentInstance)
-          .map(p => p.componentInstance!.product.productType)
+        // Generate description with direction inline for each component
+        const panelDescriptions: string[] = []
+        const openingDirections: string[] = [] // Keep for backwards compatibility
 
-        const typeCount = panelTypes.reduce((acc, type) => {
-          acc[type] = (acc[type] || 0) + 1
-          return acc
-        }, {} as Record<string, number>)
-
-        const description = Object.entries(typeCount)
-          .map(([type, count]) => {
-            const displayType = type === 'SWING_DOOR' ? 'Swing Door' :
-                              type === 'SLIDING_DOOR' ? 'Sliding Door' :
-                              type === 'FIXED_PANEL' ? 'Fixed Panel' :
-                              type === 'CORNER_90' ? '90° Corner' : type
-            return count > 1 ? `${count} ${displayType}s` : `${count} ${displayType}`
-          })
-          .join(', ')
-
-        // Extract opening directions from panels
-        const openingDirections: string[] = []
         for (const panel of opening.panels) {
-          if (panel.componentInstance) {
-            const productType = panel.componentInstance.product.productType
+          if (!panel.componentInstance) continue
 
-            // Get the appropriate direction based on panel type
-            let direction = ''
-            if (productType === 'SWING_DOOR' && panel.swingDirection) {
-              direction = panel.swingDirection
-            } else if (productType === 'SLIDING_DOOR' && panel.slidingDirection) {
-              direction = panel.slidingDirection
-            } else if (productType === 'CORNER_90' && panel.cornerDirection) {
-              direction = panel.cornerDirection
-            }
+          const productType = panel.componentInstance.product.productType
+          const displayType = productType === 'SWING_DOOR' ? 'Swing Door' :
+                            productType === 'SLIDING_DOOR' ? 'Sliding Door' :
+                            productType === 'FIXED_PANEL' ? 'Fixed Panel' :
+                            productType === 'CORNER_90' ? '90° Corner' : productType
 
-            // Convert to abbreviation if direction exists and is not None/N/A
-            if (direction && direction !== 'None' && direction !== 'N/A') {
-              const abbreviated = convertDirectionToAbbreviation(direction, productType)
-              if (abbreviated) {
-                openingDirections.push(abbreviated)
-              }
+          // Get the appropriate direction based on panel type
+          let direction = ''
+          if (productType === 'SWING_DOOR' && panel.swingDirection) {
+            direction = panel.swingDirection
+          } else if (productType === 'SLIDING_DOOR' && panel.slidingDirection) {
+            direction = panel.slidingDirection
+          } else if (productType === 'CORNER_90' && panel.cornerDirection) {
+            direction = panel.cornerDirection
+          }
+
+          // Convert to abbreviation if direction exists and is not None/N/A
+          let abbreviated = ''
+          if (direction && direction !== 'None' && direction !== 'N/A') {
+            abbreviated = convertDirectionToAbbreviation(direction, productType)
+            if (abbreviated) {
+              openingDirections.push(abbreviated) // Keep for backwards compatibility
             }
           }
+
+          // Add component with direction inline
+          if (abbreviated) {
+            panelDescriptions.push(`${displayType} (${abbreviated})`)
+          } else {
+            panelDescriptions.push(displayType)
+          }
         }
+
+        const description = panelDescriptions.length > 0 ? panelDescriptions.join(', ') : 'Custom Opening'
 
         return {
           openingId: opening.id,
@@ -630,8 +632,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             hybridRemaining: { base: hybridRemainingCost, markedUp: hybridRemainingCost } // HYBRID remaining at cost (no markup)
           }
         }
-      })
-    )
+        })
+      )
+      quoteItems.push(...batchResults)
+    }
 
     // Calculate subtotal from all marked-up opening prices
     const subtotal = quoteItems.reduce((sum, item) => sum + item.costPrice, 0)
