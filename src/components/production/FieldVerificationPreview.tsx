@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Download, Mail, ChevronLeft, ChevronRight, Loader2, Image as ImageIcon } from 'lucide-react'
+import { X, Download, ChevronLeft, ChevronRight, Loader2, Image as ImageIcon, Check, CheckCircle2 } from 'lucide-react'
 
 interface FieldVerificationUpload {
   id: number
@@ -12,24 +12,30 @@ interface FieldVerificationUpload {
   uploadedAt: string
   uploadedBy: string | null
   imageUrl: string
+  confirmed: boolean
+  confirmedAt: string | null
+  confirmedBy: string | null
 }
 
 interface FieldVerificationPreviewProps {
   projectId: number
   projectName: string
   onClose: () => void
+  onConfirmStatusChange?: () => void
 }
 
 export default function FieldVerificationPreview({
   projectId,
   projectName,
-  onClose
+  onClose,
+  onConfirmStatusChange
 }: FieldVerificationPreviewProps) {
   const [uploads, setUploads] = useState<FieldVerificationUpload[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [downloading, setDownloading] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const [mounted, setMounted] = useState(false)
 
   // Track mount state for portal rendering (SSR safety)
@@ -109,6 +115,46 @@ export default function FieldVerificationPreview({
     }
   }
 
+  async function confirmUpload(uploadId: number) {
+    setConfirming(true)
+    try {
+      const response = await fetch(`/api/projects/${projectId}/field-verification/uploads/${uploadId}/confirm`, {
+        method: 'POST'
+      })
+      if (!response.ok) {
+        throw new Error('Failed to confirm upload')
+      }
+      // Refresh the uploads list
+      await fetchUploads()
+      // Notify parent of status change
+      onConfirmStatusChange?.()
+    } catch (err) {
+      console.error('Failed to confirm upload:', err)
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  async function confirmAllUploads() {
+    setConfirming(true)
+    try {
+      const response = await fetch(`/api/projects/${projectId}/field-verification/uploads/confirm-all`, {
+        method: 'POST'
+      })
+      if (!response.ok) {
+        throw new Error('Failed to confirm all uploads')
+      }
+      // Refresh the uploads list
+      await fetchUploads()
+      // Notify parent of status change
+      onConfirmStatusChange?.()
+    } catch (err) {
+      console.error('Failed to confirm all uploads:', err)
+    } finally {
+      setConfirming(false)
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'ArrowLeft' && selectedIndex > 0) {
       setSelectedIndex(selectedIndex - 1)
@@ -120,6 +166,8 @@ export default function FieldVerificationPreview({
   }
 
   const selectedUpload = uploads[selectedIndex]
+  const unconfirmedCount = uploads.filter(u => !u.confirmed).length
+  const allConfirmed = uploads.length > 0 && unconfirmedCount === 0
 
   // Don't render anything during SSR
   if (!mounted) return null
@@ -140,6 +188,26 @@ export default function FieldVerificationPreview({
           <div className="flex items-center gap-2">
             {uploads.length > 0 && (
               <>
+                {!allConfirmed && (
+                  <button
+                    onClick={confirmAllUploads}
+                    disabled={confirming}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-700 bg-green-50 hover:bg-green-100 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {confirming ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4" />
+                    )}
+                    Confirm All ({unconfirmedCount})
+                  </button>
+                )}
+                {allConfirmed && (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-700 bg-green-50 rounded-lg">
+                    <CheckCircle2 className="w-4 h-4" />
+                    All Confirmed
+                  </span>
+                )}
                 <button
                   onClick={downloadAll}
                   disabled={downloading}
@@ -151,14 +219,6 @@ export default function FieldVerificationPreview({
                     <Download className="w-4 h-4" />
                   )}
                   Download All
-                </button>
-                <button
-                  onClick={() => {/* Email functionality placeholder */}}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                  title="Email functionality coming soon"
-                >
-                  <Mail className="w-4 h-4" />
-                  Email
                 </button>
               </>
             )}
@@ -210,6 +270,14 @@ export default function FieldVerificationPreview({
                   </>
                 )}
 
+                {/* Confirmed badge overlay */}
+                {selectedUpload?.confirmed && (
+                  <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-green-500 text-white rounded-full text-sm font-medium shadow-lg">
+                    <CheckCircle2 className="w-4 h-4" />
+                    Confirmed
+                  </div>
+                )}
+
                 {/* Image */}
                 {selectedUpload && (
                   <img
@@ -238,19 +306,41 @@ export default function FieldVerificationPreview({
                       <span>{formatFileSize(selectedUpload.size)}</span>
                       <span className="mx-2 text-gray-300">|</span>
                       <span>{formatDate(selectedUpload.uploadedAt)}</span>
-                    </div>
-                    <button
-                      onClick={() => downloadImage(selectedUpload)}
-                      disabled={downloading}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      {downloading ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Download className="w-4 h-4" />
+                      {selectedUpload.confirmed && selectedUpload.confirmedAt && (
+                        <>
+                          <span className="mx-2 text-gray-300">|</span>
+                          <span className="text-green-600">Confirmed {formatDate(selectedUpload.confirmedAt)}</span>
+                        </>
                       )}
-                      Download
-                    </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!selectedUpload.confirmed && (
+                        <button
+                          onClick={() => confirmUpload(selectedUpload.id)}
+                          disabled={confirming}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-700 bg-green-50 hover:bg-green-100 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {confirming ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Check className="w-4 h-4" />
+                          )}
+                          Confirm
+                        </button>
+                      )}
+                      <button
+                        onClick={() => downloadImage(selectedUpload)}
+                        disabled={downloading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {downloading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Download className="w-4 h-4" />
+                        )}
+                        Download
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -261,7 +351,7 @@ export default function FieldVerificationPreview({
                       <button
                         key={upload.id}
                         onClick={() => setSelectedIndex(index)}
-                        className={`flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                        className={`relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
                           index === selectedIndex
                             ? 'border-blue-500 ring-2 ring-blue-200'
                             : 'border-transparent hover:border-gray-300'
@@ -272,6 +362,16 @@ export default function FieldVerificationPreview({
                           alt={upload.originalName}
                           className="w-full h-full object-cover"
                         />
+                        {/* Confirmed indicator on thumbnail */}
+                        {upload.confirmed && (
+                          <div className="absolute bottom-0.5 right-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                            <Check className="w-2.5 h-2.5 text-white" />
+                          </div>
+                        )}
+                        {/* Pending indicator on thumbnail */}
+                        {!upload.confirmed && (
+                          <div className="absolute bottom-0.5 right-0.5 w-4 h-4 bg-amber-500 rounded-full" />
+                        )}
                       </button>
                     ))}
                   </div>

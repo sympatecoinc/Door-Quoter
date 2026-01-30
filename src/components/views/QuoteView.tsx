@@ -5,6 +5,7 @@ import { ArrowLeft, Download, FileText, Printer, Wrench, DollarSign, Bug } from 
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
+import { useDownloadStore } from '@/stores/downloadStore'
 import QuoteAttachmentsManager from '../quote/QuoteAttachmentsManager'
 import { generatePricingDebugCSV } from '@/lib/pricing-debug-csv'
 
@@ -82,6 +83,7 @@ interface QuoteData {
 export default function QuoteView() {
   const { selectedProjectId, setSelectedProjectId, setCurrentMenu, selectedCustomerId, customerDetailView } = useAppStore()
   const { toasts, removeToast, showSuccess, showError } = useToast()
+  const { startDownload, updateProgress, completeDownload, failDownload } = useDownloadStore()
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null)
   const [loading, setLoading] = useState(true)
   const [isDownloading, setIsDownloading] = useState(false)
@@ -314,16 +316,25 @@ export default function QuoteView() {
   const handleDownloadPricingDebug = async () => {
     if (!quoteData) return
 
+    // Start download tracking toast
+    const downloadId = startDownload({
+      name: `Pricing Debug - ${quoteData.project.name}`,
+      type: 'pricing-debug'
+    })
+
     try {
       setIsDownloadingDebug(true)
+      updateProgress(downloadId, 20)
 
       const response = await fetch(`/api/projects/${selectedProjectId}/pricing-debug`)
+      updateProgress(downloadId, 50)
 
       if (!response.ok) {
         throw new Error('Failed to fetch pricing debug data')
       }
 
       const data = await response.json()
+      updateProgress(downloadId, 70)
 
       if (!data.success) {
         throw new Error(data.error || 'Failed to generate pricing debug')
@@ -331,6 +342,7 @@ export default function QuoteView() {
 
       // Build CSV content using shared utility
       const csv = generatePricingDebugCSV(data)
+      updateProgress(downloadId, 90)
 
       // Create download
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -343,11 +355,11 @@ export default function QuoteView() {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
 
-      showSuccess('Pricing debug CSV downloaded!')
+      completeDownload(downloadId)
 
     } catch (error) {
       console.error('Error generating pricing debug:', error)
-      showError('Failed to download pricing debug')
+      failDownload(downloadId, 'Failed to download pricing debug')
     } finally {
       setIsDownloadingDebug(false)
     }

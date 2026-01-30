@@ -6,7 +6,7 @@ import { useAppStore } from '@/stores/appStore'
 import { useEscapeKey } from '@/hooks/useEscapeKey'
 import LeadListPanel from './LeadListPanel'
 import LeadDetailPanel from './LeadDetailPanel'
-import { ProjectStatus } from '@/types'
+import { ProjectStatus, LEAD_STATUSES, PROJECT_STATUSES } from '@/types'
 
 export interface LatestQuote {
   version: number
@@ -32,7 +32,11 @@ export interface LeadSummary {
   prospectCompanyName?: string | null
 }
 
-export default function SalesLeadView() {
+interface SalesLeadViewProps {
+  onDataChange?: () => void
+}
+
+export default function SalesLeadView({ onDataChange }: SalesLeadViewProps) {
   const { salesLeadId, showSalesLeadView, closeSalesLeadView, setSalesLeadId, salesViewMode, setSalesViewMode } = useAppStore()
   const [leads, setLeads] = useState<LeadSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -132,6 +136,23 @@ export default function SalesLeadView() {
                 onArchive={(archivedId) => {
                   setLeads(prev => prev.filter(l => l.id !== archivedId))
                   setSalesLeadId(null)
+                }}
+                onStatusChange={(leadId, newStatus) => {
+                  // Optimistic update for modal list (instant)
+                  const isMovingToProjects = salesViewMode === 'leads' && PROJECT_STATUSES.includes(newStatus)
+                  const isMovingToLeads = salesViewMode === 'projects' && LEAD_STATUSES.includes(newStatus)
+
+                  if (isMovingToProjects || isMovingToLeads) {
+                    setLeads(prev => prev.filter(l => l.id !== leadId))
+                  } else {
+                    setLeads(prev => prev.map(l =>
+                      l.id === leadId ? { ...l, status: newStatus } : l
+                    ))
+                  }
+                }}
+                onStatusChangeComplete={() => {
+                  // Called AFTER API succeeds - refresh main dashboard
+                  onDataChange?.()
                 }}
               />
             ) : (

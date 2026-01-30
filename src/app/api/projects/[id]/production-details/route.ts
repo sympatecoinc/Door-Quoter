@@ -71,7 +71,8 @@ export async function GET(
           select: {
             id: true,
             originalName: true,
-            uploadedAt: true
+            uploadedAt: true,
+            confirmed: true
           },
           orderBy: { uploadedAt: 'desc' }
         },
@@ -236,6 +237,7 @@ export async function GET(
       workOrders,
       fieldVerificationUploads: {
         count: project.fieldVerificationUploads.length,
+        confirmedCount: project.fieldVerificationUploads.filter(u => u.confirmed).length,
         uploads: project.fieldVerificationUploads
       },
       versions: uniqueVersions

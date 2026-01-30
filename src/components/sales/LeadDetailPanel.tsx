@@ -119,6 +119,8 @@ interface LeadDetailPanelProps {
   onVersionSwitch?: (versionId: number) => void
   onStatusCategoryChange?: (newMode: SalesViewMode) => void
   onArchive?: (leadId: number) => void
+  onStatusChange?: (leadId: number, newStatus: ProjectStatus) => void
+  onStatusChangeComplete?: () => void  // Called after API succeeds
 }
 
 type TabType = 'overview' | 'openings' | 'quotes'
@@ -130,6 +132,8 @@ export default function LeadDetailPanel({
   onVersionSwitch,
   onStatusCategoryChange,
   onArchive,
+  onStatusChange,
+  onStatusChangeComplete,
 }: LeadDetailPanelProps) {
   const [lead, setLead] = useState<LeadDetailData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -224,43 +228,73 @@ export default function LeadDetailPanel({
     const wasProjectStatus = isProjectStatus(lead.status)
     const willBeLeadStatus = isLeadStatus(pendingStatus)
 
+    // Store previous status for potential rollback
+    const previousStatus = lead.status
+    const newStatus = pendingStatus
+
+    // OPTIMISTIC UPDATE: Update UI immediately before API call
+    setLead(prev => prev ? { ...prev, status: newStatus } : null)
+
+    // Update parent list immediately
+    if (newStatus === ProjectStatus.ARCHIVE) {
+      if (onArchive) {
+        onArchive(leadId)
+      }
+    } else if (wasLeadStatus && willBeProjectStatus) {
+      if (onStatusChange) {
+        onStatusChange(leadId, newStatus)
+      }
+    } else if (wasProjectStatus && willBeLeadStatus) {
+      if (onStatusChange) {
+        onStatusChange(leadId, newStatus)
+      }
+    } else if (onStatusChange) {
+      onStatusChange(leadId, newStatus)
+    }
+
+    // Close confirmation modal immediately
+    setShowStatusConfirm(false)
+    setPendingStatus(null)
+
     try {
       setUpdatingStatus(true)
       const response = await fetch(`/api/projects/${leadId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: pendingStatus }),
+        body: JSON.stringify({ status: newStatus }),
       })
 
       if (response.ok) {
-        await fetchLead()
+        // Notify that status change completed successfully (for dashboard refresh)
+        onStatusChangeComplete?.()
 
-        // If archiving, optimistically remove from list and close panel
-        if (pendingStatus === ProjectStatus.ARCHIVE) {
-          if (onArchive) {
-            onArchive(leadId)
-          } else {
+        // If archiving, close panel after successful API call
+        if (newStatus === ProjectStatus.ARCHIVE) {
+          if (!onArchive) {
             onLeadUpdated()
             onClose()
           }
         }
         // If changing between lead and project categories, switch the view mode
-        // The mode change triggers a refetch via useEffect, so don't call onLeadUpdated
         else if (wasLeadStatus && willBeProjectStatus && onStatusCategoryChange) {
           onStatusCategoryChange('projects')
         } else if (wasProjectStatus && willBeLeadStatus && onStatusCategoryChange) {
           onStatusCategoryChange('leads')
-        } else {
-          // Only manually refetch if staying in the same category
-          onLeadUpdated()
         }
+      } else {
+        // ROLLBACK: Revert optimistic update on failure
+        console.error('Failed to update status')
+        setLead(prev => prev ? { ...prev, status: previousStatus } : null)
+        // Trigger refetch to restore list state
+        onLeadUpdated()
       }
     } catch (error) {
+      // ROLLBACK: Revert optimistic update on error
       console.error('Error updating status:', error)
+      setLead(prev => prev ? { ...prev, status: previousStatus } : null)
+      onLeadUpdated()
     } finally {
       setUpdatingStatus(false)
-      setShowStatusConfirm(false)
-      setPendingStatus(null)
     }
   }
 
@@ -610,7 +644,7 @@ export default function LeadDetailPanel({
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-amber-500 mt-0.5">•</span>
-                <span>The new revision will be set to <strong>Staging</strong> status</span>
+                <span>The new revision will be set to <strong>Preparing Quote</strong> status</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-amber-500 mt-0.5">•</span>

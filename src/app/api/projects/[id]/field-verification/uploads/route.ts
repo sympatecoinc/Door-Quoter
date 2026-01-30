@@ -43,14 +43,20 @@ export async function GET(
       size: upload.size,
       uploadedAt: upload.uploadedAt.toISOString(),
       uploadedBy: upload.uploadedBy,
+      confirmed: upload.confirmed,
+      confirmedAt: upload.confirmedAt?.toISOString() || null,
+      confirmedBy: upload.confirmedBy,
       // Image URL that will be served via our image endpoint
       imageUrl: `/api/projects/${projectId}/field-verification/uploads/${upload.id}/image`
     }))
+
+    const confirmedCount = uploads.filter(u => u.confirmed).length
 
     return NextResponse.json({
       projectId,
       projectName: project.name,
       count: uploads.length,
+      confirmedCount,
       uploads: uploadsWithUrls
     })
   } catch (error) {

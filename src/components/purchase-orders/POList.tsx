@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { PurchaseOrder, POStatus, PO_STATUS_CONFIG } from '@/types/purchase-order'
 import POStatusBadge from './POStatusBadge'
+import ConfirmModal from '@/components/ui/ConfirmModal'
 import {
   Search,
   ChevronLeft,
@@ -64,6 +65,7 @@ export default function POList({ onPOSelect, onEdit, onRefresh, refreshKey = 0 }
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ po: PurchaseOrder; hasReceivings: boolean } | null>(null)
   const isFirstRender = useRef(true)
   const limit = 20
 
@@ -123,15 +125,16 @@ export default function POList({ onPOSelect, onEdit, onRefresh, refreshKey = 0 }
     }
   }
 
-  async function handleDelete(po: PurchaseOrder) {
+  function handleDeleteClick(po: PurchaseOrder) {
     const hasReceivings = po._count?.receivings && po._count.receivings > 0
-    const message = hasReceivings
-      ? `This purchase order has receiving records. Are you sure you want to cancel "${po.poNumber}"?`
-      : `Are you sure you want to delete "${po.poNumber}"?`
+    setDeleteConfirm({ po, hasReceivings })
+    setMenuOpenId(null)
+  }
 
-    if (!confirm(message)) {
-      return
-    }
+  async function handleDeleteConfirm() {
+    if (!deleteConfirm) return
+
+    const { po, hasReceivings } = deleteConfirm
 
     try {
       const response = await fetch(`/api/purchase-orders/${po.id}${hasReceivings ? '' : '?permanent=true'}`, {
@@ -150,7 +153,7 @@ export default function POList({ onPOSelect, onEdit, onRefresh, refreshKey = 0 }
       alert('Failed to delete purchase order')
     }
 
-    setMenuOpenId(null)
+    setDeleteConfirm(null)
   }
 
   function handleSearchSubmit(e: React.FormEvent) {
@@ -339,7 +342,7 @@ export default function POList({ onPOSelect, onEdit, onRefresh, refreshKey = 0 }
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleDelete(po)
+                              handleDeleteClick(po)
                             }}
                             className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                           >
@@ -384,6 +387,21 @@ export default function POList({ onPOSelect, onEdit, onRefresh, refreshKey = 0 }
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteConfirm}
+        title={deleteConfirm?.hasReceivings ? 'Cancel Purchase Order' : 'Delete Purchase Order'}
+        message={
+          deleteConfirm?.hasReceivings
+            ? `This purchase order has receiving records. Are you sure you want to cancel "${deleteConfirm.po.poNumber}"?`
+            : `Are you sure you want to delete "${deleteConfirm?.po.poNumber}"?`
+        }
+        confirmLabel={deleteConfirm?.hasReceivings ? 'Cancel PO' : 'Delete'}
+        variant="danger"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   )
 }
