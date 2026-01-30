@@ -49,9 +49,9 @@ export async function renderSvgToPng(
       console.log('→ Plan view: rendering processed SVG at high resolution')
 
       // Calculate render width based on target width in inches
-      // Use pixels per inch similar to elevation views for crisp output
-      const pixelsPerInch = 32  // Reduced from 48 for smaller file size
-      const renderWidth = Math.max(1600, options.width * pixelsPerInch)
+      // Use lower resolution for quote preview to reduce memory
+      const pixelsPerInch = 16  // Reduced from 32 for memory optimization
+      const renderWidth = Math.max(800, options.width * pixelsPerInch)
 
       console.log('→ Plan view render width:', renderWidth, 'pixels')
 
@@ -67,12 +67,15 @@ export async function renderSvgToPng(
       })
 
       const pngData = resvg.render()
-      const pngBuffer = pngData.asPng()
+      let pngBuffer: Buffer | null = pngData.asPng()
 
       console.log('→ PNG render successful, size:', pngBuffer.length, 'bytes')
       console.log('→ PNG dimensions:', pngData.width, 'x', pngData.height)
 
       const base64 = pngBuffer.toString('base64')
+
+      // Explicitly release buffer reference to help GC
+      pngBuffer = null
 
       console.log('→ Converted to base64, length:', base64.length)
       console.log('=== SVG Renderer: Complete ===')
@@ -92,7 +95,8 @@ export async function renderSvgToPng(
     console.log('  Elements processed:', transforms.length)
 
     // Step 2: Render scaled SVG to PNG using resvg
-    const pixelsPerInch = 24  // High resolution for crisp shop drawings
+    // Use lower resolution for quote preview to reduce memory (12px/inch vs 24px/inch)
+    const pixelsPerInch = 12
     const pngWidth = Math.round(options.width * pixelsPerInch)
     const pngHeight = Math.round(options.height * pixelsPerInch)
 
@@ -110,12 +114,15 @@ export async function renderSvgToPng(
     })
 
     const pngData = resvg.render()
-    const pngBuffer = pngData.asPng()
+    let pngBuffer: Buffer | null = pngData.asPng()
 
     console.log('→ PNG render successful, size:', pngBuffer.length, 'bytes')
 
     // Step 3: Convert to base64 for transmission
     const base64 = pngBuffer.toString('base64')
+
+    // Explicitly release buffer reference to help GC
+    pngBuffer = null
 
     console.log('→ Converted to base64, length:', base64.length)
     console.log('=== SVG Renderer: Complete ===')

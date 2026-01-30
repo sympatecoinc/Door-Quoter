@@ -44,6 +44,29 @@ export async function GET(
     const { id } = await params
     const projectId = parseInt(id)
 
+    // Get all SalesOrderParts for this project to check packed status
+    const salesOrderParts = await prisma.salesOrderPart.findMany({
+      where: {
+        salesOrder: { projectId }
+      },
+      select: {
+        productName: true, // Stores qrData for exact matching
+        status: true,
+        packedAt: true
+      }
+    })
+
+    // Create a map of QR data -> packed status
+    const packedStatusMap = new Map<string, { status: string; packedAt: Date | null }>()
+    for (const part of salesOrderParts) {
+      if (part.productName) {
+        packedStatusMap.set(part.productName, {
+          status: part.status,
+          packedAt: part.packedAt
+        })
+      }
+    }
+
     // Get all openings for this project with their panels and component instances
     const openings = await prisma.opening.findMany({
       where: { projectId },
@@ -91,14 +114,18 @@ export async function GET(
     const sortedOpenings = [...openings].sort((a, b) => naturalSortCompare(a.name || '', b.name || ''))
 
     // Build packing list grouped by opening
+    let stickerNumber = 0
     const packingList = await Promise.all(sortedOpenings.map(async (opening) => {
-      const components = opening.panels.map(panel => ({
-        panelType: panel.type,
-        width: panel.width,
-        height: panel.height,
-        glassType: panel.glassType,
-        productName: panel.componentInstance?.product?.name || 'Unknown'
-      }))
+      const components: Array<{
+        panelType: string
+        width: number
+        height: number
+        glassType: string | null
+        productName: string
+        stickerNumber: number
+        status: 'pending' | 'packed'
+        packedAt: string | null
+      }> = []
 
       // Get the finish code for this opening if it has a finish color
       const finishCode = opening.finishColor ? await getFinishCode(opening.finishColor) : ''
@@ -107,16 +134,34 @@ export async function GET(
       let jambKitItemCount = 0
 
       // Collect all hardware items from all panels in this opening
-      // Use a Map to aggregate quantities for duplicate parts (keyed by final part number with finish)
-      const hardwareMap = new Map<string, {
+      // Track individual items with sticker numbers for status checking
+      const hardwareItems: Array<{
         partName: string
         partNumber: string | null
         description: string | null
-        quantity: number
-        unit: string | null
-      }>()
+        stickerNumber: number
+        status: 'pending' | 'packed'
+        packedAt: string | null
+      }> = []
 
       for (const panel of opening.panels) {
+        // Add component item with sticker number
+        stickerNumber++
+        const productName = panel.componentInstance?.product?.name || panel.type || 'Unknown'
+        const qrData = `P${projectId}|S${stickerNumber}|${opening.name}|${productName}`
+        const packedInfo = packedStatusMap.get(qrData)
+
+        components.push({
+          panelType: panel.type,
+          width: panel.width,
+          height: panel.height,
+          glassType: panel.glassType,
+          productName,
+          stickerNumber,
+          status: packedInfo?.status === 'PACKED' ? 'packed' : 'pending',
+          packedAt: packedInfo?.packedAt?.toISOString() || null
+        })
+
         if (!panel.componentInstance?.product) continue
 
         // Check ALL BOM items (not just hardware) for jamb kit inclusion
@@ -148,18 +193,22 @@ export async function GET(
               partNumber = `${partNumber}${finishCode}`
             }
 
-            const key = partNumber || bom.partName
-            const existing = hardwareMap.get(key)
+            // Add individual items for each quantity (for sticker tracking)
+            const quantity = bom.quantity || 1
+            for (let i = 0; i < quantity; i++) {
+              stickerNumber++
+              const qrData = [`P${projectId}`, `S${stickerNumber}`, partNumber || '', opening.name, bom.partName]
+                .filter(Boolean)
+                .join('|')
+              const packedInfo = packedStatusMap.get(qrData)
 
-            if (existing) {
-              existing.quantity += (bom.quantity || 0)
-            } else {
-              hardwareMap.set(key, {
+              hardwareItems.push({
                 partName: bom.partName,
                 partNumber: partNumber,
                 description: bom.description,
-                quantity: bom.quantity || 0,
-                unit: bom.unit
+                stickerNumber,
+                status: packedInfo?.status === 'PACKED' ? 'packed' : 'pending',
+                packedAt: packedInfo?.packedAt?.toISOString() || null
               })
             }
           }
@@ -193,20 +242,20 @@ export async function GET(
                   partNumber = `${partNumber}${finishCode}`
                 }
 
-                const key = partNumber
-                const existing = hardwareMap.get(key)
+                stickerNumber++
+                const qrData = [`P${projectId}`, `S${stickerNumber}`, partNumber, opening.name, selectedOption.name]
+                  .filter(Boolean)
+                  .join('|')
+                const packedInfo = packedStatusMap.get(qrData)
 
-                if (existing) {
-                  existing.quantity += 1
-                } else {
-                  hardwareMap.set(key, {
-                    partName: selectedOption.name,
-                    partNumber: partNumber,
-                    description: selectedOption.description,
-                    quantity: 1,
-                    unit: 'EA'
-                  })
-                }
+                hardwareItems.push({
+                  partName: selectedOption.name,
+                  partNumber: partNumber,
+                  description: selectedOption.description,
+                  stickerNumber,
+                  status: packedInfo?.status === 'PACKED' ? 'packed' : 'pending',
+                  packedAt: packedInfo?.packedAt?.toISOString() || null
+                })
               }
             }
           } catch (error) {
@@ -216,7 +265,25 @@ export async function GET(
       }
 
       // Track jamb kit for this opening if it has any jamb kit items
+      let jambKit: {
+        stickerNumber: number
+        itemCount: number
+        status: 'pending' | 'packed'
+        packedAt: string | null
+      } | null = null
+
       if (jambKitItemCount > 0) {
+        stickerNumber++
+        const qrData = `P${projectId}|S${stickerNumber}|JAMB-KIT|${opening.name}`
+        const packedInfo = packedStatusMap.get(qrData)
+
+        jambKit = {
+          stickerNumber,
+          itemCount: jambKitItemCount,
+          status: packedInfo?.status === 'PACKED' ? 'packed' : 'pending',
+          packedAt: packedInfo?.packedAt?.toISOString() || null
+        }
+
         jambKitsMap.set(opening.id, {
           openingId: opening.id,
           openingName: opening.name,
@@ -228,7 +295,8 @@ export async function GET(
         openingId: opening.id,
         openingName: opening.name,
         components,
-        hardware: Array.from(hardwareMap.values())
+        hardware: hardwareItems,
+        jambKit
       }
     }))
 

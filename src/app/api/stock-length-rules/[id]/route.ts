@@ -114,25 +114,22 @@ export async function PUT(
 
     if (oldRule && oldRule.stockLength !== newStockLength) {
       // Update old variant's stockLength to new value (if it exists)
-      const oldVariant = await prisma.extrusionVariant.findUnique({
+      // Use findFirst instead of findUnique because composite keys with nullable fields don't work reliably with findUnique
+      const oldVariant = await prisma.extrusionVariant.findFirst({
         where: {
-          masterPartId_stockLength_finishPricingId: {
-            masterPartId: oldRule.masterPartId,
-            stockLength: oldRule.stockLength!,
-            finishPricingId: null as any
-          }
+          masterPartId: oldRule.masterPartId,
+          stockLength: oldRule.stockLength!,
+          finishPricingId: null
         }
       })
 
       if (oldVariant) {
         // Check if new stockLength variant already exists
-        const newVariantExists = await prisma.extrusionVariant.findUnique({
+        const newVariantExists = await prisma.extrusionVariant.findFirst({
           where: {
-            masterPartId_stockLength_finishPricingId: {
-              masterPartId: masterPartIdValue,
-              stockLength: newStockLength,
-              finishPricingId: null as any
-            }
+            masterPartId: masterPartIdValue,
+            stockLength: newStockLength,
+            finishPricingId: null
           }
         })
 
@@ -145,13 +142,12 @@ export async function PUT(
       }
     } else if (!oldRule?.stockLength) {
       // Create variant if it doesn't exist
-      const existingVariant = await prisma.extrusionVariant.findUnique({
+      // Use findFirst instead of findUnique because composite keys with nullable fields don't work reliably with findUnique
+      const existingVariant = await prisma.extrusionVariant.findFirst({
         where: {
-          masterPartId_stockLength_finishPricingId: {
-            masterPartId: masterPartIdValue,
-            stockLength: newStockLength,
-            finishPricingId: null as any
-          }
+          masterPartId: masterPartIdValue,
+          stockLength: newStockLength,
+          finishPricingId: null
         }
       })
 

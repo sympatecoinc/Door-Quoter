@@ -189,33 +189,6 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
     }
   }
 
-  // Add QR code for mobile scanning interface (top right, below logo)
-  if (data.packingUrl) {
-    try {
-      const qrCodeDataUrl = await QRCode.toDataURL(data.packingUrl, {
-        width: 200,
-        margin: 1,
-        errorCorrectionLevel: 'M'
-      })
-
-      // Position QR code in top right area
-      const qrSize = 22  // 22mm square
-      const qrX = PAGE_WIDTH - MARGIN - qrSize
-      const qrY = yPos + (data.companyLogo ? 18 : 0)  // Below logo if present
-
-      pdf.addImage(qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize)
-
-      // Label below QR code
-      pdf.setFontSize(6)
-      pdf.setFont('helvetica', 'normal')
-      pdf.setTextColor(100, 100, 100)
-      pdf.text('Scan to verify', qrX + qrSize / 2, qrY + qrSize + 3, { align: 'center' })
-      pdf.setTextColor(0, 0, 0)
-    } catch (error) {
-      console.error('Error adding QR code to Packing List PDF:', error)
-    }
-  }
-
   // Title (left-aligned)
   pdf.setFontSize(18)
   pdf.setFont('helvetica', 'bold')
@@ -235,15 +208,6 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
   pdf.text(`Generated: ${data.generatedDate}  |  Total Stickers: ${totalStickers}`, MARGIN, yPos)
   pdf.setTextColor(0, 0, 0)
   yPos += 10
-
-  // Ensure we don't overlap with QR code in top right corner
-  if (data.packingUrl) {
-    const qrStartY = MARGIN + (data.companyLogo ? 18 : 0)
-    const qrBottom = qrStartY + 22 + 6  // QR size (22mm) + label space (6mm)
-    if (yPos < qrBottom) {
-      yPos = qrBottom
-    }
-  }
 
   if (data.lineItems.length === 0) {
     pdf.setFontSize(12)
@@ -456,10 +420,98 @@ export async function createPackingListPDF(data: PackingListData): Promise<Buffe
   pdf.rect(MARGIN + 110, yPos - 3, 8, 4, 'F')
   pdf.text('[JAMB KIT] = Jamb Kit', MARGIN + 120, yPos)
 
+  // Digital Packing Verification section (with QR code)
+  if (data.packingUrl) {
+    // Check if we need a new page for the verification section (needs ~70mm space)
+    const verificationSectionHeight = 70
+    if (yPos + verificationSectionHeight > PAGE_HEIGHT - MARGIN - 15) {
+      pdf.addPage()
+      yPos = MARGIN
+    } else {
+      yPos += 15
+    }
+
+    // Draw section box
+    const sectionBoxHeight = 60
+    pdf.setDrawColor(180, 180, 180)
+    pdf.setLineWidth(0.5)
+    pdf.rect(MARGIN, yPos, CONTENT_WIDTH, sectionBoxHeight)
+
+    // Section title
+    pdf.setFontSize(12)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(0, 0, 0)
+    pdf.text('Digital Packing Verification', MARGIN + CONTENT_WIDTH / 2, yPos + 8, { align: 'center' })
+
+    // Generate and add QR code
+    try {
+      const qrCodeDataUrl = await QRCode.toDataURL(data.packingUrl, {
+        width: 200,
+        margin: 1,
+        errorCorrectionLevel: 'M'
+      })
+
+      const qrSize = 28  // Slightly larger QR code (28mm)
+      const qrX = MARGIN + 10
+      const qrY = yPos + 14
+
+      pdf.addImage(qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize)
+
+      // Instructions text (to the right of QR code)
+      const instructionsX = qrX + qrSize + 10
+      const instructionsWidth = CONTENT_WIDTH - qrSize - 30
+
+      pdf.setFontSize(9)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setTextColor(60, 60, 60)
+
+      const instruction1 = 'Scan this QR code to initiate the digital'
+      const instruction2 = 'packing list verification.'
+      const instruction3 = 'Use your mobile device to scan and verify'
+      const instruction4 = 'each item as it is packed.'
+
+      pdf.text(instruction1, instructionsX, qrY + 6)
+      pdf.text(instruction2, instructionsX, qrY + 12)
+      pdf.text(instruction3, instructionsX, qrY + 22)
+      pdf.text(instruction4, instructionsX, qrY + 28)
+
+    } catch (error) {
+      console.error('Error adding QR code to Packing List PDF:', error)
+    }
+
+    // Divider line
+    const dividerY = yPos + 46
+    pdf.setDrawColor(180, 180, 180)
+    pdf.setLineWidth(0.3)
+    pdf.line(MARGIN + 8, dividerY, MARGIN + CONTENT_WIDTH - 8, dividerY)
+
+    // Verified By and Date fields
+    const fieldsY = yPos + 54
+    pdf.setFontSize(9)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(0, 0, 0)
+
+    pdf.text('Verified By:', MARGIN + 15, fieldsY)
+    pdf.setLineWidth(0.3)
+    pdf.setDrawColor(0, 0, 0)
+    pdf.line(MARGIN + 38, fieldsY, MARGIN + 90, fieldsY)  // Signature line
+
+    pdf.setFontSize(7)
+    pdf.setTextColor(100, 100, 100)
+    pdf.text('(Initials)', MARGIN + 58, fieldsY + 4)
+
+    pdf.setFontSize(9)
+    pdf.setTextColor(0, 0, 0)
+    pdf.text('Date:', MARGIN + 105, fieldsY)
+    pdf.line(MARGIN + 118, fieldsY, MARGIN + 165, fieldsY)  // Date line
+
+    yPos += sectionBoxHeight
+  }
+
   // Footer
   pdf.setFontSize(8)
   pdf.setTextColor(150, 150, 150)
-  pdf.text('Sticker # column corresponds to sticker "X of Y" - use to match stickers to checklist', PAGE_WIDTH / 2, PAGE_HEIGHT - 10, { align: 'center' })
+  pdf.text('Line item numbers correspond to sticker numbers for easy matching', PAGE_WIDTH / 2, PAGE_HEIGHT - 10, { align: 'center' })
 
   return Buffer.from(pdf.output('arraybuffer'))
 }

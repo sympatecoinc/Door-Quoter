@@ -29,97 +29,74 @@ export async function POST(
       )
     }
 
-    // Parse QR data - new format includes project ID:
-    // - Component: "P{projectId}|{openingName}|{itemName}" (3 parts, starts with P)
-    // - Hardware: "P{projectId}|{partNumber}|{openingName}|{itemName}" (4 parts)
-    // - Jamb kit: "P{projectId}|JAMB-KIT|{openingName}" (3 parts)
-    // Also support legacy format without project ID for backwards compatibility
+    // Parse QR data - format:
+    // P{projectId}|S{stickerIndex}|... where each sticker has a unique index
+    // - Component: "P{projectId}|S{stickerIndex}|{openingName}|{itemName}" (4 parts)
+    // - Hardware: "P{projectId}|S{stickerIndex}|{partNumber}|{openingName}|{itemName}" (5 parts)
+    // - Jamb kit: "P{projectId}|S{stickerIndex}|JAMB-KIT|{openingName}" (4 parts)
     const parts = qrData.split('|')
-    let qrProjectId: number | null = null
     let partNumber: string | null = null
     let openingName: string | null = null
     let itemName: string | null = null
     let itemType: 'component' | 'hardware' | 'jambkit' = 'hardware'
 
-    // Check if first part is a project ID (starts with 'P' followed by number)
+    // Validate format: must start with P{number}|S{number}
     const projectIdMatch = parts[0]?.match(/^P(\d+)$/)
+    const stickerIndexMatch = parts[1]?.match(/^S(\d+)$/)
 
-    if (projectIdMatch) {
-      // New format with project ID
-      qrProjectId = parseInt(projectIdMatch[1])
+    if (!projectIdMatch || !stickerIndexMatch) {
+      return NextResponse.json(
+        {
+          error: 'Invalid QR code format - please reprint stickers with the new format.',
+          success: false,
+          scannedData: qrData
+        },
+        { status: 400 }
+      )
+    }
 
-      // Validate project ID matches
-      if (qrProjectId !== project.id) {
-        return NextResponse.json(
-          {
-            error: `This sticker belongs to a different project.`,
-            success: false,
-            wrongProject: true,
-            scannedData: qrData
-          },
-          { status: 400 }
-        )
-      }
+    const qrProjectId = parseInt(projectIdMatch[1])
 
-      if (parts[1] === 'JAMB-KIT') {
-        // Jamb kit: P{projectId}|JAMB-KIT|{openingName}
-        itemType = 'jambkit'
-        openingName = parts[2] || null
-        itemName = 'Jamb Kit'
-        partNumber = 'JAMB-KIT'
-      } else if (parts.length === 3) {
-        // Component: P{projectId}|{openingName}|{itemName}
-        itemType = 'component'
-        partNumber = null
-        openingName = parts[1] || null
-        itemName = parts[2] || null
-      } else if (parts.length >= 4) {
-        // Hardware: P{projectId}|{partNumber}|{openingName}|{itemName}
-        itemType = 'hardware'
-        partNumber = parts[1] || null
-        openingName = parts[2] || null
-        itemName = parts[3] || null
-      }
-    } else {
-      // Legacy format without project ID - validate by opening name
-      if (parts[0] === 'JAMB-KIT') {
-        itemType = 'jambkit'
-        openingName = parts[1] || null
-        itemName = 'Jamb Kit'
-        partNumber = 'JAMB-KIT'
-      } else if (parts.length === 2) {
-        itemType = 'component'
-        partNumber = null
-        openingName = parts[0] || null
-        itemName = parts[1] || null
-      } else if (parts.length >= 3) {
-        itemType = 'hardware'
-        partNumber = parts[0] || null
-        openingName = parts[1] || null
-        itemName = parts[2] || null
-      }
+    // Validate project ID matches - if not, look up the actual project name
+    if (qrProjectId !== project.id) {
+      const actualProject = await prisma.project.findUnique({
+        where: { id: qrProjectId },
+        select: { name: true }
+      })
+      const projectName = actualProject?.name || `Project #${qrProjectId}`
 
-      // For legacy format, validate opening exists in this project
-      if (openingName) {
-        const opening = await prisma.opening.findFirst({
-          where: {
-            projectId: project.id,
-            name: openingName
-          }
-        })
+      return NextResponse.json(
+        {
+          error: `This sticker belongs to "${projectName}" - not the current project.`,
+          success: false,
+          wrongProject: true,
+          wrongProjectName: projectName,
+          wrongProjectId: qrProjectId,
+          scannedData: qrData
+        },
+        { status: 400 }
+      )
+    }
 
-        if (!opening) {
-          return NextResponse.json(
-            {
-              error: `This item belongs to a different project. Opening "${openingName}" not found in "${project.name}".`,
-              success: false,
-              wrongProject: true,
-              scannedData: qrData
-            },
-            { status: 400 }
-          )
-        }
-      }
+    // Parse item details based on format
+    if (parts[2] === 'JAMB-KIT') {
+      // Jamb kit: P{projectId}|S{stickerIndex}|JAMB-KIT|{openingName}
+      itemType = 'jambkit'
+      openingName = parts[3] || null
+      itemName = 'Jamb Kit'
+      partNumber = 'JAMB-KIT'
+    } else if (parts.length === 4) {
+      // Component: P{projectId}|S{stickerIndex}|{openingName}|{itemName}
+      itemType = 'component'
+      partNumber = null
+      openingName = parts[2] || null
+      itemName = parts[3] || null
+    } else if (parts.length >= 5) {
+      // Hardware: P{projectId}|S{stickerIndex}|{partNumber}|{openingName}|{itemName}
+      itemType = 'hardware'
+      partNumber = parts[2] || null
+      openingName = parts[3] || null
+      itemName = parts[4] || null
     }
 
     if (!openingName) {

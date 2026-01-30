@@ -33,6 +33,7 @@ const TAB_LABELS: Record<string, string> = {
   purchaseOrders: 'Purchase Orders',
   receiving: 'Receiving',
   purchasingDashboard: 'Purchasing Dashboard',
+  purchaseSummary: 'Purchase Summary',
   salesOrders: 'Sales Orders',
   invoices: 'Invoices',
   quoteDocuments: 'Quote Settings',

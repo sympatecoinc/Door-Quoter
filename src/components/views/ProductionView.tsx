@@ -14,10 +14,18 @@ import {
   ChevronDown,
   FileText,
   Settings,
-  X
+  X,
+  PlayCircle,
+  Boxes,
+  Package,
+  ClipboardCheck,
+  Truck,
+  Ruler
 } from 'lucide-react'
 import { ProjectStatus, STATUS_CONFIG } from '@/types'
-import StatusBadge from '@/components/projects/StatusBadge'
+import ProductionTimeline from '@/components/production/ProductionTimeline'
+import { MiniProgress } from '@/components/production/ProgressMeter'
+import Link from 'next/link'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 import BomDownloadModal from '../production/BomDownloadModal'
@@ -37,6 +45,7 @@ type CutListConfig = CutListConfigData
 interface ProductionProject {
   id: number
   name: string
+  version?: number
   status: ProjectStatus
   dueDate: string | null
   customerId: number | null
@@ -45,9 +54,18 @@ interface ProductionProject {
   openingsCount: number
   batchSize: number | null
   updatedAt: string
+  workOrderProgress?: {
+    total: number
+    stageDistribution: Record<string, number>
+  }
 }
 
-type DownloadType = 'bom' | 'cutlist' | 'picklist' | 'jambkit' | 'shopdrawings'
+interface StationCount {
+  stage: string
+  count: number
+}
+
+type DownloadType = 'bom' | 'bomPdf' | 'cutlist' | 'cutlistPdf' | 'picklist' | 'jambkit' | 'shopdrawings' | 'fieldverification'
 
 interface DownloadingState {
   [projectId: number]: {
@@ -61,26 +79,24 @@ function ProjectRowSkeleton() {
       <td className="px-4 py-3">
         <div className="h-4 w-4 bg-gray-200 rounded" />
       </td>
-      <td className="px-4 py-3">
-        <div className="h-4 w-40 bg-gray-200 rounded" />
-      </td>
-      <td className="px-4 py-3">
-        <div className="h-4 w-32 bg-gray-200 rounded" />
-      </td>
-      <td className="px-4 py-3">
-        <div className="h-5 w-20 bg-gray-200 rounded-full" />
-      </td>
-      <td className="px-4 py-3">
-        <div className="h-4 w-8 bg-gray-200 rounded" />
-      </td>
-      <td className="px-4 py-3">
-        <div className="h-4 w-16 bg-gray-200 rounded" />
-      </td>
-      <td className="px-4 py-3">
+      <td className="px-3 py-3 whitespace-nowrap w-28">
         <div className="h-4 w-20 bg-gray-200 rounded" />
       </td>
-      <td className="px-4 py-3">
-        <div className="h-8 w-40 bg-gray-200 rounded" />
+      <td className="px-3 py-3 text-center w-24">
+        <div className="h-4 w-10 bg-gray-200 rounded mx-auto" />
+      </td>
+      <td className="px-3 py-3">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="h-4 w-40 bg-gray-200 rounded" />
+          <div className="h-5 w-20 bg-gray-200 rounded-full" />
+        </div>
+        <div className="h-3 w-32 bg-gray-200 rounded" />
+      </td>
+      <td className="px-4 py-3 min-w-[220px]">
+        <div className="h-8 w-full bg-gray-200 rounded" />
+      </td>
+      <td className="px-4 py-3 text-right">
+        <div className="h-8 w-40 bg-gray-200 rounded inline-block" />
       </td>
     </tr>
   )
@@ -176,13 +192,15 @@ export default function ProductionView() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [downloading, setDownloading] = useState<DownloadingState>({})
   const [bulkDownloading, setBulkDownloading] = useState(false)
-  const [bomModalProject, setBomModalProject] = useState<{ id: number; name: string } | null>(null)
+  const [bomModalProject, setBomModalProject] = useState<{ id: number; name: string; format?: 'csv' | 'pdf' } | null>(null)
   const [shopDrawingsModalProject, setShopDrawingsModalProject] = useState<{ id: number; name: string } | null>(null)
-  const [cutListModalProjects, setCutListModalProjects] = useState<Array<{ id: number; name: string; batchSize?: number | null }> | null>(null)
+  const [cutListModalProjects, setCutListModalProjects] = useState<Array<{ id: number; name: string; batchSize?: number | null; format?: 'csv' | 'pdf' }> | null>(null)
   const [editingBatchSize, setEditingBatchSize] = useState<{ projectId: number; value: string } | null>(null)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [defaultBatchSize, setDefaultBatchSize] = useState<number | null>(null)
   const [settingsLoading, setSettingsLoading] = useState(false)
+  const [stationCounts, setStationCounts] = useState<StationCount[]>([])
+  const [generatingWorkOrders, setGeneratingWorkOrders] = useState<Set<number>>(new Set())
 
   // Bulk download queue state - stores configuration as user goes through modals
   const [bulkDownloadQueue, setBulkDownloadQueue] = useState<{
@@ -192,6 +210,9 @@ export default function ProductionView() {
     // Collected configurations
     bomConfigs: BomConfig[]
     cutListConfigs: CutListConfig[]
+    // Format preferences for modals
+    bomFormat?: 'csv' | 'pdf'
+    cutlistFormat?: 'csv' | 'pdf'
   } | null>(null)
 
   const { toasts, removeToast, showSuccess, showError } = useToast()
@@ -199,7 +220,57 @@ export default function ProductionView() {
   useEffect(() => {
     fetchProjects()
     fetchSettings()
+    fetchStationCounts()
   }, [])
+
+  async function fetchStationCounts() {
+    try {
+      const response = await fetch('/api/work-orders?limit=1')
+      if (response.ok) {
+        // Get counts from all stages
+        const stages = ['STAGED', 'CUTTING', 'ASSEMBLY', 'QC', 'SHIP']
+        const counts: StationCount[] = []
+        for (const stage of stages) {
+          const stageRes = await fetch(`/api/work-orders/station/${stage.toLowerCase()}`)
+          if (stageRes.ok) {
+            const data = await stageRes.json()
+            counts.push({ stage, count: data.count || 0 })
+          }
+        }
+        setStationCounts(counts)
+      }
+    } catch (error) {
+      console.error('Error fetching station counts:', error)
+    }
+  }
+
+  async function generateWorkOrders(projectId: number) {
+    setGeneratingWorkOrders(prev => new Set([...prev, projectId]))
+    try {
+      const response = await fetch(`/api/projects/${projectId}/work-orders/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        showSuccess(`Created ${data.summary.created} work order${data.summary.created !== 1 ? 's' : ''}`)
+        fetchProjects() // Refresh to show new progress
+        fetchStationCounts()
+      } else {
+        const data = await response.json()
+        showError(data.error || 'Failed to generate work orders')
+      }
+    } catch (error) {
+      console.error('Error generating work orders:', error)
+      showError('Failed to generate work orders')
+    } finally {
+      setGeneratingWorkOrders(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(projectId)
+        return newSet
+      })
+    }
+  }
 
   async function fetchSettings() {
     try {
@@ -296,6 +367,10 @@ export default function ProductionView() {
         case 'jambkit':
           url = `/api/projects/${projectId}/bom?jambkit=true&format=pdf`
           filename = `${safeProjectName}-jamb-kit-list.pdf`
+          break
+        case 'fieldverification':
+          url = `/api/projects/${projectId}/field-verification`
+          filename = `${safeProjectName}-field-verification.pdf`
           break
         default:
           throw new Error('Invalid download type')
@@ -573,6 +648,10 @@ export default function ProductionView() {
               url = `/api/projects/${download.projectId}/bom?jambkit=true&format=pdf`
               filename = `${safeProjectName}-jamb-kit-list.pdf`
               break
+            case 'fieldverification':
+              url = `/api/projects/${download.projectId}/field-verification`
+              filename = `${safeProjectName}-field-verification.pdf`
+              break
             case 'shopdrawings':
               continue
             default:
@@ -727,9 +806,12 @@ export default function ProductionView() {
   // Selectable options (can be checked and downloaded together)
   const selectableOptions = [
     { value: 'bom' as DownloadType, label: 'BOM (CSV)', icon: FileSpreadsheet },
+    { value: 'bomPdf' as DownloadType, label: 'BOM (PDF)', icon: FileText },
     { value: 'cutlist' as DownloadType, label: 'Cut List (CSV)', icon: Scissors },
+    { value: 'cutlistPdf' as DownloadType, label: 'Cut List (PDF)', icon: FileText },
     { value: 'picklist' as DownloadType, label: 'Pick List (PDF)', icon: ClipboardList },
     { value: 'jambkit' as DownloadType, label: 'Jamb Kit List (PDF)', icon: Package2 },
+    { value: 'fieldverification' as DownloadType, label: 'Field Verification (PDF)', icon: Ruler },
   ]
 
   // Direct download options (no checkbox, download immediately)
@@ -741,7 +823,7 @@ export default function ProductionView() {
   const downloadOptions = [...selectableOptions, ...directOptions.map(o => ({ ...o, selectable: false }))]
 
   // Options that can be included in bulk downloads
-  const bulkDownloadTypes: DownloadType[] = ['bom', 'cutlist', 'picklist', 'jambkit']
+  const bulkDownloadTypes: DownloadType[] = ['bom', 'bomPdf', 'cutlist', 'cutlistPdf', 'picklist', 'jambkit', 'fieldverification']
 
   const DownloadDropdown = ({
     projectId,
@@ -818,14 +900,19 @@ export default function ProductionView() {
       setIsDownloading(true)
 
       // Determine which modal-based downloads are needed
-      const modalTypes: Array<'bom' | 'cutlist'> = []
+      // Track both the modal type and format (csv or pdf)
+      const modalTypes: Array<{ type: 'bom' | 'cutlist', format: 'csv' | 'pdf' }> = []
       const directDownloads: DownloadType[] = []
 
       for (const type of selectedTypes) {
         if (type === 'bom') {
-          modalTypes.push('bom')
+          modalTypes.push({ type: 'bom', format: 'csv' })
+        } else if (type === 'bomPdf') {
+          modalTypes.push({ type: 'bom', format: 'pdf' })
         } else if (type === 'cutlist') {
-          modalTypes.push('cutlist')
+          modalTypes.push({ type: 'cutlist', format: 'csv' })
+        } else if (type === 'cutlistPdf') {
+          modalTypes.push({ type: 'cutlist', format: 'pdf' })
         } else {
           directDownloads.push(type)
         }
@@ -839,20 +926,31 @@ export default function ProductionView() {
           type
         }))
 
+        // For now, we'll handle one format at a time - prioritize PDF if both selected
+        // In bulk mode, the modal will receive the format prop
+        const bomModal = modalTypes.find(m => m.type === 'bom')
+        const cutlistModal = modalTypes.find(m => m.type === 'cutlist')
+        const pendingModals: Array<'bom' | 'cutlist'> = []
+        if (bomModal) pendingModals.push('bom')
+        if (cutlistModal) pendingModals.push('cutlist')
+
         setBulkDownloadQueue({
-          pendingModals: modalTypes,
+          pendingModals,
           projects: [{ id: projectId, name: projectName, batchSize }],
           pendingDirectDownloads,
           bomConfigs: [],
-          cutListConfigs: []
-        })
+          cutListConfigs: [],
+          // Store format preferences for modals
+          bomFormat: bomModal?.format || 'csv',
+          cutlistFormat: cutlistModal?.format || 'csv'
+        } as any)
 
         // Show the first modal
-        const firstModal = modalTypes[0]
+        const firstModal = pendingModals[0]
         if (firstModal === 'bom') {
-          setBomModalProject({ id: projectId, name: projectName })
+          setBomModalProject({ id: projectId, name: projectName, format: bomModal?.format || 'csv' } as any)
         } else if (firstModal === 'cutlist') {
-          setCutListModalProjects([{ id: projectId, name: projectName, batchSize }])
+          setCutListModalProjects([{ id: projectId, name: projectName, batchSize, format: cutlistModal?.format || 'csv' } as any])
         }
       } else {
         // No modals needed, just do direct downloads
@@ -998,10 +1096,73 @@ export default function ProductionView() {
             </button>
           </div>
           <p className="text-gray-600 mt-2">
-            Projects ready for production (Approved, Quote Accepted, or Active)
+            Projects ready for production
           </p>
         </div>
         <div className="flex items-center space-x-3">
+          {/* Station Navigation Links */}
+          <div className="flex items-center gap-1 mr-2">
+            <Link
+              href="/production/staged"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+            >
+              <Boxes className="w-3.5 h-3.5" />
+              Staged
+              {(stationCounts.find(s => s.stage === 'STAGED')?.count ?? 0) > 0 && (
+                <span className="bg-gray-200 text-gray-700 px-1 rounded text-[10px]">
+                  {stationCounts.find(s => s.stage === 'STAGED')?.count}
+                </span>
+              )}
+            </Link>
+            <Link
+              href="/production/cutting"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded transition-colors"
+            >
+              <Scissors className="w-3.5 h-3.5" />
+              Cutting
+              {(stationCounts.find(s => s.stage === 'CUTTING')?.count ?? 0) > 0 && (
+                <span className="bg-orange-100 text-orange-700 px-1 rounded text-[10px]">
+                  {stationCounts.find(s => s.stage === 'CUTTING')?.count}
+                </span>
+              )}
+            </Link>
+            <Link
+              href="/production/assembly"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+            >
+              <Package className="w-3.5 h-3.5" />
+              Assembly
+              {(stationCounts.find(s => s.stage === 'ASSEMBLY')?.count ?? 0) > 0 && (
+                <span className="bg-blue-100 text-blue-700 px-1 rounded text-[10px]">
+                  {stationCounts.find(s => s.stage === 'ASSEMBLY')?.count}
+                </span>
+              )}
+            </Link>
+            <Link
+              href="/production/qc"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded transition-colors"
+            >
+              <ClipboardCheck className="w-3.5 h-3.5" />
+              QC
+              {(stationCounts.find(s => s.stage === 'QC')?.count ?? 0) > 0 && (
+                <span className="bg-purple-100 text-purple-700 px-1 rounded text-[10px]">
+                  {stationCounts.find(s => s.stage === 'QC')?.count}
+                </span>
+              )}
+            </Link>
+            <Link
+              href="/production/shipping"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs text-green-600 hover:text-green-800 hover:bg-green-50 rounded transition-colors"
+            >
+              <Truck className="w-3.5 h-3.5" />
+              Ship
+              {(stationCounts.find(s => s.stage === 'SHIP')?.count ?? 0) > 0 && (
+                <span className="bg-green-100 text-green-700 px-1 rounded text-[10px]">
+                  {stationCounts.find(s => s.stage === 'SHIP')?.count}
+                </span>
+              )}
+            </Link>
+          </div>
           <button
             onClick={fetchProjects}
             disabled={loading}
@@ -1037,13 +1198,11 @@ export default function ProductionView() {
                   <th className="px-4 py-3 text-left w-10">
                     <div className="h-4 w-4 bg-gray-200 rounded" />
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Project</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Openings</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Batch Size</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Downloads</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap w-28">Due Date</th>
+                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap w-24">Batch Size</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Project</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[220px]">Progress</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Downloads</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -1066,25 +1225,19 @@ export default function ProductionView() {
                       className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                     />
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Project
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Customer
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Openings
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Batch Size
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap w-28">
                     Due Date
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap w-24">
+                    Batch Size
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Project
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[220px]">
+                    Progress
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Downloads
                   </th>
                 </tr>
@@ -1104,24 +1257,10 @@ export default function ProductionView() {
                         className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
                       />
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-gray-900">
-                        {project.name}
-                      </div>
+                    <td className="px-3 py-3 text-sm text-gray-500 whitespace-nowrap w-28">
+                      {formatDate(project.dueDate)}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm text-gray-900">{project.customerName}</div>
-                      {project.customerContact && (
-                        <div className="text-xs text-gray-500">{project.customerContact}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={project.status} />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {project.openingsCount}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
+                    <td className="px-3 py-3 text-sm text-center w-24">
                       {editingBatchSize?.projectId === project.id ? (
                         <input
                           type="text"
@@ -1140,7 +1279,7 @@ export default function ProductionView() {
                             }
                           }}
                           autoFocus
-                          className="w-16 px-2 py-1 text-sm border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-14 px-2 py-1 text-sm text-center border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       ) : (
                         <button
@@ -1154,10 +1293,49 @@ export default function ProductionView() {
                         </button>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {formatDate(project.dueDate)}
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-medium text-gray-900">
+                          {project.name}
+                        </div>
+                        {project.version && project.version > 1 && (
+                          <span className="bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
+                            V{project.version}
+                          </span>
+                        )}
+                        <span className="bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 text-xs font-medium">
+                          {project.openingsCount} {project.openingsCount === 1 ? 'opening' : 'openings'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500">{project.customerName}</div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 min-w-[220px]">
+                      {project.workOrderProgress && project.workOrderProgress.total > 0 ? (
+                        <MiniProgress
+                          stageDistribution={project.workOrderProgress.stageDistribution}
+                          totalWorkOrders={project.workOrderProgress.total}
+                        />
+                      ) : (
+                        <button
+                          onClick={() => generateWorkOrders(project.id)}
+                          disabled={generatingWorkOrders.has(project.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {generatingWorkOrders.has(project.id) ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Generating...
+                            </>
+                          ) : (
+                            <>
+                              <PlayCircle className="w-3 h-3" />
+                              Generate Work Orders
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
                       <DownloadDropdown
                         projectId={project.id}
                         projectName={project.name}
@@ -1201,6 +1379,7 @@ export default function ProductionView() {
         <BomDownloadModal
           projectId={bomModalProject.id}
           projectName={bomModalProject.name}
+          format={bomModalProject.format || bulkDownloadQueue?.bomFormat || 'csv'}
           onClose={() => {
             setBomModalProject(null)
             if (bulkDownloadQueue) {
@@ -1234,6 +1413,7 @@ export default function ProductionView() {
         <CutListDownloadModal
           projects={cutListModalProjects}
           defaultBatchSize={defaultBatchSize}
+          format={cutListModalProjects[0]?.format || bulkDownloadQueue?.cutlistFormat || 'csv'}
           onClose={() => {
             setCutListModalProjects(null)
             if (bulkDownloadQueue) {

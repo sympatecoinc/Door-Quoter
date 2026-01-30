@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import JSZip from 'jszip'
 import { applyYieldOptimizationToBomItems, BomItem } from '@/lib/bom-utils'
+import { createBomPDF, BomPdfComponent, BomPdfItem } from '@/lib/bom-pdf-generator'
 
 // Function to evaluate simple formulas for cut lengths
 function evaluateFormula(formula: string, variables: Record<string, number>): number {
@@ -170,6 +171,7 @@ export async function GET(
     const zipFormat = searchParams.get('zip') === 'true'
     const listOnly = searchParams.get('listOnly') === 'true'
     const selectedHashes = searchParams.get('selected')?.split('|').filter(Boolean) || []
+    const outputFormat = searchParams.get('format') || 'csv'  // 'csv' or 'pdf'
 
     if (isNaN(projectId)) {
       return NextResponse.json(
@@ -1281,6 +1283,149 @@ export async function GET(
 
       return aOrder - bOrder
     })
+
+    // Handle PDF format - generate PDF with component sections
+    if (outputFormat === 'pdf' && uniqueOnly) {
+      console.log('[BOM PDF] Generating PDF for project:', project.name, 'with selectedHashes:', selectedHashes.length || 'all')
+      // Get company logo for PDF
+      const logoSetting = await prisma.globalSetting.findUnique({
+        where: { key: 'company_logo' }
+      })
+      const companyLogo = logoSetting?.value || null
+
+      // Collect all components with their panel info
+      const allPdfComponents: { panel: any, opening: any }[] = []
+      for (const opening of project.openings) {
+        opening.panels.forEach((panel: any) => {
+          if (panel.componentInstance) {
+            allPdfComponents.push({ panel, opening })
+          }
+        })
+      }
+
+      // Group by unique configuration
+      const uniquePdfComponents = new Map<string, {
+        panels: { panel: any, opening: any }[],
+        productName: string,
+        width: number,
+        height: number,
+        finishColor: string,
+        glassType: string | null,
+        hardware: string[]
+      }>()
+
+      for (const { panel, opening } of allPdfComponents) {
+        const hash = generateComponentHash(panel, opening)
+        if (!uniquePdfComponents.has(hash)) {
+          // Parse hardware names from sub-option selections
+          const hardware: string[] = []
+          try {
+            const selections = JSON.parse(panel.componentInstance.subOptionSelections || '{}')
+            const product = panel.componentInstance.product
+            for (const [categoryId, optionId] of Object.entries(selections)) {
+              const subOption = product.productSubOptions?.find(
+                (so: any) => so.category?.id === parseInt(categoryId)
+              )
+              if (subOption?.category) {
+                const option = subOption.category.individualOptions?.find(
+                  (opt: any) => opt.id === optionId
+                )
+                if (option) {
+                  hardware.push(option.name)
+                }
+              }
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+
+          uniquePdfComponents.set(hash, {
+            panels: [],
+            productName: panel.componentInstance.product.name,
+            width: panel.width,
+            height: panel.height,
+            finishColor: opening.finishColor || 'Standard',
+            glassType: panel.glassType || null,
+            hardware
+          })
+        }
+        uniquePdfComponents.get(hash)!.panels.push({ panel, opening })
+      }
+
+      // Build PDF components data (filtered by selected hashes if provided)
+      const pdfComponents: BomPdfComponent[] = []
+      for (const [hash, componentGroup] of uniquePdfComponents) {
+        // Skip if selectedHashes is provided and this hash is not in the list
+        if (selectedHashes.length > 0 && !selectedHashes.includes(hash)) {
+          continue
+        }
+        const quantity = componentGroup.panels.length
+
+        // Filter BOM items for this specific component configuration
+        const componentBomItems = sortedBomItems.filter(item =>
+          item.productName === componentGroup.productName &&
+          item.panelWidth === componentGroup.width &&
+          item.panelHeight === componentGroup.height &&
+          (item.partType === 'Glass' || item.isLinkedPart === true || item.color === (componentGroup.finishColor || 'N/A'))
+        )
+
+        // Remove duplicates
+        const seenItems = new Set<string>()
+        const uniqueBomItems = componentBomItems.filter(item => {
+          const key = `${item.partNumber}-${item.partName}-${item.partType}-${item.cutLength}`
+          if (seenItems.has(key)) return false
+          seenItems.add(key)
+          return true
+        })
+
+        // Convert to PDF item format
+        const pdfItems: BomPdfItem[] = uniqueBomItems.map(item => ({
+          partNumber: item.partNumber,
+          partName: item.partName,
+          partType: item.partType,
+          quantity: item.quantity,
+          cutLength: item.cutLength || null,
+          percentOfStock: item.percentOfStock || null,
+          isMilled: item.isMilled,
+          unit: item.unit || 'EA',
+          color: item.color
+        }))
+
+        pdfComponents.push({
+          productName: componentGroup.productName,
+          width: componentGroup.width,
+          height: componentGroup.height,
+          finishColor: componentGroup.finishColor,
+          glassType: componentGroup.glassType,
+          quantity,
+          hardware: componentGroup.hardware,
+          items: pdfItems
+        })
+      }
+
+      // Generate PDF
+      const pdfBuffer = await createBomPDF({
+        projectName: project.name,
+        companyLogo,
+        components: pdfComponents,
+        generatedDate: new Date().toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      })
+
+      const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '-')}-BOM-${new Date().toISOString().slice(0, 10)}.pdf`
+      return new NextResponse(pdfBuffer, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${filename}"`
+        }
+      })
+    }
 
     // Handle ZIP format - generate ZIP with one CSV per component
     if (zipFormat) {

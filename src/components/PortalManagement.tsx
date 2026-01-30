@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, Save, X, Globe, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { Plus, Edit, Trash2, Save, X, Globe, CheckCircle, XCircle, AlertCircle, ChevronUp, ChevronDown, GripVertical } from 'lucide-react'
 import { Portal } from '@/types'
 
 // Available tabs for portal configuration (copied from permissions.ts)
@@ -19,6 +19,7 @@ const ALL_TABS = [
   { id: 'purchaseOrders', label: 'Purchase Orders' },
   { id: 'receiving', label: 'Receiving' },
   { id: 'purchasingDashboard', label: 'Purchasing Dashboard' },
+  { id: 'purchaseSummary', label: 'Purchase Summary' },
   { id: 'salesOrders', label: 'Sales Orders' },
   { id: 'invoices', label: 'Invoices' },
   { id: 'quoteDocuments', label: 'Quote Settings' },
@@ -136,6 +137,33 @@ export default function PortalManagement() {
       }
     })
   }
+
+  function moveTab(tabId: string, direction: 'up' | 'down') {
+    setFormData(prev => {
+      const currentIndex = prev.tabs.indexOf(tabId)
+      if (currentIndex === -1) return prev
+
+      const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+      if (newIndex < 0 || newIndex >= prev.tabs.length) return prev
+
+      const newTabs = [...prev.tabs]
+      newTabs.splice(currentIndex, 1)
+      newTabs.splice(newIndex, 0, tabId)
+
+      return { ...prev, tabs: newTabs }
+    })
+  }
+
+  function removeTab(tabId: string) {
+    setFormData(prev => {
+      const newTabs = prev.tabs.filter(t => t !== tabId)
+      const newDefaultTab = newTabs.includes(prev.defaultTab) ? prev.defaultTab : ''
+      return { ...prev, tabs: newTabs, defaultTab: newDefaultTab }
+    })
+  }
+
+  // Get tabs that are not yet selected
+  const availableTabs = ALL_TABS.filter(tab => !formData.tabs.includes(tab.id))
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -456,27 +484,83 @@ export default function PortalManagement() {
                 />
               </div>
 
-              {/* Tabs Selection */}
+              {/* Tabs Selection with Ordering */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Allowed Tabs *
+                  Portal Tabs *
                 </label>
-                <div className="border border-gray-200 rounded-lg p-3 max-h-60 overflow-y-auto">
-                  <div className="grid grid-cols-2 gap-2">
-                    {ALL_TABS.map((tab) => (
-                      <label
-                        key={tab.id}
-                        className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.tabs.includes(tab.id)}
-                          onChange={() => handleTabToggle(tab.id)}
-                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <span className="text-sm text-gray-700">{tab.label}</span>
-                      </label>
-                    ))}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Available Tabs */}
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2">Available tabs (click to add)</p>
+                    <div className="border border-gray-200 rounded-lg p-2 max-h-60 overflow-y-auto bg-gray-50">
+                      {availableTabs.length === 0 ? (
+                        <p className="text-xs text-gray-400 text-center py-4">All tabs selected</p>
+                      ) : (
+                        availableTabs.map((tab) => (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => handleTabToggle(tab.id)}
+                            className="w-full flex items-center gap-2 p-2 hover:bg-white rounded text-left text-sm text-gray-700 transition-colors"
+                          >
+                            <Plus className="w-3 h-3 text-gray-400" />
+                            {tab.label}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Selected Tabs (Ordered) */}
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2">Selected tabs (drag to reorder)</p>
+                    <div className="border border-gray-200 rounded-lg p-2 max-h-60 overflow-y-auto">
+                      {formData.tabs.length === 0 ? (
+                        <p className="text-xs text-gray-400 text-center py-4">No tabs selected</p>
+                      ) : (
+                        formData.tabs.map((tabId, index) => {
+                          const tab = ALL_TABS.find(t => t.id === tabId)
+                          return (
+                            <div
+                              key={tabId}
+                              className="flex items-center gap-1 p-2 bg-blue-50 rounded mb-1 group"
+                            >
+                              <GripVertical className="w-3 h-3 text-gray-400" />
+                              <span className="flex-1 text-sm text-gray-700">{tab?.label || tabId}</span>
+                              <div className="flex items-center gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => moveTab(tabId, 'up')}
+                                  disabled={index === 0}
+                                  className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  title="Move up"
+                                >
+                                  <ChevronUp className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveTab(tabId, 'down')}
+                                  disabled={index === formData.tabs.length - 1}
+                                  className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  title="Move down"
+                                >
+                                  <ChevronDown className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeTab(tabId)}
+                                  className="p-1 text-red-400 hover:text-red-600"
+                                  title="Remove"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
                   </div>
                 </div>
                 {formData.tabs.length === 0 && (

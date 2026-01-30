@@ -299,7 +299,7 @@ export interface ComponentInstance {
   updatedAt: Date
 }
 
-export type MenuOption = 'dashboard' | 'customers' | 'crm' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'purchasingDashboard' | 'receiving' | 'salesOrders' | 'invoices' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments' | 'production' | 'logistics'
+export type MenuOption = 'dashboard' | 'customers' | 'crm' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'purchasingDashboard' | 'purchaseSummary' | 'receiving' | 'salesOrders' | 'invoices' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments' | 'production' | 'logistics'
 
 // Vendor Management Types
 export interface Vendor {
@@ -613,6 +613,7 @@ export interface PortalContext {
   id: number
   name: string
   subdomain: string
+  tabs: string[]
   defaultTab: string | null
   headerTitle: string | null
 }

@@ -4,11 +4,18 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Building2, Phone, MapPin, Check } from 'lucide-react'
 import { useEscapeKey } from '@/hooks/useEscapeKey'
 
-interface Customer {
+interface SearchResult {
   id: number
+  type: 'customer' | 'prospect'
   companyName: string
-  city?: string
-  state?: string
+  city?: string | null
+  state?: string | null
+  phone?: string | null
+  address?: string | null
+  zipCode?: string | null
+  status?: string
+  projectName?: string
+  projectStatus?: string
 }
 
 interface AddLeadModalProps {
@@ -31,9 +38,9 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Customer autocomplete state
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  // Company autocomplete state (includes customers and prospect projects)
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
   const [searchLoading, setSearchLoading] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -45,24 +52,24 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
     { isOpen, isBlocked: saving, onClose },
   ])
 
-  // Search customers as user types
-  const searchCustomers = async (query: string) => {
+  // Search companies as user types (customers and prospect projects)
+  const searchCompanies = async (query: string) => {
     if (query.length < 2) {
-      setCustomers([])
+      setSearchResults([])
       setShowDropdown(false)
       return
     }
 
     setSearchLoading(true)
     try {
-      const response = await fetch(`/api/customers?search=${encodeURIComponent(query)}&limit=10&status=Active,Lead`)
+      const response = await fetch(`/api/search/companies?search=${encodeURIComponent(query)}&limit=10`)
       if (response.ok) {
         const data = await response.json()
-        setCustomers(data.customers || [])
+        setSearchResults(data.results || [])
         setShowDropdown(true)
       }
     } catch (error) {
-      console.error('Error searching customers:', error)
+      console.error('Error searching companies:', error)
     } finally {
       setSearchLoading(false)
     }
@@ -73,9 +80,9 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
     const value = e.target.value
     setFormData({ ...formData, prospectCompanyName: value })
 
-    // Clear selected customer when user types
-    if (selectedCustomer && value !== selectedCustomer.companyName) {
-      setSelectedCustomer(null)
+    // Clear selected result when user types
+    if (selectedResult && value !== selectedResult.companyName) {
+      setSelectedResult(null)
     }
 
     // Debounce search
@@ -83,16 +90,32 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
       clearTimeout(debounceRef.current)
     }
     debounceRef.current = setTimeout(() => {
-      searchCustomers(value)
+      searchCompanies(value)
     }, 300)
   }
 
-  // Handle customer selection from dropdown
-  const handleSelectCustomer = (customer: Customer) => {
-    setSelectedCustomer(customer)
-    setFormData({ ...formData, prospectCompanyName: customer.companyName })
+  // Handle selection from dropdown (customer or prospect)
+  const handleSelectResult = (result: SearchResult) => {
+    setSelectedResult(result)
+
+    if (result.type === 'customer') {
+      // Just set the company name for customers
+      setFormData({ ...formData, prospectCompanyName: result.companyName })
+    } else {
+      // For prospects, also auto-fill the optional fields
+      setFormData({
+        ...formData,
+        prospectCompanyName: result.companyName,
+        phone: result.phone || '',
+        address: result.address || '',
+        city: result.city || '',
+        state: result.state || '',
+        zipCode: result.zipCode || ''
+      })
+    }
+
     setShowDropdown(false)
-    setCustomers([])
+    setSearchResults([])
   }
 
   // Close dropdown when clicking outside
@@ -110,8 +133,8 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
   // Reset state when modal closes
   useEffect(() => {
     if (!isOpen) {
-      setCustomers([])
-      setSelectedCustomer(null)
+      setSearchResults([])
+      setSelectedResult(null)
       setShowDropdown(false)
       if (debounceRef.current) {
         clearTimeout(debounceRef.current)
@@ -138,9 +161,9 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
 
       let customerId: number | undefined
 
-      if (selectedCustomer) {
+      if (selectedResult?.type === 'customer') {
         // Use existing customer
-        customerId = selectedCustomer.id
+        customerId = selectedResult.id
       } else {
         // Create new customer from the typed company name
         const customerResponse = await fetch('/api/customers', {
@@ -194,7 +217,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
         state: '',
         zipCode: ''
       })
-      setSelectedCustomer(null)
+      setSelectedResult(null)
       onLeadCreated()
       onClose()
     } catch (err) {
@@ -217,8 +240,8 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
         state: '',
         zipCode: ''
       })
-      setSelectedCustomer(null)
-      setCustomers([])
+      setSelectedResult(null)
+      setSearchResults([])
       setShowDropdown(false)
       onClose()
     }
@@ -257,7 +280,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
               </label>
               <div className="relative">
                 <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 z-10" />
-                {selectedCustomer && (
+                {selectedResult && (
                   <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
                 )}
                 <input
@@ -266,13 +289,13 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
                   value={formData.prospectCompanyName}
                   onChange={handleCompanyNameChange}
                   onFocus={() => {
-                    if (formData.prospectCompanyName.length >= 2 && customers.length > 0) {
+                    if (formData.prospectCompanyName.length >= 2 && searchResults.length > 0) {
                       setShowDropdown(true)
                     }
                   }}
                   placeholder="Search or enter new company"
                   className={`w-full pl-10 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    selectedCustomer ? 'pr-10 border-green-300 bg-green-50' : 'pr-4 border-gray-300'
+                    selectedResult ? 'pr-10 border-green-300 bg-green-50' : 'pr-4 border-gray-300'
                   }`}
                   disabled={saving}
                   autoComplete="off"
@@ -286,26 +309,52 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
                   >
                     {searchLoading ? (
                       <div className="px-4 py-3 text-sm text-gray-500">Searching...</div>
-                    ) : customers.length > 0 ? (
+                    ) : searchResults.length > 0 ? (
                       <>
-                        <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-b">
-                          Existing Customers
-                        </div>
-                        {customers.map((customer) => (
-                          <button
-                            key={customer.id}
-                            type="button"
-                            onClick={() => handleSelectCustomer(customer)}
-                            className="w-full px-4 py-2 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none border-b border-gray-100 last:border-b-0"
-                          >
-                            <div className="font-medium text-gray-900">{customer.companyName}</div>
-                            {(customer.city || customer.state) && (
-                              <div className="text-xs text-gray-500">
-                                {[customer.city, customer.state].filter(Boolean).join(', ')}
+                        {/* Group results by type */}
+                        {searchResults.some(r => r.type === 'customer') && (
+                          <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-b">
+                            Existing Customers
+                          </div>
+                        )}
+                        {searchResults
+                          .filter(r => r.type === 'customer')
+                          .map((result) => (
+                            <button
+                              key={`customer-${result.id}`}
+                              type="button"
+                              onClick={() => handleSelectResult(result)}
+                              className="w-full px-4 py-2 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none border-b border-gray-100"
+                            >
+                              <div className="font-medium text-gray-900">{result.companyName}</div>
+                              {(result.city || result.state) && (
+                                <div className="text-xs text-gray-500">
+                                  {[result.city, result.state].filter(Boolean).join(', ')}
+                                </div>
+                              )}
+                            </button>
+                          ))}
+                        {searchResults.some(r => r.type === 'prospect') && (
+                          <div className="px-3 py-2 text-xs text-gray-500 bg-amber-50 border-b border-t">
+                            Existing Leads (Not Converted)
+                          </div>
+                        )}
+                        {searchResults
+                          .filter(r => r.type === 'prospect')
+                          .map((result) => (
+                            <button
+                              key={`prospect-${result.id}`}
+                              type="button"
+                              onClick={() => handleSelectResult(result)}
+                              className="w-full px-4 py-2 text-left hover:bg-amber-50 focus:bg-amber-50 focus:outline-none border-b border-gray-100"
+                            >
+                              <div className="font-medium text-gray-900">{result.companyName}</div>
+                              <div className="text-xs text-amber-600">
+                                {result.projectName && `Project: ${result.projectName}`}
+                                {result.city || result.state ? ` • ${[result.city, result.state].filter(Boolean).join(', ')}` : ''}
                               </div>
-                            )}
-                          </button>
-                        ))}
+                            </button>
+                          ))}
                         <div className="px-3 py-2 text-xs text-gray-400 bg-gray-50 border-t">
                           Or continue typing to create new
                         </div>
@@ -318,12 +367,17 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
                   </div>
                 )}
               </div>
-              {selectedCustomer && (
+              {selectedResult?.type === 'customer' && (
                 <p className="mt-1 text-xs text-green-600">
                   Linked to existing customer
                 </p>
               )}
-              {!selectedCustomer && formData.prospectCompanyName.length >= 2 && !showDropdown && (
+              {selectedResult?.type === 'prospect' && (
+                <p className="mt-1 text-xs text-amber-600">
+                  Info filled from existing lead (new customer will be created)
+                </p>
+              )}
+              {!selectedResult && formData.prospectCompanyName.length >= 2 && !showDropdown && (
                 <p className="mt-1 text-xs text-gray-500">
                   New customer will be created
                 </p>

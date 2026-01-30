@@ -10,7 +10,9 @@ const PUBLIC_ROUTES = [
   '/scan',     // Public bin location scan pages
   '/api/scan', // Public bin location scan API
   '/packing',    // Public packing scanner pages (token-authenticated)
-  '/api/packing' // Public packing scanner API (token-authenticated)
+  '/api/packing', // Public packing scanner API (token-authenticated)
+  '/field-verification',    // Public field verification upload pages (token-authenticated)
+  '/api/field-verification' // Public field verification upload API (token-authenticated)
 ]
 
 // Subdomains that are treated as main app (full access)

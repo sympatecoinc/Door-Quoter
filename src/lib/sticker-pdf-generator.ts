@@ -236,17 +236,23 @@ export async function createStickersPDF(
   }
 
   // Generate QR codes for all stickers first
-  // QR format includes projectId for uniqueness: P{projectId}|...
+  // QR format includes projectId AND stickerIndex for complete uniqueness:
+  // P{projectId}|S{stickerIndex}|...
+  // This ensures every single sticker has a completely unique QR code
   const qrCodes: string[] = []
   for (const sticker of stickers) {
     let qrData: string
     const projectPrefix = `P${sticker.projectId}`
+    const stickerPrefix = `S${sticker.stickerIndex}`
     if (sticker.itemType === 'jambkit') {
-      // Jamb kit QR format: P{projectId}|JAMB-KIT|{openingName}
-      qrData = `${projectPrefix}|JAMB-KIT|${sticker.openingName}`
+      // Jamb kit QR format: P{projectId}|S{stickerIndex}|JAMB-KIT|{openingName}
+      qrData = `${projectPrefix}|${stickerPrefix}|JAMB-KIT|${sticker.openingName}`
+    } else if (sticker.itemType === 'component') {
+      // Component QR format: P{projectId}|S{stickerIndex}|{openingName}|{itemName}
+      qrData = `${projectPrefix}|${stickerPrefix}|${sticker.openingName}|${sticker.itemName}`
     } else {
-      // Component/Hardware QR format: P{projectId}|{partNumber}|{openingName}|{itemName}
-      qrData = [projectPrefix, sticker.partNumber || '', sticker.openingName, sticker.itemName]
+      // Hardware QR format: P{projectId}|S{stickerIndex}|{partNumber}|{openingName}|{itemName}
+      qrData = [projectPrefix, stickerPrefix, sticker.partNumber || '', sticker.openingName, sticker.itemName]
         .filter(Boolean)
         .join('|')
     }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import JSZip from 'jszip'
 import {
@@ -11,7 +11,10 @@ import {
   RefreshCw,
   Package2,
   ChevronDown,
-  Clock
+  ChevronRight,
+  Clock,
+  CheckCircle2,
+  Circle
 } from 'lucide-react'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
@@ -32,6 +35,46 @@ interface LogisticsProject {
   packingStats: PackingStats
 }
 
+interface PackingComponent {
+  panelType: string
+  width: number
+  height: number
+  glassType: string | null
+  productName: string
+  stickerNumber: number
+  status: 'pending' | 'packed'
+  packedAt: string | null
+}
+
+interface PackingHardware {
+  partName: string
+  partNumber: string | null
+  description: string | null
+  stickerNumber: number
+  status: 'pending' | 'packed'
+  packedAt: string | null
+}
+
+interface PackingJambKit {
+  stickerNumber: number
+  itemCount: number
+  status: 'pending' | 'packed'
+  packedAt: string | null
+}
+
+interface PackingOpening {
+  openingId: number
+  openingName: string
+  components: PackingComponent[]
+  hardware: PackingHardware[]
+  jambKit: PackingJambKit | null
+}
+
+interface PackingData {
+  packingList: PackingOpening[]
+  jambKits: Array<{ openingId: number; openingName: string; itemCount: number }>
+}
+
 type DownloadType = 'packinglist' | 'labels' | 'boxlist'
 
 interface DownloadingState {
@@ -43,7 +86,10 @@ interface DownloadingState {
 function ProjectRowSkeleton() {
   return (
     <tr className="animate-pulse">
-      <td className="px-4 py-3">
+      <td className="px-2 py-3">
+        <div className="h-4 w-4 bg-gray-200 rounded" />
+      </td>
+      <td className="px-2 py-3">
         <div className="h-4 w-4 bg-gray-200 rounded" />
       </td>
       <td className="px-4 py-3">
@@ -71,6 +117,9 @@ export default function LogisticsView() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [downloading, setDownloading] = useState<DownloadingState>({})
   const [bulkDownloading, setBulkDownloading] = useState(false)
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [packingData, setPackingData] = useState<Record<number, PackingData>>({})
+  const [loadingPacking, setLoadingPacking] = useState<number | null>(null)
   const { toasts, removeToast, showSuccess, showError } = useToast()
   const { startDownload, updateProgress, completeDownload, failDownload } = useDownloadStore()
 
@@ -113,6 +162,34 @@ export default function LogisticsView() {
       newSelected.add(projectId)
     }
     setSelectedIds(newSelected)
+  }
+
+  async function toggleExpand(projectId: number) {
+    if (expandedId === projectId) {
+      setExpandedId(null)
+      return
+    }
+
+    setExpandedId(projectId)
+
+    // Fetch packing data if not already cached
+    if (!packingData[projectId]) {
+      setLoadingPacking(projectId)
+      try {
+        const response = await fetch(`/api/projects/${projectId}/packing-list`)
+        if (response.ok) {
+          const data = await response.json()
+          setPackingData(prev => ({ ...prev, [projectId]: data }))
+        } else {
+          showError('Failed to load packing details')
+        }
+      } catch (error) {
+        console.error('Error fetching packing list:', error)
+        showError('Failed to load packing details')
+      } finally {
+        setLoadingPacking(null)
+      }
+    }
   }
 
   async function downloadDocument(projectId: number, type: DownloadType, projectName: string) {
@@ -546,16 +623,20 @@ export default function LogisticsView() {
           <div className="overflow-x-auto">
             <table className="w-full table-fixed">
               <colgroup>
+                <col className="w-10" />
                 <col className="w-12" />
-                <col className="w-[25%]" />
-                <col className="w-[12%]" />
-                <col className="w-[15%]" />
                 <col className="w-[23%]" />
+                <col className="w-[10%]" />
+                <col className="w-[13%]" />
+                <col className="w-[22%]" />
                 <col className="w-[25%]" />
               </colgroup>
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left">
+                  <th className="px-2 py-3 text-left">
+                    {/* Expand column */}
+                  </th>
+                  <th className="px-2 py-3 text-left">
                     <div className="h-4 w-4 bg-gray-200 rounded" />
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Project</th>
@@ -576,16 +657,20 @@ export default function LogisticsView() {
           <div className="overflow-x-auto">
             <table className="w-full table-fixed">
               <colgroup>
+                <col className="w-10" />
                 <col className="w-12" />
-                <col className="w-[25%]" />
-                <col className="w-[12%]" />
-                <col className="w-[15%]" />
                 <col className="w-[23%]" />
+                <col className="w-[10%]" />
+                <col className="w-[13%]" />
+                <col className="w-[22%]" />
                 <col className="w-[25%]" />
               </colgroup>
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left">
+                  <th className="px-2 py-3 text-left">
+                    {/* Expand column */}
+                  </th>
+                  <th className="px-2 py-3 text-left">
                     <input
                       type="checkbox"
                       checked={selectedIds.size === projects.length && projects.length > 0}
@@ -612,66 +697,229 @@ export default function LogisticsView() {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {projects.map((project) => (
-                  <tr
-                    key={project.id}
-                    className={`hover:bg-gray-50 ${selectedIds.has(project.id) ? 'bg-blue-50' : ''}`}
-                  >
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(project.id)}
-                        onChange={() => toggleSelect(project.id)}
-                        disabled={isProjectDownloading(project.id)}
-                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-gray-900">
-                        {project.name}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {project.openingsCount}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {formatDate(project.dueDate)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {project.packingStats.packed === 0 ? (
-                        <div className="flex items-center text-sm text-gray-500">
-                          <Clock className="w-4 h-4 mr-1.5 text-gray-400" />
-                          Awaiting Packing
-                        </div>
-                      ) : (
-                        <div className="pr-4">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium text-gray-700">
-                              {project.packingStats.percentage}%
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {project.packingStats.packed}/{project.packingStats.total}
-                            </span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full transition-all ${
-                                project.packingStats.percentage === 100
-                                  ? 'bg-green-500'
-                                  : 'bg-blue-500'
+                  <React.Fragment key={project.id}>
+                    <tr
+                      className={`hover:bg-gray-50 cursor-pointer ${selectedIds.has(project.id) ? 'bg-blue-50' : ''} ${expandedId === project.id ? 'bg-gray-50' : ''}`}
+                      onClick={(e) => {
+                        // Don't expand if clicking on checkbox or download dropdown
+                        const target = e.target as HTMLElement
+                        if (target.closest('input[type="checkbox"]') || target.closest('.download-dropdown')) return
+                        toggleExpand(project.id)
+                      }}
+                    >
+                      <td className="px-2 py-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleExpand(project.id)
+                          }}
+                          className="p-1 hover:bg-gray-200 rounded transition-colors"
+                        >
+                          {loadingPacking === project.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                          ) : (
+                            <ChevronRight
+                              className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
+                                expandedId === project.id ? 'rotate-90' : ''
                               }`}
-                              style={{ width: `${project.packingStats.percentage}%` }}
                             />
-                          </div>
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-2 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(project.id)}
+                          onChange={() => toggleSelect(project.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          disabled={isProjectDownloading(project.id)}
+                          className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-medium text-gray-900">
+                          {project.name}
                         </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <DownloadDropdown
-                        projectId={project.id}
-                        projectName={project.name}
-                      />
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        {project.openingsCount}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {formatDate(project.dueDate)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {project.packingStats.packed === 0 ? (
+                          <div className="flex items-center text-sm text-gray-500">
+                            <Clock className="w-4 h-4 mr-1.5 text-gray-400" />
+                            Awaiting Packing
+                          </div>
+                        ) : (
+                          <div className="pr-4">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium text-gray-700">
+                                {project.packingStats.percentage}%
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {project.packingStats.packed}/{project.packingStats.total}
+                              </span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full transition-all ${
+                                  project.packingStats.percentage === 100
+                                    ? 'bg-green-500'
+                                    : 'bg-blue-500'
+                                }`}
+                                style={{ width: `${project.packingStats.percentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right download-dropdown" onClick={(e) => e.stopPropagation()}>
+                        <DownloadDropdown
+                          projectId={project.id}
+                          projectName={project.name}
+                        />
+                      </td>
+                    </tr>
+                    {/* Expanded packing details row */}
+                    {expandedId === project.id && (
+                      <tr>
+                        <td colSpan={7} className="bg-gray-50 border-t border-gray-100">
+                          <div className="px-6 py-4">
+                            {loadingPacking === project.id ? (
+                              <div className="flex items-center justify-center py-8">
+                                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                                <span className="ml-2 text-gray-500">Loading packing details...</span>
+                              </div>
+                            ) : packingData[project.id] ? (
+                              <div className="space-y-4">
+                                {packingData[project.id].packingList.map((opening) => {
+                                  const allItems = [
+                                    ...opening.components.map(c => ({ type: 'component' as const, ...c })),
+                                    ...opening.hardware.map(h => ({ type: 'hardware' as const, ...h })),
+                                    ...(opening.jambKit ? [{ type: 'jambkit' as const, ...opening.jambKit }] : [])
+                                  ]
+                                  const packedCount = allItems.filter(i => i.status === 'packed').length
+                                  const totalCount = allItems.length
+
+                                  return (
+                                    <div key={opening.openingId} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                      <div className="px-4 py-2 bg-gray-100 border-b border-gray-200 flex items-center justify-between">
+                                        <span className="font-medium text-gray-900">{opening.openingName}</span>
+                                        <span className={`text-sm ${packedCount === totalCount ? 'text-green-600' : 'text-gray-500'}`}>
+                                          {packedCount}/{totalCount} staged
+                                        </span>
+                                      </div>
+                                      <div className="divide-y divide-gray-100">
+                                        {/* Components */}
+                                        {opening.components.map((component) => (
+                                          <div
+                                            key={component.stickerNumber}
+                                            className="px-4 py-2 flex items-center justify-between hover:bg-gray-50"
+                                          >
+                                            <div className="flex items-center">
+                                              {component.status === 'packed' ? (
+                                                <CheckCircle2 className="w-4 h-4 text-green-500 mr-3 flex-shrink-0" />
+                                              ) : (
+                                                <Circle className="w-4 h-4 text-gray-300 mr-3 flex-shrink-0" />
+                                              )}
+                                              <div>
+                                                <div className="text-sm font-medium text-gray-900">
+                                                  {component.productName}
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                  {component.width}" x {component.height}" • Sticker #{component.stickerNumber}
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <span className={`text-xs px-2 py-1 rounded-full ${
+                                              component.status === 'packed'
+                                                ? 'bg-green-100 text-green-700'
+                                                : 'bg-gray-100 text-gray-600'
+                                            }`}>
+                                              {component.status === 'packed' ? 'Staged' : 'Pending'}
+                                            </span>
+                                          </div>
+                                        ))}
+                                        {/* Hardware */}
+                                        {opening.hardware.map((hw) => (
+                                          <div
+                                            key={hw.stickerNumber}
+                                            className="px-4 py-2 flex items-center justify-between hover:bg-gray-50"
+                                          >
+                                            <div className="flex items-center">
+                                              {hw.status === 'packed' ? (
+                                                <CheckCircle2 className="w-4 h-4 text-green-500 mr-3 flex-shrink-0" />
+                                              ) : (
+                                                <Circle className="w-4 h-4 text-gray-300 mr-3 flex-shrink-0" />
+                                              )}
+                                              <div>
+                                                <div className="text-sm text-gray-900">
+                                                  {hw.partName}
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                  {hw.partNumber && `${hw.partNumber} • `}Sticker #{hw.stickerNumber}
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <span className={`text-xs px-2 py-1 rounded-full ${
+                                              hw.status === 'packed'
+                                                ? 'bg-green-100 text-green-700'
+                                                : 'bg-gray-100 text-gray-600'
+                                            }`}>
+                                              {hw.status === 'packed' ? 'Staged' : 'Pending'}
+                                            </span>
+                                          </div>
+                                        ))}
+                                        {/* Jamb Kit */}
+                                        {opening.jambKit && (
+                                          <div className="px-4 py-2 flex items-center justify-between hover:bg-gray-50">
+                                            <div className="flex items-center">
+                                              {opening.jambKit.status === 'packed' ? (
+                                                <CheckCircle2 className="w-4 h-4 text-green-500 mr-3 flex-shrink-0" />
+                                              ) : (
+                                                <Circle className="w-4 h-4 text-gray-300 mr-3 flex-shrink-0" />
+                                              )}
+                                              <div>
+                                                <div className="text-sm text-gray-900">
+                                                  Jamb Kit ({opening.jambKit.itemCount} items)
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                  Sticker #{opening.jambKit.stickerNumber}
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <span className={`text-xs px-2 py-1 rounded-full ${
+                                              opening.jambKit.status === 'packed'
+                                                ? 'bg-green-100 text-green-700'
+                                                : 'bg-gray-100 text-gray-600'
+                                            }`}>
+                                              {opening.jambKit.status === 'packed' ? 'Staged' : 'Pending'}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                                {packingData[project.id].packingList.length === 0 && (
+                                  <div className="text-center py-8 text-gray-500">
+                                    No packing items found for this project
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-center py-8 text-gray-500">
+                                Failed to load packing details
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

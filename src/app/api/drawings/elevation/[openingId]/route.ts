@@ -212,7 +212,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             // Render to PNG - pass the already-scaled SVG directly to resvg
             // We skip parametric processing in renderSvgToPng since we already did it
             const { Resvg } = await import('@resvg/resvg-js')
-            const pixelsPerInch = 24
+            // Use lower resolution for quote display to reduce memory usage
+            // (12px/inch = 75% less memory than 24px/inch, still crisp for preview)
+            const pixelsPerInch = 12
             const pngWidth = Math.round(panel.width * pixelsPerInch)
 
             const resvg = new Resvg(finalSvg, {
@@ -227,10 +229,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             })
 
             const pngData = resvg.render()
-            const pngBuffer = pngData.asPng()
+            let pngBuffer: Buffer | null = pngData.asPng()
             imageData = pngBuffer.toString('base64')
 
             console.log(`  ✓ Rendered to PNG: ${pngData.width}x${pngData.height}`)
+
+            // Explicitly release buffer reference to help GC
+            pngBuffer = null
 
             console.log(`  ✓ Successfully rendered SVG to PNG for panel ${panel.id}`)
           } catch (error) {
