@@ -109,6 +109,7 @@ export async function GET(request: Request) {
           description: ext.description,
           partType: ext.partType,
           weightPerFoot: ext.weightPerFoot,
+          perimeterInches: ext.perimeterInches,
           customPricePerLb: ext.customPricePerLb,
           isMillFinish: ext.isMillFinish
         },

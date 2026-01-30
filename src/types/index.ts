@@ -37,7 +37,7 @@ export const STATUS_CONFIG: Record<ProjectStatus, {
   textColor: string
 }> = {
   [ProjectStatus.STAGING]: {
-    label: 'Staging',
+    label: 'Preparing Quote',
     color: 'gray',
     bgColor: 'bg-gray-100',
     textColor: 'text-gray-800'

@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
           }
         },
         fieldVerificationUploads: {
-          select: { id: true }
+          select: { id: true, confirmed: true }
         }
       },
       orderBy: [
@@ -290,7 +290,8 @@ export async function GET(request: NextRequest) {
         updatedAt: project.updatedAt,
         packingStats,
         workOrderProgress,
-        fieldVerificationCount: project.fieldVerificationUploads?.length || 0
+        fieldVerificationCount: project.fieldVerificationUploads?.length || 0,
+        fieldVerificationConfirmedCount: project.fieldVerificationUploads?.filter(u => u.confirmed).length || 0
       }
     }))
 

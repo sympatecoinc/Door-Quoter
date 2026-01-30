@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { X, Download, Send, Mail, Clock, DollarSign, LayoutGrid, RefreshCw, FileJson } from 'lucide-react'
 import { QuoteVersion, QuoteSnapshot } from '@/types'
 import { useEscapeKey } from '@/hooks/useEscapeKey'
+import { useDownloadStore } from '@/stores/downloadStore'
 import { generatePricingDebugCSV } from '@/lib/pricing-debug-csv'
 
 interface QuoteVersionModalProps {
@@ -23,6 +24,7 @@ export default function QuoteVersionModal({
   const [sendEmail, setSendEmail] = useState('')
   const [sending, setSending] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const { startDownload, updateProgress, completeDownload, failDownload } = useDownloadStore()
 
   useEscapeKey([
     { isOpen: showSendForm, isBlocked: sending, onClose: () => setShowSendForm(false) },
@@ -91,14 +93,23 @@ export default function QuoteVersionModal({
   }
 
   const handleDownloadDebugReport = async () => {
+    // Start download tracking toast
+    const downloadId = startDownload({
+      name: `Pricing Debug - ${leadName}`,
+      type: 'pricing-debug'
+    })
+
     try {
+      updateProgress(downloadId, 20)
       const response = await fetch(`/api/projects/${version.projectId}/pricing-debug`)
+      updateProgress(downloadId, 50)
 
       if (!response.ok) {
         throw new Error('Failed to fetch pricing debug data')
       }
 
       const data = await response.json()
+      updateProgress(downloadId, 70)
 
       if (!data.success) {
         throw new Error(data.error || 'Failed to generate pricing debug')
@@ -106,6 +117,7 @@ export default function QuoteVersionModal({
 
       // Build CSV content using shared utility
       const csv = generatePricingDebugCSV(data)
+      updateProgress(downloadId, 90)
 
       // Create download
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -118,9 +130,11 @@ export default function QuoteVersionModal({
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
 
+      completeDownload(downloadId)
+
     } catch (error) {
       console.error('Error generating pricing debug:', error)
-      alert('Failed to download pricing debug')
+      failDownload(downloadId, 'Failed to download pricing debug')
     }
   }
 

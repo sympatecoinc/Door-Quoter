@@ -12,7 +12,7 @@ import { useToast } from '../../hooks/useToast'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 import DrawingViewer from '../ui/DrawingViewer'
-import { ProjectStatus, STATUS_CONFIG, isProjectLocked, ProjectVersion, ProjectVersionsResponse } from '@/types'
+import { ProjectStatus, STATUS_CONFIG, isProjectLocked, ProjectVersion, ProjectVersionsResponse, getStatusLabel } from '@/types'
 
 // Natural sort comparison for opening names (handles "2" before "10", "Office 1" before "Office 10")
 function naturalSortCompare(a: string, b: string): number {
@@ -186,6 +186,7 @@ export default function ProjectDetailView() {
   const [deletingComponentName, setDeletingComponentName] = useState('')
   const [isDeletingComponent, setIsDeletingComponent] = useState(false)
   const [pendingDeletePanelId, setPendingDeletePanelId] = useState<number | null>(null)
+  const [expandedCostOpeningId, setExpandedCostOpeningId] = useState<number | null>(null)
   const [showEditOpeningModal, setShowEditOpeningModal] = useState(false)
   const [editingOpeningId, setEditingOpeningId] = useState<number | null>(null)
   const [editingOpeningName, setEditingOpeningName] = useState('')
@@ -445,6 +446,28 @@ export default function ProjectDetailView() {
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [pendingDeletePanelId])
+
+  // Click outside to dismiss expanded cost badge
+  useEffect(() => {
+    if (expandedCostOpeningId === null) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      // Don't dismiss if clicking on the cost badge
+      if (target.closest('[data-cost-badge]')) return
+      setExpandedCostOpeningId(null)
+    }
+
+    // Small delay to avoid dismissing immediately on the same click
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside)
+    }, 0)
+
+    return () => {
+      clearTimeout(timeoutId)
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [expandedCostOpeningId])
 
   // Cmd+N to add new opening
   const anyModalOpen = showAddOpening || showAddComponent || showEditModal || showBOM || showDrawingViewer ||
@@ -2809,19 +2832,11 @@ export default function ProjectDetailView() {
               ) : (
                 <>
                   <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                    project.status === 'Draft'
-                      ? 'bg-gray-100 text-gray-800'
-                      : project.status === 'In Progress'
-                      ? 'bg-blue-100 text-blue-800'
-                      : project.status === 'Completed'
-                      ? 'bg-green-100 text-green-800'
-                      : project.status === 'Archive'
-                      ? 'bg-orange-100 text-orange-800'
-                      : project.status === 'QUOTE_ACCEPTED'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-gray-100 text-gray-800'
+                    STATUS_CONFIG[project.status as ProjectStatus]?.bgColor || 'bg-gray-100'
+                  } ${
+                    STATUS_CONFIG[project.status as ProjectStatus]?.textColor || 'text-gray-800'
                   }`}>
-                    {project.status === 'QUOTE_ACCEPTED' ? 'Quote Accepted' : project.status}
+                    {getStatusLabel(project.status as ProjectStatus)}
                   </span>
                   {/* Lock indicator for locked statuses */}
                   {projectIsLocked && (
@@ -2965,14 +2980,37 @@ export default function ProjectDetailView() {
                           {opening.openingType === 'FRAMED' ? 'Trimmed' : 'Thinwall'}
                         </span>
                         {opening.finishColor && (
-                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
                             Finish: <span className="font-medium text-gray-700">{opening.finishColor}</span>
                           </span>
                         )}
+                        <div
+                          className="relative inline-flex items-center h-5"
+                          style={{ minWidth: expandedCostOpeningId === opening.id ? '70px' : '20px', transition: 'min-width 200ms ease-out' }}
+                          data-cost-badge
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            onClick={() => setExpandedCostOpeningId(opening.id)}
+                            data-cost-badge
+                            className={`absolute right-0 w-5 h-5 flex items-center justify-center bg-green-100 hover:bg-green-200 text-green-700 font-semibold text-xs rounded-full transition-all duration-200 ease-out ${
+                              expandedCostOpeningId === opening.id ? 'opacity-0 scale-75 pointer-events-none' : 'opacity-100 scale-100'
+                            }`}
+                            title="View opening cost"
+                          >
+                            $
+                          </button>
+                          <button
+                            onClick={() => setExpandedCostOpeningId(null)}
+                            data-cost-badge
+                            className={`absolute right-0 px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 hover:bg-green-200 text-green-700 transition-all duration-200 ease-out whitespace-nowrap ${
+                              expandedCostOpeningId === opening.id ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'
+                            }`}
+                          >
+                            ${opening.price.toLocaleString()}
+                          </button>
+                        </div>
                       </div>
-                      <span className="px-2 py-1 text-sm font-bold rounded border bg-green-600 text-white border-green-600">
-                        ${opening.price.toLocaleString()}
-                      </span>
                     </div>
                     <div className="flex space-x-2">
                       <button

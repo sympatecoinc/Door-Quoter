@@ -7,6 +7,7 @@ export async function GET() {
     const pendingQuotes = await prisma.project.findMany({
       where: {
         status: 'QUOTE_ACCEPTED',
+        isCurrentVersion: true,
         salesOrders: {
           none: {}
         }

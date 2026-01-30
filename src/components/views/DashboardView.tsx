@@ -46,6 +46,7 @@ interface DashboardData {
   stats: DashboardStats
   recentProjects: RecentProject[]
   recentLeads: RecentLead[]
+  hasMoreProjects: boolean
 }
 
 export default function DashboardView() {
@@ -59,9 +60,12 @@ export default function DashboardView() {
       totalOpenings: 0
     },
     recentProjects: [],
-    recentLeads: []
+    recentLeads: [],
+    hasMoreProjects: false
   })
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [projectsLimit, setProjectsLimit] = useState(5)
   const [showAddLeadModal, setShowAddLeadModal] = useState(false)
   const [statusFilters, setStatusFilters] = useState<ProjectStatus[]>([])
   const [filtersExpanded, setFiltersExpanded] = useState(false)
@@ -82,9 +86,9 @@ export default function DashboardView() {
     )
   }
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (limit: number = projectsLimit) => {
     try {
-      const response = await fetch('/api/dashboard')
+      const response = await fetch(`/api/dashboard?projectsLimit=${limit}`)
       if (response.ok) {
         const dashboardData = await response.json()
         setData(dashboardData)
@@ -93,11 +97,20 @@ export default function DashboardView() {
       console.error('Error fetching dashboard data:', error)
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
+  }
+
+  const handleShowMore = async () => {
+    setLoadingMore(true)
+    const newLimit = projectsLimit + 5
+    setProjectsLimit(newLimit)
+    await fetchDashboardData(newLimit)
   }
 
   useEffect(() => {
     fetchDashboardData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
@@ -317,54 +330,67 @@ export default function DashboardView() {
               ))}
             </div>
           ) : data.recentProjects.length > 0 ? (
-            <div className="space-y-4">
-              {data.recentProjects.map((project) => (
-                <button
-                  key={project.id}
-                  onClick={() => openSalesLead(project.id, 'projects')}
-                  className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left"
-                >
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <h3 className="font-medium text-gray-900">{project.name}</h3>
-                      {project.hasThinWall && (
-                        <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
-                          ThinWall
-                        </span>
-                      )}
-                      {project.hasTrimmed && (
-                        <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">
-                          Trimmed
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center space-x-2 mt-1">
-                      <StatusBadge status={project.status} />
-                      <span className="text-sm text-gray-600">
-                        • {project.openingsCount} opening{project.openingsCount !== 1 ? 's' : ''}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-gray-900">
-                      {project.latestQuote ? (
-                        <span className="inline-flex items-center gap-1.5">
-                          <span className="px-1.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 rounded">
-                            v{project.latestQuote.version}
+            <>
+              <div className="space-y-4">
+                {data.recentProjects.map((project) => (
+                  <button
+                    key={project.id}
+                    onClick={() => openSalesLead(project.id, 'projects')}
+                    className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left"
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="font-medium text-gray-900">{project.name}</h3>
+                        {project.hasThinWall && (
+                          <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
+                            ThinWall
                           </span>
-                          ${project.latestQuote.totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        )}
+                        {project.hasTrimmed && (
+                          <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">
+                            Trimmed
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <StatusBadge status={project.status} />
+                        <span className="text-sm text-gray-600">
+                          • {project.openingsCount} opening{project.openingsCount !== 1 ? 's' : ''}
                         </span>
-                      ) : (
-                        <span className="text-gray-400">--</span>
-                      )}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      Updated {new Date(project.updatedAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-gray-900">
+                        {project.latestQuote ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="px-1.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 rounded">
+                              v{project.latestQuote.version}
+                            </span>
+                            ${project.latestQuote.totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">--</span>
+                        )}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Updated {new Date(project.updatedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {data.hasMoreProjects && (
+                <div className="mt-4 text-center">
+                  <button
+                    onClick={handleShowMore}
+                    disabled={loadingMore}
+                    className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {loadingMore ? 'Loading...' : `Show More (${data.stats.totalProjects - data.recentProjects.length} remaining)`}
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="text-center py-8 text-gray-500">
               No won projects yet. Projects appear here when marked as Quote Accepted or beyond.
@@ -374,7 +400,7 @@ export default function DashboardView() {
       </div>
 
       {/* Sales Lead View Modal */}
-      <SalesLeadView />
+      <SalesLeadView onDataChange={fetchDashboardData} />
 
       {/* Add Lead Modal */}
       <AddLeadModal

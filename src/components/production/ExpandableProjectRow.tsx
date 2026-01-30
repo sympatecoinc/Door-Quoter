@@ -63,10 +63,12 @@ interface ProductionDetails {
   workOrders: WorkOrder[]
   fieldVerificationUploads: {
     count: number
+    confirmedCount: number
     uploads: Array<{
       id: number
       originalName: string
       uploadedAt: string
+      confirmed: boolean
     }>
   }
   versions: ProjectVersion[]
@@ -79,6 +81,7 @@ interface ExpandableProjectRowProps {
   onGenerateWorkOrders: (projectId: number) => void
   isGeneratingWorkOrders: boolean
   children: React.ReactNode
+  onFieldVerificationChange?: () => void  // Called after field verification status changes
 }
 
 export default function ExpandableProjectRow({
@@ -87,7 +90,8 @@ export default function ExpandableProjectRow({
   onToggleExpand,
   onGenerateWorkOrders,
   isGeneratingWorkOrders,
-  children
+  children,
+  onFieldVerificationChange
 }: ExpandableProjectRowProps) {
   const [details, setDetails] = useState<ProductionDetails | null>(null)
   const [loading, setLoading] = useState(false)
@@ -198,14 +202,12 @@ export default function ExpandableProjectRow({
                 <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-medium text-gray-700">Field Verification:</span>
-                    {details.fieldVerificationUploads.count > 0 ? (
-                      <FieldVerificationIndicator
-                        uploadCount={details.fieldVerificationUploads.count}
-                        onClick={() => setShowFieldVerificationPreview(true)}
-                      />
-                    ) : (
-                      <span className="text-sm text-gray-500">No uploads</span>
-                    )}
+                    <FieldVerificationIndicator
+                      uploadCount={details.fieldVerificationUploads.count}
+                      confirmedCount={details.fieldVerificationUploads.confirmedCount}
+                      onClick={() => setShowFieldVerificationPreview(true)}
+                      showWhenEmpty={true}
+                    />
                   </div>
 
                   {/* Version badges if multiple versions exist */}
@@ -241,6 +243,12 @@ export default function ExpandableProjectRow({
           projectId={project.id}
           projectName={project.name}
           onClose={() => setShowFieldVerificationPreview(false)}
+          onConfirmStatusChange={() => {
+            // Refresh details to update the indicator
+            fetchDetails()
+            // Notify parent to refresh the main list
+            onFieldVerificationChange?.()
+          }}
         />
       )}
     </>

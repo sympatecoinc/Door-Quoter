@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export type DownloadStatus = 'processing' | 'complete' | 'error'
 
-export type DownloadType = 'bom' | 'cutlist' | 'shop-drawings' | 'purchase-summary' | 'packing-list' | 'labels' | 'box-list' | 'logistics'
+export type DownloadType = 'bom' | 'cutlist' | 'shop-drawings' | 'purchase-summary' | 'packing-list' | 'labels' | 'box-list' | 'logistics' | 'pricing-debug'
 
 export interface Download {
   id: string

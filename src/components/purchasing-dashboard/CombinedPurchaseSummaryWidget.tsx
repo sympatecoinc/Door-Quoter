@@ -5,7 +5,7 @@ import { Package, Search, Download, CheckSquare, Square, Loader2 } from 'lucide-
 import { useDownloadStore } from '@/stores/downloadStore'
 
 const FILTER_STATUSES = [
-  { value: 'STAGING', label: 'Staging' },
+  { value: 'STAGING', label: 'Preparing Quote' },
   { value: 'APPROVED', label: 'Approved' },
   { value: 'REVISE', label: 'Revise' },
   { value: 'QUOTE_SENT', label: 'Quote Sent' },
@@ -99,15 +99,6 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
     setSelectedProjectIds(newSelected)
   }
 
-  // Select/Deselect all filtered projects
-  const toggleSelectAll = () => {
-    if (selectedProjectIds.size === filteredProjects.length) {
-      setSelectedProjectIds(new Set())
-    } else {
-      setSelectedProjectIds(new Set(filteredProjects.map(p => p.id)))
-    }
-  }
-
   // Download CSV
   async function downloadCSV() {
     if (selectedProjectIds.size === 0) {
@@ -176,17 +167,6 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
 
   return (
     <div className="bg-white rounded-lg shadow">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200">
-        <div className="flex items-center gap-2">
-          <Package className="w-5 h-5 text-gray-600" />
-          <h3 className="font-semibold text-gray-900">Combined Purchase Summary</h3>
-        </div>
-        <p className="text-sm text-gray-500 mt-1">
-          Select multiple projects to generate a combined purchasing summary
-        </p>
-      </div>
-
       <div className="p-4">
         {/* Search and Filter Row */}
         <div className="flex items-center gap-4 mb-4 flex-wrap">
@@ -262,28 +242,8 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
           </div>
         </div>
 
-        {/* Select All Row */}
-        <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-200">
-          <button
-            onClick={toggleSelectAll}
-            className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-          >
-            {selectedProjectIds.size === filteredProjects.length && filteredProjects.length > 0 ? (
-              <CheckSquare className="w-4 h-4 text-blue-600" />
-            ) : (
-              <Square className="w-4 h-4" />
-            )}
-            {selectedProjectIds.size === filteredProjects.length && filteredProjects.length > 0
-              ? 'Deselect All'
-              : 'Select All'}
-          </button>
-          <span className="text-sm text-gray-500">
-            Selected: {selectedProjectIds.size} of {filteredProjects.length}
-          </span>
-        </div>
-
         {/* Project List */}
-        <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg mb-4">
+        <div className="border border-gray-200 rounded-lg mb-4">
           {filteredProjects.length === 0 ? (
             <div className="p-4 text-center text-gray-500 text-sm">
               No projects found
@@ -306,19 +266,6 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
                     <div className="text-xs text-gray-500 truncate">{project.customerName}</div>
                   )}
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  project.status === 'STAGING' ? 'bg-gray-100 text-gray-700' :
-                  project.status === 'APPROVED' ? 'bg-blue-100 text-blue-700' :
-                  project.status === 'REVISE' ? 'bg-orange-100 text-orange-700' :
-                  project.status === 'QUOTE_SENT' ? 'bg-purple-100 text-purple-700' :
-                  project.status === 'QUOTE_ACCEPTED' ? 'bg-indigo-100 text-indigo-700' :
-                  project.status === 'ACTIVE' ? 'bg-yellow-100 text-yellow-700' :
-                  project.status === 'COMPLETE' ? 'bg-green-100 text-green-700' :
-                  project.status === 'ARCHIVE' ? 'bg-slate-100 text-slate-700' :
-                  'bg-gray-100 text-gray-700'
-                }`}>
-                  {project.status.replace(/_/g, ' ')}
-                </span>
               </button>
             ))
           )}

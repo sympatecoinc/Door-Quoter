@@ -723,7 +723,7 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
   }
 
   const statusLabels: Record<string, string> = {
-    'STAGING': 'Staging',
+    'STAGING': 'Preparing Quote',
     'APPROVED': 'Approved',
     'REVISE': 'Revise',
     'QUOTE_SENT': 'Quote Sent',

@@ -1660,15 +1660,18 @@ model UserStationAssignment {
 
 // Field Verification Upload - Photos of completed field verification forms
 model FieldVerificationUpload {
-  id           Int      @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   projectId    Int
-  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  gcsPath      String   // GCS path: field-verification/{projectId}/{timestamp}.{ext}
-  originalName String   // Original filename uploaded
-  mimeType     String   // image/jpeg, image/png, etc.
-  size         Int      // File size in bytes
-  uploadedAt   DateTime @default(now())
-  uploadedBy   String?  // Device/user info if available
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  gcsPath      String    // GCS path: field-verification/{projectId}/{timestamp}.{ext}
+  originalName String    // Original filename uploaded
+  mimeType     String    // image/jpeg, image/png, etc.
+  size         Int       // File size in bytes
+  uploadedAt   DateTime  @default(now())
+  uploadedBy   String?   // Device/user info if available
+  confirmed    Boolean   @default(false)  // Whether the upload has been reviewed and confirmed
+  confirmedAt  DateTime? // When the upload was confirmed
+  confirmedBy  String?   // Who confirmed the upload
 
   @@index([projectId])
   @@map("FieldVerificationUploads")

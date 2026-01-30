@@ -91,7 +91,10 @@ function calculateQuoteTotal(project: ProjectForQuoteCalc, defaultPricingMode?: 
   return Math.round(total * 100) / 100
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const projectsLimit = parseInt(searchParams.get('projectsLimit') || '5')
+  const projectsOffset = parseInt(searchParams.get('projectsOffset') || '0')
   try {
     // Get the default pricing mode to use for projects without one
     const defaultPricingMode = await getDefaultPricingMode(prisma)
@@ -114,8 +117,15 @@ export async function GET() {
       }
     })
 
-    // Get total openings
-    const totalOpenings = await prisma.opening.count()
+    // Get total openings (only from won projects, current versions)
+    const totalOpenings = await prisma.opening.count({
+      where: {
+        project: {
+          status: { in: PROJECT_STATUSES },
+          isCurrentVersion: true
+        }
+      }
+    })
 
     // Get all projects to calculate total portfolio value (only won projects)
     // Only include current versions (not historical revisions)
@@ -198,7 +208,8 @@ export async function GET() {
         status: { in: PROJECT_STATUSES },
         isCurrentVersion: true
       },
-      take: 5,
+      skip: projectsOffset,
+      take: projectsLimit,
       orderBy: {
         updatedAt: 'desc'
       },
@@ -375,7 +386,8 @@ export async function GET() {
         totalOpenings
       },
       recentProjects: projectsWithValues,
-      recentLeads: leadsWithValues
+      recentLeads: leadsWithValues,
+      hasMoreProjects: (projectsOffset + projectsLimit) < totalProjects
     })
   } catch (error: unknown) {
     console.error('Dashboard API Error:', error)

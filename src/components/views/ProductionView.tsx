@@ -33,6 +33,7 @@ import BomDownloadModal from '../production/BomDownloadModal'
 import ShopDrawingsDownloadModal from '../production/ShopDrawingsDownloadModal'
 import CutListDownloadModal, { CutListConfigData } from '../production/CutListDownloadModal'
 import ExpandableProjectRow from '../production/ExpandableProjectRow'
+import FieldVerificationIndicator from '../production/FieldVerificationIndicator'
 
 // Types for bulk download configuration
 interface BomConfig {
@@ -66,6 +67,7 @@ interface ProductionProject {
     }>
   }
   fieldVerificationCount?: number
+  fieldVerificationConfirmedCount?: number
 }
 
 interface StationCount {
@@ -1277,6 +1279,7 @@ export default function ProductionView() {
                     onToggleExpand={() => toggleExpand(project.id)}
                     onGenerateWorkOrders={generateWorkOrders}
                     isGeneratingWorkOrders={generatingWorkOrders.has(project.id)}
+                    onFieldVerificationChange={fetchProjects}
                   >
                     {/* Row content cells (without the first expand cell which is handled by ExpandableProjectRow) */}
                     <td className="px-3 py-3 text-sm text-gray-500 whitespace-nowrap w-28">
@@ -1337,15 +1340,11 @@ export default function ProductionView() {
                           {project.openingsCount} {project.openingsCount === 1 ? 'opening' : 'openings'}
                         </span>
                         {/* Field Verification Indicator */}
-                        {(project.fieldVerificationCount ?? 0) > 0 && (
-                          <span
-                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-medium"
-                            title={`${project.fieldVerificationCount} field verification photo${project.fieldVerificationCount !== 1 ? 's' : ''}`}
-                          >
-                            <CheckCircle2 className="w-3 h-3" />
-                            {project.fieldVerificationCount}
-                          </span>
-                        )}
+                        <FieldVerificationIndicator
+                          uploadCount={project.fieldVerificationCount ?? 0}
+                          confirmedCount={project.fieldVerificationConfirmedCount ?? 0}
+                          showWhenEmpty={true}
+                        />
                       </div>
                       <div className="text-xs text-gray-500">{project.customerName}</div>
                     </td>
