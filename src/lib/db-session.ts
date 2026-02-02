@@ -5,6 +5,7 @@ import type { User, Session, Profile } from '@prisma/client'
 
 export type UserWithoutPassword = Omit<User, 'passwordHash'> & {
   profile?: { id: number; name: string; tabs: string[]; defaultTab: string | null } | null
+  portals?: { id: number; subdomain: string }[]
   effectivePermissions?: string[]
 }
 
@@ -54,6 +55,12 @@ export async function getSessionWithUser(
               name: true,
               tabs: true,
               defaultTab: true
+            }
+          },
+          portals: {
+            select: {
+              id: true,
+              subdomain: true
             }
           },
           createdAt: true,
