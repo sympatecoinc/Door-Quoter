@@ -5,7 +5,6 @@ import { getSessionWithUser } from '@/lib/db-session'
 import {
   getSubdomainFromHostname,
   getPortalBySubdomain,
-  getPortalPermissions,
   toPortalContext,
   isMainAppSubdomain
 } from '@/lib/portals'
@@ -80,15 +79,23 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Calculate effective permissions intersected with portal tabs
-    const userPermissions = session.user.effectivePermissions || session.user.permissions || []
-    const portalPermissions = getPortalPermissions(userPermissions, portalConfig.tabs)
+    // Check if user has access to this portal
+    const userPortals = session.user.portals || []
+    const hasPortalAccess = userPortals.some(p => p.id === portalConfig.id)
 
-    // Return user with portal-restricted permissions
+    if (!hasPortalAccess) {
+      console.log('[Session API] User does not have access to portal:', portalConfig.name)
+      return NextResponse.json(
+        { error: 'You do not have access to this portal' },
+        { status: 403 }
+      )
+    }
+
+    // User has portal access - give them all tabs configured for this portal
     return NextResponse.json({
       user: {
         ...session.user,
-        effectivePermissions: portalPermissions
+        effectivePermissions: portalConfig.tabs
       },
       portal: toPortalContext(portalConfig)
     })
