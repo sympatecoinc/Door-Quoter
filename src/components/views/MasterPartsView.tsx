@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, ChevronDown, Sparkles, Tag } from 'lucide-react'
+import { Plus, Edit2, Trash2, Package, Settings, Save, X, Upload, Search, ChevronDown, Sparkles, Tag, Star } from 'lucide-react'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
@@ -298,6 +298,7 @@ export default function MasterPartsView() {
   // Glass Types State
   const [glassTypes, setGlassTypes] = useState<GlassType[]>([])
   const [loadingGlass, setLoadingGlass] = useState(false)
+  const [defaultGlassTypeName, setDefaultGlassTypeName] = useState<string | null>(null)
   const [showAddGlassForm, setShowAddGlassForm] = useState(false)
   const [editingGlassType, setEditingGlassType] = useState<number | null>(null)
   const [creatingGlass, setCreatingGlass] = useState(false)
@@ -970,16 +971,63 @@ export default function MasterPartsView() {
   async function fetchGlassTypes() {
     setLoadingGlass(true)
     try {
-      const response = await fetch('/api/glass-types?includeParts=true')
-      if (response.ok) {
-        const data = await response.json()
+      const [glassResponse, defaultResponse] = await Promise.all([
+        fetch('/api/glass-types?includeParts=true'),
+        fetch('/api/settings/global?key=defaultGlassType')
+      ])
+
+      if (glassResponse.ok) {
+        const data = await glassResponse.json()
         setGlassTypes(data)
+      }
+
+      if (defaultResponse.ok) {
+        const defaultSetting = await defaultResponse.json()
+        setDefaultGlassTypeName(defaultSetting.value || null)
+      } else {
+        setDefaultGlassTypeName(null)
       }
     } catch (error) {
       console.error('Error fetching glass types:', error)
       showError('Error fetching glass types')
     } finally {
       setLoadingGlass(false)
+    }
+  }
+
+  async function handleSetDefaultGlassType(glassType: GlassType) {
+    try {
+      // Try to update first, if it doesn't exist, create it
+      const response = await fetch('/api/settings/global', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'defaultGlassType', value: glassType.name })
+      })
+
+      if (!response.ok) {
+        // Setting doesn't exist, create it
+        const createResponse = await fetch('/api/settings/global', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: 'defaultGlassType',
+            value: glassType.name,
+            dataType: 'string',
+            category: 'defaults',
+            description: 'Default glass type for new panels'
+          })
+        })
+
+        if (!createResponse.ok) {
+          throw new Error('Failed to set default glass type')
+        }
+      }
+
+      setDefaultGlassTypeName(glassType.name)
+      showSuccess(`Set "${glassType.name}" as default glass type`)
+    } catch (error) {
+      console.error('Error setting default glass type:', error)
+      showError('Failed to set default glass type')
     }
   }
 
@@ -1852,7 +1900,14 @@ export default function MasterPartsView() {
                             </button>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="text-sm font-medium text-gray-900">{glassType.name}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-medium text-gray-900">{glassType.name}</div>
+                              {defaultGlassTypeName === glassType.name && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                  Default
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4">
                             <div className="text-sm text-gray-600">
@@ -1871,6 +1926,17 @@ export default function MasterPartsView() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex space-x-2 justify-end">
+                              <button
+                                onClick={() => handleSetDefaultGlassType(glassType)}
+                                className={`p-1 transition-colors ${
+                                  defaultGlassTypeName === glassType.name
+                                    ? 'text-yellow-500'
+                                    : 'text-gray-400 hover:text-yellow-500'
+                                }`}
+                                title={defaultGlassTypeName === glassType.name ? 'Default glass type' : 'Set as default'}
+                              >
+                                <Star className={`w-4 h-4 ${defaultGlassTypeName === glassType.name ? 'fill-current' : ''}`} />
+                              </button>
                               <button
                                 onClick={() => startEditGlassType(glassType)}
                                 className="p-1 text-gray-400 hover:text-blue-600 transition-colors"

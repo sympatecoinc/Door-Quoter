@@ -154,23 +154,6 @@ export default function SOPartsTab({ salesOrderId, onPartUpdate }: SOPartsTabPro
     })
   }
 
-  const updatePartStatus = async (partId: number, status: SOPartStatus) => {
-    try {
-      const response = await fetch(`/api/sales-orders/${salesOrderId}/parts/${partId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
-      })
-
-      if (!response.ok) throw new Error('Failed to update part')
-
-      fetchParts()
-      onPartUpdate?.()
-    } catch (err) {
-      console.error('Error updating part:', err)
-    }
-  }
-
   const bulkUpdateStatus = async (status: SOPartStatus) => {
     if (selectedParts.size === 0) return
 
@@ -397,7 +380,6 @@ export default function SOPartsTab({ salesOrderId, onPartUpdate }: SOPartsTabPro
               <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Available</th>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Bin</th>
               <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -419,7 +401,7 @@ export default function SOPartsTab({ salesOrderId, onPartUpdate }: SOPartsTabPro
                         className="rounded border-gray-300"
                       />
                     </td>
-                    <td colSpan={9} className="px-3 py-2">
+                    <td colSpan={8} className="px-3 py-2">
                       <div className="flex items-center gap-2 font-medium text-gray-700">
                         {expandedOpenings.has(opening) ? (
                           <ChevronDown className="w-4 h-4" />
@@ -458,37 +440,6 @@ export default function SOPartsTab({ salesOrderId, onPartUpdate }: SOPartsTabPro
                       <td className="px-3 py-2 text-sm text-gray-500">{part.availability.binLocation || '-'}</td>
                       <td className="px-3 py-2 text-center">
                         {getStatusBadge(part.status)}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex justify-center gap-1">
-                          {part.status !== 'PICKED' && part.status !== 'PACKED' && part.status !== 'SHIPPED' && (
-                            <button
-                              onClick={() => updatePartStatus(part.id, 'PICKED')}
-                              title="Pick"
-                              className="p-1 text-purple-600 hover:bg-purple-100 rounded"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </button>
-                          )}
-                          {part.status === 'PICKED' && (
-                            <button
-                              onClick={() => updatePartStatus(part.id, 'PACKED')}
-                              title="Pack"
-                              className="p-1 text-yellow-600 hover:bg-yellow-100 rounded"
-                            >
-                              <Archive className="w-4 h-4" />
-                            </button>
-                          )}
-                          {part.status === 'PACKED' && (
-                            <button
-                              onClick={() => updatePartStatus(part.id, 'SHIPPED')}
-                              title="Ship"
-                              className="p-1 text-green-600 hover:bg-green-100 rounded"
-                            >
-                              <Truck className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
                       </td>
                     </tr>
                   ))}

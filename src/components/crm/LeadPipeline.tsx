@@ -48,6 +48,7 @@ export default function LeadPipeline({ onAddLead, onProjectClick }: LeadPipeline
   const [projectsByStage, setProjectsByStage] = useState<Record<string, Project[]>>({})
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<'pipeline' | 'list'>('pipeline')
+  const [projectsWithQuotes, setProjectsWithQuotes] = useState<Set<number>>(new Set())
 
   // Dynamically compute which stages to show
   // Always show staging, approved, quote_sent
@@ -78,6 +79,16 @@ export default function LeadPipeline({ onAddLead, onProjectClick }: LeadPipeline
         }, {} as Record<string, Project[]>)
 
         setProjectsByStage(grouped)
+
+        // Fetch quote status for all projects
+        const projectIds = projects.map(p => p.id)
+        if (projectIds.length > 0) {
+          const quoteStatusResponse = await fetch(`/api/projects/quote-status?ids=${projectIds.join(',')}`)
+          if (quoteStatusResponse.ok) {
+            const quoteStatus = await quoteStatusResponse.json()
+            setProjectsWithQuotes(new Set(quoteStatus.projectsWithQuotes || []))
+          }
+        }
       }
     } catch (error) {
       console.error('Error fetching projects:', error)
@@ -89,6 +100,26 @@ export default function LeadPipeline({ onAddLead, onProjectClick }: LeadPipeline
   useEffect(() => {
     fetchProjects()
   }, [])
+
+  // Refresh quote status when tab becomes visible (user might have generated a quote elsewhere)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Get all project IDs from all stages
+        const allProjectIds = Object.values(projectsByStage).flat().map(p => p.id)
+        if (allProjectIds.length > 0) {
+          fetch(`/api/projects/quote-status?ids=${allProjectIds.join(',')}`)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+              if (data) setProjectsWithQuotes(new Set(data.projectsWithQuotes || []))
+            })
+            .catch(() => {})
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [projectsByStage])
 
   const formatCurrency = (amount?: number) => {
     if (!amount) return '$0'
@@ -128,6 +159,12 @@ export default function LeadPipeline({ onAddLead, onProjectClick }: LeadPipeline
     // Find the project being moved
     const project = projectsByStage[oldStatus]?.find(p => p.id === projectId)
     if (!project) return
+
+    // Check if moving to QUOTE_SENT requires a quote
+    if (newStatus === ProjectStatus.QUOTE_SENT && !projectsWithQuotes.has(projectId)) {
+      alert('Cannot move to "Quote Sent" - a quote must be generated first')
+      return
+    }
 
     // Optimistic update
     setProjectsByStage(prev => {

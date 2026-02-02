@@ -48,6 +48,11 @@ export async function createSalesOrderFromProject(
         where: {
           status: { not: 'VOIDED' }
         }
+      },
+      quoteVersions: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { totalPrice: true }
       }
     }
   })
@@ -77,11 +82,28 @@ export async function createSalesOrderFromProject(
 
   // Build line items from openings
   const lines: any[] = []
-  let subtotal = 0
+
+  // Require a quote to exist - cannot create SO without a generated quote
+  const latestQuote = project.quoteVersions?.[0]
+  if (!latestQuote?.totalPrice) {
+    return {
+      success: false,
+      error: 'Cannot create sales order without a quote. Please generate a quote first.'
+    }
+  }
+
+  const subtotal = Number(latestQuote.totalPrice)
+
+  // Build line items for each opening
+  // Distribute the subtotal proportionally based on opening prices
+  const totalOpeningCost = project.openings.reduce((sum, o) => sum + (o.price || 0), 0)
 
   for (const opening of project.openings) {
-    const openingTotal = opening.price || 0
-    subtotal += openingTotal
+    const openingCost = opening.price || 0
+    // Calculate this opening's proportional share of the subtotal
+    const openingTotal = totalOpeningCost > 0
+      ? (openingCost / totalOpeningCost) * subtotal
+      : subtotal / project.openings.length
 
     // Get panel descriptions
     const panelDescriptions = opening.panels.map((panel: any) => {

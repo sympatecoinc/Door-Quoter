@@ -45,7 +45,6 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
   const [searchLoading, setSearchLoading] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
   // Handle Escape key to close modal
   useEscapeKey([
@@ -75,7 +74,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
     }
   }
 
-  // Handle company name input change with debounce
+  // Handle company name input change - search immediately while typing
   const handleCompanyNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setFormData({ ...formData, prospectCompanyName: value })
@@ -85,13 +84,8 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
       setSelectedResult(null)
     }
 
-    // Debounce search
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current)
-    }
-    debounceRef.current = setTimeout(() => {
-      searchCompanies(value)
-    }, 300)
+    // Search immediately on every keystroke
+    searchCompanies(value)
   }
 
   // Handle selection from dropdown (customer or prospect)
@@ -136,9 +130,6 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
       setSearchResults([])
       setSelectedResult(null)
       setShowDropdown(false)
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current)
-      }
     }
   }, [isOpen])
 

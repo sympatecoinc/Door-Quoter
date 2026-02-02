@@ -149,6 +149,21 @@ export default function LeadDetailPanel({
   const [showRevisionConfirm, setShowRevisionConfirm] = useState(false)
   const [creatingRevision, setCreatingRevision] = useState(false)
 
+  // Quote existence tracking for status restrictions
+  const [hasQuotes, setHasQuotes] = useState(false)
+
+  const fetchQuoteStatus = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/projects/${leadId}/quote-versions`)
+      if (response.ok) {
+        const data = await response.json()
+        setHasQuotes(Array.isArray(data.versions) && data.versions.length > 0)
+      }
+    } catch (error) {
+      console.error('Error fetching quote status:', error)
+    }
+  }, [leadId])
+
   const fetchLead = useCallback(async () => {
     try {
       setLoading(true)
@@ -179,7 +194,8 @@ export default function LeadDetailPanel({
   useEffect(() => {
     fetchLead()
     fetchVersions()
-  }, [fetchLead, fetchVersions])
+    fetchQuoteStatus()
+  }, [fetchLead, fetchVersions, fetchQuoteStatus])
 
   const handleCreateRevision = async () => {
     if (creatingRevision) return
@@ -427,7 +443,9 @@ export default function LeadDetailPanel({
                 {showStatusDropdown && (
                   <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[150px]">
                     <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase">Leads</div>
-                    {LEAD_STATUSES.map((status) => (
+                    {LEAD_STATUSES
+                      .filter(status => status !== ProjectStatus.QUOTE_SENT || hasQuotes)
+                      .map((status) => (
                       <button
                         key={status}
                         onClick={() => initiateStatusChange(status)}
@@ -441,22 +459,26 @@ export default function LeadDetailPanel({
                         {STATUS_CONFIG[status].label}
                       </button>
                     ))}
-                    <div className="border-t border-gray-100 my-1" />
-                    <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase">Projects</div>
-                    {PROJECT_STATUSES.map((status) => (
-                      <button
-                        key={status}
-                        onClick={() => initiateStatusChange(status)}
-                        className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
-                          lead.status === status ? 'bg-blue-50' : ''
-                        }`}
-                      >
-                        <span
-                          className={`w-2 h-2 rounded-full ${STATUS_CONFIG[status].bgColor}`}
-                        />
-                        {STATUS_CONFIG[status].label}
-                      </button>
-                    ))}
+                    {hasQuotes && (
+                      <>
+                        <div className="border-t border-gray-100 my-1" />
+                        <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase">Projects</div>
+                        {PROJECT_STATUSES.map((status) => (
+                          <button
+                            key={status}
+                            onClick={() => initiateStatusChange(status)}
+                            className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                              lead.status === status ? 'bg-blue-50' : ''
+                            }`}
+                          >
+                            <span
+                              className={`w-2 h-2 rounded-full ${STATUS_CONFIG[status].bgColor}`}
+                            />
+                            {STATUS_CONFIG[status].label}
+                          </button>
+                        ))}
+                      </>
+                    )}
                     <div className="border-t border-gray-100 my-1" />
                     <button
                       onClick={() => initiateStatusChange(ProjectStatus.ARCHIVE)}
@@ -576,6 +598,7 @@ export default function LeadDetailPanel({
             leadName={lead.name}
             isCurrentVersion={lead.isCurrentVersion}
             status={lead.status}
+            onQuoteGenerated={() => setHasQuotes(true)}
           />
         )}
       </div>

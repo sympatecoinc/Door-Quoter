@@ -402,6 +402,28 @@ export async function PUT(
         throw new Error('Project not found')
       }
 
+      // Check if status change requires a quote to exist
+      const statusesRequiringQuote = [
+        ProjectStatus.QUOTE_SENT,
+        ProjectStatus.QUOTE_ACCEPTED,
+        ProjectStatus.ACTIVE,
+        ProjectStatus.COMPLETE
+      ]
+
+      if (status && statusesRequiringQuote.includes(status) && currentProject.status !== status) {
+        // Check if a quote has been generated for this project
+        const quoteCount = await tx.quoteVersion.count({
+          where: { projectId: projectId }
+        })
+
+        if (quoteCount === 0) {
+          const statusLabel = status === ProjectStatus.QUOTE_SENT ? 'Quote Sent' :
+                              status === ProjectStatus.QUOTE_ACCEPTED ? 'Quote Accepted' :
+                              status === ProjectStatus.ACTIVE ? 'Active' : 'Complete'
+          throw new Error(`Cannot change status to "${statusLabel}" - a quote must be generated first`)
+        }
+      }
+
       // Check if we're reverting from QUOTE_ACCEPTED to a lead status
       // This requires creating a new revision to preserve the accepted quote history
       const isRevertingToLead = status &&
@@ -500,6 +522,15 @@ export async function PUT(
     return NextResponse.json(updatedProject)
   } catch (error) {
     console.error('Error updating project:', error)
+
+    // Return specific error message for validation errors
+    if (error instanceof Error && error.message.includes('quote must be generated')) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 400 }
+      )
+    }
+
     return NextResponse.json(
       { error: 'Failed to update project' },
       { status: 500 }

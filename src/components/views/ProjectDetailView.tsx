@@ -300,6 +300,7 @@ export default function ProjectDetailView() {
   const [selectedDrawingOpeningId, setSelectedDrawingOpeningId] = useState<number | null>(null)
   const [selectedDrawingOpeningNumber, setSelectedDrawingOpeningNumber] = useState<string>('')
   const [glassTypes, setGlassTypes] = useState<any[]>([])
+  const [defaultGlassTypeName, setDefaultGlassTypeName] = useState<string | null>(null)
   const [needsSync, setNeedsSync] = useState(false)
   const [showSyncConfirmation, setShowSyncConfirmation] = useState(false)
   const [syncingPrices, setSyncingPrices] = useState(false)
@@ -804,16 +805,44 @@ export default function ProjectDetailView() {
 
   async function fetchGlassTypes() {
     try {
-      const response = await fetch('/api/glass-types')
-      if (response.ok) {
-        const data = await response.json()
+      const [glassResponse, defaultResponse] = await Promise.all([
+        fetch('/api/glass-types'),
+        fetch('/api/settings/global?key=defaultGlassType')
+      ])
+
+      if (glassResponse.ok) {
+        const data = await glassResponse.json()
         setGlassTypes(data)
-        // Set default glass type to first available if current is empty or doesn't exist in database
+
+        // Get the configured default glass type name
+        let defaultGlassName: string | null = null
+        if (defaultResponse.ok) {
+          const defaultSetting = await defaultResponse.json()
+          defaultGlassName = defaultSetting.value || null
+          // Verify it exists in the available glass types
+          if (defaultGlassName && data.some((gt: any) => gt.name === defaultGlassName)) {
+            setDefaultGlassTypeName(defaultGlassName)
+          } else {
+            setDefaultGlassTypeName(data[0]?.name || null)
+          }
+        } else {
+          setDefaultGlassTypeName(data[0]?.name || null)
+        }
+
+        // Set default glass type - prefer configured default, fall back to first available
         if (data.length > 0) {
           setGlassType((current) => {
-            if (!current) return data[0].name
+            if (!current) {
+              // Check if configured default exists in the list
+              if (defaultGlassName) {
+                const defaultExists = data.some((gt: any) => gt.name === defaultGlassName)
+                if (defaultExists) return defaultGlassName
+              }
+              // Fall back to first available
+              return data[0].name
+            }
             const exists = data.some((gt: any) => gt.name === current)
-            return exists ? current : data[0].name
+            return exists ? current : (defaultGlassName || data[0].name)
           })
         }
       }
@@ -1601,7 +1630,7 @@ export default function ProjectDetailView() {
       setSwingDirection('Right In')
       setSlidingDirection('Left')
       setCornerDirection('Left')
-      setGlassType(glassTypes[0]?.name || '')
+      setGlassType(defaultGlassTypeName || glassTypes[0]?.name || '')
       setHardwareOptionsExpanded(false)
       setAddComponentOptions([])
       setAddComponentSelectedOptions({})
@@ -2149,7 +2178,7 @@ export default function ProjectDetailView() {
       setComponentValidationErrors([])
       setSwingDirection('Right In')
       setSlidingDirection('Left')
-      setGlassType(glassTypes[0]?.name || '')
+      setGlassType(defaultGlassTypeName || glassTypes[0]?.name || '')
       setHardwareOptionsExpanded(false)
       setAddComponentOptions([])
       setAddComponentSelectedOptions({})
@@ -3497,7 +3526,28 @@ export default function ProjectDetailView() {
                   </button>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Select Product</label>
                   <div className="border border-gray-300 rounded-lg overflow-hidden max-h-80 overflow-y-auto">
-                    {products.filter(p => p.productType !== 'FRAME').map((product) => {
+                    {(() => {
+                      // Group products by type in order: Swing Doors, Sliding Doors, Fixed Panels, Corner
+                      const typeOrder = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL', 'CORNER_90'] as const
+                      const typeLabels: Record<string, string> = {
+                        'SWING_DOOR': 'Swing Doors',
+                        'SLIDING_DOOR': 'Sliding Doors',
+                        'FIXED_PANEL': 'Fixed Panels',
+                        'CORNER_90': 'Corners'
+                      }
+                      const filteredProducts = products.filter(p => p.productType !== 'FRAME')
+                      const groupedProducts = typeOrder.map(type => ({
+                        type,
+                        label: typeLabels[type],
+                        products: filteredProducts.filter(p => p.productType === type)
+                      })).filter(group => group.products.length > 0)
+
+                      return groupedProducts.map((group) => (
+                        <div key={group.type}>
+                          <div className="px-4 py-2 bg-gray-100 text-xs font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-200">
+                            {group.label}
+                          </div>
+                          {group.products.map((product) => {
                       const isSelected = selectedProductId === product.id
                       const handleSelectProduct = () => {
                         const productId = product.id
@@ -3619,7 +3669,10 @@ export default function ProjectDetailView() {
                           {isSelected && <Check className="w-5 h-5 text-blue-600" />}
                         </button>
                       )
-                    })}
+                          })}
+                        </div>
+                      ))
+                    })()}
                   </div>
                   {/* Next button - only show when product is selected */}
                   {selectedProductId && (

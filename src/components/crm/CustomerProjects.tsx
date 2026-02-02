@@ -98,6 +98,9 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   // Quote accepted edit confirmation state
   const [quoteAcceptedEditConfirm, setQuoteAcceptedEditConfirm] = useState<Project | null>(null)
 
+  // Track which projects have quotes (for status restrictions)
+  const [projectsWithQuotes, setProjectsWithQuotes] = useState<Set<number>>(new Set())
+
   // Handle Escape key to close modals one at a time
   useEscapeKey([
     { isOpen: quoteAcceptedEditConfirm !== null, onClose: () => setQuoteAcceptedEditConfirm(null) },
@@ -113,6 +116,23 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
     fetchPricingModes()
   }, [customerId, refreshKey])
 
+  // Refresh quote status when tab becomes visible (user might have generated a quote elsewhere)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && projects.length > 0) {
+        const projectIds = projects.map(p => p.id)
+        fetch(`/api/projects/quote-status?ids=${projectIds.join(',')}`)
+          .then(res => res.ok ? res.json() : null)
+          .then(data => {
+            if (data) setProjectsWithQuotes(new Set(data.projectsWithQuotes || []))
+          })
+          .catch(() => {})
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [projects])
+
   const fetchProjects = async () => {
     setLoading(true)
     try {
@@ -120,6 +140,16 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
       if (response.ok) {
         const projectsData = await response.json()
         setProjects(projectsData)
+
+        // Fetch quote status for all projects
+        const projectIds = projectsData.map((p: Project) => p.id)
+        if (projectIds.length > 0) {
+          const quoteStatusResponse = await fetch(`/api/projects/quote-status?ids=${projectIds.join(',')}`)
+          if (quoteStatusResponse.ok) {
+            const quoteStatus = await quoteStatusResponse.json()
+            setProjectsWithQuotes(new Set(quoteStatus.projectsWithQuotes || []))
+          }
+        }
       } else {
         console.error('Failed to fetch projects')
       }
@@ -938,6 +968,17 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(STATUS_CONFIG)
                     .filter(([key]) => {
+                      const hasQuote = projectsWithQuotes.has(project.id)
+                      const statusRequiresQuote = key === ProjectStatus.QUOTE_SENT ||
+                        key === ProjectStatus.QUOTE_ACCEPTED ||
+                        key === ProjectStatus.ACTIVE ||
+                        key === ProjectStatus.COMPLETE
+
+                      // Don't show statuses that require quotes if project has none
+                      if (statusRequiresQuote && !hasQuote) {
+                        return false
+                      }
+
                       // Leads can only have lead statuses
                       if (customer.status === 'Lead') {
                         return LEAD_STATUSES.includes(key as ProjectStatus)
@@ -1065,6 +1106,17 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                 >
                   {Object.entries(STATUS_CONFIG)
                     .filter(([key]) => {
+                      const hasQuote = editingProject ? projectsWithQuotes.has(editingProject.id) : false
+                      const statusRequiresQuote = key === ProjectStatus.QUOTE_SENT ||
+                        key === ProjectStatus.QUOTE_ACCEPTED ||
+                        key === ProjectStatus.ACTIVE ||
+                        key === ProjectStatus.COMPLETE
+
+                      // Don't show statuses that require quotes if project has none
+                      if (statusRequiresQuote && !hasQuote) {
+                        return false
+                      }
+
                       // Leads can only have lead statuses
                       if (customer.status === 'Lead') {
                         return LEAD_STATUSES.includes(key as ProjectStatus)
