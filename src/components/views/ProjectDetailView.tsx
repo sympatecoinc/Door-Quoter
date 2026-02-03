@@ -12,7 +12,7 @@ import { useToast } from '../../hooks/useToast'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 import DrawingViewer from '../ui/DrawingViewer'
-import { ProjectStatus, STATUS_CONFIG, isProjectLocked, ProjectVersion, ProjectVersionsResponse, getStatusLabel } from '@/types'
+import { ProjectStatus, STATUS_CONFIG, isProjectLocked, ProjectVersion, ProjectVersionsResponse, getStatusLabel, OpeningPreset } from '@/types'
 
 // Natural sort comparison for opening names (handles "2" before "10", "Office 1" before "Office 10")
 function naturalSortCompare(a: string, b: string): number {
@@ -223,6 +223,10 @@ export default function ProjectDetailView() {
     widthToleranceTotal: null as number | null,
     heightToleranceTotal: null as number | null
   })
+  // Opening presets state
+  const [openingPresets, setOpeningPresets] = useState<OpeningPreset[]>([])
+  const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null)
+  const [applyingPreset, setApplyingPreset] = useState(false)
   const [toleranceDefaults, setToleranceDefaults] = useState({
     thinwallWidthTolerance: 1.0,
     thinwallHeightTolerance: 1.5,
@@ -692,6 +696,7 @@ export default function ProjectDetailView() {
     fetchPricingModes()
     fetchFinishTypes()
     fetchToleranceDefaults()
+    fetchOpeningPresets()
   }, [])
 
   async function fetchProject() {
@@ -886,6 +891,18 @@ export default function ProjectDetailView() {
       }
     } catch (error) {
       console.error('Error fetching tolerance defaults:', error)
+    }
+  }
+
+  async function fetchOpeningPresets() {
+    try {
+      const response = await fetch('/api/opening-presets')
+      if (response.ok) {
+        const data = await response.json()
+        setOpeningPresets(data.presets || [])
+      }
+    } catch (error) {
+      console.error('Error fetching opening presets:', error)
     }
   }
 
@@ -1150,6 +1167,78 @@ export default function ProjectDetailView() {
       showError('Network error. Please check your connection and try again.')
     } finally {
       setAddingOpening(false)
+    }
+  }
+
+  async function handleApplyPreset() {
+    if (!selectedProjectId || !selectedPresetId || !newOpening.name.trim()) {
+      showError('Opening number and preset are required')
+      return
+    }
+
+    setApplyingPreset(true)
+    try {
+      const selectedPreset = openingPresets.find(p => p.id === selectedPresetId)
+
+      const requestBody: any = {
+        projectId: selectedProjectId,
+        name: newOpening.name,
+        finishColor: newOpening.finishColor || null
+      }
+
+      // Override dimensions if provided
+      if (newOpening.roughWidth) {
+        requestBody.roughWidth = parseFloat(newOpening.roughWidth)
+      }
+      if (newOpening.roughHeight) {
+        requestBody.roughHeight = parseFloat(newOpening.roughHeight)
+      }
+
+      const response = await fetch(`/api/opening-presets/${selectedPresetId}/apply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      })
+
+      if (response.ok) {
+        // Reset form and close modal
+        setNewOpening({
+          name: '',
+          finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
+          isFinishedOpening: false,
+          openingType: 'THINWALL',
+          roughWidth: '',
+          roughHeight: '',
+          widthToleranceTotal: null,
+          heightToleranceTotal: null
+        })
+        setSelectedPresetId(null)
+        setShowAddOpening(false)
+
+        // Silent refresh to preserve scroll position
+        try {
+          await refreshProject()
+          showSuccess('Opening created from preset!')
+        } catch (fetchError) {
+          console.error('Error refreshing project data:', fetchError)
+          showError('Opening created but failed to refresh the list. Please refresh the page.')
+        }
+      } else {
+        // Handle API errors
+        try {
+          const errorData = await response.json()
+          showError(errorData.error || 'Failed to apply preset')
+        } catch {
+          showError('Failed to apply preset. Please try again.')
+        }
+      }
+    } catch (error) {
+      console.error('Error applying preset:', error)
+      showError('Network error. Please check your connection and try again.')
+    } finally {
+      setApplyingPreset(false)
     }
   }
 
@@ -3252,7 +3341,51 @@ export default function ProjectDetailView() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Add New Opening</h2>
-            {!newOpening.isFinishedOpening && (
+
+            {/* Preset Selector */}
+            {openingPresets.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Create From Preset (Optional)</label>
+                <select
+                  value={selectedPresetId || ''}
+                  onChange={(e) => {
+                    const presetId = e.target.value ? parseInt(e.target.value) : null
+                    setSelectedPresetId(presetId)
+                    // Pre-fill form from preset defaults
+                    if (presetId) {
+                      const preset = openingPresets.find(p => p.id === presetId)
+                      if (preset) {
+                        setNewOpening(prev => ({
+                          ...prev,
+                          isFinishedOpening: preset.isFinishedOpening,
+                          openingType: preset.openingType || 'THINWALL',
+                          roughWidth: preset.defaultRoughWidth?.toString() || preset.defaultFinishedWidth?.toString() || '',
+                          roughHeight: preset.defaultRoughHeight?.toString() || preset.defaultFinishedHeight?.toString() || '',
+                          widthToleranceTotal: preset.widthToleranceTotal ?? null,
+                          heightToleranceTotal: preset.heightToleranceTotal ?? null
+                        }))
+                      }
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                >
+                  <option value="">Blank Opening</option>
+                  {openingPresets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name}
+                      {preset._count?.panels ? ` (${preset._count.panels} panel${preset._count.panels !== 1 ? 's' : ''})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {selectedPresetId && (
+                  <p className="text-xs text-green-600 mt-1">
+                    Preset will create opening with pre-configured panels and parts.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {!selectedPresetId && !newOpening.isFinishedOpening && (
               <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <p className="text-sm text-blue-800">
                   <strong>Note:</strong> Opening sizes will be calculated from the components you add. BOMs can be generated per opening and per project.
@@ -3273,32 +3406,34 @@ export default function ProjectDetailView() {
                 />
               </div>
 
-              {/* 2. Opening Type: Thinwall or Trimmed */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Opening Type</label>
-                <select
-                  value={newOpening.openingType}
-                  onChange={(e) => {
-                    const type = e.target.value as 'THINWALL' | 'FRAMED'
-                    setNewOpening(prev => ({
-                      ...prev,
-                      openingType: type,
-                      // Reset tolerance overrides to use new defaults
-                      widthToleranceTotal: null,
-                      heightToleranceTotal: null
-                    }))
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                >
-                  <option value="THINWALL">Thinwall</option>
-                  <option value="FRAMED">Trimmed</option>
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  {newOpening.openingType === 'FRAMED'
-                    ? 'A Frame will be automatically added to this opening'
-                    : 'Components will be filtered to show Thinwall products'}
-                </p>
-              </div>
+              {/* 2. Opening Type: Thinwall or Trimmed - hide when preset is selected */}
+              {!selectedPresetId && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Opening Type</label>
+                  <select
+                    value={newOpening.openingType}
+                    onChange={(e) => {
+                      const type = e.target.value as 'THINWALL' | 'FRAMED'
+                      setNewOpening(prev => ({
+                        ...prev,
+                        openingType: type,
+                        // Reset tolerance overrides to use new defaults
+                        widthToleranceTotal: null,
+                        heightToleranceTotal: null
+                      }))
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  >
+                    <option value="THINWALL">Thinwall</option>
+                    <option value="FRAMED">Trimmed</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {newOpening.openingType === 'FRAMED'
+                      ? 'A Frame will be automatically added to this opening'
+                      : 'Components will be filtered to show Thinwall products'}
+                  </p>
+                </div>
+              )}
 
               {/* 3. Extrusion Finish */}
               <div>
@@ -3319,38 +3454,40 @@ export default function ProjectDetailView() {
                 </p>
               </div>
 
-              {/* 4. Specify Dimensions Toggle */}
-              <div className="border-t border-gray-200 pt-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Specify Dimensions
-                    </label>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Enable to enter opening dimensions
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setNewOpening(prev => ({
-                      ...prev,
-                      isFinishedOpening: !prev.isFinishedOpening
-                    }))}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      newOpening.isFinishedOpening ? 'bg-blue-600' : 'bg-gray-200'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        newOpening.isFinishedOpening ? 'translate-x-6' : 'translate-x-1'
+              {/* 4. Specify Dimensions Toggle - hide when preset is selected */}
+              {!selectedPresetId && (
+                <div className="border-t border-gray-200 pt-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Specify Dimensions
+                      </label>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Enable to enter opening dimensions
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNewOpening(prev => ({
+                        ...prev,
+                        isFinishedOpening: !prev.isFinishedOpening
+                      }))}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        newOpening.isFinishedOpening ? 'bg-blue-600' : 'bg-gray-200'
                       }`}
-                    />
-                  </button>
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          newOpening.isFinishedOpening ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* 5. Dimension Fields (shown when Specify Dimensions is enabled) */}
-              {newOpening.isFinishedOpening && (
+              {/* 5. Dimension Fields - for blank openings with Specify Dimensions enabled */}
+              {!selectedPresetId && newOpening.isFinishedOpening && (
                 <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                   {/* Opening Dimensions */}
                   <div className="grid grid-cols-2 gap-4">
@@ -3388,12 +3525,47 @@ export default function ProjectDetailView() {
                   </p>
                 </div>
               )}
+
+              {/* 5b. Dimension Override for Presets */}
+              {selectedPresetId && (
+                <div className="space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                  <p className="text-sm text-green-800 font-medium">Dimension Override (Optional)</p>
+                  <p className="text-xs text-green-700">
+                    Leave blank to use preset defaults. Enter values to override.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Width (in)</label>
+                      <input
+                        type="number"
+                        step="0.0625"
+                        value={newOpening.roughWidth}
+                        onChange={(e) => setNewOpening(prev => ({ ...prev, roughWidth: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        placeholder={openingPresets.find(p => p.id === selectedPresetId)?.defaultRoughWidth?.toString() || 'Preset default'}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Height (in)</label>
+                      <input
+                        type="number"
+                        step="0.0625"
+                        value={newOpening.roughHeight}
+                        onChange={(e) => setNewOpening(prev => ({ ...prev, roughHeight: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        placeholder={openingPresets.find(p => p.id === selectedPresetId)?.defaultRoughHeight?.toString() || 'Preset default'}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex justify-end space-x-3 pt-6">
               <button
                 onClick={() => {
-                  if (!addingOpening) {
+                  if (!addingOpening && !applyingPreset) {
                     setShowAddOpening(false)
+                    setSelectedPresetId(null)
                     setNewOpening({
                       name: '',
                       finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
@@ -3406,20 +3578,27 @@ export default function ProjectDetailView() {
                     })
                   }
                 }}
-                disabled={addingOpening}
+                disabled={addingOpening || applyingPreset}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                onClick={handleAddOpening}
-                disabled={addingOpening || !newOpening.name.trim() || (newOpening.isFinishedOpening && (!newOpening.roughWidth || !newOpening.roughHeight))}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                onClick={selectedPresetId ? handleApplyPreset : handleAddOpening}
+                disabled={
+                  addingOpening ||
+                  applyingPreset ||
+                  !newOpening.name.trim() ||
+                  (!selectedPresetId && newOpening.isFinishedOpening && (!newOpening.roughWidth || !newOpening.roughHeight))
+                }
+                className={`px-4 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center ${
+                  selectedPresetId ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
-                {addingOpening && (
+                {(addingOpening || applyingPreset) && (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                 )}
-                {addingOpening ? 'Adding...' : 'Add Opening'}
+                {addingOpening ? 'Adding...' : applyingPreset ? 'Applying...' : selectedPresetId ? 'Apply Preset' : 'Add Opening'}
               </button>
             </div>
           </div>

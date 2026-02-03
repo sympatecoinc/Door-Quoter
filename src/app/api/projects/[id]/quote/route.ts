@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { calculateOpeningCosts, getGlobalMaterialPricePerLb } from '@/lib/pricing-calculator'
+import { calculateOpeningCosts, createPricingContext } from '@/lib/pricing-calculator'
 
 // Helper to convert panel directions to abbreviations
 function convertDirectionToAbbreviation(direction: string, panelType: string): string {
@@ -171,6 +171,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                   }
                 }
               }
+            },
+            presetPartInstances: {
+              include: {
+                presetPart: true
+              }
             }
           }
         }
@@ -201,26 +206,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       )
     }
 
-    // Always calculate pricing fresh using the shared pricing calculator
-    // This ensures consistency between quote display and debug output
-    const globalMaterialPricePerLb = await getGlobalMaterialPricePerLb()
+    // Create pricing context with all pre-fetched data (single batch of ~4 queries)
+    // This eliminates ~100,000 N+1 queries by pre-fetching master parts, finish pricing, and glass types
+    const pricingContext = await createPricingContext(project.openings as any)
 
-    // Calculate costs for each opening directly (no internal API calls)
-    const openingCostBreakdowns = new Map<number, Awaited<ReturnType<typeof calculateOpeningCosts>>>()
+    // Calculate costs for each opening using pre-fetched context (now synchronous - no DB queries)
+    const openingCostBreakdowns = new Map<number, ReturnType<typeof calculateOpeningCosts>>()
     for (const opening of project.openings) {
       try {
-        const costBreakdown = await calculateOpeningCosts(
+        const costBreakdown = calculateOpeningCosts(
           {
             id: opening.id,
             finishColor: opening.finishColor,
             panels: opening.panels,
+            presetPartInstances: opening.presetPartInstances,
             project: {
               excludedPartNumbers: project.excludedPartNumbers,
               extrusionCostingMethod: project.extrusionCostingMethod,
               pricingMode: project.pricingMode
             }
           },
-          globalMaterialPricePerLb
+          pricingContext
         )
         openingCostBreakdowns.set(opening.id, costBreakdown)
 
@@ -267,6 +273,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Sort openings by name (natural alphanumeric sort) for consistent display
     const sortedOpenings = [...project.openings].sort((a, b) => naturalSortCompare(a.name, b.name))
 
+    // Pre-fetch ALL drawings in parallel (eliminates sequential fetch bottleneck)
+    // This fetches all drawings concurrently instead of one-by-one in the batch loop
+    const drawingPromises = sortedOpenings.map(async (opening) => {
+      const url = drawingViewType === 'PLAN'
+        ? `${baseUrl}/api/drawings/plan/${opening.id}`
+        : `${baseUrl}/api/drawings/elevation/${opening.id}`
+      try {
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Cookie': cookieHeader }
+        })
+        return {
+          openingId: opening.id,
+          data: response.ok ? await response.json() : null,
+          type: drawingViewType
+        }
+      } catch (error) {
+        console.error(`Error pre-fetching drawings for opening ${opening.id}:`, error)
+        return { openingId: opening.id, data: null, type: drawingViewType }
+      }
+    })
+    const allDrawingsResults = await Promise.all(drawingPromises)
+    const drawingsMap = new Map(allDrawingsResults.map(d => [d.openingId, d]))
+
     // Generate quote data for each opening
     // Process in batches to reduce peak memory usage (prevents OOM on large projects)
     const BATCH_SIZE = 3
@@ -276,7 +306,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const batch = sortedOpenings.slice(i, i + BATCH_SIZE)
       const batchResults = await Promise.all(
         batch.map(async (opening) => {
-        // Get drawing images based on quoteDrawingView setting
+        // Get pre-fetched drawing data from map
+        const drawingResult = drawingsMap.get(opening.id)
         const elevationImages: string[] = []
 
         // Array to hold plan view images with metadata (for proper positioning)
@@ -298,83 +329,59 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           productName?: string
         }> = []
 
-        if (drawingViewType === 'PLAN') {
-          // Fetch plan view images for this opening
-          try {
-            const planResponse = await fetch(`${baseUrl}/api/drawings/plan/${opening.id}`, {
-              method: 'GET',
-              headers: {
-                'Cookie': cookieHeader
-              }
-            })
-            if (planResponse.ok) {
-              const planData = await planResponse.json()
-              if (planData.success && planData.planViews) {
-                // Extract full plan view data with metadata for proper positioning
-                for (const planView of planData.planViews) {
-                  if (planView.imageData) {
-                    // Add to legacy elevationImages for backwards compatibility
-                    elevationImages.push(planView.imageData)
-                    // Add to new planViewImages with full metadata
-                    planViewImages.push({
-                      imageData: planView.imageData,
-                      orientation: planView.orientation, // 'bottom' or 'top'
-                      width: planView.width,
-                      height: planView.height,
-                      productType: planView.productType,
-                      productName: planView.productName
-                    })
-                  }
-                }
+        if (drawingViewType === 'PLAN' && drawingResult?.data) {
+          // Use pre-fetched plan view images
+          const planData = drawingResult.data
+          if (planData.success && planData.planViews) {
+            // Extract full plan view data with metadata for proper positioning
+            for (const planView of planData.planViews) {
+              if (planView.imageData) {
+                // Add to legacy elevationImages for backwards compatibility
+                elevationImages.push(planView.imageData)
+                // Add to new planViewImages with full metadata
+                planViewImages.push({
+                  imageData: planView.imageData,
+                  orientation: planView.orientation, // 'bottom' or 'top'
+                  width: planView.width,
+                  height: planView.height,
+                  productType: planView.productType,
+                  productName: planView.productName
+                })
               }
             }
-          } catch (error) {
-            console.error(`Error fetching plan views for opening ${opening.id}:`, error)
           }
-        } else {
-          // Default: Fetch elevation view images with metadata for proper proportional rendering
-          try {
-            const elevationResponse = await fetch(`${baseUrl}/api/drawings/elevation/${opening.id}`, {
-              method: 'GET',
-              headers: {
-                'Cookie': cookieHeader
-              }
-            })
-            if (elevationResponse.ok) {
-              const elevationData = await elevationResponse.json()
-              if (elevationData.success && elevationData.elevationImages) {
-                // Extract elevation data with width metadata for proportional display
-                for (const elevImg of elevationData.elevationImages) {
-                  if (elevImg.imageData) {
-                    // Add to legacy elevationImages for backwards compatibility
-                    elevationImages.push(elevImg.imageData)
-                    // Add to elevationViewImages with width metadata for proportional rendering
-                    // NOTE: Using separate array from planViewImages to avoid triggering wall drawing in PDF
-                    elevationViewImages.push({
-                      imageData: elevImg.imageData,
-                      width: elevImg.width,
-                      height: elevImg.height,
-                      productType: elevImg.productType,
-                      productName: elevImg.productName
-                    })
-                  }
-                }
-              }
-            } else {
-              // Fallback: Get elevation images directly from product data
-              for (const panel of opening.panels) {
-                if (panel.componentInstance?.product?.elevationImageData) {
-                  elevationImages.push(panel.componentInstance.product.elevationImageData)
-                }
+        } else if (drawingViewType !== 'PLAN' && drawingResult?.data) {
+          // Use pre-fetched elevation view images with metadata for proper proportional rendering
+          const elevationData = drawingResult.data
+          if (elevationData.success && elevationData.elevationImages) {
+            // Extract elevation data with width metadata for proportional display
+            for (const elevImg of elevationData.elevationImages) {
+              if (elevImg.imageData) {
+                // Add to legacy elevationImages for backwards compatibility
+                elevationImages.push(elevImg.imageData)
+                // Add to elevationViewImages with width metadata for proportional rendering
+                elevationViewImages.push({
+                  imageData: elevImg.imageData,
+                  width: elevImg.width,
+                  height: elevImg.height,
+                  productType: elevImg.productType,
+                  productName: elevImg.productName
+                })
               }
             }
-          } catch (error) {
-            console.error(`Error fetching elevation views for opening ${opening.id}:`, error)
+          } else {
             // Fallback: Get elevation images directly from product data
             for (const panel of opening.panels) {
               if (panel.componentInstance?.product?.elevationImageData) {
                 elevationImages.push(panel.componentInstance.product.elevationImageData)
               }
+            }
+          }
+        } else if (drawingViewType !== 'PLAN') {
+          // No pre-fetched data available, fallback to product data
+          for (const panel of opening.panels) {
+            if (panel.componentInstance?.product?.elevationImageData) {
+              elevationImages.push(panel.componentInstance.product.elevationImageData)
             }
           }
         }

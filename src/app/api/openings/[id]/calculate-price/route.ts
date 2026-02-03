@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { evaluatePresetFormula, PresetFormulaVariables } from '@/lib/preset-formulas'
 
 // Function to evaluate simple mathematical formulas
 function evaluateFormula(formula: string, variables: Record<string, number>): number {
@@ -742,6 +743,11 @@ export async function POST(
               }
             }
           }
+        },
+        presetPartInstances: {
+          include: {
+            presetPart: true
+          }
         }
       }
     })
@@ -778,6 +784,34 @@ export async function POST(
           // Update local panel object for accurate pricing in this calculation
           ;(panel as any).width = frameDimensions.width
           ;(panel as any).height = frameDimensions.height
+        }
+      }
+    }
+
+    // Re-evaluate preset part formulas with current opening dimensions
+    // This handles dimension changes on openings that used a preset
+    if (opening.presetId && opening.presetPartInstances?.length > 0) {
+      const formulaVariables: PresetFormulaVariables = {
+        roughWidth: opening.roughWidth ?? 0,
+        roughHeight: opening.roughHeight ?? 0,
+        finishedWidth: opening.finishedWidth ?? 0,
+        finishedHeight: opening.finishedHeight ?? 0
+      }
+
+      for (const instance of opening.presetPartInstances) {
+        if (instance.presetPart.formula) {
+          const calculatedQty = evaluatePresetFormula(instance.presetPart.formula, formulaVariables)
+          const newQuantity = calculatedQty ?? instance.presetPart.quantity ?? 1
+
+          // Only update if quantity has changed
+          if (newQuantity !== instance.calculatedQuantity) {
+            await prisma.openingPresetPartInstance.update({
+              where: { id: instance.id },
+              data: { calculatedQuantity: newQuantity }
+            })
+            // Update local object for accurate pricing
+            ;(instance as any).calculatedQuantity = newQuantity
+          }
         }
       }
     }

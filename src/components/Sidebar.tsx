@@ -26,7 +26,8 @@ import {
   PackageOpen,
   Building2,
   Globe,
-  LucideIcon
+  LucideIcon,
+  TestTube2
 } from 'lucide-react'
 
 // Menu item metadata (icons and labels)
@@ -50,6 +51,7 @@ const menuItemsMap: Record<string, { label: string; icon: LucideIcon }> = {
   quoteDocuments: { label: 'Quote Settings', icon: FileText },
   accounting: { label: 'Pricing', icon: DollarSign },
   settings: { label: 'Settings', icon: Settings },
+  clickupTest: { label: 'ClickUp Test', icon: TestTube2 },
 }
 
 // Default order (used when no profile ordering is set)
@@ -57,7 +59,7 @@ const defaultMenuOrder: MenuOption[] = [
   'dashboard', 'customers', 'crm', 'projects', 'production', 'logistics', 'products',
   'masterParts', 'inventory', 'vendors', 'purchaseOrders', 'receiving',
   'purchasingDashboard', 'purchaseSummary', 'salesOrders', 'invoices', 'quoteDocuments',
-  'accounting', 'settings'
+  'accounting', 'settings', 'clickupTest'
 ]
 
 // Get cached skeleton count from localStorage

@@ -559,22 +559,25 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
     const matchesSearch = searchTerm === '' ||
       project.name.toLowerCase().includes(searchTerm.toLowerCase())
 
-    // Status filter - hide archived by default unless Archive filter is selected
+    // Status filter - hide archived/bid lost by default unless their filter is selected
     const isArchived = project.status === ProjectStatus.ARCHIVE
+    const isBidLost = project.status === ProjectStatus.BID_LOST
     const archiveFilterSelected = statusFilters.includes(ProjectStatus.ARCHIVE)
+    const bidLostFilterSelected = statusFilters.includes(ProjectStatus.BID_LOST)
 
-    // If no filters selected: show all except archived
-    // If filters selected: show only matching statuses (including archive if selected)
+    // If no filters selected: show all except archived and bid lost
+    // If filters selected: show only matching statuses (including archive/bid lost if selected)
     const matchesStatus = statusFilters.length === 0
-      ? !isArchived
+      ? !isArchived && !isBidLost
       : statusFilters.includes(project.status)
 
     // Filter by type (leads vs projects)
-    // Archive status should match if the Archive filter is selected
+    // Archive/Bid Lost status should match if their filter is selected
     let matchesType = true
     if (filterType === 'leads') {
       matchesType = LEAD_STATUSES.includes(project.status as ProjectStatus) ||
-        (isArchived && archiveFilterSelected)
+        (isArchived && archiveFilterSelected) ||
+        (isBidLost && bidLostFilterSelected)
     } else if (filterType === 'projects') {
       matchesType = PROJECT_STATUSES.includes(project.status as ProjectStatus) ||
         (isArchived && archiveFilterSelected)
@@ -885,7 +888,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
               key={project.id}
               onClick={() => onProjectClick?.(project.id)}
               className={`bg-white rounded-xl shadow-sm border border-gray-200 p-6 ${
-                project.status === ProjectStatus.ARCHIVE ? 'opacity-60 bg-gray-50' : ''
+                project.status === ProjectStatus.ARCHIVE || project.status === ProjectStatus.BID_LOST ? 'opacity-60 bg-gray-50' : ''
               } ${onProjectClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
             >
               <div className="flex justify-between items-start mb-4">

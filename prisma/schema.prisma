@@ -157,6 +157,10 @@ model Opening {
   updatedAt             DateTime  @updatedAt
   project               Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   panels                Panel[]
+  // Preset tracking
+  presetId              Int?
+  preset                OpeningPreset?            @relation(fields: [presetId], references: [id], onDelete: SetNull)
+  presetPartInstances   OpeningPresetPartInstance[]
 
   @@map("Openings")
 }
@@ -197,6 +201,7 @@ enum ProjectStatus {
   ACTIVE         @map("Active")
   COMPLETE       @map("Complete")
   ARCHIVE        @map("Archive")
+  BID_LOST       @map("Bid Lost")
 }
 
 // Work Order Production Stages
@@ -256,6 +261,8 @@ model Product {
   pairedProductId      Int?                   // ID of product to auto-add as paired (e.g., Frame)
   pairedProduct        Product?               @relation("ProductPairing", fields: [pairedProductId], references: [id])
   pairedByProducts     Product[]              @relation("ProductPairing")
+  // Opening Preset support
+  presetPanels         OpeningPresetPanel[]
 
   @@map("Products")
 }
@@ -426,6 +433,9 @@ model MasterPart {
 
   // Price history for this part
   priceHistory            PriceHistory[]
+
+  // Opening Preset Parts - parts linked from presets
+  openingPresetParts      OpeningPresetPart[]
 
   @@map("MasterParts")
 }
@@ -1675,4 +1685,114 @@ model FieldVerificationUpload {
 
   @@index([projectId])
   @@map("FieldVerificationUploads")
+}
+
+// Opening Preset - Reusable opening configurations with pre-defined panels and parts
+model OpeningPreset {
+  id                    Int                     @id @default(autoincrement())
+  name                  String                  @unique
+  description           String?
+
+  // Default dimensions (nullable - user can override when applying)
+  defaultRoughWidth     Float?
+  defaultRoughHeight    Float?
+  defaultFinishedWidth  Float?
+  defaultFinishedHeight Float?
+
+  // Tolerance settings
+  isFinishedOpening     Boolean                 @default(false)
+  openingType           String?                 // "THINWALL" or "FRAMED"
+  widthToleranceTotal   Float?
+  heightToleranceTotal  Float?
+
+  // Include starter channels by default
+  includeStarterChannels Boolean                @default(false)
+
+  // Management
+  isArchived            Boolean                 @default(false)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  // Relations
+  panels                OpeningPresetPanel[]
+  parts                 OpeningPresetPart[]
+  appliedOpenings       Opening[]
+
+  @@map("OpeningPresets")
+}
+
+// Opening Preset Panel - Panels included in a preset
+model OpeningPresetPanel {
+  id                  Int               @id @default(autoincrement())
+  presetId            Int
+  preset              OpeningPreset     @relation(fields: [presetId], references: [id], onDelete: Cascade)
+
+  // Panel configuration
+  type                String            // "Swing Door", "Fixed Panel", etc.
+  productId           Int?              // Optional default product
+  product             Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  // Dimension formulas (can be formula-based or fixed number as string)
+  widthFormula        String?           // e.g., "finishedWidth / 2" or "36"
+  heightFormula       String?           // e.g., "finishedHeight" or "84"
+
+  // Panel settings
+  glassType           String            @default("Clear")
+  locking             String            @default("None")
+  swingDirection      String            @default("None")
+  slidingDirection    String            @default("Left")
+
+  // Option selections (JSON - same format as ComponentInstance)
+  subOptionSelections String            @default("{}")
+  includedOptions     String            @default("[]")
+  variantSelections   String            @default("{}")
+
+  displayOrder        Int               @default(0)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@map("OpeningPresetPanels")
+}
+
+// Opening Preset Part - Parts linked from Master Parts (locked when applied)
+model OpeningPresetPart {
+  id                  Int               @id @default(autoincrement())
+  presetId            Int
+  preset              OpeningPreset     @relation(fields: [presetId], references: [id], onDelete: Cascade)
+
+  // Link to Master Part (REQUIRED - parts must come from Master Parts list)
+  masterPartId        Int
+  masterPart          MasterPart        @relation(fields: [masterPartId], references: [id], onDelete: Cascade)
+
+  // Formula or fixed quantity
+  formula             String?           // e.g., "finishedHeight * 2 + finishedWidth * 2"
+  quantity            Float?            // Fixed quantity if no formula
+
+  displayOrder        Int               @default(0)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  // Track applied instances
+  appliedInstances    OpeningPresetPartInstance[]
+
+  @@map("OpeningPresetParts")
+}
+
+// Opening Preset Part Instance - Tracks preset parts applied to an opening (locked)
+model OpeningPresetPartInstance {
+  id                  Int               @id @default(autoincrement())
+  openingId           Int
+  opening             Opening           @relation(fields: [openingId], references: [id], onDelete: Cascade)
+  presetPartId        Int
+  presetPart          OpeningPresetPart @relation(fields: [presetPartId], references: [id], onDelete: Cascade)
+
+  // Calculated values at time of creation/update
+  calculatedQuantity  Float
+  calculatedCost      Float             @default(0)
+
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@unique([openingId, presetPartId])
+  @@map("OpeningPresetPartInstances")
 }

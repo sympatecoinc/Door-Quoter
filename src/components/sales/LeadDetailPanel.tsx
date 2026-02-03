@@ -481,6 +481,17 @@ export default function LeadDetailPanel({
                     )}
                     <div className="border-t border-gray-100 my-1" />
                     <button
+                      onClick={() => initiateStatusChange(ProjectStatus.BID_LOST)}
+                      className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                        lead.status === ProjectStatus.BID_LOST ? 'bg-blue-50' : ''
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full ${STATUS_CONFIG[ProjectStatus.BID_LOST].bgColor}`}
+                      />
+                      Bid Lost
+                    </button>
+                    <button
                       onClick={() => initiateStatusChange(ProjectStatus.ARCHIVE)}
                       className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
                         lead.status === ProjectStatus.ARCHIVE ? 'bg-blue-50' : ''

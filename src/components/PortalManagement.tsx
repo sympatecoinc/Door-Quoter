@@ -24,7 +24,8 @@ const ALL_TABS = [
   { id: 'invoices', label: 'Invoices' },
   { id: 'quoteDocuments', label: 'Quote Settings' },
   { id: 'accounting', label: 'Pricing' },
-  { id: 'settings', label: 'Settings' }
+  { id: 'settings', label: 'Settings' },
+  { id: 'clickupTest', label: 'ClickUp Test' }
 ]
 
 interface PortalFormData {

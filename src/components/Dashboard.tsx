@@ -23,6 +23,7 @@ import AccountingView from './views/AccountingView'
 import SettingsView from './views/SettingsView'
 import QuoteView from './views/QuoteView'
 import QuoteDocumentsView from './views/QuoteDocumentsView'
+import ClickUpTestView from './views/ClickUpTestView'
 
 export default function Dashboard() {
   const { currentMenu, selectedProjectId, selectedCustomerId } = useAppStore()
@@ -69,6 +70,8 @@ export default function Dashboard() {
         return <SettingsView />
       case 'quote':
         return <QuoteView />
+      case 'clickupTest':
+        return <ClickUpTestView />
       default:
         return <DashboardView />
     }

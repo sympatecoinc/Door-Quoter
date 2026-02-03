@@ -4,8 +4,11 @@ import { useState, useEffect } from 'react'
 import { Plus, Edit2, Trash2, Save, X, Copy } from 'lucide-react'
 import ProductDetailView from './ProductDetailView'
 import CategoryDetailView from './CategoryDetailView'
+import OpeningPresetsView from './OpeningPresetsView'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
+
+type ProductsViewTab = 'products' | 'presets'
 
 interface Product {
   id: number
@@ -68,6 +71,7 @@ function ProductCardSkeleton() {
 }
 
 export default function ProductsView() {
+  const [activeTab, setActiveTab] = useState<ProductsViewTab>('products')
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -284,19 +288,51 @@ export default function ProductsView() {
             <h1 className="text-3xl font-bold text-gray-900">Products</h1>
             <p className="text-gray-600 mt-2">Manage product catalog and configurations</p>
           </div>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            New Product
-          </button>
+          {activeTab === 'products' && (
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              New Product
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Tab Navigation */}
+      {!selectedProduct && (
+        <div className="mb-6 border-b border-gray-200">
+          <nav className="flex gap-4">
+            <button
+              onClick={() => setActiveTab('products')}
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'products'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Products
+            </button>
+            <button
+              onClick={() => setActiveTab('presets')}
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'presets'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Opening Presets
+            </button>
+          </nav>
         </div>
       )}
 
       {/* Content */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        {loading ? (
+        {activeTab === 'presets' && !selectedProduct ? (
+          <OpeningPresetsView />
+        ) : loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(6)].map((_, i) => (
               <ProductCardSkeleton key={i} />

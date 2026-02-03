@@ -19,6 +19,14 @@ These constraints override all other instructions:
 
   **Why this matters:** On 2026-01-20, `prisma db push --force-reset` was run to "fix schema drift" and it WIPED THE ENTIRE DATABASE. All projects, customers, products, users - everything was lost and had to be restored from staging.
 
+- CONSTRAINT_6: **NEVER delete, overwrite, or modify the .env file without explicit written permission containing "DELETE ENV" or "MODIFY ENV".** The following actions are FORBIDDEN:
+  - `rm .env` or any command that deletes .env
+  - Overwriting .env with Write tool
+  - Moving or renaming .env
+  - Any bash command that removes, truncates, or destroys .env content
+
+  **Why this matters:** The .env file contains critical API keys, database credentials, and configuration that cannot be recovered without manual intervention. Losing this file breaks the entire application.
+
 ## BRANCH MANAGEMENT
 - Always work on 'dev' branch unless instructed otherwise
 - Never merge or push to 'main' without explicit permission
@@ -151,6 +159,9 @@ IF schema drift detected OR migration fails:
   THEN NEVER use --force-reset or migrate reset
   INSTEAD: Use prisma migrate diff to understand the issue, create manual migration, or ASK USER for guidance
   SEE: DATABASE SAFETY section for proper handling
+
+IF change affects existing APIs, database schemas, or interfaces:
+  THEN ask user: "This change affects existing [APIs/schema/interfaces]. Should I add backwards compatibility support (e.g., deprecated fields, migration paths, fallback handling)?"
 
 ## OUTPUT FORMATTING RULES
 
