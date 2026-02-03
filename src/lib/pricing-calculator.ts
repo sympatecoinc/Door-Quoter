@@ -87,17 +87,175 @@ export interface GlassCostItem {
   totalCost: number
 }
 
+// ============================================================================
+// Pricing Context - Pre-fetched data for batch queries
+// ============================================================================
+
+export interface PricingContext {
+  masterParts: Map<string, {
+    partNumber: string
+    partType: string
+    cost: number | null
+    salePrice: number | null
+    unit: string | null
+    weightPerFoot: number | null
+    perimeterInches: number | null
+    customPricePerLb: number | null
+    isMillFinish: boolean
+    stockLengthRules: any[]
+    pricingRules: any[]
+  }>
+  finishPricing: Map<string, { finishType: string; costPerSqFt: number; isActive: boolean }>
+  glassTypes: Map<string, { name: string; pricePerSqFt: number }>
+  globalMaterialPricePerLb: number
+}
+
+/**
+ * Create a pricing context by pre-fetching all required data for batch processing.
+ * This eliminates N+1 queries by fetching all master parts, finish pricing, and glass types
+ * in just 4 parallel queries instead of thousands of individual lookups.
+ */
+export async function createPricingContext(
+  openings: OpeningWithIncludes[]
+): Promise<PricingContext> {
+  // 1. Collect unique identifiers from all openings
+  const partNumbers = new Set<string>()
+  const glassTypeNames = new Set<string>()
+  const finishColors = new Set<string>()
+
+  for (const opening of openings) {
+    if (opening.finishColor) finishColors.add(opening.finishColor)
+    for (const panel of opening.panels) {
+      if (panel.glassType && panel.glassType !== 'N/A') {
+        glassTypeNames.add(panel.glassType)
+      }
+      const product = panel.componentInstance?.product
+      if (!product) continue
+
+      // Collect part numbers from BOMs
+      for (const bom of product.productBOMs || []) {
+        if (bom.partNumber) partNumbers.add(bom.partNumber)
+      }
+
+      // Collect part numbers from options and linked parts
+      for (const pso of product.productSubOptions || []) {
+        for (const opt of pso.category?.individualOptions || []) {
+          if (opt.partNumber) partNumbers.add(opt.partNumber)
+          for (const lp of opt.linkedParts || []) {
+            if (lp.masterPart?.partNumber) partNumbers.add(lp.masterPart.partNumber)
+          }
+        }
+      }
+    }
+
+    // Collect part numbers from preset part instances
+    for (const instance of opening.presetPartInstances || []) {
+      if (instance.presetPart?.partNumber) {
+        partNumbers.add(instance.presetPart.partNumber)
+      }
+    }
+  }
+
+  // 2. Batch fetch all data in parallel (4 queries total instead of ~100,000)
+  const [masterPartsList, finishPricingList, glassTypesList, globalSetting] = await Promise.all([
+    prisma.masterPart.findMany({
+      where: { partNumber: { in: Array.from(partNumbers) } },
+      include: {
+        stockLengthRules: { where: { isActive: true } },
+        pricingRules: { where: { isActive: true } }
+      }
+    }),
+    prisma.extrusionFinishPricing.findMany({
+      where: { finishType: { in: Array.from(finishColors) }, isActive: true }
+    }),
+    prisma.glassType.findMany({
+      where: { name: { in: Array.from(glassTypeNames) } }
+    }),
+    prisma.globalSetting.findUnique({ where: { key: 'materialPricePerLb' } })
+  ])
+
+  // 3. Build lookup Maps for O(1) access
+  type MasterPartData = {
+    partNumber: string
+    partType: string
+    cost: number | null
+    salePrice: number | null
+    unit: string | null
+    weightPerFoot: number | null
+    perimeterInches: number | null
+    customPricePerLb: number | null
+    isMillFinish: boolean
+    stockLengthRules: any[]
+    pricingRules: any[]
+  }
+  const masterParts = new Map<string, MasterPartData>()
+  for (const mp of masterPartsList) {
+    masterParts.set(mp.partNumber, {
+      partNumber: mp.partNumber,
+      partType: mp.partType,
+      cost: mp.cost,
+      salePrice: mp.salePrice,
+      unit: mp.unit,
+      weightPerFoot: mp.weightPerFoot,
+      perimeterInches: mp.perimeterInches,
+      customPricePerLb: mp.customPricePerLb,
+      isMillFinish: mp.isMillFinish,
+      stockLengthRules: mp.stockLengthRules,
+      pricingRules: mp.pricingRules
+    })
+  }
+
+  const finishPricing = new Map<string, { finishType: string; costPerSqFt: number; isActive: boolean }>()
+  for (const fp of finishPricingList) {
+    finishPricing.set(fp.finishType, {
+      finishType: fp.finishType,
+      costPerSqFt: fp.costPerSqFt,
+      isActive: fp.isActive
+    })
+  }
+
+  const glassTypes = new Map<string, { name: string; pricePerSqFt: number }>()
+  for (const gt of glassTypesList) {
+    glassTypes.set(gt.name, {
+      name: gt.name,
+      pricePerSqFt: gt.pricePerSqFt
+    })
+  }
+
+  return {
+    masterParts,
+    finishPricing,
+    glassTypes,
+    globalMaterialPricePerLb: globalSetting ? parseFloat(globalSetting.value) : 0
+  }
+}
+
 // Type for opening with all required includes
 export interface OpeningWithIncludes {
   id: number
   finishColor: string | null
   panels: PanelWithIncludes[]
+  presetPartInstances?: PresetPartInstanceWithIncludes[]
   project: {
     excludedPartNumbers: string[] | null
     extrusionCostingMethod?: string | null
     pricingMode?: {
       extrusionCostingMethod: string | null
     } | null
+  }
+}
+
+interface PresetPartInstanceWithIncludes {
+  id: number
+  calculatedQuantity: number
+  calculatedCost: number
+  presetPart: {
+    partType: string
+    partName: string
+    partNumber: string | null
+    unit: string | null
+    stockLength: number | null
+    isMilled: boolean
   }
 }
 
@@ -198,16 +356,17 @@ function calculateExtrusionPricePerPiece(
 
 /**
  * Calculate the price of a single BOM item using component dimensions
+ * Now uses PricingContext for O(1) lookups instead of database queries
  */
-async function calculateBOMItemPrice(
+function calculateBOMItemPrice(
   bom: any,
   componentWidth: number,
   componentHeight: number,
   extrusionCostingMethod: string,
   excludedPartNumbers: string[],
   finishColor: string | null,
-  globalMaterialPricePerLb: number
-): Promise<{ cost: number; breakdown: BOMCostItem }> {
+  context: PricingContext
+): { cost: number; breakdown: BOMCostItem } {
   const variables = {
     width: componentWidth || 0,
     height: componentHeight || 0,
@@ -228,47 +387,30 @@ async function calculateBOMItemPrice(
     finishDetails: ''
   }
 
-  // PRIORITY CHECK: Sale Price - bypasses ALL other pricing methods
-  if (bom.partNumber) {
-    try {
-      const salePriceCheck = await prisma.masterPart.findUnique({
-        where: { partNumber: bom.partNumber },
-        select: { salePrice: true }
-      })
+  // Get master part from pre-fetched context (O(1) lookup)
+  const masterPart = bom.partNumber ? context.masterParts.get(bom.partNumber) : null
 
-      if (salePriceCheck?.salePrice && salePriceCheck.salePrice > 0) {
-        cost = salePriceCheck.salePrice * (bom.quantity || 1)
-        breakdown.method = 'sale_price'
-        breakdown.unitCost = salePriceCheck.salePrice
-        breakdown.totalCost = cost
-        breakdown.details = `Sale price (no markup): $${salePriceCheck.salePrice} × ${bom.quantity || 1}`
-        return { cost, breakdown }
-      }
-    } catch (error) {
-      console.error('Error checking sale price:', error)
-    }
+  // PRIORITY CHECK: Sale Price - bypasses ALL other pricing methods
+  if (masterPart?.salePrice && masterPart.salePrice > 0) {
+    cost = masterPart.salePrice * (bom.quantity || 1)
+    breakdown.method = 'sale_price'
+    breakdown.unitCost = masterPart.salePrice
+    breakdown.totalCost = cost
+    breakdown.details = `Sale price (no markup): $${masterPart.salePrice} × ${bom.quantity || 1}`
+    return { cost, breakdown }
   }
 
   // Method 0: Hardware items with LF (linear foot) unit and formula
-  if (bom.formula && bom.partNumber) {
-    try {
-      const lfCheck = await prisma.masterPart.findUnique({
-        where: { partNumber: bom.partNumber },
-        select: { unit: true, cost: true, partType: true }
-      })
-
-      if (lfCheck?.partType === 'Hardware' && lfCheck?.unit === 'LF' && lfCheck?.cost && lfCheck.cost > 0) {
-        const dimensionInches = evaluateFormula(bom.formula, variables)
-        const linearFeet = dimensionInches / 12
-        cost = lfCheck.cost * linearFeet * (bom.quantity || 1)
-        breakdown.method = 'master_part_hardware_lf'
-        breakdown.unitCost = lfCheck.cost
-        breakdown.totalCost = cost
-        breakdown.details = `Hardware (LF): Formula "${bom.formula}" = ${dimensionInches}" = ${linearFeet.toFixed(2)} LF × $${lfCheck.cost}/LF × ${bom.quantity || 1} = $${cost.toFixed(2)}`
-        return { cost, breakdown }
-      }
-    } catch (error) {
-      console.error('Error checking LF hardware:', error)
+  if (bom.formula && masterPart) {
+    if (masterPart.partType === 'Hardware' && masterPart.unit === 'LF' && masterPart.cost && masterPart.cost > 0) {
+      const dimensionInches = evaluateFormula(bom.formula, variables)
+      const linearFeet = dimensionInches / 12
+      cost = masterPart.cost * linearFeet * (bom.quantity || 1)
+      breakdown.method = 'master_part_hardware_lf'
+      breakdown.unitCost = masterPart.cost
+      breakdown.totalCost = cost
+      breakdown.details = `Hardware (LF): Formula "${bom.formula}" = ${dimensionInches}" = ${linearFeet.toFixed(2)} LF × $${masterPart.cost}/LF × ${bom.quantity || 1} = $${cost.toFixed(2)}`
+      return { cost, breakdown }
     }
   }
 
@@ -285,22 +427,8 @@ async function calculateBOMItemPrice(
       formulaWithValues = formulaWithValues.replace(/height/gi, variables.height.toString())
     }
 
-    let masterPartCost: number | null = null
-    let masterPartUnit: string | null = null
-    if (bom.partNumber) {
-      try {
-        const mp = await prisma.masterPart.findUnique({
-          where: { partNumber: bom.partNumber },
-          select: { cost: true, unit: true }
-        })
-        if (mp?.cost && mp.cost > 0) {
-          masterPartCost = mp.cost
-          masterPartUnit = mp.unit
-        }
-      } catch (e) {
-        // Continue without MasterPart cost
-      }
-    }
+    const masterPartCost = masterPart?.cost && masterPart.cost > 0 ? masterPart.cost : null
+    const masterPartUnit = masterPart?.unit || null
 
     if (masterPartCost) {
       cost = formulaResult * masterPartCost * quantity
@@ -318,19 +446,9 @@ async function calculateBOMItemPrice(
     return { cost, breakdown }
   }
 
-  // Method 3: Find MasterPart by partNumber and apply pricing rules
-  if (bom.partNumber) {
-    try {
-      const masterPart = await prisma.masterPart.findUnique({
-        where: { partNumber: bom.partNumber },
-        include: {
-          stockLengthRules: { where: { isActive: true } },
-          pricingRules: { where: { isActive: true } }
-        }
-      })
-
-      if (masterPart) {
-        // For Hardware: Use direct cost
+  // Method 3: Use MasterPart from context and apply pricing rules
+  if (masterPart) {
+    // For Hardware: Use direct cost
         if (masterPart.partType === 'Hardware' && masterPart.cost && masterPart.cost > 0) {
           cost = masterPart.cost * (bom.quantity || 1)
           breakdown.method = 'master_part_hardware'
@@ -404,7 +522,7 @@ async function calculateBOMItemPrice(
             const calculatedPricePerPiece = calculateExtrusionPricePerPiece(
               masterPart.weightPerFoot,
               masterPart.customPricePerLb,
-              globalMaterialPricePerLb,
+              context.globalMaterialPricePerLb,
               bestRule.stockLength || 0
             )
             const pricePerPiece = calculatedPricePerPiece ?? bestRule.basePrice ?? 0
@@ -423,11 +541,12 @@ async function calculateBOMItemPrice(
 
                 // Calculate finish cost for percentage-based
                 if (finishColor && finishColor !== 'Mill Finish' && !masterPart.isMillFinish) {
-                  const finishResult = await calculateFinishCost(
+                  const finishResult = calculateFinishCost(
                     finishColor,
                     requiredLength,
                     masterPart.perimeterInches || 0,
-                    bom.quantity || 1
+                    bom.quantity || 1,
+                    context
                   )
                   if (finishResult) {
                     breakdown.finishCost = finishResult.cost
@@ -472,11 +591,12 @@ async function calculateBOMItemPrice(
               if (finishColor && finishColor !== 'Mill Finish' && !masterPart.isMillFinish) {
                 const finishLengthInches = usagePercentage >= 0.5 ? bestRule.stockLength : requiredLength
                 const finishType = usagePercentage >= 0.5 ? 'full stock' : 'cut length'
-                const finishResult = await calculateFinishCost(
+                const finishResult = calculateFinishCost(
                   finishColor,
                   finishLengthInches,
                   masterPart.perimeterInches || 0,
-                  bom.quantity || 1
+                  bom.quantity || 1,
+                  context
                 )
                 if (finishResult) {
                   breakdown.finishCost = finishResult.cost
@@ -512,11 +632,12 @@ async function calculateBOMItemPrice(
 
             // Calculate finish cost for full stock
             if (finishColor && finishColor !== 'Mill Finish' && !masterPart.isMillFinish) {
-              const finishResult = await calculateFinishCost(
+              const finishResult = calculateFinishCost(
                 finishColor,
                 bestRule.stockLength || requiredLength,
                 masterPart.perimeterInches || 0,
-                bom.quantity || 1
+                bom.quantity || 1,
+                context
               )
               if (finishResult) {
                 breakdown.finishCost = finishResult.cost
@@ -560,10 +681,6 @@ async function calculateBOMItemPrice(
           breakdown.details = `MasterPart direct: $${masterPart.cost} × ${bom.quantity || 1}`
           return { cost, breakdown }
         }
-      }
-    } catch (error) {
-      console.error(`Error looking up MasterPart for ${bom.partNumber}:`, error)
-    }
   }
 
   breakdown.method = 'no_cost_found'
@@ -573,34 +690,29 @@ async function calculateBOMItemPrice(
 }
 
 /**
- * Calculate finish cost for an extrusion
+ * Calculate finish cost for an extrusion (now synchronous using pre-fetched context)
  */
-async function calculateFinishCost(
+function calculateFinishCost(
   finishColor: string,
   lengthInches: number,
   perimeterInches: number,
-  quantity: number
-): Promise<{ cost: number; details: string } | null> {
-  try {
-    const finishPricing = await prisma.extrusionFinishPricing.findUnique({
-      where: { finishType: finishColor, isActive: true }
-    })
+  quantity: number,
+  context: PricingContext
+): { cost: number; details: string } | null {
+  const finishPricing = context.finishPricing.get(finishColor)
 
-    if (finishPricing && finishPricing.costPerSqFt > 0) {
-      const finishLengthFeet = lengthInches / 12
-      const perimeterFeet = perimeterInches / 12
-      const surfaceSqFt = perimeterFeet * finishLengthFeet
-      const finishCostPerPiece = surfaceSqFt * finishPricing.costPerSqFt
-      const totalFinishCost = finishCostPerPiece * quantity
+  if (finishPricing && finishPricing.costPerSqFt > 0) {
+    const finishLengthFeet = lengthInches / 12
+    const perimeterFeet = perimeterInches / 12
+    const surfaceSqFt = perimeterFeet * finishLengthFeet
+    const finishCostPerPiece = surfaceSqFt * finishPricing.costPerSqFt
+    const totalFinishCost = finishCostPerPiece * quantity
 
-      const details = perimeterFeet > 0
-        ? `${perimeterFeet.toFixed(3)}' perim × ${finishLengthFeet.toFixed(2)}' = ${surfaceSqFt.toFixed(2)} sq ft × $${finishPricing.costPerSqFt}/sq ft × ${quantity} = $${totalFinishCost.toFixed(2)}`
-        : `No perimeter defined, finish cost = $0.00`
+    const details = perimeterFeet > 0
+      ? `${perimeterFeet.toFixed(3)}' perim × ${finishLengthFeet.toFixed(2)}' = ${surfaceSqFt.toFixed(2)} sq ft × $${finishPricing.costPerSqFt}/sq ft × ${quantity} = $${totalFinishCost.toFixed(2)}`
+      : `No perimeter defined, finish cost = $0.00`
 
-      return { cost: totalFinishCost, details }
-    }
-  } catch (error) {
-    console.error('Error calculating finish cost:', error)
+    return { cost: totalFinishCost, details }
   }
   return null
 }
@@ -611,8 +723,9 @@ async function calculateFinishCost(
 
 /**
  * Calculate option price - handles both hardware and extrusions
+ * Now synchronous using PricingContext for O(1) lookups
  */
-async function calculateOptionPrice(
+function calculateOptionPrice(
   option: any,
   optionBom: any | null,
   quantity: number,
@@ -621,19 +734,16 @@ async function calculateOptionPrice(
   extrusionCostingMethod: string,
   excludedPartNumbers: string[],
   finishColor: string | null,
-  globalMaterialPricePerLb: number,
+  context: PricingContext,
   selectedVariantId?: number | null
-): Promise<{ unitPrice: number; totalPrice: number; isExtrusion: boolean; breakdown?: any; linkedPartsCost?: number }> {
+): { unitPrice: number; totalPrice: number; isExtrusion: boolean; breakdown?: any; linkedPartsCost?: number } {
   let baseUnitPrice = 0
   let baseTotalPrice = 0
   let isExtrusion = false
   let breakdown: any = null
 
   if (option.partNumber) {
-    const masterPart = await prisma.masterPart.findUnique({
-      where: { partNumber: option.partNumber },
-      select: { partType: true, cost: true, salePrice: true }
-    })
+    const masterPart = context.masterParts.get(option.partNumber)
 
     if (masterPart) {
       if (masterPart.salePrice && masterPart.salePrice > 0) {
@@ -649,14 +759,14 @@ async function calculateOptionPrice(
           cost: optionBom.cost
         }
 
-        const bomResult = await calculateBOMItemPrice(
+        const bomResult = calculateBOMItemPrice(
           bomForPricing,
           componentWidth,
           componentHeight,
           extrusionCostingMethod,
           excludedPartNumbers,
           finishColor,
-          globalMaterialPricePerLb
+          context
         )
 
         baseUnitPrice = bomResult.cost / quantity
@@ -708,15 +818,16 @@ async function calculateOptionPrice(
 
 /**
  * Calculate all costs for an opening
+ * Now synchronous using PricingContext for O(1) lookups instead of database queries
  *
  * @param opening - Opening with all required includes (panels, components, products, BOMs, options)
- * @param globalMaterialPricePerLb - Global material price setting
+ * @param context - Pre-fetched pricing data for efficient lookups
  * @returns Cost breakdown for the opening
  */
-export async function calculateOpeningCosts(
+export function calculateOpeningCosts(
   opening: OpeningWithIncludes,
-  globalMaterialPricePerLb: number
-): Promise<OpeningCostBreakdown> {
+  context: PricingContext
+): OpeningCostBreakdown {
   const costBreakdown: OpeningCostBreakdown = {
     totalExtrusionCost: 0,
     totalHardwareCost: 0,
@@ -805,14 +916,14 @@ export async function calculateOpeningCosts(
         }
       }
 
-      const bomResult = await calculateBOMItemPrice(
+      const bomResult = calculateBOMItemPrice(
         bom,
         effectiveWidth,
         effectiveHeight,
         extrusionCostingMethod,
         excludedPartNumbers,
         opening.finishColor,
-        globalMaterialPricePerLb
+        context
       )
 
       componentBreakdown.bomCosts.push(bomResult.breakdown)
@@ -899,7 +1010,7 @@ export async function calculateOpeningCosts(
           : (optionBom?.quantity || 1)
 
         const selectedVariantId = variantSelections[String(selectedOption.id)]
-        const priceResult = await calculateOptionPrice(
+        const priceResult = calculateOptionPrice(
           selectedOption,
           optionBom,
           quantity,
@@ -908,7 +1019,7 @@ export async function calculateOpeningCosts(
           extrusionCostingMethod,
           excludedPartNumbers,
           opening.finishColor,
-          globalMaterialPricePerLb,
+          context,
           selectedVariantId
         )
 
@@ -943,7 +1054,7 @@ export async function calculateOpeningCosts(
             : null
           const standardVariantId = standardOption ? variantSelections[String(standardOption.id)] : undefined
           const standardPriceResult = standardOption
-            ? await calculateOptionPrice(
+            ? calculateOptionPrice(
                 standardOption,
                 standardOptionBom,
                 quantity,
@@ -952,7 +1063,7 @@ export async function calculateOpeningCosts(
                 extrusionCostingMethod,
                 excludedPartNumbers,
                 opening.finishColor,
-                globalMaterialPricePerLb,
+                context,
                 standardVariantId
               )
             : { unitPrice: 0, totalPrice: 0, isExtrusion: false }
@@ -996,7 +1107,7 @@ export async function calculateOpeningCosts(
         : null
       const quantity = optionBom?.quantity || 1
 
-      const priceResult = await calculateOptionPrice(
+      const priceResult = calculateOptionPrice(
         standardOption,
         optionBom,
         quantity,
@@ -1005,7 +1116,7 @@ export async function calculateOpeningCosts(
         extrusionCostingMethod,
         excludedPartNumbers,
         opening.finishColor,
-        globalMaterialPricePerLb
+        context
       )
 
       componentBreakdown.optionCosts.push({
@@ -1028,47 +1139,78 @@ export async function calculateOpeningCosts(
       }
     }
 
-    // Calculate glass cost
+    // Calculate glass cost using pre-fetched glass types
     if (panel.glassType && panel.glassType !== 'N/A') {
-      try {
-        const glassType = await prisma.glassType.findUnique({
-          where: { name: panel.glassType }
-        })
+      const glassType = context.glassTypes.get(panel.glassType)
 
-        if (glassType && product.glassWidthFormula && product.glassHeightFormula) {
-          const variables = { width: effectiveWidth, height: effectiveHeight }
-          const glassWidth = evaluateFormula(product.glassWidthFormula, variables)
-          const glassHeight = evaluateFormula(product.glassHeightFormula, variables)
-          const glassQuantity = product.glassQuantityFormula
-            ? evaluateFormula(product.glassQuantityFormula, variables)
-            : 1
+      if (glassType && product.glassWidthFormula && product.glassHeightFormula) {
+        const variables = { width: effectiveWidth, height: effectiveHeight }
+        const glassWidth = evaluateFormula(product.glassWidthFormula, variables)
+        const glassHeight = evaluateFormula(product.glassHeightFormula, variables)
+        const glassQuantity = product.glassQuantityFormula
+          ? evaluateFormula(product.glassQuantityFormula, variables)
+          : 1
 
-          const sqft = (glassWidth * glassHeight / 144) * glassQuantity
-          const glassCost = sqft * glassType.pricePerSqFt
+        const sqft = (glassWidth * glassHeight / 144) * glassQuantity
+        const glassCost = sqft * glassType.pricePerSqFt
 
-          componentBreakdown.glassCost = {
-            glassType: glassType.name,
-            widthFormula: product.glassWidthFormula,
-            heightFormula: product.glassHeightFormula,
-            calculatedWidth: glassWidth,
-            calculatedHeight: glassHeight,
-            quantity: glassQuantity,
-            sqft: Math.round(sqft * 100) / 100,
-            pricePerSqFt: glassType.pricePerSqFt,
-            totalCost: Math.round(glassCost * 100) / 100
-          }
-
-          componentBreakdown.totalGlassCost = Math.round(glassCost * 100) / 100
-          componentCost += componentBreakdown.totalGlassCost
-          costBreakdown.totalGlassCost += componentBreakdown.totalGlassCost
+        componentBreakdown.glassCost = {
+          glassType: glassType.name,
+          widthFormula: product.glassWidthFormula,
+          heightFormula: product.glassHeightFormula,
+          calculatedWidth: glassWidth,
+          calculatedHeight: glassHeight,
+          quantity: glassQuantity,
+          sqft: Math.round(sqft * 100) / 100,
+          pricePerSqFt: glassType.pricePerSqFt,
+          totalCost: Math.round(glassCost * 100) / 100
         }
-      } catch (error) {
-        console.error('Error calculating glass cost:', error)
+
+        componentBreakdown.totalGlassCost = Math.round(glassCost * 100) / 100
+        componentCost += componentBreakdown.totalGlassCost
+        costBreakdown.totalGlassCost += componentBreakdown.totalGlassCost
       }
     }
 
     componentBreakdown.totalComponentCost = componentCost
     costBreakdown.components.push(componentBreakdown)
+  }
+
+  // Calculate preset part instance costs
+  if (opening.presetPartInstances && opening.presetPartInstances.length > 0) {
+    for (const instance of opening.presetPartInstances) {
+      const part = instance.presetPart
+      const quantity = instance.calculatedQuantity
+
+      // Try to find master part by part number
+      let unitCost = 0
+      if (part.partNumber) {
+        const masterPart = context.masterParts.get(part.partNumber)
+        if (masterPart) {
+          unitCost = masterPart.cost ?? masterPart.salePrice ?? 0
+        }
+      }
+
+      const totalPartCost = Math.round(unitCost * quantity * 100) / 100
+
+      // Categorize by part type
+      switch (part.partType) {
+        case 'Extrusion':
+          costBreakdown.totalExtrusionCost += totalPartCost
+          break
+        case 'Hardware':
+          costBreakdown.totalHardwareCost += totalPartCost
+          break
+        case 'Glass':
+          costBreakdown.totalGlassCost += totalPartCost
+          break
+        case 'Packaging':
+          costBreakdown.totalPackagingCost += totalPartCost
+          break
+        default:
+          costBreakdown.totalOtherCost += totalPartCost
+      }
+    }
   }
 
   costBreakdown.totalPrice = Math.round(

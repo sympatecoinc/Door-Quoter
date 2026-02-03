@@ -1,0 +1,1084 @@
+'use client'
+
+import { useState, useEffect, useMemo } from 'react'
+import { Plus, Edit2, Trash2, Copy, Archive, RotateCcw, ChevronDown, ChevronRight, X, Search } from 'lucide-react'
+import { useEscapeKey } from '@/hooks/useEscapeKey'
+import { OpeningPreset, OpeningPresetPanel, OpeningPresetPart, MasterPart } from '@/types'
+
+interface Product {
+  id: number
+  name: string
+  productType: string
+  productCategory: string
+}
+
+type PartType = 'Hardware' | 'Extrusion' | 'Glass' | 'Sealant' | 'Other'
+
+// Part interface for local state - must have masterPartId and masterPart
+interface PresetPartLocal {
+  masterPartId: number
+  masterPart: MasterPart
+  formula?: string | null
+  quantity?: number | null
+}
+
+export default function OpeningPresetsView() {
+  const [presets, setPresets] = useState<OpeningPreset[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showArchived, setShowArchived] = useState(false)
+
+  // Editor state
+  const [editingPreset, setEditingPreset] = useState<OpeningPreset | null>(null)
+  const [showEditor, setShowEditor] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  // Delete/Archive confirmation
+  const [confirmDelete, setConfirmDelete] = useState<OpeningPreset | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    defaultRoughWidth: '',
+    defaultRoughHeight: '',
+    defaultFinishedWidth: '',
+    defaultFinishedHeight: '',
+    openingType: '' as '' | 'THINWALL' | 'FRAMED',
+    widthToleranceTotal: '',
+    heightToleranceTotal: ''
+  })
+  const [panels, setPanels] = useState<Partial<OpeningPresetPanel>[]>([])
+  const [parts, setParts] = useState<PresetPartLocal[]>([])
+
+  // Master Parts state for part selector
+  const [masterParts, setMasterParts] = useState<MasterPart[]>([])
+  const [partSearchQuery, setPartSearchQuery] = useState('')
+  const [showPartSelector, setShowPartSelector] = useState(false)
+  const [masterPartsLoading, setMasterPartsLoading] = useState(false)
+  const [expandedSections, setExpandedSections] = useState({
+    dimensions: true,
+    tolerances: false,
+    panels: true,
+    parts: true
+  })
+
+  useEscapeKey([
+    { isOpen: confirmDelete !== null, isBlocked: deleting, onClose: () => setConfirmDelete(null) },
+    { isOpen: showEditor, isBlocked: saving, onClose: () => closeEditor() }
+  ])
+
+  useEffect(() => {
+    loadData()
+  }, [showArchived])
+
+  async function loadData() {
+    setLoading(true)
+    try {
+      await Promise.all([fetchPresets(), fetchProducts()])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function fetchPresets() {
+    try {
+      const url = showArchived ? '/api/opening-presets?includeArchived=true' : '/api/opening-presets'
+      const response = await fetch(url)
+      if (response.ok) {
+        const data = await response.json()
+        setPresets(data.presets || [])
+      }
+    } catch (error) {
+      console.error('Error fetching presets:', error)
+    }
+  }
+
+  async function fetchProducts() {
+    try {
+      const response = await fetch('/api/products')
+      if (response.ok) {
+        const data = await response.json()
+        setProducts(data.filter((p: Product) => p.productType !== 'FRAME'))
+      }
+    } catch (error) {
+      console.error('Error fetching products:', error)
+    }
+  }
+
+  async function fetchMasterParts(search?: string) {
+    setMasterPartsLoading(true)
+    try {
+      const url = search
+        ? `/api/master-parts?search=${encodeURIComponent(search)}`
+        : '/api/master-parts'
+      const response = await fetch(url)
+      if (response.ok) {
+        const data = await response.json()
+        setMasterParts(data)
+      }
+    } catch (error) {
+      console.error('Error fetching master parts:', error)
+    } finally {
+      setMasterPartsLoading(false)
+    }
+  }
+
+  function openNewEditor() {
+    setEditingPreset(null)
+    setFormData({
+      name: '',
+      description: '',
+      defaultRoughWidth: '',
+      defaultRoughHeight: '',
+      defaultFinishedWidth: '',
+      defaultFinishedHeight: '',
+      openingType: '',
+      widthToleranceTotal: '',
+      heightToleranceTotal: ''
+    })
+    setPanels([])
+    setParts([])
+    setShowEditor(true)
+    fetchMasterParts() // Load master parts for the selector
+  }
+
+  function openEditEditor(preset: OpeningPreset) {
+    setEditingPreset(preset)
+    setFormData({
+      name: preset.name,
+      description: preset.description || '',
+      defaultRoughWidth: preset.defaultRoughWidth?.toString() || '',
+      defaultRoughHeight: preset.defaultRoughHeight?.toString() || '',
+      defaultFinishedWidth: preset.defaultFinishedWidth?.toString() || '',
+      defaultFinishedHeight: preset.defaultFinishedHeight?.toString() || '',
+      openingType: preset.openingType || '',
+      widthToleranceTotal: preset.widthToleranceTotal?.toString() || '',
+      heightToleranceTotal: preset.heightToleranceTotal?.toString() || ''
+    })
+    setPanels(preset.panels || [])
+    setParts(preset.parts || [])
+    setShowEditor(true)
+    fetchMasterParts() // Load master parts for the selector
+  }
+
+  function closeEditor() {
+    setShowEditor(false)
+    setEditingPreset(null)
+  }
+
+  async function handleSave() {
+    if (!formData.name.trim()) {
+      alert('Preset name is required')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const payload = {
+        name: formData.name,
+        description: formData.description || null,
+        defaultRoughWidth: formData.defaultRoughWidth ? parseFloat(formData.defaultRoughWidth) : null,
+        defaultRoughHeight: formData.defaultRoughHeight ? parseFloat(formData.defaultRoughHeight) : null,
+        defaultFinishedWidth: formData.defaultFinishedWidth ? parseFloat(formData.defaultFinishedWidth) : null,
+        defaultFinishedHeight: formData.defaultFinishedHeight ? parseFloat(formData.defaultFinishedHeight) : null,
+        openingType: formData.openingType || null,
+        widthToleranceTotal: formData.widthToleranceTotal ? parseFloat(formData.widthToleranceTotal) : null,
+        heightToleranceTotal: formData.heightToleranceTotal ? parseFloat(formData.heightToleranceTotal) : null,
+        panels: panels.map((p, idx) => ({
+          type: p.type || 'Swing Door',
+          productId: p.productId || null,
+          widthFormula: p.widthFormula || null,
+          heightFormula: p.heightFormula || null,
+          glassType: p.glassType || 'Clear',
+          locking: p.locking || 'None',
+          swingDirection: p.swingDirection || 'None',
+          slidingDirection: p.slidingDirection || 'Left',
+          subOptionSelections: p.subOptionSelections || '{}',
+          includedOptions: p.includedOptions || '[]',
+          variantSelections: p.variantSelections || '{}',
+          displayOrder: idx
+        })),
+        parts: parts
+          .filter(p => p.masterPartId) // Only include parts with masterPartId
+          .map((p, idx) => ({
+            masterPartId: p.masterPartId,
+            formula: p.formula || null,
+            quantity: p.quantity ?? null,
+            displayOrder: idx
+          }))
+      }
+
+      const url = editingPreset
+        ? `/api/opening-presets/${editingPreset.id}`
+        : '/api/opening-presets'
+      const method = editingPreset ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      if (response.ok) {
+        closeEditor()
+        fetchPresets()
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to save preset')
+      }
+    } catch (error) {
+      console.error('Error saving preset:', error)
+      alert('Error saving preset')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDuplicate(preset: OpeningPreset) {
+    setSaving(true)
+    try {
+      // Create a copy with modified name
+      const payload = {
+        name: `${preset.name} (Copy)`,
+        description: preset.description,
+        defaultRoughWidth: preset.defaultRoughWidth,
+        defaultRoughHeight: preset.defaultRoughHeight,
+        defaultFinishedWidth: preset.defaultFinishedWidth,
+        defaultFinishedHeight: preset.defaultFinishedHeight,
+        isFinishedOpening: preset.isFinishedOpening,
+        openingType: preset.openingType,
+        widthToleranceTotal: preset.widthToleranceTotal,
+        heightToleranceTotal: preset.heightToleranceTotal,
+        includeStarterChannels: preset.includeStarterChannels,
+        panels: preset.panels?.map((p, idx) => ({
+          type: p.type,
+          productId: p.productId,
+          widthFormula: p.widthFormula,
+          heightFormula: p.heightFormula,
+          glassType: p.glassType,
+          locking: p.locking,
+          swingDirection: p.swingDirection,
+          slidingDirection: p.slidingDirection,
+          subOptionSelections: p.subOptionSelections,
+          includedOptions: p.includedOptions,
+          variantSelections: p.variantSelections,
+          displayOrder: idx
+        })) || [],
+        parts: preset.parts
+          ?.filter(p => p.masterPartId)
+          .map((p, idx) => ({
+            masterPartId: p.masterPartId,
+            formula: p.formula,
+            quantity: p.quantity,
+            displayOrder: idx
+          })) || []
+      }
+
+      const response = await fetch('/api/opening-presets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      if (response.ok) {
+        fetchPresets()
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to duplicate preset')
+      }
+    } catch (error) {
+      console.error('Error duplicating preset:', error)
+      alert('Error duplicating preset')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleArchiveToggle(preset: OpeningPreset) {
+    try {
+      if (preset.isArchived) {
+        // Restore from archive
+        const response = await fetch(`/api/opening-presets/${preset.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isArchived: false })
+        })
+        if (response.ok) {
+          fetchPresets()
+        }
+      } else {
+        // Archive (soft delete)
+        const response = await fetch(`/api/opening-presets/${preset.id}`, {
+          method: 'DELETE'
+        })
+        if (response.ok) {
+          fetchPresets()
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling archive:', error)
+    }
+  }
+
+  async function handleHardDelete() {
+    if (!confirmDelete) return
+
+    setDeleting(true)
+    try {
+      const response = await fetch(`/api/opening-presets/${confirmDelete.id}?hard=true`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        setConfirmDelete(null)
+        fetchPresets()
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to delete preset')
+      }
+    } catch (error) {
+      console.error('Error deleting preset:', error)
+      alert('Error deleting preset')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  function addPanel() {
+    setPanels([...panels, {
+      type: 'Swing Door',
+      productId: null,
+      widthFormula: 'finishedWidth',
+      heightFormula: 'finishedHeight',
+      glassType: 'Clear',
+      locking: 'None',
+      swingDirection: 'None',
+      slidingDirection: 'Left'
+    }])
+  }
+
+  function removePanel(index: number) {
+    setPanels(panels.filter((_, i) => i !== index))
+  }
+
+  function updatePanel(index: number, field: string, value: any) {
+    setPanels(panels.map((p, i) => i === index ? { ...p, [field]: value } : p))
+  }
+
+  function selectMasterPart(masterPart: MasterPart) {
+    const newPart: PresetPartLocal = {
+      masterPartId: masterPart.id,
+      masterPart: masterPart,
+      formula: null,
+      quantity: 1
+    }
+    setParts([...parts, newPart])
+    setShowPartSelector(false)
+    setPartSearchQuery('')
+  }
+
+  function removePart(index: number) {
+    setParts(parts.filter((_, i) => i !== index))
+  }
+
+  function updatePart(index: number, field: string, value: any) {
+    setParts(parts.map((p, i) => i === index ? { ...p, [field]: value } : p))
+  }
+
+  // Group master parts by type for the selector modal
+  const groupedMasterParts = useMemo(() => {
+    const filtered = partSearchQuery
+      ? masterParts.filter(mp =>
+          mp.baseName.toLowerCase().includes(partSearchQuery.toLowerCase()) ||
+          mp.partNumber.toLowerCase().includes(partSearchQuery.toLowerCase()) ||
+          (mp.description && mp.description.toLowerCase().includes(partSearchQuery.toLowerCase()))
+        )
+      : masterParts
+
+    const grouped: Record<string, MasterPart[]> = {}
+    for (const part of filtered) {
+      const type = part.partType || 'Other'
+      if (!grouped[type]) grouped[type] = []
+      grouped[type].push(part)
+    }
+    return grouped
+  }, [masterParts, partSearchQuery])
+
+  function toggleSection(section: keyof typeof expandedSections) {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }))
+  }
+
+  const formatDimensions = (preset: OpeningPreset) => {
+    const parts = []
+    if (preset.defaultRoughWidth || preset.defaultRoughHeight) {
+      parts.push(`R: ${preset.defaultRoughWidth || '?'}×${preset.defaultRoughHeight || '?'}`)
+    }
+    if (preset.defaultFinishedWidth || preset.defaultFinishedHeight) {
+      parts.push(`F: ${preset.defaultFinishedWidth || '?'}×${preset.defaultFinishedHeight || '?'}`)
+    }
+    return parts.length > 0 ? parts.join(' / ') : 'No defaults'
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Show Archived
+          </label>
+        </div>
+        <button
+          onClick={openNewEditor}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          <Plus className="w-5 h-5 mr-2" />
+          New Preset
+        </button>
+      </div>
+
+      {/* Presets Table */}
+      {loading ? (
+        <div className="animate-pulse space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-16 bg-gray-100 rounded-lg" />
+          ))}
+        </div>
+      ) : presets.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          <p>No presets found.</p>
+          <button
+            onClick={openNewEditor}
+            className="mt-4 text-blue-600 hover:text-blue-700"
+          >
+            Create your first preset
+          </button>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Name</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Default Dimensions</th>
+                <th className="text-center py-3 px-4 text-sm font-medium text-gray-600">Panels</th>
+                <th className="text-center py-3 px-4 text-sm font-medium text-gray-600">Parts</th>
+                <th className="text-center py-3 px-4 text-sm font-medium text-gray-600">Times Used</th>
+                <th className="text-right py-3 px-4 text-sm font-medium text-gray-600">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {presets.map((preset) => (
+                <tr
+                  key={preset.id}
+                  className={`border-b border-gray-100 hover:bg-gray-50 ${preset.isArchived ? 'opacity-50' : ''}`}
+                >
+                  <td className="py-3 px-4">
+                    <div className="font-medium text-gray-900">{preset.name}</div>
+                    {preset.description && (
+                      <div className="text-sm text-gray-500 truncate max-w-xs">{preset.description}</div>
+                    )}
+                    {preset.isArchived && (
+                      <span className="text-xs text-orange-600 font-medium">(Archived)</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-600">
+                    {formatDimensions(preset)}
+                  </td>
+                  <td className="py-3 px-4 text-center text-sm text-gray-600">
+                    {preset._count?.panels || 0}
+                  </td>
+                  <td className="py-3 px-4 text-center text-sm text-gray-600">
+                    {preset._count?.parts || 0}
+                  </td>
+                  <td className="py-3 px-4 text-center text-sm text-gray-600">
+                    {preset._count?.appliedOpenings || 0}
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <div className="flex justify-end gap-1">
+                      <button
+                        onClick={() => openEditEditor(preset)}
+                        className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
+                        title="Edit"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDuplicate(preset)}
+                        disabled={saving}
+                        className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded disabled:opacity-50"
+                        title="Duplicate"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                      {preset.isArchived ? (
+                        <>
+                          <button
+                            onClick={() => handleArchiveToggle(preset)}
+                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
+                            title="Restore"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setConfirmDelete(preset)}
+                            className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded"
+                            title="Permanently Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => handleArchiveToggle(preset)}
+                          className="p-1.5 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded"
+                          title="Archive"
+                        >
+                          <Archive className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Permanently Delete Preset</h3>
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to permanently delete <strong>{confirmDelete.name}</strong>?
+              This action cannot be undone.
+            </p>
+            {confirmDelete._count?.appliedOpenings && confirmDelete._count.appliedOpenings > 0 && (
+              <p className="text-amber-600 text-sm mb-4">
+                This preset has been used in {confirmDelete._count.appliedOpenings} opening(s).
+                You cannot delete presets that are in use.
+              </p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleHardDelete}
+                disabled={deleting || (confirmDelete._count?.appliedOpenings || 0) > 0}
+                className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg disabled:opacity-50 flex items-center"
+              >
+                {deleting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Editor Modal */}
+      {showEditor && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto py-8">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-gray-900">
+                {editingPreset ? 'Edit Preset' : 'New Preset'}
+              </h2>
+              <button
+                onClick={closeEditor}
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6">
+              {/* Basic Info */}
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Preset Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., Standard Swing Door"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  rows={2}
+                  placeholder="Optional description of this preset"
+                />
+              </div>
+
+              {/* Dimensions Section */}
+              <div className="border border-gray-200 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('dimensions')}
+                  className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50"
+                >
+                  <span className="font-medium text-gray-900">Default Dimensions</span>
+                  {expandedSections.dimensions ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
+                </button>
+                {expandedSections.dimensions && (
+                  <div className="px-4 pb-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Rough Width</label>
+                      <input
+                        type="number"
+                        step="0.125"
+                        value={formData.defaultRoughWidth}
+                        onChange={(e) => setFormData({ ...formData, defaultRoughWidth: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="inches"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Rough Height</label>
+                      <input
+                        type="number"
+                        step="0.125"
+                        value={formData.defaultRoughHeight}
+                        onChange={(e) => setFormData({ ...formData, defaultRoughHeight: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="inches"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Finished Width</label>
+                      <input
+                        type="number"
+                        step="0.125"
+                        value={formData.defaultFinishedWidth}
+                        onChange={(e) => setFormData({ ...formData, defaultFinishedWidth: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="inches"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Finished Height</label>
+                      <input
+                        type="number"
+                        step="0.125"
+                        value={formData.defaultFinishedHeight}
+                        onChange={(e) => setFormData({ ...formData, defaultFinishedHeight: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="inches"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Tolerances & Type Section */}
+              <div className="border border-gray-200 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('tolerances')}
+                  className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50"
+                >
+                  <span className="font-medium text-gray-900">Tolerances & Opening Type</span>
+                  {expandedSections.tolerances ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
+                </button>
+                {expandedSections.tolerances && (
+                  <div className="px-4 pb-4 space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Width Tolerance</label>
+                        <input
+                          type="number"
+                          step="0.0625"
+                          value={formData.widthToleranceTotal}
+                          onChange={(e) => setFormData({ ...formData, widthToleranceTotal: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="inches"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Height Tolerance</label>
+                        <input
+                          type="number"
+                          step="0.0625"
+                          value={formData.heightToleranceTotal}
+                          onChange={(e) => setFormData({ ...formData, heightToleranceTotal: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="inches"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-4">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={formData.isFinishedOpening}
+                          onChange={(e) => setFormData({ ...formData, isFinishedOpening: e.target.checked })}
+                          className="rounded border-gray-300"
+                        />
+                        <span className="text-sm text-gray-700">Is Finished Opening</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={formData.includeStarterChannels}
+                          onChange={(e) => setFormData({ ...formData, includeStarterChannels: e.target.checked })}
+                          className="rounded border-gray-300"
+                        />
+                        <span className="text-sm text-gray-700">Include Starter Channels</span>
+                      </label>
+                    </div>
+                    {formData.isFinishedOpening && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Opening Type</label>
+                        <select
+                          value={formData.openingType}
+                          onChange={(e) => setFormData({ ...formData, openingType: e.target.value as '' | 'THINWALL' | 'FRAMED' })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="">Select type...</option>
+                          <option value="THINWALL">Thin Wall</option>
+                          <option value="FRAMED">Framed</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Panels Section */}
+              <div className="border border-gray-200 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('panels')}
+                  className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50"
+                >
+                  <span className="font-medium text-gray-900">
+                    Panels ({panels.length})
+                  </span>
+                  {expandedSections.panels ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
+                </button>
+                {expandedSections.panels && (
+                  <div className="px-4 pb-4 space-y-4">
+                    {panels.map((panel, index) => (
+                      <div key={index} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="font-medium text-gray-700">Panel {index + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => removePanel(index)}
+                            className="p-1 text-red-500 hover:bg-red-50 rounded"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                            <select
+                              value={panel.type || 'Swing Door'}
+                              onChange={(e) => updatePanel(index, 'type', e.target.value)}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="Swing Door">Swing Door</option>
+                              <option value="Sliding Door">Sliding Door</option>
+                              <option value="Fixed Panel">Fixed Panel</option>
+                              <option value="90° Corner">90° Corner</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Product</label>
+                            <select
+                              value={panel.productId || ''}
+                              onChange={(e) => updatePanel(index, 'productId', e.target.value ? parseInt(e.target.value) : null)}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="">Select product...</option>
+                              {products.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Glass Type</label>
+                            <select
+                              value={panel.glassType || 'Clear'}
+                              onChange={(e) => updatePanel(index, 'glassType', e.target.value)}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="Clear">Clear</option>
+                              <option value="Low-E">Low-E</option>
+                              <option value="Frosted">Frosted</option>
+                              <option value="Tinted">Tinted</option>
+                              <option value="Rain">Rain</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Width Formula</label>
+                            <input
+                              type="text"
+                              value={panel.widthFormula || ''}
+                              onChange={(e) => updatePanel(index, 'widthFormula', e.target.value)}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="e.g., finishedWidth"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Height Formula</label>
+                            <input
+                              type="text"
+                              value={panel.heightFormula || ''}
+                              onChange={(e) => updatePanel(index, 'heightFormula', e.target.value)}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="e.g., finishedHeight"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Locking</label>
+                            <select
+                              value={panel.locking || 'None'}
+                              onChange={(e) => updatePanel(index, 'locking', e.target.value)}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="None">None</option>
+                              <option value="Single">Single</option>
+                              <option value="Double">Double</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={addPanel}
+                      className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-600 flex items-center justify-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Panel
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Parts Section */}
+              <div className="border border-gray-200 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('parts')}
+                  className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50"
+                >
+                  <span className="font-medium text-gray-900">
+                    Parts ({parts.length})
+                  </span>
+                  {expandedSections.parts ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
+                </button>
+                {expandedSections.parts && (
+                  <div className="px-4 pb-4 space-y-4">
+                    <p className="text-sm text-gray-500">
+                      Parts added here will be locked when the preset is applied.
+                      Use formulas like <code className="bg-gray-100 px-1 rounded">finishedWidth * 2</code> or
+                      <code className="bg-gray-100 px-1 rounded">roughHeight</code> for dynamic quantities.
+                    </p>
+                    {parts.map((part, index) => (
+                      <div key={index} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex justify-between items-center mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+                              part.masterPart?.partType === 'Extrusion' ? 'bg-purple-100 text-purple-700' :
+                              part.masterPart?.partType === 'Hardware' ? 'bg-blue-100 text-blue-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {part.masterPart?.partType || 'Unknown'}
+                            </span>
+                            <span className="font-medium text-gray-900">{part.masterPart?.baseName || 'Unknown Part'}</span>
+                            <span className="text-sm text-gray-500">({part.masterPart?.partNumber})</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removePart(index)}
+                            className="p-1 text-red-500 hover:bg-red-50 rounded"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Quantity</label>
+                            <input
+                              type="number"
+                              step="1"
+                              value={part.quantity ?? ''}
+                              onChange={(e) => updatePart(index, 'quantity', e.target.value ? parseInt(e.target.value) : null)}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="Fixed qty"
+                            />
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Formula (overrides quantity)
+                            </label>
+                            <input
+                              type="text"
+                              value={part.formula || ''}
+                              onChange={(e) => updatePart(index, 'formula', e.target.value)}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="e.g., finishedHeight * 2"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setShowPartSelector(true)}
+                      className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-600 flex items-center justify-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Part from Master Parts
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Part Selector Modal */}
+            {showPartSelector && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+                  <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <h3 className="text-lg font-semibold text-gray-900">Select Part from Master Parts</h3>
+                    <button
+                      onClick={() => {
+                        setShowPartSelector(false)
+                        setPartSearchQuery('')
+                      }}
+                      className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="px-6 py-3 border-b border-gray-200">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        value={partSearchQuery}
+                        onChange={(e) => setPartSearchQuery(e.target.value)}
+                        placeholder="Search by name, part number, or description..."
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {masterPartsLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      </div>
+                    ) : Object.keys(groupedMasterParts).length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        No parts found matching your search.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {Object.entries(groupedMasterParts).map(([type, typeParts]) => (
+                          <div key={type}>
+                            <div className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">
+                              {type} ({typeParts.length})
+                            </div>
+                            <div className="space-y-1">
+                              {typeParts.slice(0, 20).map((mp) => (
+                                <button
+                                  key={mp.id}
+                                  type="button"
+                                  onClick={() => selectMasterPart(mp)}
+                                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-colors"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <span className="font-medium text-gray-900">{mp.baseName}</span>
+                                      <span className="ml-2 text-sm text-gray-500">({mp.partNumber})</span>
+                                    </div>
+                                    <span className="text-xs text-gray-400">{mp.unit}</span>
+                                  </div>
+                                  {mp.description && (
+                                    <div className="text-sm text-gray-500 truncate">{mp.description}</div>
+                                  )}
+                                </button>
+                              ))}
+                              {typeParts.length > 20 && (
+                                <div className="text-sm text-gray-400 text-center py-2">
+                                  And {typeParts.length - 20} more... Use search to narrow results.
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Footer */}
+            <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+              <button
+                onClick={closeEditor}
+                disabled={saving}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || !formData.name.trim()}
+                className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg disabled:opacity-50 flex items-center"
+              >
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  editingPreset ? 'Save Changes' : 'Create Preset'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

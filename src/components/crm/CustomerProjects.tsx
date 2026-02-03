@@ -98,6 +98,9 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
   // Quote accepted edit confirmation state
   const [quoteAcceptedEditConfirm, setQuoteAcceptedEditConfirm] = useState<Project | null>(null)
 
+  // Track which projects have quotes (for status restrictions)
+  const [projectsWithQuotes, setProjectsWithQuotes] = useState<Set<number>>(new Set())
+
   // Handle Escape key to close modals one at a time
   useEscapeKey([
     { isOpen: quoteAcceptedEditConfirm !== null, onClose: () => setQuoteAcceptedEditConfirm(null) },
@@ -113,6 +116,23 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
     fetchPricingModes()
   }, [customerId, refreshKey])
 
+  // Refresh quote status when tab becomes visible (user might have generated a quote elsewhere)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && projects.length > 0) {
+        const projectIds = projects.map(p => p.id)
+        fetch(`/api/projects/quote-status?ids=${projectIds.join(',')}`)
+          .then(res => res.ok ? res.json() : null)
+          .then(data => {
+            if (data) setProjectsWithQuotes(new Set(data.projectsWithQuotes || []))
+          })
+          .catch(() => {})
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [projects])
+
   const fetchProjects = async () => {
     setLoading(true)
     try {
@@ -120,6 +140,16 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
       if (response.ok) {
         const projectsData = await response.json()
         setProjects(projectsData)
+
+        // Fetch quote status for all projects
+        const projectIds = projectsData.map((p: Project) => p.id)
+        if (projectIds.length > 0) {
+          const quoteStatusResponse = await fetch(`/api/projects/quote-status?ids=${projectIds.join(',')}`)
+          if (quoteStatusResponse.ok) {
+            const quoteStatus = await quoteStatusResponse.json()
+            setProjectsWithQuotes(new Set(quoteStatus.projectsWithQuotes || []))
+          }
+        }
       } else {
         console.error('Failed to fetch projects')
       }
@@ -529,22 +559,25 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
     const matchesSearch = searchTerm === '' ||
       project.name.toLowerCase().includes(searchTerm.toLowerCase())
 
-    // Status filter - hide archived by default unless Archive filter is selected
+    // Status filter - hide archived/bid lost by default unless their filter is selected
     const isArchived = project.status === ProjectStatus.ARCHIVE
+    const isBidLost = project.status === ProjectStatus.BID_LOST
     const archiveFilterSelected = statusFilters.includes(ProjectStatus.ARCHIVE)
+    const bidLostFilterSelected = statusFilters.includes(ProjectStatus.BID_LOST)
 
-    // If no filters selected: show all except archived
-    // If filters selected: show only matching statuses (including archive if selected)
+    // If no filters selected: show all except archived and bid lost
+    // If filters selected: show only matching statuses (including archive/bid lost if selected)
     const matchesStatus = statusFilters.length === 0
-      ? !isArchived
+      ? !isArchived && !isBidLost
       : statusFilters.includes(project.status)
 
     // Filter by type (leads vs projects)
-    // Archive status should match if the Archive filter is selected
+    // Archive/Bid Lost status should match if their filter is selected
     let matchesType = true
     if (filterType === 'leads') {
       matchesType = LEAD_STATUSES.includes(project.status as ProjectStatus) ||
-        (isArchived && archiveFilterSelected)
+        (isArchived && archiveFilterSelected) ||
+        (isBidLost && bidLostFilterSelected)
     } else if (filterType === 'projects') {
       matchesType = PROJECT_STATUSES.includes(project.status as ProjectStatus) ||
         (isArchived && archiveFilterSelected)
@@ -855,7 +888,7 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
               key={project.id}
               onClick={() => onProjectClick?.(project.id)}
               className={`bg-white rounded-xl shadow-sm border border-gray-200 p-6 ${
-                project.status === ProjectStatus.ARCHIVE ? 'opacity-60 bg-gray-50' : ''
+                project.status === ProjectStatus.ARCHIVE || project.status === ProjectStatus.BID_LOST ? 'opacity-60 bg-gray-50' : ''
               } ${onProjectClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
             >
               <div className="flex justify-between items-start mb-4">
@@ -938,6 +971,17 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(STATUS_CONFIG)
                     .filter(([key]) => {
+                      const hasQuote = projectsWithQuotes.has(project.id)
+                      const statusRequiresQuote = key === ProjectStatus.QUOTE_SENT ||
+                        key === ProjectStatus.QUOTE_ACCEPTED ||
+                        key === ProjectStatus.ACTIVE ||
+                        key === ProjectStatus.COMPLETE
+
+                      // Don't show statuses that require quotes if project has none
+                      if (statusRequiresQuote && !hasQuote) {
+                        return false
+                      }
+
                       // Leads can only have lead statuses
                       if (customer.status === 'Lead') {
                         return LEAD_STATUSES.includes(key as ProjectStatus)
@@ -1065,6 +1109,17 @@ export default function CustomerProjects({ customerId, customer, onProjectClick,
                 >
                   {Object.entries(STATUS_CONFIG)
                     .filter(([key]) => {
+                      const hasQuote = editingProject ? projectsWithQuotes.has(editingProject.id) : false
+                      const statusRequiresQuote = key === ProjectStatus.QUOTE_SENT ||
+                        key === ProjectStatus.QUOTE_ACCEPTED ||
+                        key === ProjectStatus.ACTIVE ||
+                        key === ProjectStatus.COMPLETE
+
+                      // Don't show statuses that require quotes if project has none
+                      if (statusRequiresQuote && !hasQuote) {
+                        return false
+                      }
+
                       // Leads can only have lead statuses
                       if (customer.status === 'Lead') {
                         return LEAD_STATUSES.includes(key as ProjectStatus)

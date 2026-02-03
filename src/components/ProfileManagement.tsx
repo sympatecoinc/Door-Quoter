@@ -38,7 +38,8 @@ const TAB_LABELS: Record<string, string> = {
   invoices: 'Invoices',
   quoteDocuments: 'Quote Settings',
   accounting: 'Pricing',
-  settings: 'Settings'
+  settings: 'Settings',
+  clickupTest: 'ClickUp Test'
 }
 
 export default function ProfileManagement() {

@@ -18,7 +18,8 @@ export const ALL_TABS = [
   'invoices',
   'quoteDocuments',
   'accounting',
-  'settings'
+  'settings',
+  'clickupTest'
 ] as const
 
 export type TabId = typeof ALL_TABS[number]

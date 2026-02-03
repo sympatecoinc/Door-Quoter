@@ -8,7 +8,8 @@ export enum ProjectStatus {
   QUOTE_ACCEPTED = 'QUOTE_ACCEPTED',
   ACTIVE = 'ACTIVE',
   COMPLETE = 'COMPLETE',
-  ARCHIVE = 'ARCHIVE'
+  ARCHIVE = 'ARCHIVE',
+  BID_LOST = 'BID_LOST'
 }
 
 export interface Project {
@@ -83,6 +84,12 @@ export const STATUS_CONFIG: Record<ProjectStatus, {
     color: 'red',
     bgColor: 'bg-red-100',
     textColor: 'text-red-800'
+  },
+  [ProjectStatus.BID_LOST]: {
+    label: 'Bid Lost',
+    color: 'rose',
+    bgColor: 'bg-rose-100',
+    textColor: 'text-rose-800'
   }
 }
 
@@ -99,13 +106,14 @@ export const LEAD_STATUSES: ProjectStatus[] = [
   ProjectStatus.QUOTE_SENT
 ]
 
-// Lead filter statuses (includes Archive for filtering)
+// Lead filter statuses (includes Archive and Bid Lost for filtering)
 export const LEAD_FILTER_STATUSES: ProjectStatus[] = [
   ProjectStatus.STAGING,
   ProjectStatus.APPROVED,
   ProjectStatus.REVISE,
   ProjectStatus.QUOTE_SENT,
-  ProjectStatus.ARCHIVE
+  ProjectStatus.ARCHIVE,
+  ProjectStatus.BID_LOST
 ]
 
 // Project phase statuses (post-acceptance / "Won")
@@ -138,7 +146,8 @@ export const LOCKED_STATUSES: ProjectStatus[] = [
   ProjectStatus.QUOTE_SENT,
   ProjectStatus.QUOTE_ACCEPTED,
   ProjectStatus.ACTIVE,
-  ProjectStatus.COMPLETE
+  ProjectStatus.COMPLETE,
+  ProjectStatus.BID_LOST
 ]
 
 // Helper to check if a project status is locked for editing
@@ -299,7 +308,7 @@ export interface ComponentInstance {
   updatedAt: Date
 }
 
-export type MenuOption = 'dashboard' | 'customers' | 'crm' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'purchasingDashboard' | 'purchaseSummary' | 'receiving' | 'salesOrders' | 'invoices' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments' | 'production' | 'logistics'
+export type MenuOption = 'dashboard' | 'customers' | 'crm' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'purchasingDashboard' | 'purchaseSummary' | 'receiving' | 'salesOrders' | 'invoices' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments' | 'production' | 'logistics' | 'clickupTest'
 
 // Vendor Management Types
 export interface Vendor {
@@ -616,6 +625,75 @@ export interface PortalContext {
   tabs: string[]
   defaultTab: string | null
   headerTitle: string | null
+}
+
+// Opening Preset Types - Reusable opening configurations
+export interface OpeningPreset {
+  id: number
+  name: string
+  description?: string | null
+  defaultRoughWidth?: number | null
+  defaultRoughHeight?: number | null
+  defaultFinishedWidth?: number | null
+  defaultFinishedHeight?: number | null
+  isFinishedOpening: boolean
+  openingType?: 'THINWALL' | 'FRAMED' | null
+  widthToleranceTotal?: number | null
+  heightToleranceTotal?: number | null
+  includeStarterChannels: boolean
+  isArchived: boolean
+  createdAt: Date
+  updatedAt: Date
+  panels?: OpeningPresetPanel[]
+  parts?: OpeningPresetPart[]
+  _count?: {
+    panels: number
+    parts: number
+    appliedOpenings: number
+  }
+}
+
+export interface OpeningPresetPanel {
+  id: number
+  presetId: number
+  type: string
+  productId?: number | null
+  product?: Product | null
+  widthFormula?: string | null
+  heightFormula?: string | null
+  glassType: string
+  locking: string
+  swingDirection: string
+  slidingDirection: string
+  subOptionSelections: string
+  includedOptions: string
+  variantSelections: string
+  displayOrder: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface OpeningPresetPart {
+  id: number
+  presetId: number
+  masterPartId: number
+  masterPart?: MasterPart
+  formula?: string | null
+  quantity?: number | null
+  displayOrder: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface OpeningPresetPartInstance {
+  id: number
+  openingId: number
+  presetPartId: number
+  calculatedQuantity: number
+  calculatedCost: number
+  createdAt: Date
+  updatedAt: Date
+  presetPart?: OpeningPresetPart
 }
 
 // Customer exports

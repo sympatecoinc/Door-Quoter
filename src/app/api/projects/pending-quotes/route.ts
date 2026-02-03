@@ -26,9 +26,13 @@ export async function GET() {
         openings: {
           select: {
             id: true,
-            name: true,
-            price: true
+            name: true
           }
+        },
+        quoteVersions: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { totalPrice: true }
         },
         _count: {
           select: {
@@ -39,9 +43,11 @@ export async function GET() {
       orderBy: { updatedAt: 'desc' }
     })
 
-    // Calculate total value for each project
+    // Calculate total value for each project from the quote
     const projectsWithTotals = pendingQuotes.map(project => {
-      const totalValue = project.openings.reduce((sum, opening) => sum + (opening.price || 0), 0)
+      // Use the quote total - if QUOTE_ACCEPTED, a quote must exist
+      const latestQuote = project.quoteVersions?.[0]
+      const totalValue = latestQuote?.totalPrice ? Number(latestQuote.totalPrice) : 0
       return {
         id: project.id,
         name: project.name,

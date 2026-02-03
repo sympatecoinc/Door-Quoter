@@ -33,16 +33,9 @@ interface LineItem {
   unitPrice: number
 }
 
-interface Project {
-  id: number
-  name: string
-  customerId: number | null
-  customer: Customer | null
-  openings: Array<{
-    id: number
-    name: string
-    price: number
-  }>
+// Skeleton component for loading states
+function Skeleton({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse bg-gray-200 rounded ${className}`} />
 }
 
 export default function SOForm({ salesOrder, onClose, onSave, prefilledProjectId }: SOFormProps) {
@@ -52,7 +45,8 @@ export default function SOForm({ salesOrder, onClose, onSave, prefilledProjectId
   const [customerId, setCustomerId] = useState<number | null>(salesOrder?.customerId || null)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [projectId, setProjectId] = useState<number | null>(salesOrder?.projectId || prefilledProjectId || null)
-  const [loadingProject, setLoadingProject] = useState(false)
+  const [loading, setLoading] = useState(!!prefilledProjectId && !isEditing)
+  const [loadingCustomers, setLoadingCustomers] = useState(true)
   const [txnDate, setTxnDate] = useState(
     salesOrder?.txnDate
       ? new Date(salesOrder.txnDate).toISOString().split('T')[0]
@@ -91,71 +85,91 @@ export default function SOForm({ salesOrder, onClose, onSave, prefilledProjectId
   const [error, setError] = useState<string | null>(null)
   const [customerSearch, setCustomerSearch] = useState('')
 
+  // Fetch data on mount - run in parallel for speed
   useEffect(() => {
-    fetchCustomers()
-  }, [])
+    const fetchData = async () => {
+      const promises: Promise<void>[] = []
 
-  // Fetch project data when prefilledProjectId is set
-  useEffect(() => {
-    if (prefilledProjectId && !isEditing) {
-      fetchProjectData(prefilledProjectId)
-    }
-  }, [prefilledProjectId])
+      // Always fetch customers (for non-prefilled projects or editing)
+      promises.push(
+        fetch('/api/customers?status=Active&limit=500')
+          .then(res => res.ok ? res.json() : null)
+          .then(data => {
+            if (data) setCustomers(data.customers || data)
+          })
+          .catch(err => console.error('Error fetching customers:', err))
+          .finally(() => setLoadingCustomers(false))
+      )
 
-  async function fetchProjectData(projId: number) {
-    try {
-      setLoadingProject(true)
-      const response = await fetch(`/api/projects/${projId}`)
-      if (response.ok) {
-        const project: Project = await response.json()
+      // Fetch quote data if we have a prefilled project
+      if (prefilledProjectId && !isEditing) {
+        promises.push(
+          fetch(`/api/projects/${prefilledProjectId}/quote-cache`)
+            .then(async res => {
+              if (!res.ok) {
+                const errData = await res.json().catch(() => ({}))
+                throw new Error(errData.error || 'Failed to load quote data. Please generate a quote first.')
+              }
+              return res.json()
+            })
+            .then(quoteData => {
+              if (!quoteData.quoteItems || quoteData.quoteItems.length === 0) {
+                throw new Error('No quote items found. Please generate a quote first.')
+              }
 
-        // Set customer from project
-        if (project.customerId) {
-          setCustomerId(project.customerId)
-        }
+              const project = quoteData.project
 
-        // Create line items from project openings
-        if (project.openings && project.openings.length > 0) {
-          const projectLines: LineItem[] = project.openings.map(opening => ({
-            description: `${project.name} - ${opening.name}`,
-            quantity: 1,
-            unitPrice: opening.price || 0
-          }))
-          setLines(projectLines)
-        }
+              // Set customer from project
+              if (project?.customerId) {
+                setCustomerId(project.customerId)
+                if (project.customer) {
+                  setSelectedCustomer(project.customer)
+                  // Pre-fill billing address
+                  setBillAddrLine1(project.customer.address || '')
+                  setBillAddrCity(project.customer.city || '')
+                  setBillAddrState(project.customer.state || '')
+                  setBillAddrPostalCode(project.customer.zipCode || '')
+                }
+              }
+
+              // Create line items from quote
+              const projectLines: LineItem[] = quoteData.quoteItems.map((item: any) => ({
+                description: `${project?.name || 'Project'} - ${item.name}`,
+                quantity: 1,
+                unitPrice: item.price || 0
+              }))
+              setLines(projectLines)
+            })
+            .catch(err => {
+              console.error('Error fetching quote data:', err)
+              setError(err.message || 'Failed to load quote data')
+            })
+            .finally(() => setLoading(false))
+        )
       }
-    } catch (error) {
-      console.error('Error fetching project data:', error)
-    } finally {
-      setLoadingProject(false)
-    }
-  }
 
+      await Promise.all(promises)
+    }
+
+    fetchData()
+  }, [prefilledProjectId, isEditing])
+
+  // Update selected customer when customerId changes (for customer dropdown selection)
   useEffect(() => {
-    if (customerId && customers.length > 0) {
+    if (customerId && customers.length > 0 && !selectedCustomer) {
       const customer = customers.find(c => c.id === customerId)
-      setSelectedCustomer(customer || null)
-      if (customer && !isEditing) {
-        // Pre-fill billing address from customer
-        setBillAddrLine1(customer.address || '')
-        setBillAddrCity(customer.city || '')
-        setBillAddrState(customer.state || '')
-        setBillAddrPostalCode(customer.zipCode || '')
+      if (customer) {
+        setSelectedCustomer(customer)
+        if (!isEditing && !prefilledProjectId) {
+          // Pre-fill billing address only for manual customer selection
+          setBillAddrLine1(customer.address || '')
+          setBillAddrCity(customer.city || '')
+          setBillAddrState(customer.state || '')
+          setBillAddrPostalCode(customer.zipCode || '')
+        }
       }
     }
   }, [customerId, customers])
-
-  async function fetchCustomers() {
-    try {
-      const response = await fetch('/api/customers?status=Active&limit=500')
-      if (response.ok) {
-        const data = await response.json()
-        setCustomers(data.customers || data)
-      }
-    } catch (error) {
-      console.error('Error fetching customers:', error)
-    }
-  }
 
   function addLine() {
     setLines([...lines, { description: '', quantity: 1, unitPrice: 0 }])
@@ -272,31 +286,44 @@ export default function SOForm({ salesOrder, onClose, onSave, prefilledProjectId
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Customer *
             </label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search customers..."
-                value={customerSearch}
-                onChange={(e) => setCustomerSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <select
-              value={customerId || ''}
-              onChange={(e) => setCustomerId(e.target.value ? parseInt(e.target.value) : null)}
-              className="mt-2 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              required
-            >
-              <option value="">Select a customer</option>
-              {filteredCustomers.map(customer => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.companyName}
-                  {customer.contactName ? ` (${customer.contactName})` : ''}
-                  {!customer.quickbooksId && ' [Not in QB]'}
-                </option>
-              ))}
-            </select>
+            {loading ? (
+              <Skeleton className="h-11 w-full" />
+            ) : !isEditing && prefilledProjectId && selectedCustomer ? (
+              <div className="px-4 py-3 bg-gray-100 border border-gray-300 rounded-lg text-gray-700">
+                <span className="font-medium">{selectedCustomer.companyName}</span>
+                {selectedCustomer.contactName && (
+                  <span className="text-gray-500"> ({selectedCustomer.contactName})</span>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search customers..."
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <select
+                  value={customerId || ''}
+                  onChange={(e) => setCustomerId(e.target.value ? parseInt(e.target.value) : null)}
+                  className="mt-2 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value="">{loadingCustomers ? 'Loading customers...' : 'Select a customer'}</option>
+                  {filteredCustomers.map(customer => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.companyName}
+                      {customer.contactName ? ` (${customer.contactName})` : ''}
+                      {!customer.quickbooksId && ' [Not in QB]'}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
 
           {/* Dates */}
@@ -340,69 +367,95 @@ export default function SOForm({ salesOrder, onClose, onSave, prefilledProjectId
           <div className="grid grid-cols-2 gap-6 mb-6">
             <div>
               <h3 className="text-sm font-medium text-gray-700 mb-2">Billing Address</h3>
-              <input
-                type="text"
-                placeholder="Address"
-                value={billAddrLine1}
-                onChange={(e) => setBillAddrLine1(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <div className="grid grid-cols-3 gap-2">
-                <input
-                  type="text"
-                  placeholder="City"
-                  value={billAddrCity}
-                  onChange={(e) => setBillAddrCity(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder="State"
-                  value={billAddrState}
-                  onChange={(e) => setBillAddrState(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder="Zip"
-                  value={billAddrPostalCode}
-                  onChange={(e) => setBillAddrPostalCode(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
+              {loading ? (
+                <>
+                  <Skeleton className="h-10 w-full mb-2" />
+                  <div className="grid grid-cols-3 gap-2">
+                    <Skeleton className="h-10" />
+                    <Skeleton className="h-10" />
+                    <Skeleton className="h-10" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Address"
+                    value={billAddrLine1}
+                    onChange={(e) => setBillAddrLine1(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      placeholder="City"
+                      value={billAddrCity}
+                      onChange={(e) => setBillAddrCity(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="State"
+                      value={billAddrState}
+                      onChange={(e) => setBillAddrState(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Zip"
+                      value={billAddrPostalCode}
+                      onChange={(e) => setBillAddrPostalCode(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </>
+              )}
             </div>
             <div>
               <h3 className="text-sm font-medium text-gray-700 mb-2">Shipping Address</h3>
-              <input
-                type="text"
-                placeholder="Address"
-                value={shipAddrLine1}
-                onChange={(e) => setShipAddrLine1(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <div className="grid grid-cols-3 gap-2">
-                <input
-                  type="text"
-                  placeholder="City"
-                  value={shipAddrCity}
-                  onChange={(e) => setShipAddrCity(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder="State"
-                  value={shipAddrState}
-                  onChange={(e) => setShipAddrState(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder="Zip"
-                  value={shipAddrPostalCode}
-                  onChange={(e) => setShipAddrPostalCode(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
+              {loading ? (
+                <>
+                  <Skeleton className="h-10 w-full mb-2" />
+                  <div className="grid grid-cols-3 gap-2">
+                    <Skeleton className="h-10" />
+                    <Skeleton className="h-10" />
+                    <Skeleton className="h-10" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Address"
+                    value={shipAddrLine1}
+                    onChange={(e) => setShipAddrLine1(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      placeholder="City"
+                      value={shipAddrCity}
+                      onChange={(e) => setShipAddrCity(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="State"
+                      value={shipAddrState}
+                      onChange={(e) => setShipAddrState(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Zip"
+                      value={shipAddrPostalCode}
+                      onChange={(e) => setShipAddrPostalCode(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -413,7 +466,8 @@ export default function SOForm({ salesOrder, onClose, onSave, prefilledProjectId
               <button
                 type="button"
                 onClick={addLine}
-                className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+                disabled={loading}
+                className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" />
                 Add Line
@@ -431,58 +485,71 @@ export default function SOForm({ salesOrder, onClose, onSave, prefilledProjectId
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {lines.map((line, index) => (
-                    <tr key={index}>
-                      <td className="px-3 py-2">
-                        <input
-                          type="text"
-                          value={line.description}
-                          onChange={(e) => updateLine(index, 'description', e.target.value)}
-                          placeholder="Item description"
-                          className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          value={line.quantity}
-                          onChange={(e) => updateLine(index, 'quantity', parseFloat(e.target.value) || 0)}
-                          min="0"
-                          step="1"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-right focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          value={line.unitPrice}
-                          onChange={(e) => updateLine(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                          min="0"
-                          step="0.01"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-right focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-right font-medium text-gray-900">
-                        ${(line.quantity * line.unitPrice).toFixed(2)}
-                      </td>
-                      <td className="px-3 py-2">
-                        <button
-                          type="button"
-                          onClick={() => removeLine(index)}
-                          disabled={lines.length === 1}
-                          className="p-1 text-gray-400 hover:text-red-600 disabled:opacity-30"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {loading ? (
+                    // Skeleton loading rows
+                    [1, 2, 3].map((i) => (
+                      <tr key={i}>
+                        <td className="px-3 py-2"><Skeleton className="h-8 w-full" /></td>
+                        <td className="px-3 py-2"><Skeleton className="h-8 w-full" /></td>
+                        <td className="px-3 py-2"><Skeleton className="h-8 w-full" /></td>
+                        <td className="px-3 py-2"><Skeleton className="h-8 w-full" /></td>
+                        <td className="px-3 py-2"><Skeleton className="h-8 w-8" /></td>
+                      </tr>
+                    ))
+                  ) : (
+                    lines.map((line, index) => (
+                      <tr key={index}>
+                        <td className="px-3 py-2">
+                          <input
+                            type="text"
+                            value={line.description}
+                            onChange={(e) => updateLine(index, 'description', e.target.value)}
+                            placeholder="Item description"
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            value={line.quantity}
+                            onChange={(e) => updateLine(index, 'quantity', parseFloat(e.target.value) || 0)}
+                            min="0"
+                            step="1"
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-right focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            value={line.unitPrice}
+                            onChange={(e) => updateLine(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                            min="0"
+                            step="0.01"
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-right focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium text-gray-900">
+                          ${(line.quantity * line.unitPrice).toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => removeLine(index)}
+                            disabled={lines.length === 1}
+                            className="p-1 text-gray-400 hover:text-red-600 disabled:opacity-30"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
                 <tfoot className="bg-gray-50">
                   <tr>
                     <td colSpan={3} className="px-3 py-2 text-right font-medium text-gray-700">Total:</td>
                     <td className="px-3 py-2 text-right font-bold text-gray-900">
-                      ${calculateTotal().toFixed(2)}
+                      {loading ? <Skeleton className="h-5 w-20 ml-auto" /> : `$${calculateTotal().toFixed(2)}`}
                     </td>
                     <td></td>
                   </tr>
@@ -533,7 +600,7 @@ export default function SOForm({ salesOrder, onClose, onSave, prefilledProjectId
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving}
+            disabled={saving || loading}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
             {saving ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Sales Order'}

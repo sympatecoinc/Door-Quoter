@@ -19,6 +19,7 @@ interface LeadQuotesTabProps {
   leadName: string
   isCurrentVersion?: boolean
   status?: ProjectStatus
+  onQuoteGenerated?: () => void
 }
 
 interface ChangeStatus {
@@ -32,7 +33,7 @@ interface ChangeStatus {
   }
 }
 
-export default function LeadQuotesTab({ leadId, leadName, isCurrentVersion = true, status }: LeadQuotesTabProps) {
+export default function LeadQuotesTab({ leadId, leadName, isCurrentVersion = true, status, onQuoteGenerated }: LeadQuotesTabProps) {
   // Check if quotes are locked due to status (accepted/active/complete)
   const isQuoteLocked = status ? QUOTE_LOCKED_STATUSES.includes(status) : false
   const [versions, setVersions] = useState<QuoteVersion[]>([])
@@ -118,6 +119,7 @@ export default function LeadQuotesTab({ leadId, leadName, isCurrentVersion = tru
       if (response.ok) {
         await fetchVersions()
         await checkForChanges() // Re-check changes after generating
+        onQuoteGenerated?.() // Notify parent that quote was generated
       } else {
         const error = await response.json()
         alert(error.error || 'Failed to generate quote')

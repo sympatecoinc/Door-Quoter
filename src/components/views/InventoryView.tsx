@@ -342,7 +342,21 @@ export default function InventoryView() {
       />
 
       {/* Summary Cards */}
-      {summary && (
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 animate-pulse">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gray-200 rounded-lg w-9 h-9" />
+                <div>
+                  <div className="h-7 bg-gray-200 rounded w-16 mb-1" />
+                  <div className="h-4 bg-gray-200 rounded w-20" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : summary && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
             <div className="flex items-center gap-3">
@@ -382,67 +396,99 @@ export default function InventoryView() {
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm mb-6">
-        <div className="flex flex-wrap items-center gap-4">
-          {/* Search */}
-          <div className="flex-1 min-w-[200px]">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search part number or name..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
+        {loading ? (
+          <div className="flex flex-wrap items-center gap-4 animate-pulse">
+            <div className="flex-1 min-w-[200px] h-10 bg-gray-200 rounded-lg" />
+            <div className="h-10 bg-gray-200 rounded-lg w-32" />
+            <div className="h-10 bg-gray-200 rounded-lg w-32" />
+            <div className="h-10 bg-gray-200 rounded-lg w-36" />
           </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Search */}
+            <div className="flex-1 min-w-[200px]">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search part number or name..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
 
-          {/* Part Type Filter */}
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-400" />
+            {/* Part Type Filter */}
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-gray-400" />
+              <select
+                value={partType}
+                onChange={(e) => setPartType(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="all">All Types</option>
+                <option value="Hardware">Hardware</option>
+                <option value="Glass">Glass</option>
+                <option value="Packaging">Packaging</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            {/* Vendor Filter */}
             <select
-              value={partType}
-              onChange={(e) => setPartType(e.target.value)}
+              value={vendorFilter}
+              onChange={(e) => setVendorFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="all">All Types</option>
-              <option value="Hardware">Hardware</option>
-              <option value="Glass">Glass</option>
-              <option value="Packaging">Packaging</option>
-              <option value="Other">Other</option>
+              <option value="all">All Vendors</option>
+              {vendors.map(v => (
+                <option key={v.id} value={v.id}>{v.displayName}</option>
+              ))}
+            </select>
+
+            {/* Stock Status Filter */}
+            <select
+              value={stockStatus}
+              onChange={(e) => setStockStatus(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="all">All Stock Status</option>
+              <option value="in_stock">In Stock</option>
+              <option value="low_stock">Low Stock</option>
+              <option value="out_of_stock">Out of Stock</option>
             </select>
           </div>
-
-          {/* Vendor Filter */}
-          <select
-            value={vendorFilter}
-            onChange={(e) => setVendorFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="all">All Vendors</option>
-            {vendors.map(v => (
-              <option key={v.id} value={v.id}>{v.displayName}</option>
-            ))}
-          </select>
-
-          {/* Stock Status Filter */}
-          <select
-            value={stockStatus}
-            onChange={(e) => setStockStatus(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="all">All Stock Status</option>
-            <option value="in_stock">In Stock</option>
-            <option value="low_stock">Low Stock</option>
-            <option value="out_of_stock">Out of Stock</option>
-          </select>
-        </div>
+        )}
       </div>
 
       {/* Table */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-gray-500">Loading inventory...</div>
+          <div className="animate-pulse">
+            {/* Skeleton Table Header */}
+            <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex gap-4">
+              {[...Array(11)].map((_, i) => (
+                <div key={i} className="h-4 bg-gray-200 rounded w-20" />
+              ))}
+            </div>
+            {/* Skeleton Table Rows */}
+            {[...Array(10)].map((_, rowIdx) => (
+              <div key={rowIdx} className="px-4 py-3 border-b border-gray-100 flex gap-4 items-center">
+                <div className="h-4 bg-gray-200 rounded w-24" />
+                <div className="h-4 bg-gray-200 rounded w-32" />
+                <div className="h-4 bg-gray-200 rounded w-16" />
+                <div className="h-4 bg-gray-200 rounded w-14" />
+                <div className="h-6 bg-gray-200 rounded w-20" />
+                <div className="h-4 bg-gray-200 rounded w-12" />
+                <div className="h-4 bg-gray-200 rounded w-14" />
+                <div className="h-6 bg-gray-200 rounded w-24" />
+                <div className="h-4 bg-gray-200 rounded w-16" />
+                <div className="h-4 bg-gray-200 rounded w-20" />
+                <div className="h-6 bg-gray-200 rounded-full w-16" />
+              </div>
+            ))}
+          </div>
         ) : error ? (
           <div className="p-8 text-center text-red-600">{error}</div>
         ) : parts.length === 0 ? (
