@@ -39,6 +39,9 @@ export async function GET(request: NextRequest) {
           contacts: true,
           projects: {
             select: { id: true, name: true, status: true }
+          },
+          accountOwner: {
+            select: { id: true, name: true, email: true }
           }
         },
         orderBy: { updatedAt: 'desc' },

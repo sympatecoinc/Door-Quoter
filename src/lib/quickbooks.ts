@@ -1369,7 +1369,7 @@ export function qbCustomerToLocal(qbCustomer: QBCustomer): any {
     zipCode: qbCustomer.BillAddr?.PostalCode || null,
     country: qbCustomer.BillAddr?.Country || 'USA',
     notes: qbCustomer.Notes || null,
-    status: qbCustomer.Active === false ? 'Inactive' : 'Active',
+    status: qbCustomer.Active === false ? 'Archived' : 'Active',
     lastSyncedAt: new Date()
   }
 }
@@ -1414,7 +1414,7 @@ export function localCustomerToQB(customer: any): QBCustomer {
   }
 
   if (customer.notes) qbCustomer.Notes = customer.notes
-  qbCustomer.Active = customer.status !== 'Inactive'
+  qbCustomer.Active = customer.status !== 'Archived'
 
   return qbCustomer
 }

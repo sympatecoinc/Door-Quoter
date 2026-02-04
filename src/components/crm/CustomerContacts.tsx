@@ -12,6 +12,11 @@ interface Contact {
   phone: string | null
   title: string | null
   isPrimary: boolean
+  // ClickUp CRM fields
+  relationshipStatus?: string | null
+  lastContactDate?: string | null
+  isActive?: boolean
+  clickupContactId?: string | null
 }
 
 interface CustomerContactsProps {

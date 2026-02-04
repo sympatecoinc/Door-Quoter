@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Edit, Mail, Phone, MapPin, Building, Calendar, Tag, FileText, Users, Pencil } from 'lucide-react'
+import { X, Edit, Mail, Phone, MapPin, Building, Calendar, Tag, FileText, Users, Pencil, Activity, Briefcase, UserCircle, Link2 } from 'lucide-react'
 import CustomerNotes from '../crm/CustomerNotes'
 import CustomerFiles from '../crm/CustomerFiles'
 import CustomerContacts from '../crm/CustomerContacts'
@@ -39,6 +39,12 @@ interface Customer {
   updatedAt: string
   contacts: Contact[]
   activities: any[]
+  // ClickUp CRM fields
+  engagementLevel?: string
+  accountType?: string
+  accountOwner?: { id: number; name: string; email: string } | null
+  clickupAccountId?: string
+  clickupLastSyncedAt?: string
 }
 
 interface CustomerDetailViewProps {
@@ -190,6 +196,59 @@ export default function CustomerDetailView({ customerId, onBack }: CustomerDetai
                         <Tag className="w-4 h-4 mr-2 text-blue-600" />
                         <span>{customer.source}</span>
                       </div>
+                    </div>
+                  )}
+                  {/* ClickUp CRM Fields */}
+                  {(customer.engagementLevel || customer.accountType || customer.accountOwner) && (
+                    <div className="pt-3 border-t border-blue-200 space-y-3">
+                      {customer.engagementLevel && (
+                        <div>
+                          <label className="text-sm font-medium text-blue-700">Engagement Level</label>
+                          <div className="flex items-center mt-1">
+                            <Activity className="w-4 h-4 mr-2 text-blue-600" />
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              customer.engagementLevel === 'Strategic Partner' ? 'bg-purple-100 text-purple-800' :
+                              customer.engagementLevel === 'Active Relationship' ? 'bg-green-100 text-green-800' :
+                              customer.engagementLevel === 'Early Engagement' ? 'bg-yellow-100 text-yellow-800' :
+                              customer.engagementLevel === 'Prospect' ? 'bg-blue-100 text-blue-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {customer.engagementLevel}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      {customer.accountType && (
+                        <div>
+                          <label className="text-sm font-medium text-blue-700">Account Type</label>
+                          <div className="flex items-center mt-1 text-gray-700">
+                            <Briefcase className="w-4 h-4 mr-2 text-blue-600" />
+                            <span>{customer.accountType}</span>
+                          </div>
+                        </div>
+                      )}
+                      {customer.accountOwner && (
+                        <div>
+                          <label className="text-sm font-medium text-blue-700">Account Owner</label>
+                          <div className="flex items-center mt-1 text-gray-700">
+                            <UserCircle className="w-4 h-4 mr-2 text-blue-600" />
+                            <span>{customer.accountOwner.name}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {customer.clickupAccountId && (
+                    <div className="pt-2">
+                      <a
+                        href={`https://app.clickup.com/t/${customer.clickupAccountId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-xs text-blue-600 hover:text-blue-800"
+                      >
+                        <Link2 className="w-3 h-3 mr-1" />
+                        View in ClickUp
+                      </a>
                     </div>
                   )}
                 </div>

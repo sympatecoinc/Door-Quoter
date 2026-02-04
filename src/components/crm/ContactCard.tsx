@@ -1,5 +1,5 @@
 import React from 'react'
-import { Mail, Phone, Briefcase, Edit2, Trash2, Star } from 'lucide-react'
+import { Mail, Phone, Briefcase, Edit2, Trash2, Star, Clock, Activity } from 'lucide-react'
 
 interface Contact {
   id: number
@@ -9,6 +9,11 @@ interface Contact {
   phone: string | null
   title: string | null
   isPrimary: boolean
+  // ClickUp CRM fields
+  relationshipStatus?: string | null
+  lastContactDate?: string | null
+  isActive?: boolean
+  clickupContactId?: string | null
 }
 
 interface ContactCardProps {
@@ -99,6 +104,31 @@ export default function ContactCard({
           </div>
         )}
       </div>
+
+      {/* ClickUp CRM Fields */}
+      {(contact.relationshipStatus || contact.lastContactDate) && (
+        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+          {contact.relationshipStatus && (
+            <div className="flex items-center text-sm">
+              <Activity className="w-4 h-4 mr-2 flex-shrink-0 text-gray-400" />
+              <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
+                contact.relationshipStatus === 'Strong/Trusted' ? 'bg-green-100 text-green-800' :
+                contact.relationshipStatus === 'Warm/Active' ? 'bg-blue-100 text-blue-800' :
+                contact.relationshipStatus === 'New/Recently Introduced' ? 'bg-yellow-100 text-yellow-800' :
+                'bg-gray-100 text-gray-600'
+              }`}>
+                {contact.relationshipStatus}
+              </span>
+            </div>
+          )}
+          {contact.lastContactDate && (
+            <div className="flex items-center text-sm text-gray-500">
+              <Clock className="w-4 h-4 mr-2 flex-shrink-0 text-gray-400" />
+              Last contact: {new Date(contact.lastContactDate).toLocaleDateString()}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -42,6 +42,9 @@ export async function GET(
           where: { leadId: null },
           orderBy: { createdAt: 'desc' },
           take: 10
+        },
+        accountOwner: {
+          select: { id: true, name: true, email: true }
         }
       }
     })

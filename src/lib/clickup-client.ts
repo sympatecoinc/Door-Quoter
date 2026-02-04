@@ -216,6 +216,104 @@ export class ClickUpClient {
   async getCustomFields(listId: string): Promise<ClickUpFieldsResponse> {
     return this.request<ClickUpFieldsResponse>(`/list/${listId}/field`)
   }
+
+  // ============ Task CRUD Operations (for CRM Sync) ============
+
+  /**
+   * Create a new task in a list
+   */
+  async createTask(listId: string, data: CreateTaskData): Promise<ClickUpTask> {
+    return this.request<ClickUpTask>(`/list/${listId}/task`, {
+      method: 'POST',
+      body: data,
+    })
+  }
+
+  /**
+   * Update an existing task
+   */
+  async updateTask(taskId: string, data: UpdateTaskData): Promise<ClickUpTask> {
+    return this.request<ClickUpTask>(`/task/${taskId}`, {
+      method: 'PUT',
+      body: data,
+    })
+  }
+
+  /**
+   * Delete a task
+   */
+  async deleteTask(taskId: string): Promise<void> {
+    await this.request(`/task/${taskId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  /**
+   * Set a custom field value on a task
+   */
+  async setCustomFieldValue(taskId: string, fieldId: string, value: any): Promise<void> {
+    await this.request(`/task/${taskId}/field/${fieldId}`, {
+      method: 'POST',
+      body: { value },
+    })
+  }
+
+  /**
+   * Remove a custom field value from a task
+   */
+  async removeCustomFieldValue(taskId: string, fieldId: string): Promise<void> {
+    await this.request(`/task/${taskId}/field/${fieldId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  /**
+   * Add a comment to a task
+   */
+  async addComment(taskId: string, commentText: string): Promise<ClickUpComment> {
+    return this.request<ClickUpComment>(`/task/${taskId}/comment`, {
+      method: 'POST',
+      body: { comment_text: commentText },
+    })
+  }
+
+  // ============ Webhook Endpoints ============
+
+  /**
+   * Get webhooks for a team
+   */
+  async getWebhooks(teamId: string): Promise<ClickUpWebhooksResponse> {
+    return this.request<ClickUpWebhooksResponse>(`/team/${teamId}/webhook`)
+  }
+
+  /**
+   * Create a webhook
+   */
+  async createWebhook(teamId: string, data: CreateWebhookData): Promise<ClickUpWebhook> {
+    return this.request<ClickUpWebhook>(`/team/${teamId}/webhook`, {
+      method: 'POST',
+      body: data,
+    })
+  }
+
+  /**
+   * Update a webhook
+   */
+  async updateWebhook(webhookId: string, data: UpdateWebhookData): Promise<ClickUpWebhook> {
+    return this.request<ClickUpWebhook>(`/webhook/${webhookId}`, {
+      method: 'PUT',
+      body: data,
+    })
+  }
+
+  /**
+   * Delete a webhook
+   */
+  async deleteWebhook(webhookId: string): Promise<void> {
+    await this.request(`/webhook/${webhookId}`, {
+      method: 'DELETE',
+    })
+  }
 }
 
 // ============ Type Definitions ============
@@ -475,6 +573,169 @@ export interface GetTasksOptions {
   orderBy?: 'id' | 'created' | 'updated' | 'due_date'
   reverse?: boolean
   statuses?: string[]
+}
+
+// ============ Task CRUD Types ============
+
+export interface CreateTaskData {
+  name: string
+  description?: string
+  assignees?: number[]
+  tags?: string[]
+  status?: string
+  priority?: number | null
+  due_date?: number | null
+  due_date_time?: boolean
+  time_estimate?: number
+  start_date?: number | null
+  start_date_time?: boolean
+  notify_all?: boolean
+  parent?: string | null
+  links_to?: string | null
+  custom_fields?: Array<{
+    id: string
+    value: any
+  }>
+}
+
+export interface UpdateTaskData {
+  name?: string
+  description?: string
+  assignees?: {
+    add?: number[]
+    rem?: number[]
+  }
+  status?: string
+  priority?: number | null
+  due_date?: number | null
+  due_date_time?: boolean
+  time_estimate?: number
+  start_date?: number | null
+  start_date_time?: boolean
+  parent?: string | null
+  archived?: boolean
+}
+
+// ============ Comment Types ============
+
+export interface ClickUpComment {
+  id: string
+  comment: Array<{
+    text: string
+    attributes?: Record<string, any>
+  }>
+  comment_text: string
+  user: {
+    id: number
+    username: string
+    email: string
+    color: string
+    initials: string
+    profilePicture: string | null
+  }
+  resolved: boolean
+  assignee: ClickUpAssignee | null
+  assigned_by: ClickUpAssignee | null
+  reactions: any[]
+  date: string
+}
+
+// ============ Webhook Types ============
+
+export interface ClickUpWebhook {
+  id: string
+  userid: number
+  team_id: string
+  endpoint: string
+  client_id: string | null
+  events: string[]
+  task_id: string | null
+  list_id: string | null
+  folder_id: string | null
+  space_id: string | null
+  health: {
+    status: string
+    fail_count: number
+  }
+  secret: string
+}
+
+export interface ClickUpWebhooksResponse {
+  webhooks: ClickUpWebhook[]
+}
+
+export interface CreateWebhookData {
+  endpoint: string
+  events: ClickUpWebhookEvent[]
+  space_id?: string
+  folder_id?: string
+  list_id?: string
+  task_id?: string
+}
+
+export interface UpdateWebhookData {
+  endpoint?: string
+  events?: ClickUpWebhookEvent[]
+  status?: 'active' | 'inactive'
+}
+
+export type ClickUpWebhookEvent =
+  | 'taskCreated'
+  | 'taskUpdated'
+  | 'taskDeleted'
+  | 'taskPriorityUpdated'
+  | 'taskStatusUpdated'
+  | 'taskAssigneeUpdated'
+  | 'taskDueDateUpdated'
+  | 'taskTagUpdated'
+  | 'taskMoved'
+  | 'taskCommentPosted'
+  | 'taskCommentUpdated'
+  | 'taskTimeEstimateUpdated'
+  | 'taskTimeTrackedUpdated'
+  | 'listCreated'
+  | 'listUpdated'
+  | 'listDeleted'
+  | 'folderCreated'
+  | 'folderUpdated'
+  | 'folderDeleted'
+  | 'spaceCreated'
+  | 'spaceUpdated'
+  | 'spaceDeleted'
+  | 'goalCreated'
+  | 'goalUpdated'
+  | 'goalDeleted'
+  | 'keyResultCreated'
+  | 'keyResultUpdated'
+  | 'keyResultDeleted'
+
+// ============ Webhook Payload Types ============
+
+export interface ClickUpWebhookPayload {
+  event: ClickUpWebhookEvent
+  history_items?: ClickUpHistoryItem[]
+  task_id: string
+  webhook_id: string
+}
+
+export interface ClickUpHistoryItem {
+  id: string
+  type: number
+  date: string
+  field: string
+  parent_id: string
+  data: Record<string, any>
+  source: string | null
+  user: {
+    id: number
+    username: string
+    email: string
+    color: string
+    initials: string
+    profilePicture: string | null
+  }
+  before: any
+  after: any
 }
 
 // Export a singleton instance for server-side use

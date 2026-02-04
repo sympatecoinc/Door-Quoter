@@ -1383,7 +1383,7 @@ export async function GET(
             addToPackingList: masterPart?.addToPackingList ?? true,
             isLinkedPart: false,
             pickListStation: masterPart?.pickListStation || null,
-            includeInJambKit: false,
+            includeInJambKit: masterPart?.includeInJambKit ?? false,
             isMilled: part.isMilled || false,
             binLocation: masterPart?.binLocationId || null,
             isPresetPart: true

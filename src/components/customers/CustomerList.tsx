@@ -13,7 +13,8 @@ import {
   Building2,
   MoreVertical,
   Target,
-  Hammer
+  Hammer,
+  Activity
 } from 'lucide-react'
 
 const FILTER_STATUSES = ['Active', 'Lead', 'Archived'] as const
@@ -354,7 +355,20 @@ export default function CustomerList({
                       </span>
                     </td>
                     <td className="px-4 py-4">
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-col gap-2">
+                        {customer.engagementLevel && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                            customer.engagementLevel === 'Strategic Partner' ? 'bg-purple-100 text-purple-800' :
+                            customer.engagementLevel === 'Active Relationship' ? 'bg-green-100 text-green-800' :
+                            customer.engagementLevel === 'Early Engagement' ? 'bg-yellow-100 text-yellow-800' :
+                            customer.engagementLevel === 'Prospect' ? 'bg-blue-100 text-blue-800' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            <Activity className="w-3 h-3 mr-1" />
+                            {customer.engagementLevel}
+                          </span>
+                        )}
+                        <div className="flex items-center gap-3">
                         {(customer.leadCount !== undefined && customer.leadCount > 0) && (
                           <div className="flex items-center gap-1 text-sm text-gray-600" title="Active Leads">
                             <Target className="w-3 h-3" />
@@ -368,9 +382,11 @@ export default function CustomerList({
                           </div>
                         )}
                         {(!customer.leadCount || customer.leadCount === 0) &&
-                         (!customer.projectCount || customer.projectCount === 0) && (
+                         (!customer.projectCount || customer.projectCount === 0) &&
+                         !customer.engagementLevel && (
                           <span className="text-sm text-gray-400">-</span>
                         )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-4 text-right">
