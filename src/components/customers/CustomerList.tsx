@@ -332,20 +332,45 @@ export default function CustomerList({
                     </td>
                     <td className="px-4 py-4">
                       <div className="space-y-1">
-                        {customer.phone && (
-                          <div className="flex items-center gap-1 text-sm text-gray-600">
-                            <Phone className="w-3 h-3" />
-                            {customer.phone}
-                          </div>
-                        )}
-                        {customer.email && (
-                          <div className="flex items-center gap-1 text-sm text-gray-600">
-                            <Mail className="w-3 h-3" />
-                            {customer.email}
-                          </div>
-                        )}
-                        {!customer.phone && !customer.email && (
-                          <span className="text-sm text-gray-400">No contact info</span>
+                        {customer.contacts && customer.contacts.length > 0 ? (() => {
+                          const primaryContact = customer.contacts.find((c: any) => c.isPrimary) || customer.contacts[0]
+                          return (
+                            <>
+                              <div className="font-medium text-gray-900 text-sm">
+                                {primaryContact.firstName} {primaryContact.lastName}
+                              </div>
+                              {primaryContact.phone && (
+                                <div className="flex items-center gap-1 text-sm text-gray-600">
+                                  <Phone className="w-3 h-3" />
+                                  {primaryContact.phone}
+                                </div>
+                              )}
+                              {primaryContact.email && (
+                                <div className="flex items-center gap-1 text-sm text-gray-600">
+                                  <Mail className="w-3 h-3" />
+                                  {primaryContact.email}
+                                </div>
+                              )}
+                            </>
+                          )
+                        })() : (
+                          <>
+                            {customer.phone && (
+                              <div className="flex items-center gap-1 text-sm text-gray-600">
+                                <Phone className="w-3 h-3" />
+                                {customer.phone}
+                              </div>
+                            )}
+                            {customer.email && (
+                              <div className="flex items-center gap-1 text-sm text-gray-600">
+                                <Mail className="w-3 h-3" />
+                                {customer.email}
+                              </div>
+                            )}
+                            {!customer.phone && !customer.email && (
+                              <span className="text-sm text-gray-400">No contact info</span>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>

@@ -6,11 +6,12 @@ const prisma = new PrismaClient()
 // GET /api/customers/[id]/contacts/[contactId] - Get a specific contact
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string; contactId: string } }
+  { params }: { params: Promise<{ id: string; contactId: string }> }
 ) {
   try {
-    const customerId = parseInt(params.id)
-    const contactId = parseInt(params.contactId)
+    const { id, contactId: contactIdStr } = await params
+    const customerId = parseInt(id)
+    const contactId = parseInt(contactIdStr)
 
     if (isNaN(customerId) || isNaN(contactId)) {
       return NextResponse.json(
@@ -47,11 +48,12 @@ export async function GET(
 // PUT /api/customers/[id]/contacts/[contactId] - Update a contact
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string; contactId: string } }
+  { params }: { params: Promise<{ id: string; contactId: string }> }
 ) {
   try {
-    const customerId = parseInt(params.id)
-    const contactId = parseInt(params.contactId)
+    const { id, contactId: contactIdStr } = await params
+    const customerId = parseInt(id)
+    const contactId = parseInt(contactIdStr)
 
     if (isNaN(customerId) || isNaN(contactId)) {
       return NextResponse.json(
@@ -167,11 +169,12 @@ export async function PUT(
 // DELETE /api/customers/[id]/contacts/[contactId] - Delete a contact
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; contactId: string } }
+  { params }: { params: Promise<{ id: string; contactId: string }> }
 ) {
   try {
-    const customerId = parseInt(params.id)
-    const contactId = parseInt(params.contactId)
+    const { id, contactId: contactIdStr } = await params
+    const customerId = parseInt(id)
+    const contactId = parseInt(contactIdStr)
 
     if (isNaN(customerId) || isNaN(contactId)) {
       return NextResponse.json(

@@ -2,7 +2,7 @@
  * ClickUp Leads/Opportunities Webhook Handler
  *
  * Receives webhook events from ClickUp for the Leads/Opportunities list
- * and syncs changes to ERP Lead records.
+ * and syncs changes to ERP Projects (in lead phase).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -71,14 +71,20 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ message: 'Task not in Leads list' })
         }
 
+        // Skip subtasks - only sync top-level leads
+        if (task.parent) {
+          console.log(`[ClickUp Webhook] Task ${taskId} is a subtask, skipping`)
+          return NextResponse.json({ message: 'Subtask ignored - only top-level leads are synced' })
+        }
+
         // Sync to ERP
         const result = await syncClickUpLeadToERP(task)
 
         if (result.success) {
           return NextResponse.json({
-            message: 'Lead synced successfully',
+            message: 'Lead synced to Project successfully',
             action: result.action,
-            leadId: result.leadId,
+            projectId: result.projectId,
           })
         } else {
           return NextResponse.json({
@@ -107,7 +113,7 @@ export async function POST(request: NextRequest) {
 
     // Log the error
     await logSync({
-      entityType: 'lead',
+      entityType: 'project',
       entityId: 0,
       clickupTaskId: 'unknown',
       syncDirection: 'clickup_to_erp',

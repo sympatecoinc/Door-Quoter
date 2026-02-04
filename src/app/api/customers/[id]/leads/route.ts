@@ -34,6 +34,9 @@ export async function GET(
         activities: {
           orderBy: { createdAt: 'desc' },
           take: 5
+        },
+        salesOwner: {
+          select: { id: true, name: true }
         }
       },
       orderBy: { createdAt: 'desc' }

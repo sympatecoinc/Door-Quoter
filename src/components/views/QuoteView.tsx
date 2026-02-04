@@ -81,7 +81,7 @@ interface QuoteData {
 }
 
 export default function QuoteView() {
-  const { selectedProjectId, setSelectedProjectId, setCurrentMenu, selectedCustomerId, customerDetailView } = useAppStore()
+  const { selectedProjectId, setSelectedProjectId, setCurrentMenu } = useAppStore()
   const { toasts, removeToast, showSuccess, showError } = useToast()
   const { startDownload, updateProgress, completeDownload, failDownload } = useDownloadStore()
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null)
@@ -104,12 +104,7 @@ export default function QuoteView() {
 
   // Handle back navigation
   const handleBack = () => {
-    // If we came from customer detail view, go back to dashboard (which shows customer detail)
-    if (selectedCustomerId && customerDetailView) {
-      setCurrentMenu('dashboard')
-    } else {
-      setCurrentMenu('projects')
-    }
+    setCurrentMenu('projects')
   }
 
   useEffect(() => {

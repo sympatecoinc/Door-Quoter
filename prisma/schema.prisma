@@ -74,6 +74,10 @@ model Project {
   // Field verification uploads
   fieldVerificationUploads FieldVerificationUpload[]
 
+  // ClickUp CRM sync fields (for leads synced from ClickUp)
+  clickupLeadId          String?     @unique  // ClickUp Task ID for this project/lead
+  clickupLastSyncedAt    DateTime?            // When last synced with ClickUp
+
   @@map("Projects")
 }
 
@@ -193,6 +197,8 @@ model Panel {
 }
 
 enum ProjectStatus {
+  NEW_LEAD       @map("New Lead")
+  CONTACTED      @map("Contacted")
   STAGING        @map("Staging")
   APPROVED       @map("Approved")
   REVISE         @map("Revise")

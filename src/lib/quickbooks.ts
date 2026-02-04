@@ -1308,6 +1308,22 @@ export async function generatePONumber(): Promise<string> {
 
 // ============ CUSTOMER OPERATIONS ============
 
+// Query customer by name from QuickBooks
+export async function findQBCustomerByName(realmId: string, displayName: string): Promise<QBCustomer | null> {
+  try {
+    // Escape single quotes in the name for the query
+    const escapedName = displayName.replace(/'/g, "\\'")
+    const query = `SELECT * FROM Customer WHERE DisplayName = '${escapedName}'`
+    const response = await qbApiRequest(realmId, `query?query=${encodeURIComponent(query)}`)
+
+    const customers = response.QueryResponse?.Customer || []
+    return customers.length > 0 ? customers[0] : null
+  } catch (error) {
+    console.error(`[QB Sync] Error searching for customer by name "${displayName}":`, error)
+    return null
+  }
+}
+
 // Query all customers from QuickBooks
 export async function fetchAllQBCustomers(realmId: string): Promise<QBCustomer[]> {
   const allCustomers: QBCustomer[] = []
@@ -1518,9 +1534,18 @@ export async function pushCustomerToQB(customerId: number): Promise<any> {
 
     result = await updateQBCustomer(realmId, sparseUpdate)
   } else {
-    // Create new QB customer
-    const qbCustomer = localCustomerToQB(customer)
-    result = await createQBCustomer(realmId, qbCustomer)
+    // Check if customer already exists in QB by name before creating
+    const existingQBCustomer = await findQBCustomerByName(realmId, customer.companyName)
+
+    if (existingQBCustomer) {
+      // Customer already exists in QB - link instead of create
+      console.log(`[QB Sync] Found existing QB customer "${customer.companyName}" (ID: ${existingQBCustomer.Id}) - linking instead of creating`)
+      result = existingQBCustomer
+    } else {
+      // Create new QB customer
+      const qbCustomer = localCustomerToQB(customer)
+      result = await createQBCustomer(realmId, qbCustomer)
+    }
   }
 
   // Update local customer with QB response

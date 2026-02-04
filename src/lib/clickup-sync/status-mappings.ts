@@ -34,7 +34,32 @@ export const ERP_CONTACT_ACTIVE_TO_CLICKUP: Record<string, string> = {
 }
 
 // ============ Lead/Opportunity Status Mappings ============
+// Maps ClickUp Lead statuses to ProjectStatus for direct project sync
 
+import { ProjectStatus } from '@/types'
+
+export const CLICKUP_LEAD_STATUS_TO_PROJECT: Record<string, ProjectStatus> = {
+  'new lead': ProjectStatus.NEW_LEAD,
+  'contacted': ProjectStatus.CONTACTED,
+  'quote in progress': ProjectStatus.STAGING,
+  'quote sent': ProjectStatus.QUOTE_SENT,
+  'bid - won': ProjectStatus.QUOTE_ACCEPTED,
+  'bid-won': ProjectStatus.QUOTE_ACCEPTED,
+  'bid - lost': ProjectStatus.BID_LOST,
+  'bid-lost': ProjectStatus.BID_LOST,
+  'project cancelled': ProjectStatus.BID_LOST,
+}
+
+export const PROJECT_STATUS_TO_CLICKUP_LEAD: Record<string, string> = {
+  [ProjectStatus.NEW_LEAD]: 'new lead',
+  [ProjectStatus.CONTACTED]: 'contacted',
+  [ProjectStatus.STAGING]: 'quote in progress',
+  [ProjectStatus.QUOTE_SENT]: 'quote sent',
+  [ProjectStatus.QUOTE_ACCEPTED]: 'bid - won',
+  [ProjectStatus.BID_LOST]: 'bid - lost',
+}
+
+// Legacy mappings for existing Lead model (kept for backwards compatibility)
 export const CLICKUP_LEAD_STATUS_TO_ERP: Record<string, string> = {
   'new lead': 'New',
   'contacted': 'Qualified',
@@ -133,7 +158,7 @@ export function getClickUpContactStatus(isActive: boolean): string {
 }
 
 /**
- * Get ERP lead stage from ClickUp lead status
+ * Get ERP lead stage from ClickUp lead status (legacy Lead model)
  */
 export function getERPLeadStage(clickupStatus: string): string {
   const normalized = normalizeClickUpStatus(clickupStatus)
@@ -141,8 +166,23 @@ export function getERPLeadStage(clickupStatus: string): string {
 }
 
 /**
- * Get ClickUp lead status from ERP lead stage
+ * Get ClickUp lead status from ERP lead stage (legacy Lead model)
  */
 export function getClickUpLeadStatus(erpStage: string): string {
   return ERP_LEAD_STAGE_TO_CLICKUP[erpStage] || 'new lead'
+}
+
+/**
+ * Get ProjectStatus from ClickUp lead status (for Project-based sync)
+ */
+export function getProjectStatusFromClickUpLead(clickupStatus: string): ProjectStatus {
+  const normalized = normalizeClickUpStatus(clickupStatus)
+  return CLICKUP_LEAD_STATUS_TO_PROJECT[normalized] || ProjectStatus.NEW_LEAD
+}
+
+/**
+ * Get ClickUp lead status from ProjectStatus (for Project-based sync)
+ */
+export function getClickUpLeadStatusFromProject(projectStatus: ProjectStatus): string {
+  return PROJECT_STATUS_TO_CLICKUP_LEAD[projectStatus] || 'new lead'
 }

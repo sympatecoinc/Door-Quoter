@@ -10,7 +10,6 @@ import {
   Package,
   Database,
   Settings,
-  Users,
   LogOut,
   User,
   DollarSign,
@@ -34,7 +33,6 @@ import {
 const menuItemsMap: Record<string, { label: string; icon: LucideIcon }> = {
   dashboard: { label: 'Dashboard (Sales)', icon: Home },
   customers: { label: 'Customers', icon: Building2 },
-  crm: { label: 'CRM', icon: Users },
   projects: { label: 'Projects', icon: Folder },
   production: { label: 'Production', icon: Factory },
   logistics: { label: 'Shipping', icon: PackageCheck },
@@ -56,7 +54,7 @@ const menuItemsMap: Record<string, { label: string; icon: LucideIcon }> = {
 
 // Default order (used when no profile ordering is set)
 const defaultMenuOrder: MenuOption[] = [
-  'dashboard', 'customers', 'crm', 'projects', 'production', 'logistics', 'products',
+  'dashboard', 'customers', 'projects', 'production', 'logistics', 'products',
   'masterParts', 'inventory', 'vendors', 'purchaseOrders', 'receiving',
   'purchasingDashboard', 'purchaseSummary', 'salesOrders', 'invoices', 'quoteDocuments',
   'accounting', 'settings', 'clickupTest'

@@ -2,7 +2,6 @@
 
 import { useAppStore } from '@/stores/appStore'
 import DashboardView from './views/DashboardView'
-import CRMView from './views/CRMView'
 import CustomersView from './views/CustomersView'
 import CustomerDetailView from './customers/CustomerDetailView'
 import ProjectsView from './views/ProjectsView'
@@ -34,8 +33,6 @@ export default function Dashboard() {
         return <DashboardView />
       case 'customers':
         return selectedCustomerId ? <CustomerDetailView /> : <CustomersView />
-      case 'crm':
-        return <CRMView />
       case 'projects':
         return selectedProjectId ? <ProjectDetailView /> : <ProjectsView />
       case 'production':

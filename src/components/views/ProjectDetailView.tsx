@@ -159,7 +159,7 @@ function smartIncrementName(baseName: string, index: number): string {
 }
 
 export default function ProjectDetailView() {
-  const { selectedProjectId, setSelectedProjectId, selectedCustomerId, customerDetailView, setCurrentMenu, autoOpenAddOpening, setAutoOpenAddOpening, cameFromSalesDashboard, setCameFromSalesDashboard, salesLeadId, setShowSalesLeadView } = useAppStore()
+  const { selectedProjectId, setSelectedProjectId, selectedCustomerId, setCurrentMenu, autoOpenAddOpening, setAutoOpenAddOpening, cameFromSalesDashboard, setCameFromSalesDashboard, salesLeadId, setShowSalesLeadView } = useAppStore()
   const { toasts, removeToast, showSuccess, showError } = useToast()
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
@@ -384,10 +384,6 @@ export default function ProjectDetailView() {
       if (salesLeadId) {
         setShowSalesLeadView(true)
       }
-    }
-    // If we came from customer detail view, go back to dashboard (which shows customer detail)
-    else if (selectedCustomerId && customerDetailView) {
-      setCurrentMenu('dashboard')
     }
     // Otherwise stay on projects menu (will show projects list)
   }

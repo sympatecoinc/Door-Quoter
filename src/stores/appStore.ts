@@ -7,8 +7,6 @@ interface AppState {
   currentMenu: MenuOption
   selectedProjectId: number | null
   selectedCustomerId: number | null
-  customerDetailView: boolean
-  customerDetailTab: 'overview' | 'contacts' | 'notes' | 'files'
   autoOpenAddOpening: boolean
   notificationRefreshTrigger: number
   // Sales Lead View state
@@ -22,8 +20,6 @@ interface AppState {
   setCurrentMenu: (menu: MenuOption) => void
   setSelectedProjectId: (id: number | null) => void
   setSelectedCustomerId: (id: number | null) => void
-  setCustomerDetailView: (show: boolean) => void
-  setCustomerDetailTab: (tab: 'overview' | 'contacts' | 'notes' | 'files') => void
   setAutoOpenAddOpening: (open: boolean) => void
   triggerNotificationRefresh: () => void
   // Sales Lead View actions
@@ -40,8 +36,6 @@ export const useAppStore = create<AppState>((set) => ({
   currentMenu: 'dashboard',
   selectedProjectId: null,
   selectedCustomerId: null,
-  customerDetailView: false,
-  customerDetailTab: 'overview',
   autoOpenAddOpening: false,
   notificationRefreshTrigger: 0,
   // Sales Lead View state
@@ -55,8 +49,6 @@ export const useAppStore = create<AppState>((set) => ({
   setCurrentMenu: (menu) => set({ currentMenu: menu }),
   setSelectedProjectId: (id) => set({ selectedProjectId: id }),
   setSelectedCustomerId: (id) => set({ selectedCustomerId: id }),
-  setCustomerDetailView: (show) => set({ customerDetailView: show }),
-  setCustomerDetailTab: (tab) => set({ customerDetailTab: tab }),
   setAutoOpenAddOpening: (open) => set({ autoOpenAddOpening: open }),
   triggerNotificationRefresh: () => set((state) => ({ notificationRefreshTrigger: state.notificationRefreshTrigger + 1 })),
   // Sales Lead View actions

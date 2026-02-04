@@ -1,6 +1,8 @@
 import { BinLocation } from './bin-location'
 
 export enum ProjectStatus {
+  NEW_LEAD = 'NEW_LEAD',
+  CONTACTED = 'CONTACTED',
   STAGING = 'STAGING',
   APPROVED = 'APPROVED',
   REVISE = 'REVISE',
@@ -37,6 +39,18 @@ export const STATUS_CONFIG: Record<ProjectStatus, {
   bgColor: string
   textColor: string
 }> = {
+  [ProjectStatus.NEW_LEAD]: {
+    label: 'New Lead',
+    color: 'indigo',
+    bgColor: 'bg-indigo-100',
+    textColor: 'text-indigo-800'
+  },
+  [ProjectStatus.CONTACTED]: {
+    label: 'Contacted',
+    color: 'sky',
+    bgColor: 'bg-sky-100',
+    textColor: 'text-sky-800'
+  },
   [ProjectStatus.STAGING]: {
     label: 'Preparing Quote',
     color: 'gray',
@@ -100,6 +114,8 @@ export function getStatusLabel(status: ProjectStatus): string {
 
 // Lead phase statuses (pre-acceptance)
 export const LEAD_STATUSES: ProjectStatus[] = [
+  ProjectStatus.NEW_LEAD,
+  ProjectStatus.CONTACTED,
   ProjectStatus.STAGING,
   ProjectStatus.APPROVED,
   ProjectStatus.REVISE,
@@ -108,6 +124,8 @@ export const LEAD_STATUSES: ProjectStatus[] = [
 
 // Lead filter statuses (includes Archive and Bid Lost for filtering)
 export const LEAD_FILTER_STATUSES: ProjectStatus[] = [
+  ProjectStatus.NEW_LEAD,
+  ProjectStatus.CONTACTED,
   ProjectStatus.STAGING,
   ProjectStatus.APPROVED,
   ProjectStatus.REVISE,
@@ -308,7 +326,7 @@ export interface ComponentInstance {
   updatedAt: Date
 }
 
-export type MenuOption = 'dashboard' | 'customers' | 'crm' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'purchasingDashboard' | 'purchaseSummary' | 'receiving' | 'salesOrders' | 'invoices' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments' | 'production' | 'logistics' | 'clickupTest'
+export type MenuOption = 'dashboard' | 'customers' | 'projects' | 'products' | 'componentLibrary' | 'masterParts' | 'inventory' | 'vendors' | 'purchaseOrders' | 'purchasingDashboard' | 'purchaseSummary' | 'receiving' | 'salesOrders' | 'invoices' | 'accounting' | 'settings' | 'quote' | 'quoteDocuments' | 'production' | 'logistics' | 'clickupTest'
 
 // Vendor Management Types
 export interface Vendor {

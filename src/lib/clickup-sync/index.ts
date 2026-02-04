@@ -10,7 +10,7 @@ import { getClickUpClient, type ClickUpTask, type ClickUpWebhookPayload } from '
 // Re-export entity sync functions
 export { syncClickUpAccountToERP, syncERPCustomerToClickUp, handleAccountDeletion } from './accounts'
 export { syncClickUpContactToERP, syncERPContactToClickUp, handleContactDeletion } from './contacts'
-export { syncClickUpLeadToERP, syncERPLeadToClickUp, handleLeadDeletion } from './leads'
+export { syncClickUpLeadToERP, syncERPProjectToClickUp, handleLeadDeletion } from './leads'
 
 // Re-export mappings
 export * from './status-mappings'
@@ -303,6 +303,12 @@ export async function syncAllLeadsFromClickUp(): Promise<{
       total += tasks.length
 
       for (const task of tasks) {
+        // Skip subtasks - only sync top-level leads
+        if (task.parent) {
+          console.log(`[ClickUp Sync] Skipping subtask "${task.name}" (parent: ${task.parent})`)
+          continue
+        }
+
         const result = await syncClickUpLeadToERP(task)
         if (result.success) {
           synced++
