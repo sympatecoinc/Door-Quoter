@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionToken } from '@/lib/auth'
 import { validateSession } from '@/lib/db-session'
+import { triggerDomainMappingCreate } from '@/lib/cloudrun-domain-mapping'
 
 /**
  * GET /api/portals
@@ -116,6 +117,9 @@ export async function POST(request: NextRequest) {
         isActive: isActive !== undefined ? isActive : true
       }
     })
+
+    // Fire-and-forget: create Cloud Run domain mapping for new portal
+    triggerDomainMappingCreate(portal.subdomain)
 
     return NextResponse.json({ portal }, { status: 201 })
   } catch (error) {

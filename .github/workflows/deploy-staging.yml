@@ -57,6 +57,10 @@ jobs:
             NEXTAUTH_SECRET=staging-secret-key
             NODE_ENV=staging
             GCS_BUCKET_NAME=linea-door-quoter-uploads
+            GCP_PROJECT_ID=linea-door-quoter
+            GCP_REGION=us-central1
+            CLOUDRUN_SERVICE_NAME=door-quoter-staging
+            CLOUDRUN_BASE_DOMAIN=lineamotion.com
 
       - name: Show Staging URL
         run: echo ${{ steps.deploy.outputs.url }}

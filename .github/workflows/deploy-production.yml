@@ -64,6 +64,10 @@ jobs:
             NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
             NODE_ENV=production
             GCS_BUCKET_NAME=linea-door-quoter-uploads
+            GCP_PROJECT_ID=linea-door-quoter
+            GCP_REGION=us-central1
+            CLOUDRUN_SERVICE_NAME=door-quoter-app
+            CLOUDRUN_BASE_DOMAIN=lineamotion.com
 
       - name: Show Output
         run: echo ${{ steps.deploy.outputs.url }}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionToken } from '@/lib/auth'
 import { validateSession } from '@/lib/db-session'
+import { triggerDomainMappingCreate, triggerDomainMappingDelete } from '@/lib/cloudrun-domain-mapping'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -146,6 +147,12 @@ export async function PUT(
       }
     })
 
+    // If subdomain changed, update Cloud Run domain mappings
+    if (subdomain && subdomain.toLowerCase() !== existing.subdomain) {
+      triggerDomainMappingDelete(existing.subdomain)
+      triggerDomainMappingCreate(subdomain.toLowerCase())
+    }
+
     return NextResponse.json({ portal })
   } catch (error) {
     console.error('Error updating portal:', error)
@@ -196,6 +203,9 @@ export async function DELETE(
     await prisma.portal.delete({
       where: { id: portalId }
     })
+
+    // Fire-and-forget: remove Cloud Run domain mapping for deleted portal
+    triggerDomainMappingDelete(existing.subdomain)
 
     return NextResponse.json({ message: 'Portal deleted successfully' })
   } catch (error) {
