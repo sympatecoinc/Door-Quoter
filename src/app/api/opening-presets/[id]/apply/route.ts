@@ -239,11 +239,20 @@ export async function POST(
                 include: {
                   product: {
                     include: {
+                      productBOMs: {
+                        include: {
+                          option: true
+                        }
+                      },
                       productSubOptions: {
                         include: {
                           category: {
                             include: {
-                              individualOptions: true
+                              individualOptions: {
+                                include: {
+                                  variants: true
+                                }
+                              }
                             }
                           }
                         }

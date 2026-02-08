@@ -188,7 +188,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
           name: formData.projectName.trim(),
           customerId,
           dueDate: formData.dueDate || undefined,
-          status: 'STAGING'
+          status: 'NEW_LEAD'
         })
       })
 

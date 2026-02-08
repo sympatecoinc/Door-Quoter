@@ -159,7 +159,7 @@ function smartIncrementName(baseName: string, index: number): string {
 }
 
 export default function ProjectDetailView() {
-  const { selectedProjectId, setSelectedProjectId, selectedCustomerId, customerDetailView, setCurrentMenu, autoOpenAddOpening, setAutoOpenAddOpening, cameFromSalesDashboard, setCameFromSalesDashboard, salesLeadId, setShowSalesLeadView } = useAppStore()
+  const { selectedProjectId, setSelectedProjectId, selectedCustomerId, setCurrentMenu, autoOpenAddOpening, setAutoOpenAddOpening, cameFromSalesDashboard, setCameFromSalesDashboard, salesLeadId, setShowSalesLeadView } = useAppStore()
   const { toasts, removeToast, showSuccess, showError } = useToast()
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
@@ -227,6 +227,15 @@ export default function ProjectDetailView() {
   const [openingPresets, setOpeningPresets] = useState<OpeningPreset[]>([])
   const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null)
   const [applyingPreset, setApplyingPreset] = useState(false)
+  // Preset configuration flow - after applying preset, configure hardware options for each panel
+  const [presetConfigStep, setPresetConfigStep] = useState<'configuring' | null>(null)
+  const [appliedPresetOpening, setAppliedPresetOpening] = useState<any>(null)
+  const [configuringPanelIndex, setConfiguringPanelIndex] = useState(0)
+  const [presetPanelOptions, setPresetPanelOptions] = useState<Record<number, Record<number, number | null>>>({}) // panelIndex -> categoryId -> optionId
+  const [presetPanelVariants, setPresetPanelVariants] = useState<Record<number, Record<string, number>>>({}) // panelIndex -> optionId -> variantId
+  const [presetPanelQuantities, setPresetPanelQuantities] = useState<Record<number, Record<string, number>>>({}) // panelIndex -> categoryId_qty -> quantity
+  const [presetPanelGlassTypes, setPresetPanelGlassTypes] = useState<Record<number, string>>({}) // panelIndex -> glassType
+  const [savingPresetConfig, setSavingPresetConfig] = useState(false)
   const [toleranceDefaults, setToleranceDefaults] = useState({
     thinwallWidthTolerance: 1.0,
     thinwallHeightTolerance: 1.5,
@@ -378,10 +387,6 @@ export default function ProjectDetailView() {
         setShowSalesLeadView(true)
       }
     }
-    // If we came from customer detail view, go back to dashboard (which shows customer detail)
-    else if (selectedCustomerId && customerDetailView) {
-      setCurrentMenu('dashboard')
-    }
     // Otherwise stay on projects menu (will show projects list)
   }
 
@@ -424,7 +429,15 @@ export default function ProjectDetailView() {
     { isOpen: showEditOpeningModal, isBlocked: isUpdatingOpening, onClose: () => { setShowEditOpeningModal(false); setEditingOpeningId(null) } },
     { isOpen: showComponentEdit, isBlocked: savingComponent, onClose: () => setShowComponentEdit(false) },
     { isOpen: showAddComponent, onClose: () => setShowAddComponent(false) },
-    { isOpen: showAddOpening, isBlocked: addingOpening, onClose: () => setShowAddOpening(false) },
+    { isOpen: showAddOpening, isBlocked: addingOpening || applyingPreset || savingPresetConfig, onClose: () => {
+      setShowAddOpening(false)
+      setSelectedPresetId(null)
+      setPresetConfigStep(null)
+      setAppliedPresetOpening(null)
+      setPresetPanelOptions({})
+      setPresetPanelVariants({})
+      setConfiguringPanelIndex(0)
+    } },
     { isOpen: showDrawingViewer, onClose: () => setShowDrawingViewer(false) },
     { isOpen: showBOM, onClose: () => setShowBOM(false) },
     { isOpen: showEditModal, isBlocked: saving, onClose: () => setShowEditModal(false) },
@@ -1203,27 +1216,76 @@ export default function ProjectDetailView() {
       })
 
       if (response.ok) {
-        // Reset form and close modal
-        setNewOpening({
-          name: '',
-          finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
-          isFinishedOpening: false,
-          openingType: 'THINWALL',
-          roughWidth: '',
-          roughHeight: '',
-          widthToleranceTotal: null,
-          heightToleranceTotal: null
-        })
-        setSelectedPresetId(null)
-        setShowAddOpening(false)
+        const openingData = await response.json()
 
-        // Silent refresh to preserve scroll position
-        try {
-          await refreshProject()
-          showSuccess('Opening created from preset!')
-        } catch (fetchError) {
-          console.error('Error refreshing project data:', fetchError)
-          showError('Opening created but failed to refresh the list. Please refresh the page.')
+        // Check if any panels have products with options to configure
+        const panelsWithOptions = openingData.panels?.filter((panel: any) =>
+          panel.componentInstance?.product?.productSubOptions?.length > 0
+        ) || []
+
+        if (panelsWithOptions.length > 0) {
+          // Transition to configuration step
+          setAppliedPresetOpening(openingData)
+
+          // Pre-select standard options and default variants for each panel
+          const initialOptions: Record<number, Record<number, number | null>> = {}
+          const initialVariants: Record<number, Record<string, number>> = {}
+
+          openingData.panels?.forEach((panel: any, index: number) => {
+            if (panel.componentInstance?.product?.productSubOptions) {
+              initialOptions[index] = {}
+              initialVariants[index] = {}
+
+              for (const pso of panel.componentInstance.product.productSubOptions) {
+                if (pso.standardOptionId) {
+                  initialOptions[index][pso.category.id] = pso.standardOptionId
+                  // Find the standard option and check for default variant
+                  const standardOption = pso.category.individualOptions?.find(
+                    (opt: any) => opt.id === pso.standardOptionId
+                  )
+                  if (standardOption?.variants?.length > 0) {
+                    const defaultVariant = standardOption.variants.find((v: any) => v.isDefault)
+                    if (defaultVariant) {
+                      initialVariants[index][String(pso.standardOptionId)] = defaultVariant.id
+                    }
+                  }
+                } else {
+                  initialOptions[index][pso.category.id] = null
+                }
+              }
+            }
+          })
+
+          setPresetPanelOptions(initialOptions)
+          setPresetPanelVariants(initialVariants)
+          setConfiguringPanelIndex(0)
+          setPresetConfigStep('configuring')
+
+          // Refresh project in background to show the new opening
+          refreshProject().catch(console.error)
+        } else {
+          // No panels with options to configure, complete normally
+          setNewOpening({
+            name: '',
+            finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
+            isFinishedOpening: false,
+            openingType: 'THINWALL',
+            roughWidth: '',
+            roughHeight: '',
+            widthToleranceTotal: null,
+            heightToleranceTotal: null
+          })
+          setSelectedPresetId(null)
+          setShowAddOpening(false)
+
+          // Silent refresh to preserve scroll position
+          try {
+            await refreshProject()
+            showSuccess('Opening created from preset!')
+          } catch (fetchError) {
+            console.error('Error refreshing project data:', fetchError)
+            showError('Opening created but failed to refresh the list. Please refresh the page.')
+          }
         }
       } else {
         // Handle API errors
@@ -1240,6 +1302,108 @@ export default function ProjectDetailView() {
     } finally {
       setApplyingPreset(false)
     }
+  }
+
+  // Save the configured panel options after applying a preset
+  async function handleSavePresetPanelConfig() {
+    if (!appliedPresetOpening) return
+
+    setSavingPresetConfig(true)
+    try {
+      // Update each panel's component instance with the selected options
+      for (const panel of appliedPresetOpening.panels || []) {
+        const panelIndex = appliedPresetOpening.panels.indexOf(panel)
+        const selectedOptions = presetPanelOptions[panelIndex]
+        const selectedVariants = presetPanelVariants[panelIndex]
+        const selectedQuantities = presetPanelQuantities[panelIndex]
+        const selectedGlassType = presetPanelGlassTypes[panelIndex]
+
+        // Update panel glass type if changed
+        if (selectedGlassType && selectedGlassType !== panel.glassType) {
+          await fetch(`/api/panels/${panel.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              glassType: selectedGlassType
+            })
+          })
+        }
+
+        if (panel.componentInstance && selectedOptions) {
+          // Get included option IDs (non-null selections)
+          const includedOptionIds = Object.values(selectedOptions).filter((id): id is number => id !== null)
+
+          // Merge option selections with quantity selections (same pattern as Add Component)
+          const mergedSelections = {
+            ...selectedOptions,
+            ...(selectedQuantities || {})
+          }
+
+          await fetch(`/api/component-instances/${panel.componentInstance.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              subOptionSelections: mergedSelections,
+              includedOptions: includedOptionIds,
+              variantSelections: selectedVariants || {}
+            })
+          })
+        }
+      }
+
+      // Reset all state and close modal
+      setNewOpening({
+        name: '',
+        finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
+        isFinishedOpening: false,
+        openingType: 'THINWALL',
+        roughWidth: '',
+        roughHeight: '',
+        widthToleranceTotal: null,
+        heightToleranceTotal: null
+      })
+      setSelectedPresetId(null)
+      setPresetConfigStep(null)
+      setAppliedPresetOpening(null)
+      setPresetPanelOptions({})
+      setPresetPanelVariants({})
+      setPresetPanelQuantities({})
+      setPresetPanelGlassTypes({})
+      setConfiguringPanelIndex(0)
+      setShowAddOpening(false)
+
+      await refreshProject()
+      showSuccess('Opening created and configured!')
+    } catch (error) {
+      console.error('Error saving panel config:', error)
+      showError('Failed to save panel configuration')
+    } finally {
+      setSavingPresetConfig(false)
+    }
+  }
+
+  // Skip configuring options and close the modal
+  function handleSkipPresetConfig() {
+    setNewOpening({
+      name: '',
+      finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
+      isFinishedOpening: false,
+      openingType: 'THINWALL',
+      roughWidth: '',
+      roughHeight: '',
+      widthToleranceTotal: null,
+      heightToleranceTotal: null
+    })
+    setSelectedPresetId(null)
+    setPresetConfigStep(null)
+    setAppliedPresetOpening(null)
+    setPresetPanelOptions({})
+    setPresetPanelVariants({})
+    setPresetPanelQuantities({})
+    setPresetPanelGlassTypes({})
+    setConfiguringPanelIndex(0)
+    setShowAddOpening(false)
+    showSuccess('Opening created from preset!')
   }
 
   function handleShowAddOpeningModal() {
@@ -3340,7 +3504,292 @@ export default function ProjectDetailView() {
       {showAddOpening && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Add New Opening</h2>
+            {/* Preset Configuration Step */}
+            {presetConfigStep === 'configuring' && appliedPresetOpening ? (
+              <>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">Configure Hardware Options</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Opening "{appliedPresetOpening.name}" has been created. Configure hardware options for each panel.
+                </p>
+
+                {/* Panel tabs */}
+                {appliedPresetOpening.panels?.length > 1 && (
+                  <div className="flex gap-1 mb-4 border-b border-gray-200">
+                    {appliedPresetOpening.panels.map((panel: any, index: number) => (
+                      <button
+                        key={panel.id}
+                        type="button"
+                        onClick={() => setConfiguringPanelIndex(index)}
+                        className={`px-3 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                          configuringPanelIndex === index
+                            ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-600'
+                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        Panel {index + 1}
+                        {panel.componentInstance?.product?.name && (
+                          <span className="ml-1 text-xs text-gray-400">
+                            ({panel.componentInstance.product.name})
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Current panel configuration */}
+                {(() => {
+                  const currentPanel = appliedPresetOpening.panels?.[configuringPanelIndex]
+                  const product = currentPanel?.componentInstance?.product
+                  const productSubOptions = product?.productSubOptions || []
+                  const productBOMs = product?.productBOMs || []
+                  const isFrame = product?.productType === 'FRAME'
+                  const showGlassType = !isFrame && currentPanel
+
+                  // Check if panel has any configuration options
+                  const hasOptions = productSubOptions.length > 0
+                  const needsGlassType = showGlassType && (!currentPanel?.glassType || currentPanel.glassType === '')
+
+                  if (!hasOptions && !needsGlassType) {
+                    return (
+                      <div className="p-4 bg-gray-50 rounded-lg text-center text-gray-500">
+                        This panel has no hardware options to configure.
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-blue-50 rounded-lg">
+                        <p className="text-sm font-medium text-blue-800">
+                          {product?.name || 'Panel'}
+                        </p>
+                        <p className="text-xs text-blue-600">
+                          {currentPanel.width}" × {currentPanel.height}" - {currentPanel.type}
+                        </p>
+                      </div>
+
+                      {/* Glass Type Selection */}
+                      {showGlassType && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Glass Type
+                            <span className="text-red-500 ml-1">*</span>
+                          </label>
+                          <select
+                            value={presetPanelGlassTypes[configuringPanelIndex] ?? currentPanel?.glassType ?? ''}
+                            onChange={(e) => {
+                              setPresetPanelGlassTypes(prev => ({
+                                ...prev,
+                                [configuringPanelIndex]: e.target.value
+                              }))
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                          >
+                            <option value="">Select glass type...</option>
+                            {glassTypes.map((gt: any) => (
+                              <option key={gt.id} value={gt.name}>
+                                {gt.name}
+                                {gt.name === defaultGlassTypeName ? ' (Default)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {productSubOptions.map((pso: any) => {
+                        const selectedOptionId = presetPanelOptions[configuringPanelIndex]?.[pso.category.id]
+                        const selectedOption = pso.category.individualOptions?.find(
+                          (opt: any) => opt.id === selectedOptionId
+                        )
+                        const hasVariants = selectedOption?.variants?.length > 0
+
+                        // Check for RANGE mode
+                        const optionBom = productBOMs.find(
+                          (bom: any) => bom.optionId === selectedOptionId
+                        )
+                        const isRangeMode = optionBom?.quantityMode === 'RANGE'
+                        const quantityKey = `${pso.category.id}_qty`
+
+                        return (
+                          <div key={pso.category.id}>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              {pso.category.name}
+                              {pso.isMandatory && <span className="text-red-500 ml-1">*</span>}
+                            </label>
+                            <div className={`flex gap-2 ${isRangeMode || hasVariants ? '' : ''}`}>
+                              <select
+                                value={selectedOptionId ?? ''}
+                                onChange={(e) => {
+                                  const newValue = e.target.value === '' ? null : parseInt(e.target.value)
+                                  setPresetPanelOptions(prev => ({
+                                    ...prev,
+                                    [configuringPanelIndex]: {
+                                      ...(prev[configuringPanelIndex] || {}),
+                                      [pso.category.id]: newValue
+                                    }
+                                  }))
+                                  // Auto-select default variant if new option has variants
+                                  if (newValue) {
+                                    const newOption = pso.category.individualOptions?.find(
+                                      (opt: any) => opt.id === newValue
+                                    )
+                                    if (newOption?.variants?.length > 0) {
+                                      const defaultVariant = newOption.variants.find((v: any) => v.isDefault)
+                                      if (defaultVariant) {
+                                        setPresetPanelVariants(prev => ({
+                                          ...prev,
+                                          [configuringPanelIndex]: {
+                                            ...(prev[configuringPanelIndex] || {}),
+                                            [String(newValue)]: defaultVariant.id
+                                          }
+                                        }))
+                                      }
+                                    }
+                                    // Check if new option has RANGE mode and set default quantity
+                                    const newOptionBom = productBOMs.find(
+                                      (bom: any) => bom.optionId === newValue
+                                    )
+                                    if (newOptionBom?.quantityMode === 'RANGE') {
+                                      setPresetPanelQuantities(prev => ({
+                                        ...prev,
+                                        [configuringPanelIndex]: {
+                                          ...(prev[configuringPanelIndex] || {}),
+                                          [quantityKey]: newOptionBom.defaultQuantity || newOptionBom.minQuantity || 0
+                                        }
+                                      }))
+                                    } else {
+                                      // Remove quantity if not RANGE mode
+                                      setPresetPanelQuantities(prev => {
+                                        const newQuantities = { ...prev }
+                                        if (newQuantities[configuringPanelIndex]) {
+                                          delete newQuantities[configuringPanelIndex][quantityKey]
+                                        }
+                                        return newQuantities
+                                      })
+                                    }
+                                  }
+                                }}
+                                className={`${isRangeMode ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900`}
+                              >
+                                <option value="">None (No hardware)</option>
+                                {pso.category.individualOptions?.map((opt: any) => (
+                                  <option key={opt.id} value={opt.id}>
+                                    {opt.name}
+                                    {opt.id === pso.standardOptionId ? ' (Default)' : ''}
+                                  </option>
+                                ))}
+                              </select>
+
+                              {/* Quantity input for RANGE mode */}
+                              {isRangeMode && (
+                                <div className="w-24">
+                                  <input
+                                    type="number"
+                                    min={optionBom?.minQuantity || 0}
+                                    max={optionBom?.maxQuantity || 99}
+                                    value={presetPanelQuantities[configuringPanelIndex]?.[quantityKey] ?? optionBom?.defaultQuantity ?? 0}
+                                    onChange={(e) => {
+                                      const value = parseInt(e.target.value) || 0
+                                      setPresetPanelQuantities(prev => ({
+                                        ...prev,
+                                        [configuringPanelIndex]: {
+                                          ...(prev[configuringPanelIndex] || {}),
+                                          [quantityKey]: value
+                                        }
+                                      }))
+                                    }}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                                    placeholder="Qty"
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Variant Selection */}
+                            {hasVariants && (
+                              <div className="mt-2">
+                                <label className="block text-xs text-gray-500 mb-1">Variant</label>
+                                <select
+                                  value={presetPanelVariants[configuringPanelIndex]?.[String(selectedOptionId)] ?? ''}
+                                  onChange={(e) => {
+                                    const variantId = e.target.value ? parseInt(e.target.value) : null
+                                    setPresetPanelVariants(prev => ({
+                                      ...prev,
+                                      [configuringPanelIndex]: {
+                                        ...(prev[configuringPanelIndex] || {}),
+                                        [String(selectedOptionId)]: variantId as number
+                                      }
+                                    }))
+                                  }}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                                >
+                                  {selectedOption.variants.map((variant: any) => (
+                                    <option key={variant.id} value={variant.id}>
+                                      {variant.name}
+                                      {variant.isDefault ? ' (Default)' : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+
+                {/* Navigation and action buttons */}
+                <div className="flex justify-between items-center pt-6 mt-6 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={handleSkipPresetConfig}
+                    disabled={savingPresetConfig}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800 text-sm"
+                  >
+                    Skip & Use Defaults
+                  </button>
+                  <div className="flex gap-3">
+                    {appliedPresetOpening.panels?.length > 1 && configuringPanelIndex > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfiguringPanelIndex(prev => prev - 1)}
+                        disabled={savingPresetConfig}
+                        className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        Previous
+                      </button>
+                    )}
+                    {appliedPresetOpening.panels?.length > 1 && configuringPanelIndex < appliedPresetOpening.panels.length - 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => setConfiguringPanelIndex(prev => prev + 1)}
+                        disabled={savingPresetConfig}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        Next Panel
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleSavePresetPanelConfig}
+                        disabled={savingPresetConfig}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"
+                      >
+                        {savingPresetConfig && (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                        )}
+                        {savingPresetConfig ? 'Saving...' : 'Save & Finish'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Normal Add Opening Form */}
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Add New Opening</h2>
 
             {/* Preset Selector */}
             {openingPresets.length > 0 && (
@@ -3526,39 +3975,7 @@ export default function ProjectDetailView() {
                 </div>
               )}
 
-              {/* 5b. Dimension Override for Presets */}
-              {selectedPresetId && (
-                <div className="space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
-                  <p className="text-sm text-green-800 font-medium">Dimension Override (Optional)</p>
-                  <p className="text-xs text-green-700">
-                    Leave blank to use preset defaults. Enter values to override.
-                  </p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Width (in)</label>
-                      <input
-                        type="number"
-                        step="0.0625"
-                        value={newOpening.roughWidth}
-                        onChange={(e) => setNewOpening(prev => ({ ...prev, roughWidth: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        placeholder={openingPresets.find(p => p.id === selectedPresetId)?.defaultRoughWidth?.toString() || 'Preset default'}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Height (in)</label>
-                      <input
-                        type="number"
-                        step="0.0625"
-                        value={newOpening.roughHeight}
-                        onChange={(e) => setNewOpening(prev => ({ ...prev, roughHeight: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        placeholder={openingPresets.find(p => p.id === selectedPresetId)?.defaultRoughHeight?.toString() || 'Preset default'}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* Dimension Override removed - users can edit dimensions after the opening is added */}
             </div>
             <div className="flex justify-end space-x-3 pt-6">
               <button
@@ -3601,6 +4018,8 @@ export default function ProjectDetailView() {
                 {addingOpening ? 'Adding...' : applyingPreset ? 'Applying...' : selectedPresetId ? 'Apply Preset' : 'Add Opening'}
               </button>
             </div>
+              </>
+            )}
           </div>
         </div>
       )}

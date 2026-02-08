@@ -26,6 +26,13 @@ export interface Customer {
   projects?: CustomerProject[]
   leadCount?: number
   projectCount?: number
+  // ClickUp CRM fields
+  engagementLevel?: string | null
+  accountType?: string | null
+  accountOwnerId?: number | null
+  accountOwner?: { id: number; name: string; email: string } | null
+  clickupAccountId?: string | null
+  clickupLastSyncedAt?: Date | null
 }
 
 export interface Contact {

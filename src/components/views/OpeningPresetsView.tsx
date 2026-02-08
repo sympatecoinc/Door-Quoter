@@ -14,6 +14,17 @@ interface Product {
 
 type PartType = 'Hardware' | 'Extrusion' | 'Glass' | 'Sealant' | 'Other'
 
+// Helper function to check if a part type supports formulas
+// Based on product BOM rules: Extrusion/CutStock always need formulas, Hardware only if unit is LF/IN
+function partSupportsFormula(part: { masterPart?: { partType?: string | null; unit?: string | null } | null }): boolean {
+  const partType = part.masterPart?.partType
+  const unit = part.masterPart?.unit
+
+  if (partType === 'Extrusion' || partType === 'CutStock') return true
+  if (partType === 'Hardware' && (unit === 'LF' || unit === 'IN')) return true
+  return false
+}
+
 // Part interface for local state - must have masterPartId and masterPart
 interface PresetPartLocal {
   masterPartId: number
@@ -57,6 +68,7 @@ export default function OpeningPresetsView() {
   const [partSearchQuery, setPartSearchQuery] = useState('')
   const [showPartSelector, setShowPartSelector] = useState(false)
   const [masterPartsLoading, setMasterPartsLoading] = useState(false)
+
   const [expandedSections, setExpandedSections] = useState({
     dimensions: true,
     tolerances: false,
@@ -95,9 +107,13 @@ export default function OpeningPresetsView() {
     }
   }
 
-  async function fetchProducts() {
+  async function fetchProducts(openingType?: 'THINWALL' | 'FRAMED') {
     try {
-      const response = await fetch('/api/products')
+      // Filter products by opening type just like ProjectDetailView does
+      const url = openingType
+        ? `/api/products?openingType=${openingType}`
+        : '/api/products'
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
         setProducts(data.filter((p: Product) => p.productType !== 'FRAME'))
@@ -110,9 +126,11 @@ export default function OpeningPresetsView() {
   async function fetchMasterParts(search?: string) {
     setMasterPartsLoading(true)
     try {
-      const url = search
-        ? `/api/master-parts?search=${encodeURIComponent(search)}`
-        : '/api/master-parts'
+      // Only fetch parts marked for jamb kit
+      let url = '/api/master-parts?jambKitOnly=true'
+      if (search) {
+        url += `&search=${encodeURIComponent(search)}`
+      }
       const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
@@ -140,6 +158,7 @@ export default function OpeningPresetsView() {
     })
     setPanels([])
     setParts([])
+    setProducts([]) // Clear products - will be loaded when opening type is selected
     setShowEditor(true)
     fetchMasterParts() // Load master parts for the selector
   }
@@ -161,6 +180,10 @@ export default function OpeningPresetsView() {
     setParts(preset.parts || [])
     setShowEditor(true)
     fetchMasterParts() // Load master parts for the selector
+    // Load products filtered by the preset's opening type
+    if (preset.openingType) {
+      fetchProducts(preset.openingType as 'THINWALL' | 'FRAMED')
+    }
   }
 
   function closeEditor() {
@@ -247,11 +270,9 @@ export default function OpeningPresetsView() {
         defaultRoughHeight: preset.defaultRoughHeight,
         defaultFinishedWidth: preset.defaultFinishedWidth,
         defaultFinishedHeight: preset.defaultFinishedHeight,
-        isFinishedOpening: preset.isFinishedOpening,
         openingType: preset.openingType,
         widthToleranceTotal: preset.widthToleranceTotal,
         heightToleranceTotal: preset.heightToleranceTotal,
-        includeStarterChannels: preset.includeStarterChannels,
         panels: preset.panels?.map((p, idx) => ({
           type: p.type,
           productId: p.productId,
@@ -350,14 +371,64 @@ export default function OpeningPresetsView() {
     setPanels([...panels, {
       type: 'Swing Door',
       productId: null,
-      widthFormula: 'finishedWidth',
-      heightFormula: 'finishedHeight',
+      widthFormula: '',
+      heightFormula: '',
       glassType: 'Clear',
       locking: 'None',
       swingDirection: 'None',
       slidingDirection: 'Left'
     }])
   }
+
+  // Calculate auto width based on preset dimensions, tolerances, and panel count
+  function handleAutoWidth(panelIndex: number) {
+    // Get base dimension based on opening type
+    let baseWidth = formData.openingType === 'THINWALL'
+      ? parseFloat(formData.defaultFinishedWidth) || 0
+      : parseFloat(formData.defaultRoughWidth) || 0
+
+    if (baseWidth <= 0) {
+      alert('Please set default dimensions first')
+      return
+    }
+
+    // Subtract tolerance if set
+    const tolerance = parseFloat(formData.widthToleranceTotal) || 0
+    let availableWidth = baseWidth - tolerance
+
+    // Divide by number of panels to get per-panel width
+    const panelCount = panels.length || 1
+    const panelWidth = availableWidth / panelCount
+
+    // Set as static numeric value
+    updatePanel(panelIndex, 'widthFormula', panelWidth.toFixed(3))
+  }
+
+  // Calculate auto height based on preset dimensions and tolerances
+  function handleAutoHeight(panelIndex: number) {
+    // Get base dimension based on opening type
+    let baseHeight = formData.openingType === 'THINWALL'
+      ? parseFloat(formData.defaultFinishedHeight) || 0
+      : parseFloat(formData.defaultRoughHeight) || 0
+
+    if (baseHeight <= 0) {
+      alert('Please set default dimensions first')
+      return
+    }
+
+    // Subtract tolerance if set
+    const tolerance = parseFloat(formData.heightToleranceTotal) || 0
+    const finalHeight = baseHeight - tolerance
+
+    // Set as static numeric value
+    updatePanel(panelIndex, 'heightFormula', finalHeight.toFixed(3))
+  }
+
+  // Check if Auto buttons should be enabled (has preset dimensions)
+  const hasPresetDimensions = formData.openingType && (
+    (formData.openingType === 'THINWALL' && (parseFloat(formData.defaultFinishedWidth) > 0 || parseFloat(formData.defaultFinishedHeight) > 0)) ||
+    (formData.openingType === 'FRAMED' && (parseFloat(formData.defaultRoughWidth) > 0 || parseFloat(formData.defaultRoughHeight) > 0))
+  )
 
   function removePanel(index: number) {
     setPanels(panels.filter((_, i) => i !== index))
@@ -644,154 +715,142 @@ export default function OpeningPresetsView() {
                 />
               </div>
 
-              {/* Dimensions Section */}
-              <div className="border border-gray-200 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => toggleSection('dimensions')}
-                  className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50"
+              {/* Opening Type - FIRST (required) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Opening Type *</label>
+                <select
+                  value={formData.openingType}
+                  disabled={formData.openingType !== '' && panels.length > 0}
+                  onChange={(e) => {
+                    const newType = e.target.value as '' | 'THINWALL' | 'FRAMED'
+
+                    setFormData({ ...formData, openingType: newType })
+
+                    // Re-fetch products filtered by the new opening type
+                    if (newType) {
+                      fetchProducts(newType)
+                    }
+                  }}
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                    formData.openingType !== '' && panels.length > 0 ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''
+                  }`}
                 >
-                  <span className="font-medium text-gray-900">Default Dimensions</span>
-                  {expandedSections.dimensions ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
-                </button>
-                {expandedSections.dimensions && (
-                  <div className="px-4 pb-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Rough Width</label>
-                      <input
-                        type="number"
-                        step="0.125"
-                        value={formData.defaultRoughWidth}
-                        onChange={(e) => setFormData({ ...formData, defaultRoughWidth: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="inches"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Rough Height</label>
-                      <input
-                        type="number"
-                        step="0.125"
-                        value={formData.defaultRoughHeight}
-                        onChange={(e) => setFormData({ ...formData, defaultRoughHeight: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="inches"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Finished Width</label>
-                      <input
-                        type="number"
-                        step="0.125"
-                        value={formData.defaultFinishedWidth}
-                        onChange={(e) => setFormData({ ...formData, defaultFinishedWidth: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="inches"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Finished Height</label>
-                      <input
-                        type="number"
-                        step="0.125"
-                        value={formData.defaultFinishedHeight}
-                        onChange={(e) => setFormData({ ...formData, defaultFinishedHeight: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="inches"
-                      />
-                    </div>
-                  </div>
+                  <option value="">Select type...</option>
+                  <option value="THINWALL">Thinwall</option>
+                  <option value="FRAMED">Trimmed</option>
+                </select>
+                {formData.openingType !== '' && panels.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Remove all panels to change the opening type.
+                  </p>
                 )}
               </div>
 
-              {/* Tolerances & Type Section */}
-              <div className="border border-gray-200 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => toggleSection('tolerances')}
-                  className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50"
-                >
-                  <span className="font-medium text-gray-900">Tolerances & Opening Type</span>
-                  {expandedSections.tolerances ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
-                </button>
-                {expandedSections.tolerances && (
-                  <div className="px-4 pb-4 space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Width Tolerance</label>
-                        <input
-                          type="number"
-                          step="0.0625"
-                          value={formData.widthToleranceTotal}
-                          onChange={(e) => setFormData({ ...formData, widthToleranceTotal: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="inches"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Height Tolerance</label>
-                        <input
-                          type="number"
-                          step="0.0625"
-                          value={formData.heightToleranceTotal}
-                          onChange={(e) => setFormData({ ...formData, heightToleranceTotal: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="inches"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-4">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={formData.isFinishedOpening}
-                          onChange={(e) => setFormData({ ...formData, isFinishedOpening: e.target.checked })}
-                          className="rounded border-gray-300"
-                        />
-                        <span className="text-sm text-gray-700">Is Finished Opening</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={formData.includeStarterChannels}
-                          onChange={(e) => setFormData({ ...formData, includeStarterChannels: e.target.checked })}
-                          className="rounded border-gray-300"
-                        />
-                        <span className="text-sm text-gray-700">Include Starter Channels</span>
-                      </label>
-                    </div>
-                    {formData.isFinishedOpening && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Opening Type</label>
-                        <select
-                          value={formData.openingType}
-                          onChange={(e) => setFormData({ ...formData, openingType: e.target.value as '' | 'THINWALL' | 'FRAMED' })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          <option value="">Select type...</option>
-                          <option value="THINWALL">Thin Wall</option>
-                          <option value="FRAMED">Framed</option>
-                        </select>
-                      </div>
+              {/* Dimensions + Tolerances - conditional based on opening type */}
+              {formData.openingType && (
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    {formData.openingType === 'THINWALL' ? 'Finished Opening Size' : 'Rough Opening Size'}
+                  </label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {formData.openingType === 'THINWALL' ? (
+                      <>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Width</label>
+                          <input
+                            type="number"
+                            step="0.125"
+                            value={formData.defaultFinishedWidth}
+                            onChange={(e) => setFormData({ ...formData, defaultFinishedWidth: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="inches"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Height</label>
+                          <input
+                            type="number"
+                            step="0.125"
+                            value={formData.defaultFinishedHeight}
+                            onChange={(e) => setFormData({ ...formData, defaultFinishedHeight: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="inches"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Width</label>
+                          <input
+                            type="number"
+                            step="0.125"
+                            value={formData.defaultRoughWidth}
+                            onChange={(e) => setFormData({ ...formData, defaultRoughWidth: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="inches"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Height</label>
+                          <input
+                            type="number"
+                            step="0.125"
+                            value={formData.defaultRoughHeight}
+                            onChange={(e) => setFormData({ ...formData, defaultRoughHeight: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="inches"
+                          />
+                        </div>
+                      </>
                     )}
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Width Tolerance</label>
+                      <input
+                        type="number"
+                        step="0.0625"
+                        value={formData.widthToleranceTotal}
+                        onChange={(e) => setFormData({ ...formData, widthToleranceTotal: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="inches"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Height Tolerance</label>
+                      <input
+                        type="number"
+                        step="0.0625"
+                        value={formData.heightToleranceTotal}
+                        onChange={(e) => setFormData({ ...formData, heightToleranceTotal: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="inches"
+                      />
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
-              {/* Panels Section */}
-              <div className="border border-gray-200 rounded-lg">
+              {/* Panels Section - requires opening type to be selected first */}
+              <div className={`border rounded-lg ${formData.openingType ? 'border-gray-200' : 'border-gray-100 bg-gray-50'}`}>
                 <button
                   type="button"
-                  onClick={() => toggleSection('panels')}
-                  className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50"
+                  onClick={() => formData.openingType && toggleSection('panels')}
+                  disabled={!formData.openingType}
+                  className={`w-full px-4 py-3 flex items-center justify-between text-left ${formData.openingType ? 'hover:bg-gray-50' : 'cursor-not-allowed'}`}
                 >
-                  <span className="font-medium text-gray-900">
+                  <span className={`font-medium ${formData.openingType ? 'text-gray-900' : 'text-gray-400'}`}>
                     Panels ({panels.length})
+                    {!formData.openingType && <span className="ml-2 text-xs font-normal">— Select opening type first</span>}
                   </span>
-                  {expandedSections.panels ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
+                  {formData.openingType && (
+                    expandedSections.panels ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />
+                  )}
                 </button>
-                {expandedSections.panels && (
+                {formData.openingType && expandedSections.panels && (
                   <div className="px-4 pb-4 space-y-4">
+                    <p className="text-sm text-gray-500">
+                      Showing {formData.openingType === 'THINWALL' ? 'Thinwall' : 'Trimmed'} compatible products only.
+                    </p>
                     {panels.map((panel, index) => (
                       <div key={index} className="border border-gray-200 rounded-lg p-4">
                         <div className="flex justify-between items-center mb-3">
@@ -804,7 +863,7 @@ export default function OpeningPresetsView() {
                             <X className="w-4 h-4" />
                           </button>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
                             <select
@@ -832,50 +891,48 @@ export default function OpeningPresetsView() {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Glass Type</label>
-                            <select
-                              value={panel.glassType || 'Clear'}
-                              onChange={(e) => updatePanel(index, 'glassType', e.target.value)}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                              <option value="Clear">Clear</option>
-                              <option value="Low-E">Low-E</option>
-                              <option value="Frosted">Frosted</option>
-                              <option value="Tinted">Tinted</option>
-                              <option value="Rain">Rain</option>
-                            </select>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Width</label>
+                            <div className="flex">
+                              <input
+                                type="text"
+                                value={panel.widthFormula || ''}
+                                onChange={(e) => updatePanel(index, 'widthFormula', e.target.value)}
+                                className={`flex-1 min-w-0 px-2 py-1.5 text-sm border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${hasPresetDimensions ? 'rounded-l-lg border-r-0' : 'rounded-lg'}`}
+                                placeholder="e.g., 47.75"
+                              />
+                              {hasPresetDimensions && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAutoWidth(index)}
+                                  className="flex-shrink-0 px-2 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-xs font-medium border border-gray-300 rounded-r-lg"
+                                  title="Auto-calculate width based on opening dimensions and panel count"
+                                >
+                                  Auto
+                                </button>
+                              )}
+                            </div>
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Width Formula</label>
-                            <input
-                              type="text"
-                              value={panel.widthFormula || ''}
-                              onChange={(e) => updatePanel(index, 'widthFormula', e.target.value)}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                              placeholder="e.g., finishedWidth"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Height Formula</label>
-                            <input
-                              type="text"
-                              value={panel.heightFormula || ''}
-                              onChange={(e) => updatePanel(index, 'heightFormula', e.target.value)}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                              placeholder="e.g., finishedHeight"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Locking</label>
-                            <select
-                              value={panel.locking || 'None'}
-                              onChange={(e) => updatePanel(index, 'locking', e.target.value)}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                              <option value="None">None</option>
-                              <option value="Single">Single</option>
-                              <option value="Double">Double</option>
-                            </select>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Height</label>
+                            <div className="flex">
+                              <input
+                                type="text"
+                                value={panel.heightFormula || ''}
+                                onChange={(e) => updatePanel(index, 'heightFormula', e.target.value)}
+                                className={`flex-1 min-w-0 px-2 py-1.5 text-sm border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${hasPresetDimensions ? 'rounded-l-lg border-r-0' : 'rounded-lg'}`}
+                                placeholder="e.g., 95.875"
+                              />
+                              {hasPresetDimensions && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAutoHeight(index)}
+                                  className="flex-shrink-0 px-2 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-xs font-medium border border-gray-300 rounded-r-lg"
+                                  title="Auto-calculate height based on opening dimensions"
+                                >
+                                  Auto
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -933,7 +990,7 @@ export default function OpeningPresetsView() {
                             <X className="w-4 h-4" />
                           </button>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs font-medium text-gray-600 mb-1">Quantity</label>
                             <input
@@ -945,18 +1002,21 @@ export default function OpeningPresetsView() {
                               placeholder="Fixed qty"
                             />
                           </div>
-                          <div className="md:col-span-2">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Formula (overrides quantity)
-                            </label>
-                            <input
-                              type="text"
-                              value={part.formula || ''}
-                              onChange={(e) => updatePart(index, 'formula', e.target.value)}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                              placeholder="e.g., finishedHeight * 2"
-                            />
-                          </div>
+                          {/* Only show formula field for Extrusion, CutStock, or Hardware with LF/IN unit */}
+                          {partSupportsFormula(part) && (
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                                Length Formula {(part.masterPart?.partType === 'Extrusion' || part.masterPart?.partType === 'CutStock') && '*'}
+                              </label>
+                              <input
+                                type="text"
+                                value={part.formula || ''}
+                                onChange={(e) => updatePart(index, 'formula', e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="e.g., finishedHeight * 2"
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}

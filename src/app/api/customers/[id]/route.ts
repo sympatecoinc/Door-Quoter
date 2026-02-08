@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { SOStatus, InvoiceStatus, ProjectStatus } from '@prisma/client'
 import { pushCustomerToQB, getStoredRealmId, fetchQBCustomer, deactivateQBCustomer } from '@/lib/quickbooks'
+import { triggerCustomerSync } from '@/lib/clickup-sync/trigger'
 
 export async function GET(
   request: NextRequest,
@@ -42,6 +43,9 @@ export async function GET(
           where: { leadId: null },
           orderBy: { createdAt: 'desc' },
           take: 10
+        },
+        accountOwner: {
+          select: { id: true, name: true, email: true }
         }
       }
     })
@@ -151,6 +155,9 @@ export async function PUT(
         // Don't fail the request - customer update was successful
       }
     }
+
+    // Trigger async ClickUp sync (fire-and-forget)
+    triggerCustomerSync(customer.id)
 
     return NextResponse.json(customer)
   } catch (error) {

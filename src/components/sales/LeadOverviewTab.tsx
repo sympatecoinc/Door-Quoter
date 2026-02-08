@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Building, User, Phone, Mail, MapPin, Calendar, FileText, Save } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Building, User, Phone, Mail, MapPin, Calendar, FileText, Save, Search, LinkIcon, X } from 'lucide-react'
 import { ProjectStatus } from '@/types'
 
 interface LeadData {
@@ -50,6 +50,88 @@ export default function LeadOverviewTab({ lead, onLeadUpdated }: LeadOverviewTab
   const [editingDueDate, setEditingDueDate] = useState(false)
   const [dueDate, setDueDate] = useState(lead.dueDate?.split('T')[0] || '')
   const [savingDueDate, setSavingDueDate] = useState(false)
+
+  // Account assignment state
+  const [showAccountSearch, setShowAccountSearch] = useState(false)
+  const [accountSearchQuery, setAccountSearchQuery] = useState('')
+  const [accountSearchResults, setAccountSearchResults] = useState<Array<{ id: number; companyName: string; type: string }>>([])
+  const [savingAccount, setSavingAccount] = useState(false)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const searchDropdownRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Debounced search for customers
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const searchAccounts = useCallback((query: string) => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+    if (query.length < 2) {
+      setAccountSearchResults([])
+      return
+    }
+    searchTimeoutRef.current = setTimeout(async () => {
+      setSearchLoading(true)
+      try {
+        const response = await fetch(`/api/search/companies?search=${encodeURIComponent(query)}&limit=10`)
+        if (response.ok) {
+          const data = await response.json()
+          // Only show actual customers, not prospects
+          setAccountSearchResults((data.results || []).filter((r: any) => r.type === 'customer'))
+        }
+      } catch (error) {
+        console.error('Error searching accounts:', error)
+      } finally {
+        setSearchLoading(false)
+      }
+    }, 300)
+  }, [])
+
+  const handleAssignAccount = async (customerId: number) => {
+    if (savingAccount) return
+    try {
+      setSavingAccount(true)
+      const response = await fetch(`/api/projects/${lead.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId }),
+      })
+      if (response.ok) {
+        setShowAccountSearch(false)
+        setAccountSearchQuery('')
+        setAccountSearchResults([])
+        onLeadUpdated()
+      }
+    } catch (error) {
+      console.error('Error assigning account:', error)
+    } finally {
+      setSavingAccount(false)
+    }
+  }
+
+  // Close search dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        searchDropdownRef.current &&
+        !searchDropdownRef.current.contains(event.target as Node) &&
+        searchInputRef.current &&
+        !searchInputRef.current.contains(event.target as Node)
+      ) {
+        setAccountSearchResults([])
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Focus search input when opened
+  useEffect(() => {
+    if (showAccountSearch && searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+  }, [showAccountSearch])
 
   const handleAddNote = async () => {
     if (!noteContent.trim() || savingNote) return
@@ -225,13 +307,163 @@ export default function LeadOverviewTab({ lead, onLeadUpdated }: LeadOverviewTab
               </div>
             )}
           </div>
-          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-sm text-amber-800">
-              This lead does not have a linked customer. A customer will be automatically created when the status changes to "Quote Accepted".
-            </p>
+          <div className="mt-4">
+            {!showAccountSearch ? (
+              <button
+                onClick={() => setShowAccountSearch(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <LinkIcon className="w-4 h-4" />
+                Assign Account
+              </button>
+            ) : (
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-gray-700">Search for an existing customer</p>
+                  <button
+                    onClick={() => {
+                      setShowAccountSearch(false)
+                      setAccountSearchQuery('')
+                      setAccountSearchResults([])
+                    }}
+                    className="p-1 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="relative">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={accountSearchQuery}
+                      onChange={(e) => {
+                        setAccountSearchQuery(e.target.value)
+                        searchAccounts(e.target.value)
+                      }}
+                      placeholder="Type customer name..."
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    {searchLoading && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                  {accountSearchResults.length > 0 && (
+                    <div
+                      ref={searchDropdownRef}
+                      className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+                    >
+                      {accountSearchResults.map((result) => (
+                        <button
+                          key={result.id}
+                          onClick={() => handleAssignAccount(result.id)}
+                          disabled={savingAccount}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors flex items-center gap-2 disabled:opacity-50"
+                        >
+                          <Building className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <span className="text-gray-900">{result.companyName}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {accountSearchQuery.length >= 2 && !searchLoading && accountSearchResults.length === 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+                      <p className="text-sm text-gray-500 text-center">No customers found</p>
+                    </div>
+                  )}
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  Or, a customer will be auto-created when the status changes to &quot;Quote Accepted&quot;.
+                </p>
+              </div>
+            )}
           </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Building className="w-5 h-5 text-gray-500" />
+            Account
+            <span className="ml-2 px-2 py-0.5 text-xs bg-orange-100 text-orange-700 rounded font-medium">
+              No Customer
+            </span>
+          </h3>
+          <div>
+            {!showAccountSearch ? (
+              <button
+                onClick={() => setShowAccountSearch(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <LinkIcon className="w-4 h-4" />
+                Assign Account
+              </button>
+            ) : (
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-gray-700">Search for an existing customer</p>
+                  <button
+                    onClick={() => {
+                      setShowAccountSearch(false)
+                      setAccountSearchQuery('')
+                      setAccountSearchResults([])
+                    }}
+                    className="p-1 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="relative">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={accountSearchQuery}
+                      onChange={(e) => {
+                        setAccountSearchQuery(e.target.value)
+                        searchAccounts(e.target.value)
+                      }}
+                      placeholder="Type customer name..."
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    {searchLoading && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                  {accountSearchResults.length > 0 && (
+                    <div
+                      ref={searchDropdownRef}
+                      className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+                    >
+                      {accountSearchResults.map((result) => (
+                        <button
+                          key={result.id}
+                          onClick={() => handleAssignAccount(result.id)}
+                          disabled={savingAccount}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors flex items-center gap-2 disabled:opacity-50"
+                        >
+                          <Building className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <span className="text-gray-900">{result.companyName}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {accountSearchQuery.length >= 2 && !searchLoading && accountSearchResults.length === 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+                      <p className="text-sm text-gray-500 text-center">No customers found</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Key Dates Card */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">

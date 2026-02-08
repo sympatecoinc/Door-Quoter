@@ -7,6 +7,8 @@ const PUBLIC_ROUTES = [
   '/api/auth/login',
   '/api/auth/init',
   '/api/quickbooks/webhooks', // QuickBooks webhook endpoint (authenticated via HMAC signature)
+  '/api/webhooks/clickup',    // ClickUp webhook endpoints (authenticated via HMAC signature)
+  '/api/clickup-sync',        // ClickUp sync management (for manual sync triggers)
   '/scan',     // Public bin location scan pages
   '/api/scan', // Public bin location scan API
   '/packing',    // Public packing scanner pages (token-authenticated)

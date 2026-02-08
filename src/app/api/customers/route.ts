@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { triggerCustomerSync } from '@/lib/clickup-sync/trigger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,6 +40,9 @@ export async function GET(request: NextRequest) {
           contacts: true,
           projects: {
             select: { id: true, name: true, status: true }
+          },
+          accountOwner: {
+            select: { id: true, name: true, email: true }
           }
         },
         orderBy: { updatedAt: 'desc' },
@@ -153,6 +157,9 @@ export async function POST(request: NextRequest) {
         projects: true
       }
     })
+
+    // Trigger async ClickUp sync (fire-and-forget)
+    triggerCustomerSync(customer.id)
 
     return NextResponse.json(updatedCustomer, { status: 201 })
   } catch (error) {

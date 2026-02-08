@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
+import { triggerContactSync } from '@/lib/clickup-sync/trigger'
 
 const prisma = new PrismaClient()
 
 // GET /api/customers/[id]/contacts - Get all contacts for a customer
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const customerId = parseInt(params.id)
+    const { id } = await params
+    const customerId = parseInt(id)
 
     if (isNaN(customerId)) {
       return NextResponse.json(
@@ -52,10 +54,11 @@ export async function GET(
 // POST /api/customers/[id]/contacts - Create a new contact
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const customerId = parseInt(params.id)
+    const { id } = await params
+    const customerId = parseInt(id)
 
     if (isNaN(customerId)) {
       return NextResponse.json(
@@ -158,6 +161,9 @@ export async function POST(
         isPrimary: shouldBePrimary
       }
     })
+
+    // Trigger async ClickUp sync (fire-and-forget)
+    triggerContactSync(contact.id)
 
     return NextResponse.json(contact, { status: 201 })
   } catch (error) {

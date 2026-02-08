@@ -9,7 +9,8 @@ export async function GET(request: NextRequest) {
     const partNumber = searchParams.get('partNumber')
     const search = searchParams.get('search')
     const optionsOnly = searchParams.get('optionsOnly') === 'true'
-    
+    const jambKitOnly = searchParams.get('jambKitOnly') === 'true'
+
     if (partNumber) {
       // Legacy support: Search for parts by partial part number match only
       const parts = await prisma.masterPart.findMany({
@@ -22,37 +23,45 @@ export async function GET(request: NextRequest) {
         orderBy: { partNumber: 'asc' }
       })
       return NextResponse.json(parts)
-    } else if (search) {
-      // Enhanced search: Search across multiple fields
-      const parts = await prisma.masterPart.findMany({
-        where: {
-          OR: [
-            {
-              partNumber: {
-                contains: search,
-                mode: 'insensitive'
-              }
-            },
-            {
-              baseName: {
-                contains: search,
-                mode: 'insensitive'
-              }
-            },
-            {
-              description: {
-                contains: search,
-                mode: 'insensitive'
-              }
-            },
-            {
-              partType: {
-                contains: search,
-                mode: 'insensitive'
-              }
+    } else if (search || jambKitOnly) {
+      // Build where clause for search and/or jamb kit filter
+      const whereClause: any = {}
+
+      if (jambKitOnly) {
+        whereClause.includeInJambKit = true
+      }
+
+      if (search) {
+        whereClause.OR = [
+          {
+            partNumber: {
+              contains: search,
+              mode: 'insensitive'
             }
-          ]
-        },
+          },
+          {
+            baseName: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            description: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          },
+          {
+            partType: {
+              contains: search,
+              mode: 'insensitive'
+            }
+          }
+        ]
+      }
+
+      const parts = await prisma.masterPart.findMany({
+        where: whereClause,
         orderBy: { partNumber: 'asc' }
       })
       return NextResponse.json(parts)

@@ -43,6 +43,12 @@ export async function GET(
       })
     }
 
+    // Get openings with their price calculation timestamps
+    const openings = await prisma.opening.findMany({
+      where: { projectId },
+      select: { id: true, name: true, priceCalculatedAt: true },
+    })
+
     // Get the most recent quote version
     const lastVersion = await prisma.quoteVersion.findFirst({
       where: { projectId },
@@ -88,6 +94,15 @@ export async function GET(
     const currentQuote = await quoteResponse.json()
     const changes: string[] = []
     const snapshot = lastVersion.snapshot as any
+
+    // Check if any opening was re-priced after the last quote version was created
+    const lastVersionCreatedAt = lastVersion.createdAt
+    for (const opening of openings) {
+      if (opening.priceCalculatedAt && opening.priceCalculatedAt > lastVersionCreatedAt) {
+        changes.push('Opening prices have been recalculated')
+        break
+      }
+    }
 
     // 1. Check for opening/item changes
     const currentItems = currentQuote.quoteItems || []

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ProjectStatus } from '@prisma/client'
 import { ensureProjectPricingMode } from '@/lib/pricing-mode'
+import { triggerProjectSync } from '@/lib/clickup-sync/trigger'
 
 export async function GET() {
   try {
@@ -153,6 +154,9 @@ export async function POST(request: NextRequest) {
 
       return newProject
     })
+
+    // Trigger async ClickUp sync (fire-and-forget)
+    triggerProjectSync(project.id)
 
     return NextResponse.json(project, { status: 201 })
   } catch (error) {

@@ -74,6 +74,10 @@ model Project {
   // Field verification uploads
   fieldVerificationUploads FieldVerificationUpload[]
 
+  // ClickUp CRM sync fields (for leads synced from ClickUp)
+  clickupLeadId          String?     @unique  // ClickUp Task ID for this project/lead
+  clickupLastSyncedAt    DateTime?            // When last synced with ClickUp
+
   @@map("Projects")
 }
 
@@ -193,6 +197,8 @@ model Panel {
 }
 
 enum ProjectStatus {
+  NEW_LEAD       @map("New Lead")
+  CONTACTED      @map("Contacted")
   STAGING        @map("Staging")
   APPROVED       @map("Approved")
   REVISE         @map("Revise")
@@ -526,6 +532,15 @@ model Customer {
   syncToken     String?   // QB sync token for updates
   lastSyncedAt  DateTime? // When last synced with QB
 
+  // ClickUp CRM sync fields
+  clickupAccountId    String?   @unique  // ClickUp Task ID for this account
+  clickupLastSyncedAt DateTime?          // When last synced with ClickUp
+
+  // Additional CRM fields from ClickUp
+  engagementLevel     String?   // Lost/Inactive, Prospect, Early Engagement, Active Relationship, Strategic Partner
+  accountType         String?   // Commercial Building Owner, Remodeling Contractor, etc.
+  accountOwnerId      Int?      // FK to User who owns this account
+
   contacts    Contact[]
   leads       Lead[]
   projects    Project[]  @relation("CustomerProjects")
@@ -533,6 +548,7 @@ model Customer {
   files       CustomerFile[]
   salesOrders SalesOrder[]
   invoices    Invoice[]
+  accountOwner User?     @relation("AccountOwner", fields: [accountOwnerId], references: [id], onDelete: SetNull)
 
   @@map("Customers")
 }
@@ -548,6 +564,22 @@ model Contact {
   isPrimary  Boolean   @default(false)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+
+  // ClickUp CRM sync fields
+  clickupContactId    String?   @unique  // ClickUp Task ID for this contact
+  clickupLastSyncedAt DateTime?          // When last synced with ClickUp
+
+  // Additional CRM fields from ClickUp
+  relationshipStatus  String?   // Strong/Trusted, Warm/Active, New/Recently Introduced, Inactive
+  lastContactDate     DateTime? // Last time contact was reached
+  isActive            Boolean   @default(true)  // Active vs lost contact
+
+  // Optional contact-specific address (may differ from customer)
+  contactAddress      String?
+  contactCity         String?
+  contactState        String?
+  contactZipCode      String?
+
   customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   projects   Project[] @relation("ProjectPrimaryContact")
 
@@ -568,8 +600,19 @@ model Lead {
   lostReason  String?    // If stage is Lost
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+
+  // ClickUp CRM sync fields
+  clickupLeadId       String?   @unique  // ClickUp Task ID for this lead
+  clickupLastSyncedAt DateTime?          // When last synced with ClickUp
+
+  // Additional CRM fields from ClickUp
+  salesOwnerId        Int?      // FK to User who owns this lead/opportunity
+  lastContactDate     DateTime? // Last time lead was contacted
+  aluminumColors      String[]  @default([])  // Selected aluminum colors for opportunity
+
   customer    Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
   activities  Activity[]
+  salesOwner  User?      @relation("LeadSalesOwner", fields: [salesOwnerId], references: [id], onDelete: SetNull)
 
   @@map("Leads")
 }
@@ -841,6 +884,11 @@ model User {
   itemsCompleted        WorkOrderItem[]         @relation("ItemCompletedBy")
   itemsReceived         WorkOrderItem[]         @relation("ItemReceivedBy")
   itemsStarted          WorkOrderItem[]         @relation("ItemStartedBy")
+
+  // CRM Relations (ClickUp sync)
+  ownedAccounts         Customer[]              @relation("AccountOwner")
+  ownedLeads            Lead[]                  @relation("LeadSalesOwner")
+  clickupUserMapping    ClickUpUserMapping?
 
   @@map("Users")
 }
@@ -1795,4 +1843,40 @@ model OpeningPresetPartInstance {
 
   @@unique([openingId, presetPartId])
   @@map("OpeningPresetPartInstances")
+}
+
+// ============ ClickUp CRM Sync Models ============
+
+// ClickUp Sync Log - Audit trail for all sync operations
+model ClickUpSyncLog {
+  id            Int       @id @default(autoincrement())
+  entityType    String    // "account", "contact", "lead"
+  entityId      Int       // ID in our database (Customer, Contact, or Lead)
+  clickupTaskId String    // ClickUp Task ID
+  syncDirection String    // "clickup_to_erp", "erp_to_clickup"
+  syncStatus    String    // "success", "failed", "conflict"
+  errorMessage  String?   @db.Text
+  payload       Json?     // The data that was synced
+  createdAt     DateTime  @default(now())
+
+  @@index([entityType, entityId])
+  @@index([clickupTaskId])
+  @@index([syncStatus])
+  @@index([createdAt])
+  @@map("ClickUpSyncLogs")
+}
+
+// ClickUp User Mapping - Maps ERP users to ClickUp users
+model ClickUpUserMapping {
+  id              Int       @id @default(autoincrement())
+  erpUserId       Int       @unique
+  clickupUserId   Int       @unique
+  clickupUsername String?
+  clickupEmail    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [erpUserId], references: [id], onDelete: Cascade)
+
+  @@map("ClickUpUserMappings")
 }

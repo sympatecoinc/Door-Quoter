@@ -3,14 +3,14 @@ import { prisma } from '@/lib/prisma'
 import { ProjectStatus } from '@prisma/client'
 import { getDefaultPricingMode } from '@/lib/pricing-mode'
 
-// Lead phase statuses (pre-acceptance)
+// Lead phase statuses (pre-acceptance) - excludes ARCHIVE and BID_LOST by default
 const LEAD_STATUSES = [
+  ProjectStatus.NEW_LEAD,
+  ProjectStatus.CONTACTED,
   ProjectStatus.STAGING,
   ProjectStatus.APPROVED,
   ProjectStatus.REVISE,
-  ProjectStatus.QUOTE_SENT,
-  ProjectStatus.ARCHIVE,
-  ProjectStatus.BID_LOST
+  ProjectStatus.QUOTE_SENT
 ]
 
 // Project phase statuses (post-acceptance / "Won")
