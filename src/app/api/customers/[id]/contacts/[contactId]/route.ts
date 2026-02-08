@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
+import { triggerContactSync } from '@/lib/clickup-sync/trigger'
 
 const prisma = new PrismaClient()
 
@@ -155,6 +156,9 @@ export async function PUT(
       where: { id: contactId },
       data: updateData
     })
+
+    // Trigger async ClickUp sync (fire-and-forget)
+    triggerContactSync(contact.id)
 
     return NextResponse.json(contact)
   } catch (error) {

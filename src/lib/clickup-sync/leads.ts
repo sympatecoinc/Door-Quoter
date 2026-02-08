@@ -149,7 +149,7 @@ export interface ERPToClickUpResult {
  * Sync an ERP Project (in lead phase) to ClickUp Lead/Opportunity task
  */
 export async function syncERPProjectToClickUp(
-  project: Project & { customer?: Customer | null },
+  project: Project & { customer?: (Customer & { contacts?: { clickupContactId: string | null }[] }) | null },
   customFieldIds?: Record<string, string>
 ): Promise<ERPToClickUpResult> {
   try {
@@ -270,25 +270,59 @@ export async function syncERPProjectToClickUp(
 async function updateProjectCustomFields(
   client: ReturnType<typeof getClickUpClient>,
   taskId: string,
-  project: Project & { customer?: Customer | null },
+  project: Project & { customer?: (Customer & { contacts?: { clickupContactId: string | null }[] }) | null },
   fieldIds: Record<string, string>
 ): Promise<void> {
-  const updates: Array<{ fieldId: string; value: any }> = []
+  const updates: Array<{ fieldId: string; value: any; fieldName: string }> = []
+
+  // Debug: Log available field IDs
+  console.log(`[ClickUp Sync] Lead task ${taskId} - Available field IDs:`, Object.keys(fieldIds))
+  console.log(`[ClickUp Sync] Looking for field: "${LEAD_CUSTOM_FIELDS.associatedAccount}"`)
 
   // Link to associated account if available
-  if (fieldIds.associatedAccount && project.customer?.clickupAccountId) {
+  // Field IDs are stored by their ClickUp field name, so use LEAD_CUSTOM_FIELDS constant
+  const associatedAccountFieldId = fieldIds[LEAD_CUSTOM_FIELDS.associatedAccount]
+
+  console.log(`[ClickUp Sync] Associated Account field ID: ${associatedAccountFieldId || 'NOT FOUND'}`)
+  console.log(`[ClickUp Sync] Customer: ${project.customer?.companyName || 'NO CUSTOMER'}`)
+  console.log(`[ClickUp Sync] Customer clickupAccountId: ${project.customer?.clickupAccountId || 'NOT SET'}`)
+
+  // Set the list_relationship custom field to link lead to account
+  // For list_relationship type fields, use { add: [taskId] } format (NOT { add: [{ id: taskId }] })
+  if (associatedAccountFieldId && project.customer?.clickupAccountId) {
     updates.push({
-      fieldId: fieldIds.associatedAccount,
-      value: [project.customer.clickupAccountId],
+      fieldId: associatedAccountFieldId,
+      fieldName: LEAD_CUSTOM_FIELDS.associatedAccount,
+      // list_relationship fields use add/rem format with plain task ID strings
+      value: { add: [project.customer.clickupAccountId] },
     })
+    console.log(`[ClickUp Sync] Will set list_relationship field to account: ${project.customer.clickupAccountId}`)
+  } else {
+    console.log(`[ClickUp Sync] Cannot set relationship field - missing field ID or customer clickupAccountId`)
   }
 
-  // Execute updates
+  // Link to associated contact if available
+  const associatedContactsFieldId = fieldIds[LEAD_CUSTOM_FIELDS.associatedContacts]
+  const primaryContact = project.customer?.contacts?.[0]
+
+  if (associatedContactsFieldId && primaryContact?.clickupContactId) {
+    updates.push({
+      fieldId: associatedContactsFieldId,
+      fieldName: LEAD_CUSTOM_FIELDS.associatedContacts,
+      value: { add: [primaryContact.clickupContactId] },
+    })
+    console.log(`[ClickUp Sync] Will set associated contacts field to contact: ${primaryContact.clickupContactId}`)
+  }
+
+  // Execute custom field updates
   for (const update of updates) {
     try {
+      console.log(`[ClickUp Sync] Setting custom field "${update.fieldName}" (${update.fieldId}) to:`, JSON.stringify(update.value))
       await client.setCustomFieldValue(taskId, update.fieldId, update.value)
+      console.log(`[ClickUp Sync] Successfully set custom field "${update.fieldName}"`)
     } catch (error) {
-      console.error(`Failed to update custom field ${update.fieldId}:`, error)
+      // Log but don't fail the entire sync if relationship field fails
+      console.error(`[ClickUp Sync] Failed to update custom field "${update.fieldName}" (${update.fieldId}):`, error)
     }
   }
 }
@@ -308,6 +342,7 @@ export async function handleLeadDeletion(clickupTaskId: string): Promise<void> {
       data: {
         clickupLeadId: null,
         clickupLastSyncedAt: null,
+        status: 'ARCHIVE',
       },
     })
 
@@ -317,7 +352,9 @@ export async function handleLeadDeletion(clickupTaskId: string): Promise<void> {
       clickupTaskId,
       syncDirection: 'clickup_to_erp',
       syncStatus: 'success',
-      payload: { action: 'unlinked' },
+      payload: { action: 'archived' },
     })
+
+    console.log(`[ClickUp Sync] Project "${project.name}" archived after ClickUp lead deletion`)
   }
 }

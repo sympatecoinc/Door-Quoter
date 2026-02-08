@@ -12,6 +12,9 @@ export { syncClickUpAccountToERP, syncERPCustomerToClickUp, handleAccountDeletio
 export { syncClickUpContactToERP, syncERPContactToClickUp, handleContactDeletion } from './contacts'
 export { syncClickUpLeadToERP, syncERPProjectToClickUp, handleLeadDeletion } from './leads'
 
+// Re-export ERP → ClickUp trigger functions
+export { triggerCustomerSync, triggerContactSync, triggerProjectSync } from './trigger'
+
 // Re-export mappings
 export * from './status-mappings'
 export * from './field-mappings'

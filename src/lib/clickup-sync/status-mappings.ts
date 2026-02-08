@@ -47,7 +47,7 @@ export const CLICKUP_LEAD_STATUS_TO_PROJECT: Record<string, ProjectStatus> = {
   'bid-won': ProjectStatus.QUOTE_ACCEPTED,
   'bid - lost': ProjectStatus.BID_LOST,
   'bid-lost': ProjectStatus.BID_LOST,
-  'project cancelled': ProjectStatus.BID_LOST,
+  'project cancelled': ProjectStatus.ARCHIVE,
 }
 
 export const PROJECT_STATUS_TO_CLICKUP_LEAD: Record<string, string> = {
@@ -57,6 +57,7 @@ export const PROJECT_STATUS_TO_CLICKUP_LEAD: Record<string, string> = {
   [ProjectStatus.QUOTE_SENT]: 'quote sent',
   [ProjectStatus.QUOTE_ACCEPTED]: 'bid - won',
   [ProjectStatus.BID_LOST]: 'bid - lost',
+  [ProjectStatus.ARCHIVE]: 'project cancelled',
 }
 
 // Legacy mappings for existing Lead model (kept for backwards compatibility)

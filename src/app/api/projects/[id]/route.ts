@@ -4,6 +4,7 @@ import { ProjectStatus } from '@prisma/client'
 import { ensureProjectPricingMode, getDefaultPricingMode } from '@/lib/pricing-mode'
 import { createProjectRevision } from '@/lib/project-revisions'
 import { LEAD_STATUSES } from '@/types'
+import { triggerProjectSync, triggerProjectDeletion } from '@/lib/clickup-sync/trigger'
 
 export async function GET(
   request: NextRequest,
@@ -246,10 +247,21 @@ export async function DELETE(
       )
     }
 
+    // Fetch the project first to get the clickupLeadId before deletion
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { clickupLeadId: true }
+    })
+
     // Delete the project and all related data (cascading deletes handled by Prisma)
     await prisma.project.delete({
       where: { id: projectId }
     })
+
+    // Trigger async ClickUp deletion if the project was linked to ClickUp
+    if (project?.clickupLeadId) {
+      triggerProjectDeletion(project.clickupLeadId)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -276,7 +288,7 @@ export async function PUT(
       )
     }
 
-    const { name, status, dueDate, shipDate, shippingAddress, shippingCity, shippingState, shippingZipCode, primaryContactId, primaryProjectContactId, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost, quoteDrawingView, batchSize } = await request.json()
+    const { name, status, dueDate, shipDate, shippingAddress, shippingCity, shippingState, shippingZipCode, primaryContactId, primaryProjectContactId, extrusionCostingMethod, excludedPartNumbers, taxRate, pricingModeId, installationCost, installationMethod, installationComplexity, manualInstallationCost, quoteDrawingView, batchSize, customerId } = await request.json()
 
     // Validate status if provided
     if (status && !Object.values(ProjectStatus).includes(status)) {
@@ -379,6 +391,20 @@ export async function PUT(
     }
     if (batchSize !== undefined) {
       updateData.batchSize = batchSize === null ? null : parseInt(batchSize)
+    }
+    if (customerId !== undefined) {
+      if (customerId === null) {
+        updateData.customerId = null
+      } else {
+        updateData.customerId = customerId
+        // Clear prospect fields when a real customer is assigned
+        updateData.prospectCompanyName = null
+        updateData.prospectPhone = null
+        updateData.prospectAddress = null
+        updateData.prospectCity = null
+        updateData.prospectState = null
+        updateData.prospectZipCode = null
+      }
     }
 
     // Update project and track status change in a transaction
@@ -518,6 +544,13 @@ export async function PUT(
 
       return { ...project, customerCreated: needsCustomerConversion }
     })
+
+    // Trigger async ClickUp sync (fire-and-forget)
+    // Use the original projectId for standard updates, or new revision ID if revision was created
+    const syncProjectId = 'revisionCreated' in updatedProject && updatedProject.revisionCreated
+      ? updatedProject.id
+      : projectId
+    triggerProjectSync(syncProjectId)
 
     return NextResponse.json(updatedProject)
   } catch (error) {

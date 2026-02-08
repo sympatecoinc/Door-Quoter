@@ -233,6 +233,8 @@ export default function ProjectDetailView() {
   const [configuringPanelIndex, setConfiguringPanelIndex] = useState(0)
   const [presetPanelOptions, setPresetPanelOptions] = useState<Record<number, Record<number, number | null>>>({}) // panelIndex -> categoryId -> optionId
   const [presetPanelVariants, setPresetPanelVariants] = useState<Record<number, Record<string, number>>>({}) // panelIndex -> optionId -> variantId
+  const [presetPanelQuantities, setPresetPanelQuantities] = useState<Record<number, Record<string, number>>>({}) // panelIndex -> categoryId_qty -> quantity
+  const [presetPanelGlassTypes, setPresetPanelGlassTypes] = useState<Record<number, string>>({}) // panelIndex -> glassType
   const [savingPresetConfig, setSavingPresetConfig] = useState(false)
   const [toleranceDefaults, setToleranceDefaults] = useState({
     thinwallWidthTolerance: 1.0,
@@ -1313,16 +1315,35 @@ export default function ProjectDetailView() {
         const panelIndex = appliedPresetOpening.panels.indexOf(panel)
         const selectedOptions = presetPanelOptions[panelIndex]
         const selectedVariants = presetPanelVariants[panelIndex]
+        const selectedQuantities = presetPanelQuantities[panelIndex]
+        const selectedGlassType = presetPanelGlassTypes[panelIndex]
+
+        // Update panel glass type if changed
+        if (selectedGlassType && selectedGlassType !== panel.glassType) {
+          await fetch(`/api/panels/${panel.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              glassType: selectedGlassType
+            })
+          })
+        }
 
         if (panel.componentInstance && selectedOptions) {
           // Get included option IDs (non-null selections)
           const includedOptionIds = Object.values(selectedOptions).filter((id): id is number => id !== null)
 
+          // Merge option selections with quantity selections (same pattern as Add Component)
+          const mergedSelections = {
+            ...selectedOptions,
+            ...(selectedQuantities || {})
+          }
+
           await fetch(`/api/component-instances/${panel.componentInstance.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              subOptionSelections: selectedOptions,
+              subOptionSelections: mergedSelections,
               includedOptions: includedOptionIds,
               variantSelections: selectedVariants || {}
             })
@@ -1346,6 +1367,8 @@ export default function ProjectDetailView() {
       setAppliedPresetOpening(null)
       setPresetPanelOptions({})
       setPresetPanelVariants({})
+      setPresetPanelQuantities({})
+      setPresetPanelGlassTypes({})
       setConfiguringPanelIndex(0)
       setShowAddOpening(false)
 
@@ -1376,6 +1399,8 @@ export default function ProjectDetailView() {
     setAppliedPresetOpening(null)
     setPresetPanelOptions({})
     setPresetPanelVariants({})
+    setPresetPanelQuantities({})
+    setPresetPanelGlassTypes({})
     setConfiguringPanelIndex(0)
     setShowAddOpening(false)
     showSuccess('Opening created from preset!')
@@ -3515,7 +3540,17 @@ export default function ProjectDetailView() {
                 {/* Current panel configuration */}
                 {(() => {
                   const currentPanel = appliedPresetOpening.panels?.[configuringPanelIndex]
-                  if (!currentPanel?.componentInstance?.product?.productSubOptions?.length) {
+                  const product = currentPanel?.componentInstance?.product
+                  const productSubOptions = product?.productSubOptions || []
+                  const productBOMs = product?.productBOMs || []
+                  const isFrame = product?.productType === 'FRAME'
+                  const showGlassType = !isFrame && currentPanel
+
+                  // Check if panel has any configuration options
+                  const hasOptions = productSubOptions.length > 0
+                  const needsGlassType = showGlassType && (!currentPanel?.glassType || currentPanel.glassType === '')
+
+                  if (!hasOptions && !needsGlassType) {
                     return (
                       <div className="p-4 bg-gray-50 rounded-lg text-center text-gray-500">
                         This panel has no hardware options to configure.
@@ -3523,18 +3558,44 @@ export default function ProjectDetailView() {
                     )
                   }
 
-                  const productSubOptions = currentPanel.componentInstance.product.productSubOptions
-
                   return (
                     <div className="space-y-4">
                       <div className="p-3 bg-blue-50 rounded-lg">
                         <p className="text-sm font-medium text-blue-800">
-                          {currentPanel.componentInstance.product.name}
+                          {product?.name || 'Panel'}
                         </p>
                         <p className="text-xs text-blue-600">
                           {currentPanel.width}" × {currentPanel.height}" - {currentPanel.type}
                         </p>
                       </div>
+
+                      {/* Glass Type Selection */}
+                      {showGlassType && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Glass Type
+                            <span className="text-red-500 ml-1">*</span>
+                          </label>
+                          <select
+                            value={presetPanelGlassTypes[configuringPanelIndex] ?? currentPanel?.glassType ?? ''}
+                            onChange={(e) => {
+                              setPresetPanelGlassTypes(prev => ({
+                                ...prev,
+                                [configuringPanelIndex]: e.target.value
+                              }))
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                          >
+                            <option value="">Select glass type...</option>
+                            {glassTypes.map((gt: any) => (
+                              <option key={gt.id} value={gt.name}>
+                                {gt.name}
+                                {gt.name === defaultGlassTypeName ? ' (Default)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
 
                       {productSubOptions.map((pso: any) => {
                         const selectedOptionId = presetPanelOptions[configuringPanelIndex]?.[pso.category.id]
@@ -3543,52 +3604,107 @@ export default function ProjectDetailView() {
                         )
                         const hasVariants = selectedOption?.variants?.length > 0
 
+                        // Check for RANGE mode
+                        const optionBom = productBOMs.find(
+                          (bom: any) => bom.optionId === selectedOptionId
+                        )
+                        const isRangeMode = optionBom?.quantityMode === 'RANGE'
+                        const quantityKey = `${pso.category.id}_qty`
+
                         return (
                           <div key={pso.category.id}>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                               {pso.category.name}
                               {pso.isMandatory && <span className="text-red-500 ml-1">*</span>}
                             </label>
-                            <select
-                              value={selectedOptionId ?? ''}
-                              onChange={(e) => {
-                                const newValue = e.target.value === '' ? null : parseInt(e.target.value)
-                                setPresetPanelOptions(prev => ({
-                                  ...prev,
-                                  [configuringPanelIndex]: {
-                                    ...(prev[configuringPanelIndex] || {}),
-                                    [pso.category.id]: newValue
-                                  }
-                                }))
-                                // Auto-select default variant if new option has variants
-                                if (newValue) {
-                                  const newOption = pso.category.individualOptions?.find(
-                                    (opt: any) => opt.id === newValue
-                                  )
-                                  if (newOption?.variants?.length > 0) {
-                                    const defaultVariant = newOption.variants.find((v: any) => v.isDefault)
-                                    if (defaultVariant) {
-                                      setPresetPanelVariants(prev => ({
+                            <div className={`flex gap-2 ${isRangeMode || hasVariants ? '' : ''}`}>
+                              <select
+                                value={selectedOptionId ?? ''}
+                                onChange={(e) => {
+                                  const newValue = e.target.value === '' ? null : parseInt(e.target.value)
+                                  setPresetPanelOptions(prev => ({
+                                    ...prev,
+                                    [configuringPanelIndex]: {
+                                      ...(prev[configuringPanelIndex] || {}),
+                                      [pso.category.id]: newValue
+                                    }
+                                  }))
+                                  // Auto-select default variant if new option has variants
+                                  if (newValue) {
+                                    const newOption = pso.category.individualOptions?.find(
+                                      (opt: any) => opt.id === newValue
+                                    )
+                                    if (newOption?.variants?.length > 0) {
+                                      const defaultVariant = newOption.variants.find((v: any) => v.isDefault)
+                                      if (defaultVariant) {
+                                        setPresetPanelVariants(prev => ({
+                                          ...prev,
+                                          [configuringPanelIndex]: {
+                                            ...(prev[configuringPanelIndex] || {}),
+                                            [String(newValue)]: defaultVariant.id
+                                          }
+                                        }))
+                                      }
+                                    }
+                                    // Check if new option has RANGE mode and set default quantity
+                                    const newOptionBom = productBOMs.find(
+                                      (bom: any) => bom.optionId === newValue
+                                    )
+                                    if (newOptionBom?.quantityMode === 'RANGE') {
+                                      setPresetPanelQuantities(prev => ({
                                         ...prev,
                                         [configuringPanelIndex]: {
                                           ...(prev[configuringPanelIndex] || {}),
-                                          [String(newValue)]: defaultVariant.id
+                                          [quantityKey]: newOptionBom.defaultQuantity || newOptionBom.minQuantity || 0
                                         }
                                       }))
+                                    } else {
+                                      // Remove quantity if not RANGE mode
+                                      setPresetPanelQuantities(prev => {
+                                        const newQuantities = { ...prev }
+                                        if (newQuantities[configuringPanelIndex]) {
+                                          delete newQuantities[configuringPanelIndex][quantityKey]
+                                        }
+                                        return newQuantities
+                                      })
                                     }
                                   }
-                                }
-                              }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                            >
-                              <option value="">None (No hardware)</option>
-                              {pso.category.individualOptions?.map((opt: any) => (
-                                <option key={opt.id} value={opt.id}>
-                                  {opt.name}
-                                  {opt.id === pso.standardOptionId ? ' (Default)' : ''}
-                                </option>
-                              ))}
-                            </select>
+                                }}
+                                className={`${isRangeMode ? 'flex-1' : 'w-full'} px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900`}
+                              >
+                                <option value="">None (No hardware)</option>
+                                {pso.category.individualOptions?.map((opt: any) => (
+                                  <option key={opt.id} value={opt.id}>
+                                    {opt.name}
+                                    {opt.id === pso.standardOptionId ? ' (Default)' : ''}
+                                  </option>
+                                ))}
+                              </select>
+
+                              {/* Quantity input for RANGE mode */}
+                              {isRangeMode && (
+                                <div className="w-24">
+                                  <input
+                                    type="number"
+                                    min={optionBom?.minQuantity || 0}
+                                    max={optionBom?.maxQuantity || 99}
+                                    value={presetPanelQuantities[configuringPanelIndex]?.[quantityKey] ?? optionBom?.defaultQuantity ?? 0}
+                                    onChange={(e) => {
+                                      const value = parseInt(e.target.value) || 0
+                                      setPresetPanelQuantities(prev => ({
+                                        ...prev,
+                                        [configuringPanelIndex]: {
+                                          ...(prev[configuringPanelIndex] || {}),
+                                          [quantityKey]: value
+                                        }
+                                      }))
+                                    }}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                                    placeholder="Qty"
+                                  />
+                                </div>
+                              )}
+                            </div>
 
                             {/* Variant Selection */}
                             {hasVariants && (
@@ -3859,39 +3975,7 @@ export default function ProjectDetailView() {
                 </div>
               )}
 
-              {/* 5b. Dimension Override for Presets */}
-              {selectedPresetId && (
-                <div className="space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
-                  <p className="text-sm text-green-800 font-medium">Dimension Override (Optional)</p>
-                  <p className="text-xs text-green-700">
-                    Leave blank to use preset defaults. Enter values to override.
-                  </p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Width (in)</label>
-                      <input
-                        type="number"
-                        step="0.0625"
-                        value={newOpening.roughWidth}
-                        onChange={(e) => setNewOpening(prev => ({ ...prev, roughWidth: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        placeholder={openingPresets.find(p => p.id === selectedPresetId)?.defaultRoughWidth?.toString() || 'Preset default'}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Height (in)</label>
-                      <input
-                        type="number"
-                        step="0.0625"
-                        value={newOpening.roughHeight}
-                        onChange={(e) => setNewOpening(prev => ({ ...prev, roughHeight: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        placeholder={openingPresets.find(p => p.id === selectedPresetId)?.defaultRoughHeight?.toString() || 'Preset default'}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* Dimension Override removed - users can edit dimensions after the opening is added */}
             </div>
             <div className="flex justify-end space-x-3 pt-6">
               <button

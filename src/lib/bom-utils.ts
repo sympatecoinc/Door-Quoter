@@ -116,6 +116,21 @@ export interface BomItem {
   basePartNumber?: string
   // For yield-based optimization: all applicable stock lengths for this part
   stockLengthOptions?: number[]
+  // Additional properties used in BOM generation
+  openingName?: string
+  panelId?: number
+  productName?: string
+  panelWidth?: number
+  panelHeight?: number
+  description?: string
+  color?: string
+  addToPackingList?: boolean
+  pickListStation?: string | null
+  includeInJambKit?: boolean
+  isMilled?: boolean
+  binLocation?: string | null
+  isPresetPart?: boolean
+  isMiscellaneous?: boolean
 }
 
 export interface AggregatedBomItem {

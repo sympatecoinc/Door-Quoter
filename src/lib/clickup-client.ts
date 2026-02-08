@@ -277,6 +277,16 @@ export class ClickUpClient {
     })
   }
 
+  /**
+   * Add a link between two tasks (works across lists)
+   * This creates a visible link in the task's sidebar
+   */
+  async addTaskLink(taskId: string, linksTo: string): Promise<void> {
+    await this.request(`/task/${taskId}/link/${linksTo}`, {
+      method: 'POST',
+    })
+  }
+
   // ============ Webhook Endpoints ============
 
   /**

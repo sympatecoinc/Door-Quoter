@@ -312,36 +312,49 @@ async function updateContactCustomFields(
 ): Promise<void> {
   const updates: Array<{ fieldId: string; value: any }> = []
 
-  if (fieldIds.phone && contact.phone) {
-    updates.push({ fieldId: fieldIds.phone, value: contact.phone })
+  // Field IDs are stored by their ClickUp field name, so use CONTACT_CUSTOM_FIELDS constants
+  const phoneFieldId = fieldIds[CONTACT_CUSTOM_FIELDS.phone]
+  const emailFieldId = fieldIds[CONTACT_CUSTOM_FIELDS.email]
+  const relationshipStatusFieldId = fieldIds[CONTACT_CUSTOM_FIELDS.relationshipStatus]
+  const lastContactDateFieldId = fieldIds[CONTACT_CUSTOM_FIELDS.lastContactDate]
+  const addressFieldId = fieldIds[CONTACT_CUSTOM_FIELDS.address]
+  const cityFieldId = fieldIds[CONTACT_CUSTOM_FIELDS.city]
+  const stateFieldId = fieldIds[CONTACT_CUSTOM_FIELDS.state]
+  const zipCodeFieldId = fieldIds[CONTACT_CUSTOM_FIELDS.zipCode]
+
+  if (phoneFieldId && contact.phone) {
+    updates.push({ fieldId: phoneFieldId, value: contact.phone })
   }
-  if (fieldIds.email && contact.email) {
-    updates.push({ fieldId: fieldIds.email, value: contact.email })
+  if (emailFieldId && contact.email) {
+    updates.push({ fieldId: emailFieldId, value: contact.email })
   }
-  if (fieldIds.relationshipStatus && contact.relationshipStatus) {
-    updates.push({ fieldId: fieldIds.relationshipStatus, value: contact.relationshipStatus })
+  if (relationshipStatusFieldId && contact.relationshipStatus) {
+    updates.push({ fieldId: relationshipStatusFieldId, value: contact.relationshipStatus })
   }
-  if (fieldIds.lastContactDate && contact.lastContactDate) {
-    updates.push({ fieldId: fieldIds.lastContactDate, value: contact.lastContactDate.getTime() })
+  if (lastContactDateFieldId && contact.lastContactDate) {
+    updates.push({ fieldId: lastContactDateFieldId, value: contact.lastContactDate.getTime() })
   }
-  if (fieldIds.address && contact.contactAddress) {
-    updates.push({ fieldId: fieldIds.address, value: contact.contactAddress })
+  if (addressFieldId && contact.contactAddress) {
+    updates.push({ fieldId: addressFieldId, value: contact.contactAddress })
   }
-  if (fieldIds.city && contact.contactCity) {
-    updates.push({ fieldId: fieldIds.city, value: contact.contactCity })
+  if (cityFieldId && contact.contactCity) {
+    updates.push({ fieldId: cityFieldId, value: contact.contactCity })
   }
-  if (fieldIds.state && contact.contactState) {
-    updates.push({ fieldId: fieldIds.state, value: contact.contactState })
+  if (stateFieldId && contact.contactState) {
+    updates.push({ fieldId: stateFieldId, value: contact.contactState })
   }
-  if (fieldIds.zipCode && contact.contactZipCode) {
-    updates.push({ fieldId: fieldIds.zipCode, value: contact.contactZipCode })
+  if (zipCodeFieldId && contact.contactZipCode) {
+    updates.push({ fieldId: zipCodeFieldId, value: contact.contactZipCode })
   }
 
   // Link to associated account if available
-  if (fieldIds.associatedAccount && contact.customer?.clickupAccountId) {
+  // Field IDs are stored by their ClickUp field name, so use CONTACT_CUSTOM_FIELDS constant
+  const associatedAccountFieldId = fieldIds[CONTACT_CUSTOM_FIELDS.associatedAccount]
+  if (associatedAccountFieldId && contact.customer?.clickupAccountId) {
     updates.push({
-      fieldId: fieldIds.associatedAccount,
-      value: [contact.customer.clickupAccountId],
+      fieldId: associatedAccountFieldId,
+      // Relationship fields require { add: [{ id: "task_id" }] } format
+      value: { add: [{ id: contact.customer.clickupAccountId }] },
     })
   }
 
