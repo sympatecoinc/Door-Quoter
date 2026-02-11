@@ -263,10 +263,10 @@ model Product {
   productSubOptions    ProductSubOption[]
   planViews            ProductPlanView[]
   productDocuments     ProductQuoteDocument[] // Documents associated with this product
-  // Paired product support - auto-add another product when this one is added (e.g., door adds frame)
-  pairedProductId      Int?                   // ID of product to auto-add as paired (e.g., Frame)
-  pairedProduct        Product?               @relation("ProductPairing", fields: [pairedProductId], references: [id])
-  pairedByProducts     Product[]              @relation("ProductPairing")
+  // Frame configuration - which frame product to auto-add when this product is added to an opening
+  frameConfigId        Int?                   // ID of FRAME product to auto-add (managed from Frame Config tab)
+  frameConfig          Product?               @relation("FrameConfiguration", fields: [frameConfigId], references: [id])
+  framedProducts       Product[]              @relation("FrameConfiguration")
   // Opening Preset support
   presetPanels         OpeningPresetPanel[]
 

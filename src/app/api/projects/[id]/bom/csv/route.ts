@@ -220,6 +220,13 @@ export async function GET(
                   }
                 }
               }
+            },
+            presetPartInstances: {
+              include: {
+                presetPart: {
+                  include: { masterPart: true }
+                }
+              }
             }
           }
         }
@@ -306,6 +313,23 @@ export async function GET(
           }
           uniqueComponents.get(hash)!.quantity++
         }
+      }
+
+      // Add virtual "Opening / Jamb" component if any opening has preset parts
+      const openingsWithPresets = project.openings.filter(
+        (o: any) => o.presetPartInstances && o.presetPartInstances.length > 0
+      )
+      if (openingsWithPresets.length > 0) {
+        uniqueComponents.set('OPENING_JAMB', {
+          hash: 'OPENING_JAMB',
+          productName: 'Opening / Jamb',
+          width: 0,
+          height: 0,
+          finishColor: 'Various',
+          glassType: 'None',
+          quantity: openingsWithPresets.length,
+          hardware: []
+        })
       }
 
       return NextResponse.json({
@@ -470,13 +494,25 @@ export async function GET(
 
           const glassArea = Math.round((glassWidth * glassHeight / 144) * 100) / 100
 
+          // Query glass type from database to get full specification (description)
+          const dbGlassType = await prisma.glassType.findUnique({
+            where: { name: panel.glassType }
+          })
+
+          const glassPartNumber = dbGlassType?.description
+            ? `GLASS-${panel.glassType.toUpperCase()} - ${dbGlassType.description.toUpperCase()}`
+            : `GLASS-${panel.glassType.toUpperCase()}`
+          const glassPartName = dbGlassType?.description
+            ? `${panel.glassType} - ${dbGlassType.description} Glass`
+            : `${panel.glassType} Glass`
+
           bomItems.push({
             openingName: opening.name,
             productName: product.name,
             panelWidth: panel.width,
             panelHeight: panel.height,
-            partNumber: `GLASS-${panel.glassType.toUpperCase()}`,
-            partName: `${panel.glassType} Glass`,
+            partNumber: glassPartNumber,
+            partName: glassPartName,
             partType: 'Glass',
             quantity: 1,
             cutLength: `${glassWidth.toFixed(3)} x ${glassHeight.toFixed(3)}`,
@@ -1183,6 +1219,103 @@ export async function GET(
           }
         }
       }
+
+      // Process preset part instances for this opening (opening-level parts like starter channels, trim, etc.)
+      if (opening.presetPartInstances && opening.presetPartInstances.length > 0) {
+        for (const instance of opening.presetPartInstances) {
+          const presetPart = instance.presetPart
+          if (!presetPart || !presetPart.masterPart) continue
+
+          const masterPart = presetPart.masterPart
+          if (!masterPart.baseName) continue
+
+          const partUnit = masterPart.unit || (masterPart.partType === 'Extrusion' ? 'IN' : 'EA')
+
+          let stockLength: number | null = null
+          let stockLengthOptions: number[] = []
+          let cutLength: number | null = null
+          let percentOfStock = ''
+          let isMillFinish = false
+          let displayPartNumber = masterPart.partNumber || `PRESET-${masterPart.baseName.replace(/\s+/g, '-').toUpperCase()}`
+          let basePartNumber = displayPartNumber
+
+          if (masterPart.partType === 'Extrusion' && masterPart.partNumber) {
+            // For extrusions with formula, the formula produces the cut length
+            if (presetPart.formula && instance.calculatedQuantity) {
+              cutLength = instance.calculatedQuantity
+            }
+
+            const stockInfo = await findStockLength(
+              masterPart.partNumber,
+              { formula: presetPart.formula, partType: 'Extrusion' },
+              {
+                width: opening.finishedWidth || opening.roughWidth || 0,
+                height: opening.finishedHeight || opening.roughHeight || 0,
+                finishedWidth: opening.finishedWidth || opening.roughWidth || 0,
+                finishedHeight: opening.finishedHeight || opening.roughHeight || 0
+              }
+            )
+            stockLength = stockInfo.stockLength
+            stockLengthOptions = stockInfo.stockLengthOptions
+            isMillFinish = stockInfo.isMillFinish
+
+            // Build full part number: base + finish code + stock length
+            if (opening.finishColor && masterPart.addFinishToPartNumber && !isMillFinish) {
+              const finishCode = await getFinishCode(opening.finishColor)
+              displayPartNumber = `${displayPartNumber}${finishCode}`
+              basePartNumber = displayPartNumber
+            }
+            if (stockLength) {
+              displayPartNumber = `${displayPartNumber}-${stockLength}`
+            }
+
+            if (cutLength && stockLength && stockLength > 0) {
+              percentOfStock = ((cutLength / stockLength) * 100).toFixed(1) + '%'
+            }
+          } else {
+            // Non-extrusion: apply finish code if needed
+            if (masterPart.addFinishToPartNumber && opening.finishColor && masterPart.partNumber) {
+              const finishCode = await getFinishCode(opening.finishColor)
+              if (finishCode) {
+                displayPartNumber = `${displayPartNumber}${finishCode}`
+              }
+            }
+          }
+
+          // Determine quantity
+          let quantity: number
+          if (presetPart.formula) {
+            if (masterPart.partType === 'Extrusion') {
+              quantity = presetPart.quantity || 1
+            } else {
+              quantity = instance.calculatedQuantity || presetPart.quantity || 1
+            }
+          } else {
+            quantity = presetPart.quantity || instance.calculatedQuantity || 1
+          }
+
+          bomItems.push({
+            openingName: opening.name,
+            productName: 'Opening / Jamb',
+            panelWidth: 0,
+            panelHeight: 0,
+            partNumber: displayPartNumber,
+            partName: masterPart.baseName,
+            partType: masterPart.partType || 'Hardware',
+            quantity: quantity,
+            cutLength: cutLength ? cutLength.toFixed(3) : '',
+            cutLengthNum: cutLength || undefined,
+            percentOfStock: percentOfStock,
+            isMilled: isMillFinish || masterPart.isMillFinish || false,
+            unit: partUnit,
+            description: masterPart.description || 'Preset part',
+            color: (masterPart.partType === 'Extrusion' && opening.finishColor) ? opening.finishColor : 'N/A',
+            isPresetPart: true,
+            basePartNumber: masterPart.partType === 'Extrusion' ? basePartNumber : undefined,
+            stockLengthOptions: stockLengthOptions.length > 1 ? stockLengthOptions : undefined
+          })
+        }
+      }
     }
 
     // Apply yield optimization for extrusions/CutStock
@@ -1403,6 +1536,44 @@ export async function GET(
         })
       }
 
+      // Add Opening / Jamb section for preset parts
+      if (selectedHashes.length === 0 || selectedHashes.includes('OPENING_JAMB')) {
+        const presetBomItems = sortedBomItems.filter((item: any) => item.isPresetPart === true)
+        if (presetBomItems.length > 0) {
+          const openingsWithPresets = project.openings.filter(
+            (o: any) => o.presetPartInstances && o.presetPartInstances.length > 0
+          )
+          const seenPreset = new Set<string>()
+          const uniquePresetItems = presetBomItems.filter((item: any) => {
+            const key = `${item.partNumber}-${item.partName}-${item.partType}-${item.cutLength}`
+            if (seenPreset.has(key)) return false
+            seenPreset.add(key)
+            return true
+          })
+          const presetPdfItems: BomPdfItem[] = uniquePresetItems.map((item: any) => ({
+            partNumber: item.partNumber,
+            partName: item.partName,
+            partType: item.partType,
+            quantity: item.quantity,
+            cutLength: item.cutLength || null,
+            percentOfStock: item.percentOfStock || null,
+            isMilled: item.isMilled,
+            unit: item.unit || 'EA',
+            color: item.color
+          }))
+          pdfComponents.push({
+            productName: 'Opening / Jamb',
+            width: 0,
+            height: 0,
+            finishColor: 'Various',
+            glassType: null,
+            quantity: openingsWithPresets.length,
+            hardware: [],
+            items: presetPdfItems
+          })
+        }
+      }
+
       // Generate PDF
       const pdfBuffer = await createBomPDF({
         projectName: project.name,
@@ -1527,6 +1698,58 @@ export async function GET(
           const filename = `${sanitizeFilename(componentGroup.productName)}-${componentGroup.width}x${componentGroup.height}.csv`
           zip.file(`${String(fileIndex).padStart(2, '0')}-${filename}`, csvContent)
           fileIndex++
+        }
+
+        // Add Opening / Jamb CSV for preset parts
+        if (selectedHashes.length === 0 || selectedHashes.includes('OPENING_JAMB')) {
+          const presetBomItems = sortedBomItems.filter((item: any) => item.isPresetPart === true)
+          if (presetBomItems.length > 0) {
+            const openingsWithPresets = project.openings.filter(
+              (o: any) => o.presetPartInstances && o.presetPartInstances.length > 0
+            )
+            const seenPreset = new Set<string>()
+            const uniquePresetItems = presetBomItems.filter((item: any) => {
+              const key = `${item.partNumber}-${item.partName}-${item.partType}-${item.cutLength}`
+              if (seenPreset.has(key)) return false
+              seenPreset.add(key)
+              return true
+            })
+
+            const presetHeaders = [
+              'Product Name',
+              'Qty in Project',
+              'Part Number',
+              'Part Name',
+              'Part Type',
+              'Quantity',
+              'Cut Length',
+              '% of Stock',
+              'Milled',
+              'Unit',
+              'Color'
+            ]
+
+            const presetCsvRows = [
+              presetHeaders.join(','),
+              ...uniquePresetItems.map((item: any) => [
+                `"Opening / Jamb"`,
+                openingsWithPresets.length,
+                `"${(item.partNumber || '').replace(/"/g, '""')}"`,
+                `"${(item.partName || '').replace(/"/g, '""')}"`,
+                `"${(item.partType || '').replace(/"/g, '""')}"`,
+                item.quantity,
+                `"${(item.cutLength || '').replace(/"/g, '""')}"`,
+                `"${item.percentOfStock}"`,
+                `"${item.partType === 'Extrusion' ? (item.isMilled ? 'Yes' : 'No') : ''}"`,
+                `"${item.unit}"`,
+                `"${(item.color || '').replace(/"/g, '""')}"`
+              ].join(','))
+            ]
+
+            const presetCsvContent = presetCsvRows.join('\n')
+            zip.file(`${String(fileIndex).padStart(2, '0')}-Opening_Jamb.csv`, presetCsvContent)
+            fileIndex++
+          }
         }
 
         // If only one file, return it directly as CSV instead of ZIP

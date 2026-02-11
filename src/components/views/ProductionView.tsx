@@ -40,6 +40,7 @@ interface BomConfig {
   projectId: number
   projectName: string
   selectedHashes: string[]
+  format?: 'csv' | 'pdf'
 }
 
 // Use CutListConfigData imported from CutListDownloadModal
@@ -582,7 +583,7 @@ export default function ProductionView() {
         try {
           const safeProjectName = bomConfig.projectName.replace(/[^a-zA-Z0-9]/g, '-')
           const selectedParam = bomConfig.selectedHashes.join('|')
-          const url = `/api/projects/${bomConfig.projectId}/bom/csv?zip=true&unique=true&selected=${encodeURIComponent(selectedParam)}`
+          const url = `/api/projects/${bomConfig.projectId}/bom/csv?zip=true&unique=true&format=${bomConfig.format || 'csv'}&selected=${encodeURIComponent(selectedParam)}`
 
           const response = await fetch(url)
           if (response.ok) {
@@ -610,7 +611,7 @@ export default function ProductionView() {
             } else {
               // It's a single CSV file
               const contentDisposition = response.headers.get('Content-Disposition') || ''
-              let filename = `${safeProjectName}-bom.csv`
+              let filename = `${safeProjectName}-bom.${bomConfig.format === 'pdf' ? 'pdf' : 'csv'}`
               const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/)
               if (filenameMatch) {
                 filename = `${safeProjectName}-${filenameMatch[1]}`
@@ -633,13 +634,13 @@ export default function ProductionView() {
         for (const group of cutListConfig.groups) {
           try {
             const safeProductName = group.productName.replace(/\s+/g, '-')
-            const url = `/api/projects/${cutListConfig.projectId}/bom?cutlist=true&format=csv&product=${encodeURIComponent(group.productName)}&size=${encodeURIComponent(group.sizeKey)}&batch=${group.batchSize}`
+            const url = `/api/projects/${cutListConfig.projectId}/bom?cutlist=true&format=${cutListConfig.format || 'csv'}&product=${encodeURIComponent(group.productName)}&size=${encodeURIComponent(group.sizeKey)}&batch=${group.batchSize}`
 
             const response = await fetch(url)
             if (response.ok) {
               const blob = await response.blob()
               filesToDownload.push({
-                filename: `${safeProjectName}-${safeProductName}-${group.sizeKey}-${group.batchSize}units-cutlist.csv`,
+                filename: `${safeProjectName}-${safeProductName}-${group.sizeKey}-${group.batchSize}units-cutlist.${cutListConfig.format === 'pdf' ? 'pdf' : 'csv'}`,
                 blob,
                 type: 'cutlist'
               })
@@ -824,16 +825,24 @@ export default function ProductionView() {
     return Object.values(state).some(v => v)
   }
 
-  // Selectable options (can be checked and downloaded together)
-  const selectableOptions = [
+  // Selectable options grouped by section
+  const bomOptions = [
     { value: 'bom' as DownloadType, label: 'BOM (CSV)', icon: FileSpreadsheet },
     { value: 'bomPdf' as DownloadType, label: 'BOM (PDF)', icon: FileText },
+  ]
+
+  const cutlistOptions = [
     { value: 'cutlist' as DownloadType, label: 'Cut List (CSV)', icon: SawBlade },
     { value: 'cutlistPdf' as DownloadType, label: 'Cut List (PDF)', icon: FileText },
+  ]
+
+  const productionOptions = [
     { value: 'picklist' as DownloadType, label: 'Pick List (PDF)', icon: ClipboardList },
     { value: 'jambkit' as DownloadType, label: 'Jamb Kit List (PDF)', icon: Package2 },
     { value: 'fieldverification' as DownloadType, label: 'Field Verification (PDF)', icon: Ruler },
   ]
+
+  const selectableOptions = [...bomOptions, ...cutlistOptions, ...productionOptions]
 
   // Direct download options (no checkbox, download immediately)
   const directOptions = [
@@ -880,7 +889,7 @@ export default function ProductionView() {
         if (buttonRef.current) {
           const rect = buttonRef.current.getBoundingClientRect()
           const spaceBelow = window.innerHeight - rect.bottom
-          const dropdownHeight = 240
+          const dropdownHeight = 320
           const openUpward = spaceBelow < dropdownHeight
 
           setMenuPosition({
@@ -1000,19 +1009,20 @@ export default function ProductionView() {
     const dropdownMenu = isOpen && menuPosition && createPortal(
       <div
         ref={menuRef}
-        className="fixed z-50 w-56 bg-white border border-gray-200 rounded-lg shadow-xl max-h-52 overflow-y-auto"
+        className="fixed z-50 w-56 bg-white border border-gray-200 rounded-lg shadow-xl max-h-80 overflow-y-auto"
         style={{ top: menuPosition.top, left: menuPosition.left }}
       >
-        {/* Selectable options with checkboxes */}
-        {selectableOptions.map((option, index) => (
+        {/* BOM section */}
+        <div className="px-3 pt-2 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wider">BOM</div>
+        {bomOptions.map((option) => (
           <button
             key={option.value}
             onClick={() => toggleSelection(option.value)}
-            className={`flex items-center w-full px-3 py-2.5 text-sm text-left transition-colors ${
+            className={`flex items-center w-full px-3 py-2 text-sm text-left transition-colors ${
               selectedTypes.has(option.value)
                 ? 'bg-blue-50 text-blue-700'
                 : 'text-gray-700 hover:bg-gray-50'
-            } ${index === 0 ? 'rounded-t-lg' : ''}`}
+            }`}
           >
             <div className={`w-4 h-4 mr-3 border rounded flex items-center justify-center ${
               selectedTypes.has(option.value)
@@ -1029,11 +1039,67 @@ export default function ProductionView() {
           </button>
         ))}
 
-        {/* Separator with label */}
-        <div className="border-t border-gray-200 mt-2">
-          <div className="px-3 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
-            Other Downloads
-          </div>
+        {/* Cut List section */}
+        <div className="border-t border-gray-200 mt-1">
+          <div className="px-3 pt-2 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wider">Cut List</div>
+        </div>
+        {cutlistOptions.map((option) => (
+          <button
+            key={option.value}
+            onClick={() => toggleSelection(option.value)}
+            className={`flex items-center w-full px-3 py-2 text-sm text-left transition-colors ${
+              selectedTypes.has(option.value)
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <div className={`w-4 h-4 mr-3 border rounded flex items-center justify-center ${
+              selectedTypes.has(option.value)
+                ? 'bg-blue-600 border-blue-600'
+                : 'border-gray-300'
+            }`}>
+              {selectedTypes.has(option.value) && (
+                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+            <span className="flex-1">{option.label}</span>
+          </button>
+        ))}
+
+        {/* Production Documents section */}
+        <div className="border-t border-gray-200 mt-1">
+          <div className="px-3 pt-2 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wider">Production</div>
+        </div>
+        {productionOptions.map((option) => (
+          <button
+            key={option.value}
+            onClick={() => toggleSelection(option.value)}
+            className={`flex items-center w-full px-3 py-2 text-sm text-left transition-colors ${
+              selectedTypes.has(option.value)
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <div className={`w-4 h-4 mr-3 border rounded flex items-center justify-center ${
+              selectedTypes.has(option.value)
+                ? 'bg-blue-600 border-blue-600'
+                : 'border-gray-300'
+            }`}>
+              {selectedTypes.has(option.value) && (
+                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+            <span className="flex-1">{option.label}</span>
+          </button>
+        ))}
+
+        {/* Other Downloads section */}
+        <div className="border-t border-gray-200 mt-1">
+          <div className="px-3 pt-2 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wider">Other Downloads</div>
         </div>
 
         {/* Direct download options (Shop Drawings) */}

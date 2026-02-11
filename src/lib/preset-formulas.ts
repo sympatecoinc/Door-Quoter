@@ -2,10 +2,11 @@
  * Formula evaluation utility for Opening Presets
  *
  * Evaluates formulas with opening dimension variables:
- * - roughWidth, roughHeight
- * - finishedWidth, finishedHeight
+ * - width, height (primary - maps to finished dimensions)
+ * - finishedWidth, finishedHeight (legacy, still supported)
+ * - roughWidth, roughHeight (legacy, still supported)
  *
- * Example: evaluatePresetFormula('finishedHeight * 2 + finishedWidth', { ... })
+ * Example: evaluatePresetFormula('height - 0.75', { ... })
  */
 
 export interface PresetFormulaVariables {
@@ -19,7 +20,11 @@ export interface PresetFormulaVariables {
  * Safely evaluates a formula string with the given variables.
  * Only allows basic math operations and the defined variables.
  *
- * @param formula - Formula string like "finishedHeight * 2 + finishedWidth"
+ * Supports both new (width, height) and legacy (finishedWidth, finishedHeight,
+ * roughWidth, roughHeight) variable names. `width` maps to finishedWidth,
+ * `height` maps to finishedHeight.
+ *
+ * @param formula - Formula string like "height - 0.75" or "finishedHeight * 2"
  * @param variables - Object with roughWidth, roughHeight, finishedWidth, finishedHeight
  * @returns Calculated result, or null if evaluation fails
  */
@@ -39,11 +44,15 @@ export function evaluatePresetFormula(
 
   try {
     // Replace variable names with their values
+    // Order matters: replace longer names first to avoid partial matches
+    // (e.g., "finishedWidth" before "width")
     let evaluatedFormula = formula
-      .replace(/roughWidth/g, String(variables.roughWidth))
-      .replace(/roughHeight/g, String(variables.roughHeight))
       .replace(/finishedWidth/g, String(variables.finishedWidth))
       .replace(/finishedHeight/g, String(variables.finishedHeight))
+      .replace(/roughWidth/g, String(variables.roughWidth))
+      .replace(/roughHeight/g, String(variables.roughHeight))
+      .replace(/\bwidth\b/g, String(variables.finishedWidth))
+      .replace(/\bheight\b/g, String(variables.finishedHeight))
 
     // Validate that the formula only contains safe characters
     // Allow: numbers, operators (+, -, *, /, %), parentheses, spaces, decimal points
@@ -85,14 +94,9 @@ export function validatePresetFormula(formula: string | null | undefined): boole
   }
 
   // Check that it only contains valid variable names and operators
-  const validVariables = ['roughWidth', 'roughHeight', 'finishedWidth', 'finishedHeight']
-  const variablePattern = validVariables.join('|')
-  const validPattern = new RegExp(
-    `^[\\s()]*(?:${variablePattern}|\\d+\\.?\\d*)[\\s()]*(?:[+\\-*/%][\\s()]*(?:${variablePattern}|\\d+\\.?\\d*)[\\s()]*)*$`,
-    'i'
-  )
+  const validVariables = ['width', 'height', 'roughWidth', 'roughHeight', 'finishedWidth', 'finishedHeight']
 
-  // First, check if formula uses valid variable names
+  // Check used variables are valid
   const usedVariables = formula.match(/[a-zA-Z]+/g) || []
   for (const variable of usedVariables) {
     if (!validVariables.includes(variable)) {
@@ -110,9 +114,7 @@ export function validatePresetFormula(formula: string | null | undefined): boole
  */
 export function getFormulaVariables(): Array<{ name: string; description: string }> {
   return [
-    { name: 'roughWidth', description: 'Rough opening width (inches)' },
-    { name: 'roughHeight', description: 'Rough opening height (inches)' },
-    { name: 'finishedWidth', description: 'Finished opening width (inches)' },
-    { name: 'finishedHeight', description: 'Finished opening height (inches)' },
+    { name: 'width', description: 'Opening finished width (inches)' },
+    { name: 'height', description: 'Opening finished height (inches)' },
   ]
 }

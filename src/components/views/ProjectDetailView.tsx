@@ -876,14 +876,6 @@ export default function ProjectDetailView() {
         const data = await response.json()
         const activeFinishes = data.filter((f: any) => f.isActive)
         setFinishTypes(activeFinishes)
-
-        // Set default finish color to first available finish type if not already set
-        if (activeFinishes.length > 0 && (!newOpening.finishColor || newOpening.finishColor === 'Mill Finish')) {
-          setNewOpening(prev => ({
-            ...prev,
-            finishColor: activeFinishes[0].finishType
-          }))
-        }
       }
     } catch (error) {
       console.error('Error fetching finish types:', error)
@@ -1106,6 +1098,11 @@ export default function ProjectDetailView() {
       return
     }
 
+    if (!newOpening.finishColor) {
+      showError('Please select an extrusion finish')
+      return
+    }
+
     // For finished openings, validate dimensions are provided
     if (newOpening.isFinishedOpening && (!newOpening.roughWidth || !newOpening.roughHeight)) {
       showError('Rough opening dimensions are required for finished openings')
@@ -1148,7 +1145,7 @@ export default function ProjectDetailView() {
         // Reset form and close modal first
         setNewOpening({
           name: '',
-          finishColor: finishTypes.length > 0 ? finishTypes[0].finishType : '',
+          finishColor: '',
           isFinishedOpening: false,
           openingType: 'THINWALL',
           roughWidth: '',
@@ -1330,9 +1327,6 @@ export default function ProjectDetailView() {
         }
 
         if (panel.componentInstance && selectedOptions) {
-          // Get included option IDs (non-null selections)
-          const includedOptionIds = Object.values(selectedOptions).filter((id): id is number => id !== null)
-
           // Merge option selections with quantity selections (same pattern as Add Component)
           const mergedSelections = {
             ...selectedOptions,
@@ -1344,7 +1338,7 @@ export default function ProjectDetailView() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               subOptionSelections: mergedSelections,
-              includedOptions: includedOptionIds,
+              includedOptions: [],
               variantSelections: selectedVariants || {}
             })
           })
@@ -2395,13 +2389,13 @@ export default function ProjectDetailView() {
       }
 
       for (const panelData of panelsData) {
-        // Use paired product ID for paired panels, otherwise use selected product
-        const productIdForInstance = panelData._isPairedPanel
-          ? panelData._pairedProductId
+        // Use frame config product ID for frame panels, otherwise use selected product
+        const productIdForInstance = panelData._isFramePanel
+          ? panelData._frameConfigId
           : selectedProductId
 
-        // For paired panels (frames), don't pass sub-options - they get defaults
-        const selectionsForInstance = panelData._isPairedPanel ? {} : mergedSelections
+        // For frame panels, don't pass sub-options - they get defaults
+        const selectionsForInstance = panelData._isFramePanel ? {} : mergedSelections
 
         const componentResponse = await fetch('/api/component-instances', {
           method: 'POST',
@@ -2412,7 +2406,7 @@ export default function ProjectDetailView() {
             panelId: panelData.id,
             productId: productIdForInstance,
             subOptionSelections: selectionsForInstance,
-            variantSelections: panelData._isPairedPanel ? {} : variantSelections
+            variantSelections: panelData._isFramePanel ? {} : variantSelections
           })
         })
 
@@ -3890,8 +3884,9 @@ export default function ProjectDetailView() {
                 <select
                   value={newOpening.finishColor}
                   onChange={(e) => setNewOpening({...newOpening, finishColor: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!newOpening.finishColor ? 'border-orange-300 text-gray-400' : 'border-gray-300 text-gray-900'}`}
                 >
+                  <option value="">-- Select Finish --</option>
                   {finishTypes.map((finish) => (
                     <option key={finish.id} value={finish.finishType}>
                       {finish.finishType} {finish.costPerSqFt > 0 ? `(+$${finish.costPerSqFt.toFixed(2)}/sq ft)` : ''}

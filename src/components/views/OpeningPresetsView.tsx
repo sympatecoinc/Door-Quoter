@@ -10,6 +10,11 @@ interface Product {
   name: string
   productType: string
   productCategory: string
+  frameConfig?: {
+    id: number
+    name: string
+    productType: string
+  } | null
 }
 
 type PartType = 'Hardware' | 'Extrusion' | 'Glass' | 'Sealant' | 'Other'
@@ -164,6 +169,9 @@ export default function OpeningPresetsView() {
   }
 
   function openEditEditor(preset: OpeningPreset) {
+    // Determine opening type - fall back to isFinishedOpening for legacy presets
+    const resolvedOpeningType = preset.openingType || (preset.isFinishedOpening ? 'FRAMED' : 'THINWALL')
+
     setEditingPreset(preset)
     setFormData({
       name: preset.name,
@@ -172,7 +180,7 @@ export default function OpeningPresetsView() {
       defaultRoughHeight: preset.defaultRoughHeight?.toString() || '',
       defaultFinishedWidth: preset.defaultFinishedWidth?.toString() || '',
       defaultFinishedHeight: preset.defaultFinishedHeight?.toString() || '',
-      openingType: preset.openingType || '',
+      openingType: resolvedOpeningType as 'THINWALL' | 'FRAMED',
       widthToleranceTotal: preset.widthToleranceTotal?.toString() || '',
       heightToleranceTotal: preset.heightToleranceTotal?.toString() || ''
     })
@@ -181,9 +189,7 @@ export default function OpeningPresetsView() {
     setShowEditor(true)
     fetchMasterParts() // Load master parts for the selector
     // Load products filtered by the preset's opening type
-    if (preset.openingType) {
-      fetchProducts(preset.openingType as 'THINWALL' | 'FRAMED')
-    }
+    fetchProducts(resolvedOpeningType as 'THINWALL' | 'FRAMED')
   }
 
   function closeEditor() {
@@ -720,7 +726,7 @@ export default function OpeningPresetsView() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Opening Type *</label>
                 <select
                   value={formData.openingType}
-                  disabled={formData.openingType !== '' && panels.length > 0}
+                  disabled={!!editingPreset || (formData.openingType !== '' && panels.length > 0)}
                   onChange={(e) => {
                     const newType = e.target.value as '' | 'THINWALL' | 'FRAMED'
 
@@ -732,14 +738,19 @@ export default function OpeningPresetsView() {
                     }
                   }}
                   className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    formData.openingType !== '' && panels.length > 0 ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''
+                    editingPreset || (formData.openingType !== '' && panels.length > 0) ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''
                   }`}
                 >
                   <option value="">Select type...</option>
                   <option value="THINWALL">Thinwall</option>
                   <option value="FRAMED">Trimmed</option>
                 </select>
-                {formData.openingType !== '' && panels.length > 0 && (
+                {editingPreset && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Opening type cannot be changed after creation.
+                  </p>
+                )}
+                {!editingPreset && formData.openingType !== '' && panels.length > 0 && (
                   <p className="text-xs text-gray-500 mt-1">
                     Remove all panels to change the opening type.
                   </p>
@@ -889,6 +900,17 @@ export default function OpeningPresetsView() {
                                 <option key={p.id} value={p.id}>{p.name}</option>
                               ))}
                             </select>
+                            {(() => {
+                              const selectedProduct = panel.productId ? products.find(p => p.id === panel.productId) : null
+                              if (selectedProduct?.frameConfig) {
+                                return (
+                                  <p className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-1 mt-1">
+                                    Linked frame: {selectedProduct.frameConfig.name} (auto-included when preset is applied)
+                                  </p>
+                                )
+                              }
+                              return null
+                            })()}
                           </div>
                           <div>
                             <label className="block text-xs font-medium text-gray-600 mb-1">Width</label>
@@ -965,8 +987,8 @@ export default function OpeningPresetsView() {
                   <div className="px-4 pb-4 space-y-4">
                     <p className="text-sm text-gray-500">
                       Parts added here will be locked when the preset is applied.
-                      Use formulas like <code className="bg-gray-100 px-1 rounded">finishedWidth * 2</code> or
-                      <code className="bg-gray-100 px-1 rounded">roughHeight</code> for dynamic quantities.
+                      Use formulas like <code className="bg-gray-100 px-1 rounded">width * 2</code> or
+                      <code className="bg-gray-100 px-1 rounded">height - 0.75</code> for dynamic quantities.
                     </p>
                     {parts.map((part, index) => (
                       <div key={index} className="border border-gray-200 rounded-lg p-4">
@@ -1013,7 +1035,7 @@ export default function OpeningPresetsView() {
                                 value={part.formula || ''}
                                 onChange={(e) => updatePart(index, 'formula', e.target.value)}
                                 className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                placeholder="e.g., finishedHeight * 2"
+                                placeholder="e.g., height - 0.75"
                               />
                             </div>
                           )}

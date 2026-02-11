@@ -35,11 +35,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             displayOrder: 'asc'
           }
         },
-        pairedProduct: {
+        frameConfig: {
           select: {
             id: true,
             name: true,
             productType: true
+          }
+        },
+        framedProducts: {
+          select: {
+            id: true,
+            name: true,
+            productType: true,
+            productCategory: true,
+            archived: true
           }
         },
         _count: {
@@ -86,7 +95,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       maxWidth,
       minHeight,
       maxHeight,
-      pairedProductId,
+      frameConfigId,
       widthTolerance,
       heightTolerance
     } = await request.json()
@@ -130,29 +139,49 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (minHeight !== undefined) updateData.minHeight = minHeight !== null && minHeight !== '' ? parseFloat(minHeight) : null
     if (maxHeight !== undefined) updateData.maxHeight = maxHeight !== null && maxHeight !== '' ? parseFloat(maxHeight) : null
 
-    // Paired product - auto-add another product when this one is added (e.g., door adds frame)
-    if (pairedProductId !== undefined) {
-      // Validate paired product exists if setting (allow null to clear)
-      if (pairedProductId !== null) {
-        const pairedProduct = await prisma.product.findUnique({
-          where: { id: parseInt(pairedProductId) }
+    // Frame configuration - which frame product to auto-add when this product is added to an opening
+    if (frameConfigId !== undefined) {
+      // Validate frame config product exists if setting (allow null to clear)
+      if (frameConfigId !== null) {
+        // Only TRIMMED category products can have a frame config
+        const currentProduct = await prisma.product.findUnique({
+          where: { id: productId },
+          select: { productCategory: true }
         })
-        if (!pairedProduct) {
+        if (currentProduct?.productCategory !== 'TRIMMED') {
           return NextResponse.json(
-            { error: 'Paired product not found' },
+            { error: 'Only products with Trimmed category can be assigned a frame configuration' },
+            { status: 400 }
+          )
+        }
+
+        const frameProduct = await prisma.product.findUnique({
+          where: { id: parseInt(frameConfigId) },
+          select: { id: true, productType: true }
+        })
+        if (!frameProduct) {
+          return NextResponse.json(
+            { error: 'Frame product not found' },
+            { status: 400 }
+          )
+        }
+        // Must be a FRAME product
+        if (frameProduct.productType !== 'FRAME') {
+          return NextResponse.json(
+            { error: 'frameConfigId must point to a FRAME product' },
             { status: 400 }
           )
         }
         // Prevent self-referencing
-        if (parseInt(pairedProductId) === productId) {
+        if (parseInt(frameConfigId) === productId) {
           return NextResponse.json(
-            { error: 'A product cannot be paired with itself' },
+            { error: 'A product cannot reference itself as its frame config' },
             { status: 400 }
           )
         }
-        updateData.pairedProductId = parseInt(pairedProductId)
+        updateData.frameConfigId = parseInt(frameConfigId)
       } else {
-        updateData.pairedProductId = null
+        updateData.frameConfigId = null
       }
     }
 
@@ -212,11 +241,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             displayOrder: 'asc'
           }
         },
-        pairedProduct: {
+        frameConfig: {
           select: {
             id: true,
             name: true,
             productType: true
+          }
+        },
+        framedProducts: {
+          select: {
+            id: true,
+            name: true,
+            productType: true,
+            productCategory: true,
+            archived: true
           }
         },
         _count: {

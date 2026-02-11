@@ -174,7 +174,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             },
             presetPartInstances: {
               include: {
-                presetPart: true
+                presetPart: {
+                  include: { masterPart: true }
+                }
               }
             }
           }
@@ -218,6 +220,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           {
             id: opening.id,
             finishColor: opening.finishColor,
+            finishedWidth: (opening as any).finishedWidth,
+            finishedHeight: (opening as any).finishedHeight,
+            roughWidth: (opening as any).roughWidth,
+            roughHeight: (opening as any).roughHeight,
             panels: opening.panels,
             presetPartInstances: opening.presetPartInstances,
             project: {

@@ -86,9 +86,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check for duplicate name
-    const existing = await prisma.openingPreset.findUnique({
-      where: { name: name.trim() }
+    // Check for duplicate name (only among non-archived presets)
+    const existing = await prisma.openingPreset.findFirst({
+      where: { name: name.trim(), isArchived: false }
     })
     if (existing) {
       return NextResponse.json(

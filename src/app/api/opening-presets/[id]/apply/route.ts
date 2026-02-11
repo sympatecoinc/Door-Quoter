@@ -196,15 +196,103 @@ export async function POST(
 
         // Create component instance if product is assigned
         if (presetPanel.productId) {
+          // Fetch product with sub-options and frame config so we can backfill missing selections
+          // and auto-add frame panels
+          const product = await tx.product.findUnique({
+            where: { id: presetPanel.productId },
+            include: {
+              frameConfig: true,
+              productSubOptions: {
+                include: {
+                  category: {
+                    include: {
+                      individualOptions: {
+                        include: { variants: true }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          })
+
+          let parsedSelections: Record<string, number> = {}
+          let parsedVariants: Record<string, number> = {}
+          try {
+            parsedSelections = JSON.parse(presetPanel.subOptionSelections || '{}')
+          } catch { parsedSelections = {} }
+          try {
+            parsedVariants = JSON.parse(presetPanel.variantSelections || '{}')
+          } catch { parsedVariants = {} }
+
+          // Backfill subOptionSelections and variantSelections with standard
+          // defaults for any categories not already in the preset
+          if (product?.productSubOptions?.length) {
+            const defaultSelections: Record<string, number> = { ...parsedSelections }
+            const defaultVariants: Record<string, number> = { ...parsedVariants }
+            let hasBackfill = false
+
+            for (const pso of product.productSubOptions) {
+              if (pso.standardOptionId) {
+                const catKey = String(pso.categoryId)
+                if (!(catKey in defaultSelections)) {
+                  defaultSelections[catKey] = pso.standardOptionId
+                  hasBackfill = true
+                }
+
+                const standardOpt = pso.category.individualOptions.find(
+                  (io: any) => io.id === pso.standardOptionId
+                )
+                if (standardOpt && standardOpt.variants && standardOpt.variants.length > 0 && !(catKey in defaultVariants)) {
+                  defaultVariants[catKey] = standardOpt.variants[0].id
+                  hasBackfill = true
+                }
+              }
+            }
+
+            if (hasBackfill) {
+              parsedSelections = defaultSelections
+              parsedVariants = defaultVariants
+            }
+          }
+
           await tx.componentInstance.create({
             data: {
               panelId: newPanel.id,
               productId: presetPanel.productId,
-              subOptionSelections: presetPanel.subOptionSelections,
-              includedOptions: presetPanel.includedOptions,
-              variantSelections: presetPanel.variantSelections
+              subOptionSelections: JSON.stringify(parsedSelections),
+              includedOptions: presetPanel.includedOptions || '[]',
+              variantSelections: JSON.stringify(parsedVariants)
             }
           })
+
+          // Auto-add frame panel if product has a frame config
+          if (product?.frameConfig && product.frameConfig.id !== presetPanel.productId) {
+            const framePanel = await tx.panel.create({
+              data: {
+                openingId: newOpening.id,
+                type: 'Component',
+                width: effectiveFinishedWidth,
+                height: effectiveFinishedHeight,
+                glassType: 'N/A',
+                locking: 'N/A',
+                swingDirection: 'None',
+                slidingDirection: 'Left',
+                displayOrder: presetPanel.displayOrder + 1000, // Place after all preset panels
+                parentPanelId: newPanel.id
+              }
+            })
+
+            await tx.componentInstance.create({
+              data: {
+                panelId: framePanel.id,
+                productId: product.frameConfig.id,
+                subOptionSelections: '{}',
+                includedOptions: '[]',
+                variantSelections: '{}'
+              }
+            })
+          }
         }
       }
 

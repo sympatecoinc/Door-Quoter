@@ -119,10 +119,10 @@ export async function PUT(
       )
     }
 
-    // Check for duplicate name (if name changed)
+    // Check for duplicate name (if name changed, only among non-archived presets)
     if (name && name.trim() !== existing.name) {
-      const duplicate = await prisma.openingPreset.findUnique({
-        where: { name: name.trim() }
+      const duplicate = await prisma.openingPreset.findFirst({
+        where: { name: name.trim(), isArchived: false, id: { not: presetId } }
       })
       if (duplicate) {
         return NextResponse.json(

@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
             displayOrder: 'asc'
           }
         },
-        pairedProduct: {
+        frameConfig: {
           select: {
             id: true,
             name: true,

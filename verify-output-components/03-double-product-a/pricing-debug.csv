@@ -1,0 +1,142 @@
+=== PROJECT PRICING DEBUG ===
+Project,"Verify-Comp-03-Double-A"
+Status,"STAGING"
+
+=== PRICING MODE ===
+Name,"Default (Hybrid)"
+Extrusion Markup,300%
+Hardware Markup,300%
+Glass Markup,300%
+Packaging Markup,0%
+Global Markup,0%
+Discount,0%
+Extrusion Costing,"HYBRID"
+
+=== OPENING: Opening 1 ===
+Finish Color,"Black (Anodized)"
+
+--- Component: Fixed Panel (Panel 1336) ---
+Dimensions,"96"" W x 84"" H"
+
+BOM ITEMS
+Part Number,Part Name,Part Type,Stock Length,Cut Length,Quantity,Unit Cost,Finish Cost,Marked Up Cost,Non-Marked Up Cost,Total Cost,Method,Details,Finish Details
+"48450","4"" Web Rail Shallow","Extrusion","102in","96.00in",1,$51.81,$0.00,$195.04,$3.05,$198.09,"extrusion_hybrid_split","Cut 96.00"" from 102"" stock (94.1% used) | Piece price: $51.81 | Used: 94.1% × $51.81 × 1 = $48.76 (gets markup) | Remaining: 5.9% × $51.81 × 1 = $3.05 (no markup) | Material total: $51.81","Black (Anodized): No perimeter defined, finish cost = $0.00"
+"48351","Dovetail","Extrusion","99in","84.00in",2,$17.57,$10.43,$129.69,$5.32,$135.01,"extrusion_hybrid_split","Cut 84.00"" from 99"" stock (84.8% used) | Piece price: $17.57 | Used: 84.8% × $17.57 × 2 = $29.81 (gets markup) | Remaining: 15.2% × $17.57 × 2 = $5.32 (no markup) | Material total: $35.14","Black (Anodized) (full stock): 0.527' perim × 8.25' = 4.35 sq ft × $1.2/sq ft × 2 = $10.43"
+"48448","Glass Stop (Gutter)","Extrusion","102in","96.00in",2,$5.81,$11.10,$54.85,$0.68,$55.53,"extrusion_hybrid_split","Cut 96.00"" from 102"" stock (94.1% used) | Piece price: $5.81 | Used: 94.1% × $5.81 × 2 = $10.94 (gets markup) | Remaining: 5.9% × $5.81 × 2 = $0.68 (no markup) | Material total: $11.62","Black (Anodized) (full stock): 0.544' perim × 8.50' = 4.62 sq ft × $1.2/sq ft × 2 = $11.10"
+"48448","Glass Stop (Gutter)","Extrusion","102in","84.00in",2,$5.81,$11.10,$49.38,$2.05,$51.43,"extrusion_hybrid_split","Cut 84.00"" from 102"" stock (82.4% used) | Piece price: $5.81 | Used: 82.4% × $5.81 × 2 = $9.57 (gets markup) | Remaining: 17.6% × $5.81 × 2 = $2.05 (no markup) | Material total: $11.62","Black (Anodized) (full stock): 0.544' perim × 8.50' = 4.62 sq ft × $1.2/sq ft × 2 = $11.10"
+"48447","Glass Stop (Face)","Extrusion","99in","96.00in",2,$3.04,$6.04,$29.64,$0.18,$29.82,"extrusion_hybrid_split","Cut 96.00"" from 99"" stock (97.0% used) | Piece price: $3.04 | Used: 97.0% × $3.04 × 2 = $5.90 (gets markup) | Remaining: 3.0% × $3.04 × 2 = $0.18 (no markup) | Material total: $6.08","Black (Anodized) (full stock): 0.305' perim × 8.25' = 2.52 sq ft × $1.2/sq ft × 2 = $6.04"
+"48447","Glass Stop (Face)","Extrusion","99in","84.00in",2,$3.04,$6.04,$26.69,$0.92,$27.61,"extrusion_hybrid_split","Cut 84.00"" from 99"" stock (84.8% used) | Piece price: $3.04 | Used: 84.8% × $3.04 × 2 = $5.16 (gets markup) | Remaining: 15.2% × $3.04 × 2 = $0.92 (no markup) | Material total: $6.08","Black (Anodized) (full stock): 0.305' perim × 8.25' = 2.52 sq ft × $1.2/sq ft × 2 = $6.04"
+"E-12303","Flat Stock Trim","Extrusion","123in","96.00in",2,$13.72,$10.70,$96.37,$6.02,$102.39,"extrusion_hybrid_split","Cut 96.00"" from 123"" stock (78.0% used) | Piece price: $13.72 | Used: 78.0% × $13.72 × 2 = $21.42 (gets markup) | Remaining: 22.0% × $13.72 × 2 = $6.02 (no markup) | Material total: $27.44","Black (Anodized) (full stock): 0.435' perim × 10.25' = 4.46 sq ft × $1.2/sq ft × 2 = $10.70"
+"48601","Sliding Door Seal","Extrusion","99in","84.00in",1,$5.52,$5.19,$23.93,$0.84,$24.76,"extrusion_hybrid_split","Cut 84.00"" from 99"" stock (84.8% used) | Piece price: $5.52 | Used: 84.8% × $5.52 × 1 = $4.68 (gets markup) | Remaining: 15.2% × $5.52 × 1 = $0.84 (no markup) | Material total: $5.52","Black (Anodized) (full stock): 0.524' perim × 8.25' = 4.32 sq ft × $1.2/sq ft × 1 = $5.19"
+"DR-ASD-TUBP020","3/8-24 Threaded Rod 35-1/16L","CutStock","","",2,$6.00,$0.00,$48.00,$0.00,$48.00,"master_part_direct","MasterPart direct: $6 × 2",""
+"DR-ASD-BUMBS35","Black Bumper","Hardware","","",9,$0.06,$0.00,$2.14,$0.00,$2.14,"master_part_hardware","Hardware cost: $0.0594 × 9",""
+"FOAM-GASKET-ROLL","Foam Gasket","Hardware","","",4,$0.48,$0.00,$7.68,$0.00,$7.68,"bom_formula","Formula: width → 96 = 96.00 × $0.005/IN × 4 qty = $1.92",""
+"FOAM-GASKET-ROLL","Foam Gasket","Hardware","","",4,$0.42,$0.00,$6.72,$0.00,$6.72,"bom_formula","Formula: height → 84 = 84.00 × $0.005/IN × 4 qty = $1.68",""
+"HW-ROLL-BUL105","MR105 Mini V Wheel Assembly","Hardware","","",2,$0.66,$0.00,$5.28,$0.00,$5.28,"master_part_hardware","Hardware cost: $0.66 × 2",""
+"HW-SCR-MCMA491","Press-Fit Stud","Fastener","","",2,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+"HW-N&B-FAS9152","3/8-16 Locking Nut","Fastener","","",4,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+"door-box","Cardboard Box for Door","Packaging","","",1,$10.00,$0.00,$10.00,$0.00,$10.00,"master_part_direct","MasterPart direct: $10 × 1",""
+"RM-PUCK-BRKT","Roller Guide Bracket 12g Steel","Hardware","","",1,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+"DR-ASD-TUBP852","3/8 ID x 1-1/4 OD Washer","Fastener","","",4,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+"DR-ASD-NUT1512","Hex Head Screw","Fastener","","",2,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+"HW-SCR-MCMA491","Press-Fit Stud","Fastener","","",2,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+"AD-LUG-3.20-FG","Door Lug (3.20)","Fastener","","",2,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+
+OPTION ITEMS
+Category,Option Name,Part Number,Quantity,Unit Price,Total Price,Method,Details,Is Standard,Is Included
+
+GLASS
+Glass Type,Width Formula,Height Formula,Calc Width,Calc Height,Qty,Sqft,Price/Sqft,Total Cost
+
+Component BOM Total,$243.37
+Component Options Total,$0.00
+Component Glass Total,$0.00
+
+--- OPENING COST SUMMARY ---
+Category,Base Cost,Markup %,Marked Up Cost
+Extrusion,$227.92,300%,$854.46
+Hardware,$5.45,300%,$21.82
+Glass,$0.00,300%,$0.00
+Packaging,$10.00,0%,$10.00
+Other,$0.00,0%,$0.00
+Standard Options (no markup),$0.00,0%,$0.00
+Hybrid Remaining (no markup),$19.07,0%,$19.07
+
+Opening Total (Base),$243.37
+Opening Total (Marked Up),$886.28
+
+
+=== OPENING: Opening 2 ===
+Finish Color,"Black (Anodized)"
+
+--- Component: Fixed Panel (Panel 1337) ---
+Dimensions,"96"" W x 84"" H"
+
+BOM ITEMS
+Part Number,Part Name,Part Type,Stock Length,Cut Length,Quantity,Unit Cost,Finish Cost,Marked Up Cost,Non-Marked Up Cost,Total Cost,Method,Details,Finish Details
+"48450","4"" Web Rail Shallow","Extrusion","102in","96.00in",1,$51.81,$0.00,$195.04,$3.05,$198.09,"extrusion_hybrid_split","Cut 96.00"" from 102"" stock (94.1% used) | Piece price: $51.81 | Used: 94.1% × $51.81 × 1 = $48.76 (gets markup) | Remaining: 5.9% × $51.81 × 1 = $3.05 (no markup) | Material total: $51.81","Black (Anodized): No perimeter defined, finish cost = $0.00"
+"48351","Dovetail","Extrusion","99in","84.00in",2,$17.57,$10.43,$129.69,$5.32,$135.01,"extrusion_hybrid_split","Cut 84.00"" from 99"" stock (84.8% used) | Piece price: $17.57 | Used: 84.8% × $17.57 × 2 = $29.81 (gets markup) | Remaining: 15.2% × $17.57 × 2 = $5.32 (no markup) | Material total: $35.14","Black (Anodized) (full stock): 0.527' perim × 8.25' = 4.35 sq ft × $1.2/sq ft × 2 = $10.43"
+"48448","Glass Stop (Gutter)","Extrusion","102in","96.00in",2,$5.81,$11.10,$54.85,$0.68,$55.53,"extrusion_hybrid_split","Cut 96.00"" from 102"" stock (94.1% used) | Piece price: $5.81 | Used: 94.1% × $5.81 × 2 = $10.94 (gets markup) | Remaining: 5.9% × $5.81 × 2 = $0.68 (no markup) | Material total: $11.62","Black (Anodized) (full stock): 0.544' perim × 8.50' = 4.62 sq ft × $1.2/sq ft × 2 = $11.10"
+"48448","Glass Stop (Gutter)","Extrusion","102in","84.00in",2,$5.81,$11.10,$49.38,$2.05,$51.43,"extrusion_hybrid_split","Cut 84.00"" from 102"" stock (82.4% used) | Piece price: $5.81 | Used: 82.4% × $5.81 × 2 = $9.57 (gets markup) | Remaining: 17.6% × $5.81 × 2 = $2.05 (no markup) | Material total: $11.62","Black (Anodized) (full stock): 0.544' perim × 8.50' = 4.62 sq ft × $1.2/sq ft × 2 = $11.10"
+"48447","Glass Stop (Face)","Extrusion","99in","96.00in",2,$3.04,$6.04,$29.64,$0.18,$29.82,"extrusion_hybrid_split","Cut 96.00"" from 99"" stock (97.0% used) | Piece price: $3.04 | Used: 97.0% × $3.04 × 2 = $5.90 (gets markup) | Remaining: 3.0% × $3.04 × 2 = $0.18 (no markup) | Material total: $6.08","Black (Anodized) (full stock): 0.305' perim × 8.25' = 2.52 sq ft × $1.2/sq ft × 2 = $6.04"
+"48447","Glass Stop (Face)","Extrusion","99in","84.00in",2,$3.04,$6.04,$26.69,$0.92,$27.61,"extrusion_hybrid_split","Cut 84.00"" from 99"" stock (84.8% used) | Piece price: $3.04 | Used: 84.8% × $3.04 × 2 = $5.16 (gets markup) | Remaining: 15.2% × $3.04 × 2 = $0.92 (no markup) | Material total: $6.08","Black (Anodized) (full stock): 0.305' perim × 8.25' = 2.52 sq ft × $1.2/sq ft × 2 = $6.04"
+"E-12303","Flat Stock Trim","Extrusion","123in","96.00in",2,$13.72,$10.70,$96.37,$6.02,$102.39,"extrusion_hybrid_split","Cut 96.00"" from 123"" stock (78.0% used) | Piece price: $13.72 | Used: 78.0% × $13.72 × 2 = $21.42 (gets markup) | Remaining: 22.0% × $13.72 × 2 = $6.02 (no markup) | Material total: $27.44","Black (Anodized) (full stock): 0.435' perim × 10.25' = 4.46 sq ft × $1.2/sq ft × 2 = $10.70"
+"48601","Sliding Door Seal","Extrusion","99in","84.00in",1,$5.52,$5.19,$23.93,$0.84,$24.76,"extrusion_hybrid_split","Cut 84.00"" from 99"" stock (84.8% used) | Piece price: $5.52 | Used: 84.8% × $5.52 × 1 = $4.68 (gets markup) | Remaining: 15.2% × $5.52 × 1 = $0.84 (no markup) | Material total: $5.52","Black (Anodized) (full stock): 0.524' perim × 8.25' = 4.32 sq ft × $1.2/sq ft × 1 = $5.19"
+"DR-ASD-TUBP020","3/8-24 Threaded Rod 35-1/16L","CutStock","","",2,$6.00,$0.00,$48.00,$0.00,$48.00,"master_part_direct","MasterPart direct: $6 × 2",""
+"DR-ASD-BUMBS35","Black Bumper","Hardware","","",9,$0.06,$0.00,$2.14,$0.00,$2.14,"master_part_hardware","Hardware cost: $0.0594 × 9",""
+"FOAM-GASKET-ROLL","Foam Gasket","Hardware","","",4,$0.48,$0.00,$7.68,$0.00,$7.68,"bom_formula","Formula: width → 96 = 96.00 × $0.005/IN × 4 qty = $1.92",""
+"FOAM-GASKET-ROLL","Foam Gasket","Hardware","","",4,$0.42,$0.00,$6.72,$0.00,$6.72,"bom_formula","Formula: height → 84 = 84.00 × $0.005/IN × 4 qty = $1.68",""
+"HW-ROLL-BUL105","MR105 Mini V Wheel Assembly","Hardware","","",2,$0.66,$0.00,$5.28,$0.00,$5.28,"master_part_hardware","Hardware cost: $0.66 × 2",""
+"HW-SCR-MCMA491","Press-Fit Stud","Fastener","","",2,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+"HW-N&B-FAS9152","3/8-16 Locking Nut","Fastener","","",4,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+"door-box","Cardboard Box for Door","Packaging","","",1,$10.00,$0.00,$10.00,$0.00,$10.00,"master_part_direct","MasterPart direct: $10 × 1",""
+"RM-PUCK-BRKT","Roller Guide Bracket 12g Steel","Hardware","","",1,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+"DR-ASD-TUBP852","3/8 ID x 1-1/4 OD Washer","Fastener","","",4,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+"DR-ASD-NUT1512","Hex Head Screw","Fastener","","",2,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+"HW-SCR-MCMA491","Press-Fit Stud","Fastener","","",2,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+"AD-LUG-3.20-FG","Door Lug (3.20)","Fastener","","",2,$0.00,$0.00,$0.00,$0.00,$0.00,"no_cost_found","No pricing method found",""
+
+OPTION ITEMS
+Category,Option Name,Part Number,Quantity,Unit Price,Total Price,Method,Details,Is Standard,Is Included
+
+GLASS
+Glass Type,Width Formula,Height Formula,Calc Width,Calc Height,Qty,Sqft,Price/Sqft,Total Cost
+
+Component BOM Total,$243.37
+Component Options Total,$0.00
+Component Glass Total,$0.00
+
+--- OPENING COST SUMMARY ---
+Category,Base Cost,Markup %,Marked Up Cost
+Extrusion,$227.92,300%,$854.46
+Hardware,$5.45,300%,$21.82
+Glass,$0.00,300%,$0.00
+Packaging,$10.00,0%,$10.00
+Other,$0.00,0%,$0.00
+Standard Options (no markup),$0.00,0%,$0.00
+Hybrid Remaining (no markup),$19.07,0%,$19.07
+
+Opening Total (Base),$243.37
+Opening Total (Marked Up),$886.28
+
+
+=== PROJECT TOTALS ===
+Subtotal (Base),$486.75
+Subtotal (Marked Up),$1772.56
+Installation,$0.00
+Tax Rate,0.0%
+Tax Amount,$0.00
+Grand Total,$1772.56
+
+=== EXTRUSION MARKUP BREAKDOWN ===
+This section shows which portion of extrusion costs receive markup vs pass-through at cost
+
+Opening,Total Extrusion Cost,Extrusion With Markup,Extrusion Without Markup (Hybrid Remaining),Markup %,Marked Up Result
+"Opening 1",$227.92,$208.85,$19.07,300%,$854.46
+"Opening 2",$227.92,$208.85,$19.07,300%,$854.46
+
+TOTALS,$455.84,$417.70,$38.14,300%,$1708.93
+
+Note: "Extrusion With Markup" = portion that receives the extrusion markup percentage
+Note: "Extrusion Without Markup (Hybrid Remaining)" = portion passed through at cost (no markup applied)
+Note: Marked Up Result = (With Markup × (1 + Markup%)) × (1 - Discount%) + Without Markup

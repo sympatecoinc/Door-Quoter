@@ -1,0 +1,52 @@
+Test,Description,Status,Expected,Actual,Difference,Notes
+Cross-Report [Verify-Comp-01-Single-A] - Opening Totals → Subtotal Base,Sum of opening base totals should equal project subtotal base,PASS,$243.37,$243.37,$0.00,
+Cross-Report [Verify-Comp-01-Single-A] - Opening Totals → Subtotal Marked Up,Sum of opening marked-up totals should equal project subtotal marked up,PASS,$886.28,$886.28,$0.00,
+Cross-Report [Verify-Comp-01-Single-A] - Pricing-Debug vs BOM Quantities,Pricing-debug BOM item quantities should match BOM CSV pieces (by base part number),INFO,17 parts matching,1 mismatches out of 17,1,"FOAM-GASKET-ROLL: pricing-debug qty=8, BOM pieces=756; GLASS-CLEAR: in BOM (pieces=1) but not in pricing-debug BOM ITEMS"
+Cross-Report [Verify-Comp-01-Single-A] - BOM vs Purchasing Summary,BOM CSV pieces should match Purchasing Summary pieces per part,PASS,18 parts matching,0 mismatches out of 18,0,
+Cross-Report [Verify-Comp-01-Single-A] - Grand Total Consistency,Grand total should equal subtotal marked up + installation,PASS,$886.28,$886.28,$0.00,
+Cross-Report [Verify-Comp-02-Single-B] - Opening Totals → Subtotal Base,Sum of opening base totals should equal project subtotal base,PASS,$888.88,$888.88,$0.00,
+Cross-Report [Verify-Comp-02-Single-B] - Opening Totals → Subtotal Marked Up,Sum of opening marked-up totals should equal project subtotal marked up,PASS,$3018.45,$3018.45,$0.00,
+Cross-Report [Verify-Comp-02-Single-B] - Pricing-Debug vs BOM Quantities,Pricing-debug BOM item quantities should match BOM CSV pieces (by base part number),INFO,27 parts matching,4 mismatches out of 27,4,"FOAM-GASKET-ROLL: pricing-debug qty=8, BOM pieces=756; DR-ASD-OMA7920: pricing-debug qty=2, BOM pieces=189; 48558-MF: in pricing-debug (qty=3) but not in BOM; DR-ASD-ULTQTST: pricing-debug qty=2, BOM pieces=15; AD-SWING-THRSHLD-FG: pricing-debug qty=1, BOM pieces=101"
+Cross-Report [Verify-Comp-02-Single-B] - BOM vs Purchasing Summary,BOM CSV pieces should match Purchasing Summary pieces per part,PASS,29 parts matching,0 mismatches out of 29,0,
+Cross-Report [Verify-Comp-02-Single-B] - Grand Total Consistency,Grand total should equal subtotal marked up + installation,PASS,$3018.45,$3018.45,$0.00,
+Cross-Report [Verify-Comp-03-Double-A] - Opening Totals → Subtotal Base,Sum of opening base totals should equal project subtotal base,PASS,$486.75,$486.74,$0.01,
+Cross-Report [Verify-Comp-03-Double-A] - Opening Totals → Subtotal Marked Up,Sum of opening marked-up totals should equal project subtotal marked up,PASS,$1772.56,$1772.56,$0.00,
+Cross-Report [Verify-Comp-03-Double-A] - Pricing-Debug vs BOM Quantities,Pricing-debug BOM item quantities should match BOM CSV pieces (by base part number),INFO,17 parts matching,1 mismatches out of 17,1,"FOAM-GASKET-ROLL: pricing-debug qty=16, BOM pieces=1512; GLASS-CLEAR: in BOM (pieces=2) but not in pricing-debug BOM ITEMS"
+Cross-Report [Verify-Comp-03-Double-A] - BOM vs Purchasing Summary,BOM CSV pieces should match Purchasing Summary pieces per part,PASS,18 parts matching,0 mismatches out of 18,0,
+Cross-Report [Verify-Comp-03-Double-A] - Grand Total Consistency,Grand total should equal subtotal marked up + installation,PASS,$1772.56,$1772.56,$0.00,
+Cross-Report [Verify-Comp-04-Double-B] - Opening Totals → Subtotal Base,Sum of opening base totals should equal project subtotal base,PASS,$1777.76,$1777.76,$0.00,
+Cross-Report [Verify-Comp-04-Double-B] - Opening Totals → Subtotal Marked Up,Sum of opening marked-up totals should equal project subtotal marked up,PASS,$6036.89,$6036.90,$0.01,
+Cross-Report [Verify-Comp-04-Double-B] - Pricing-Debug vs BOM Quantities,Pricing-debug BOM item quantities should match BOM CSV pieces (by base part number),INFO,27 parts matching,4 mismatches out of 27,4,"FOAM-GASKET-ROLL: pricing-debug qty=16, BOM pieces=1512; DR-ASD-OMA7920: pricing-debug qty=4, BOM pieces=377; 48558-MF: in pricing-debug (qty=6) but not in BOM; DR-ASD-ULTQTST: pricing-debug qty=4, BOM pieces=30; AD-SWING-THRSHLD-FG: pricing-debug qty=2, BOM pieces=202"
+Cross-Report [Verify-Comp-04-Double-B] - BOM vs Purchasing Summary,BOM CSV pieces should match Purchasing Summary pieces per part,PASS,29 parts matching,0 mismatches out of 29,0,
+Cross-Report [Verify-Comp-04-Double-B] - Grand Total Consistency,Grand total should equal subtotal marked up + installation,PASS,$6036.89,$6036.89,$0.00,
+Cross-Report [Verify-Comp-05-Mixed-Single] - Opening Totals → Subtotal Base,Sum of opening base totals should equal project subtotal base,PASS,$1132.26,$1132.25,$0.01,
+Cross-Report [Verify-Comp-05-Mixed-Single] - Opening Totals → Subtotal Marked Up,Sum of opening marked-up totals should equal project subtotal marked up,PASS,$3904.73,$3904.73,$0.00,
+Cross-Report [Verify-Comp-05-Mixed-Single] - Pricing-Debug vs BOM Quantities,Pricing-debug BOM item quantities should match BOM CSV pieces (by base part number),INFO,38 parts matching,4 mismatches out of 38,4,"FOAM-GASKET-ROLL: pricing-debug qty=16, BOM pieces=1512; DR-ASD-OMA7920: pricing-debug qty=2, BOM pieces=189; 48558-MF: in pricing-debug (qty=3) but not in BOM; DR-ASD-ULTQTST: pricing-debug qty=2, BOM pieces=15; AD-SWING-THRSHLD-FG: pricing-debug qty=1, BOM pieces=101"
+Cross-Report [Verify-Comp-05-Mixed-Single] - BOM vs Purchasing Summary,BOM CSV pieces should match Purchasing Summary pieces per part,PASS,40 parts matching,0 mismatches out of 40,0,
+Cross-Report [Verify-Comp-05-Mixed-Single] - Grand Total Consistency,Grand total should equal subtotal marked up + installation,PASS,$3904.73,$3904.73,$0.00,
+Cross-Report [Verify-Comp-06-Mixed-Double] - Opening Totals → Subtotal Base,Sum of opening base totals should equal project subtotal base,PASS,$2264.51,$2264.50,$0.01,
+Cross-Report [Verify-Comp-06-Mixed-Double] - Opening Totals → Subtotal Marked Up,Sum of opening marked-up totals should equal project subtotal marked up,PASS,$7809.46,$7809.46,$0.00,
+Cross-Report [Verify-Comp-06-Mixed-Double] - Pricing-Debug vs BOM Quantities,Pricing-debug BOM item quantities should match BOM CSV pieces (by base part number),INFO,38 parts matching,4 mismatches out of 38,4,"FOAM-GASKET-ROLL: pricing-debug qty=32, BOM pieces=3024; DR-ASD-OMA7920: pricing-debug qty=4, BOM pieces=377; 48558-MF: in pricing-debug (qty=6) but not in BOM; DR-ASD-ULTQTST: pricing-debug qty=4, BOM pieces=30; AD-SWING-THRSHLD-FG: pricing-debug qty=2, BOM pieces=202"
+Cross-Report [Verify-Comp-06-Mixed-Double] - BOM vs Purchasing Summary,BOM CSV pieces should match Purchasing Summary pieces per part,PASS,40 parts matching,0 mismatches out of 40,0,
+Cross-Report [Verify-Comp-06-Mixed-Double] - Grand Total Consistency,Grand total should equal subtotal marked up + installation,PASS,$7809.46,$7809.46,$0.00,
+Comparison A: 2x ProductA vs 2x(1x ProductA) - Grand Total,Grand total should scale by 2x,PASS,$1772.56,$1772.56,$0.00,
+Comparison A: 2x ProductA vs 2x(1x ProductA) - Subtotal Marked Up,Marked up subtotal should scale by 2x,PASS,$1772.56,$1772.56,$0.00,
+Comparison A: 2x ProductA vs 2x(1x ProductA) - Subtotal Base,Base subtotal should scale by 2x,PASS,$486.74,$486.75,$0.01,
+Comparison A: 2x ProductA vs 2x(1x ProductA) - Unit Costs,Unit costs should be identical across single vs double,PASS,0 mismatches,0 mismatches out of 42 checked,0,
+Comparison A: 2x ProductA vs 2x(1x ProductA) - BOM Pieces,BOM pieces should scale by 2x (yield optimization may differ),PASS,18 parts at 2x,0 differences out of 18,0,
+Comparison A: 2x ProductA vs 2x(1x ProductA) - Purchasing Pieces,Pieces should scale by 2x (yield optimization may differ for extrusions),PASS,18 parts at 2x,0 differences out of 18,0,
+Comparison B: 2x ProductB vs 2x(1x ProductB) - Grand Total,Grand total should scale by 2x,PASS,$6036.90,$6036.89,$0.01,
+Comparison B: 2x ProductB vs 2x(1x ProductB) - Subtotal Marked Up,Marked up subtotal should scale by 2x,PASS,$6036.90,$6036.89,$0.01,
+Comparison B: 2x ProductB vs 2x(1x ProductB) - Subtotal Base,Base subtotal should scale by 2x,PASS,$1777.76,$1777.76,$0.00,
+Comparison B: 2x ProductB vs 2x(1x ProductB) - Unit Costs,Unit costs should be identical across single vs double,PASS,0 mismatches,0 mismatches out of 68 checked,0,
+Comparison B: 2x ProductB vs 2x(1x ProductB) - BOM Pieces,BOM pieces should scale by 2x (yield optimization may differ),INFO,29 parts at 2x,1 differences out of 29,1,"DR-ASD-OMA7920: expected 378, got 377"
+Comparison B: 2x ProductB vs 2x(1x ProductB) - Purchasing Pieces,Pieces should scale by 2x (yield optimization may differ for extrusions),INFO,29 parts at 2x,1 differences out of 29,1,"Differences: DR-ASD-OMA7920: expected 378, got 377"
+Comparison C: 2x Mixed vs 2x(1x Mixed) - Grand Total,Grand total should scale by 2x,PASS,$7809.46,$7809.46,$0.00,
+Comparison C: 2x Mixed vs 2x(1x Mixed) - Subtotal Marked Up,Marked up subtotal should scale by 2x,PASS,$7809.46,$7809.46,$0.00,
+Comparison C: 2x Mixed vs 2x(1x Mixed) - Subtotal Base,Base subtotal should scale by 2x,PASS,$2264.52,$2264.51,$0.01,
+Comparison C: 2x Mixed vs 2x(1x Mixed) - Unit Costs,Unit costs should be identical across single vs double,PASS,0 mismatches,0 mismatches out of 110 checked,0,
+Comparison C: 2x Mixed vs 2x(1x Mixed) - BOM Pieces,BOM pieces should scale by 2x (yield optimization may differ),INFO,40 parts at 2x,1 differences out of 40,1,"DR-ASD-OMA7920: expected 378, got 377"
+Comparison C: 2x Mixed vs 2x(1x Mixed) - Purchasing Pieces,Pieces should scale by 2x (yield optimization may differ for extrusions),INFO,40 parts at 2x,1 differences out of 40,1,"Differences: DR-ASD-OMA7920: expected 378, got 377"
+Comparison D: Mixed(A+B) vs Single A + Single B - Grand Total,Grand total should equal A + B,PASS,$3904.73,$3904.73,$0.00,
+Comparison D: Mixed(A+B) vs Single A + Single B - Subtotal Base,Base subtotal should equal A + B,PASS,$1132.25,$1132.26,$0.01,
+Comparison D: Mixed(A+B) vs Single A + Single B - Subtotal Marked Up,Marked up subtotal should equal A + B,PASS,$3904.73,$3904.73,$0.00,
