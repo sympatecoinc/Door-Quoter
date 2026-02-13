@@ -36,6 +36,17 @@ export async function GET(request: NextRequest) {
                   include: {
                     variants: {
                       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+                    },
+                    linkedParts: {
+                      select: {
+                        id: true,
+                        masterPartId: true,
+                        variantId: true,
+                        quantity: true,
+                        masterPart: {
+                          select: { id: true, partNumber: true, baseName: true }
+                        }
+                      }
                     }
                   }
                 }

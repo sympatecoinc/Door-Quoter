@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, Edit2, Trash2, Copy, Archive, RotateCcw, ChevronDown, ChevronRight, X, Search } from 'lucide-react'
+import { Plus, Edit2, Trash2, Copy, Archive, RotateCcw, ChevronDown, ChevronRight, X, Search, Check } from 'lucide-react'
 import { useEscapeKey } from '@/hooks/useEscapeKey'
 import { OpeningPreset, OpeningPresetPanel, OpeningPresetPart, MasterPart } from '@/types'
 
@@ -66,6 +66,7 @@ export default function OpeningPresetsView() {
     heightToleranceTotal: ''
   })
   const [panels, setPanels] = useState<Partial<OpeningPresetPanel>[]>([])
+  const [openComponentDropdown, setOpenComponentDropdown] = useState<number | null>(null)
   const [parts, setParts] = useState<PresetPartLocal[]>([])
 
   // Master Parts state for part selector
@@ -216,7 +217,7 @@ export default function OpeningPresetsView() {
         widthToleranceTotal: formData.widthToleranceTotal ? parseFloat(formData.widthToleranceTotal) : null,
         heightToleranceTotal: formData.heightToleranceTotal ? parseFloat(formData.heightToleranceTotal) : null,
         panels: panels.map((p, idx) => ({
-          type: p.type || 'Swing Door',
+          type: p.type || 'Component',
           productId: p.productId || null,
           widthFormula: p.widthFormula || null,
           heightFormula: p.heightFormula || null,
@@ -375,7 +376,7 @@ export default function OpeningPresetsView() {
 
   function addPanel() {
     setPanels([...panels, {
-      type: 'Swing Door',
+      type: 'Component',
       productId: null,
       widthFormula: '',
       heightFormula: '',
@@ -546,7 +547,7 @@ export default function OpeningPresetsView() {
               <tr className="border-b border-gray-200">
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Name</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Default Dimensions</th>
-                <th className="text-center py-3 px-4 text-sm font-medium text-gray-600">Panels</th>
+                <th className="text-center py-3 px-4 text-sm font-medium text-gray-600">Components</th>
                 <th className="text-center py-3 px-4 text-sm font-medium text-gray-600">Parts</th>
                 <th className="text-center py-3 px-4 text-sm font-medium text-gray-600">Times Used</th>
                 <th className="text-right py-3 px-4 text-sm font-medium text-gray-600">Actions</th>
@@ -710,16 +711,6 @@ export default function OpeningPresetsView() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  rows={2}
-                  placeholder="Optional description of this preset"
-                />
-              </div>
 
               {/* Opening Type - FIRST (required) */}
               <div>
@@ -752,7 +743,7 @@ export default function OpeningPresetsView() {
                 )}
                 {!editingPreset && formData.openingType !== '' && panels.length > 0 && (
                   <p className="text-xs text-gray-500 mt-1">
-                    Remove all panels to change the opening type.
+                    Remove all components to change the opening type.
                   </p>
                 )}
               </div>
@@ -841,7 +832,7 @@ export default function OpeningPresetsView() {
                 </div>
               )}
 
-              {/* Panels Section - requires opening type to be selected first */}
+              {/* Components Section - requires opening type to be selected first */}
               <div className={`border rounded-lg ${formData.openingType ? 'border-gray-200' : 'border-gray-100 bg-gray-50'}`}>
                 <button
                   type="button"
@@ -850,7 +841,7 @@ export default function OpeningPresetsView() {
                   className={`w-full px-4 py-3 flex items-center justify-between text-left ${formData.openingType ? 'hover:bg-gray-50' : 'cursor-not-allowed'}`}
                 >
                   <span className={`font-medium ${formData.openingType ? 'text-gray-900' : 'text-gray-400'}`}>
-                    Panels ({panels.length})
+                    Components ({panels.length})
                     {!formData.openingType && <span className="ml-2 text-xs font-normal">— Select opening type first</span>}
                   </span>
                   {formData.openingType && (
@@ -865,7 +856,7 @@ export default function OpeningPresetsView() {
                     {panels.map((panel, index) => (
                       <div key={index} className="border border-gray-200 rounded-lg p-4">
                         <div className="flex justify-between items-center mb-3">
-                          <span className="font-medium text-gray-700">Panel {index + 1}</span>
+                          <span className="font-medium text-gray-700">Component {index + 1}</span>
                           <button
                             type="button"
                             onClick={() => removePanel(index)}
@@ -875,31 +866,80 @@ export default function OpeningPresetsView() {
                           </button>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
-                            <select
-                              value={panel.type || 'Swing Door'}
-                              onChange={(e) => updatePanel(index, 'type', e.target.value)}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                              <option value="Swing Door">Swing Door</option>
-                              <option value="Sliding Door">Sliding Door</option>
-                              <option value="Fixed Panel">Fixed Panel</option>
-                              <option value="90° Corner">90° Corner</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Product</label>
-                            <select
-                              value={panel.productId || ''}
-                              onChange={(e) => updatePanel(index, 'productId', e.target.value ? parseInt(e.target.value) : null)}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                              <option value="">Select product...</option>
-                              {products.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                              ))}
-                            </select>
+                          <div className="col-span-2">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Component</label>
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() => setOpenComponentDropdown(openComponentDropdown === index ? null : index)}
+                                className="w-full px-4 py-2.5 text-left border border-gray-300 rounded-lg flex items-center justify-between bg-white hover:bg-gray-50 transition-colors"
+                              >
+                                <span className={panel.productId ? 'font-medium text-gray-900' : 'text-gray-400'}>
+                                  {panel.productId
+                                    ? (() => {
+                                        const p = products.find(pr => pr.id === panel.productId)
+                                        return p ? (p.productType === 'CORNER_90' ? '90° Corner' : p.name) : 'Select component...'
+                                      })()
+                                    : 'Select component...'}
+                                </span>
+                                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${openComponentDropdown === index ? 'rotate-180' : ''}`} />
+                              </button>
+                              {openComponentDropdown === index && (
+                                <div className="absolute z-10 w-full mt-1 border border-gray-300 rounded-lg overflow-hidden max-h-80 overflow-y-auto shadow-lg bg-white">
+                                  {(() => {
+                                    const typeOrder = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL', 'CORNER_90'] as const
+                                    const typeLabels: Record<string, string> = {
+                                      'SWING_DOOR': 'Swing Doors',
+                                      'SLIDING_DOOR': 'Sliding Doors',
+                                      'FIXED_PANEL': 'Fixed Panels',
+                                      'CORNER_90': 'Corners'
+                                    }
+                                    const groupedProducts = typeOrder.map(type => ({
+                                      type,
+                                      label: typeLabels[type],
+                                      products: products.filter(p => p.productType === type)
+                                    })).filter(group => group.products.length > 0)
+
+                                    return groupedProducts.map((group) => (
+                                      <div key={group.type}>
+                                        <div className="px-4 py-2 bg-gray-100 text-xs font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-200">
+                                          {group.label}
+                                        </div>
+                                        {group.products.map((product) => {
+                                          const isSelected = panel.productId === product.id
+                                          return (
+                                            <button
+                                              key={product.id}
+                                              type="button"
+                                              onClick={() => {
+                                                const productId = product.id
+                                                const typeMap: Record<string, string> = {
+                                                  SWING_DOOR: 'Swing Door',
+                                                  SLIDING_DOOR: 'Sliding Door',
+                                                  FIXED_PANEL: 'Fixed Panel',
+                                                  CORNER_90: '90° Corner'
+                                                }
+                                                const inferredType = typeMap[product.productType] || 'Component'
+                                                setPanels(panels.map((p, i) => i === index ? { ...p, productId, type: inferredType } : p))
+                                                setOpenComponentDropdown(null)
+                                              }}
+                                              className={`w-full px-4 py-3 text-left flex items-center justify-between border-b border-gray-200 last:border-b-0 transition-colors ${
+                                                isSelected
+                                                  ? 'bg-blue-100 text-blue-900'
+                                                  : 'bg-white hover:bg-gray-50 text-gray-900'
+                                              }`}
+                                            >
+                                              <span className="font-medium">{product.productType === 'CORNER_90' ? '90° Corner' : product.name}</span>
+                                              {isSelected && <Check className="w-5 h-5 text-blue-600" />}
+                                            </button>
+                                          )
+                                        })}
+                                      </div>
+                                    ))
+                                  })()}
+                                </div>
+                              )}
+                            </div>
                             {(() => {
                               const selectedProduct = panel.productId ? products.find(p => p.id === panel.productId) : null
                               if (selectedProduct?.frameConfig) {
@@ -965,7 +1005,7 @@ export default function OpeningPresetsView() {
                       className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-600 flex items-center justify-center gap-2"
                     >
                       <Plus className="w-4 h-4" />
-                      Add Panel
+                      Add Component
                     </button>
                   </div>
                 )}

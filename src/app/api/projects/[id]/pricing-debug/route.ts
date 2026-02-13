@@ -1090,34 +1090,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           } catch (e) {}
         }
 
-        // Build set of selected option IDs for BOM filtering (matching pricing-calculator.ts)
-        const selectedOptionIds = new Set<number>()
-        for (const [, optionId] of Object.entries(selections)) {
-          if (optionId && typeof optionId === 'string' && !optionId.includes('_qty')) {
-            selectedOptionIds.add(parseInt(optionId))
-          }
-        }
-
-        // Build option quantity map for RANGE mode
-        const optionQuantityMap = new Map<number, number>()
-        for (const productSubOption of product.productSubOptions) {
-          const categoryId = productSubOption.category.id.toString()
-          const selectedOptionId = selections[categoryId]
-          if (selectedOptionId) {
-            const quantityKey = `${categoryId}_qty`
-            const rangeQuantity = selections[quantityKey] !== undefined
-              ? parseInt(selections[quantityKey] as string)
-              : null
-            if (rangeQuantity !== null) {
-              optionQuantityMap.set(parseInt(selectedOptionId), rangeQuantity)
-            }
-          }
-        }
-
         // Process BOM items (matching pricing-calculator.ts logic)
         for (const bom of product.productBOMs) {
-          // Skip option-linked BOMs if option not selected (matching pricing-calculator.ts)
-          if (bom.optionId && !selectedOptionIds.has(bom.optionId)) continue
+          // Skip ALL option-linked BOM items - they are handled in the options section
+          if (bom.optionId) continue
 
           // Skip null-option BOMs if another option in same category is selected (matching pricing-calculator.ts)
           if (!bom.optionId && (bom as any).option === null) {
@@ -1131,11 +1107,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             }
           }
 
-          let bomWithQuantity = bom
-          if (bom.optionId && bom.quantityMode === 'RANGE' && optionQuantityMap.has(bom.optionId)) {
-            const userQuantity = optionQuantityMap.get(bom.optionId)!
-            bomWithQuantity = { ...bom, quantity: userQuantity }
-          }
+          const bomWithQuantity = bom
 
           const { cost, breakdown } = await calculateBOMItemPrice(
             bomWithQuantity,

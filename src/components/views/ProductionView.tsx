@@ -34,6 +34,8 @@ import ShopDrawingsDownloadModal from '../production/ShopDrawingsDownloadModal'
 import CutListDownloadModal, { CutListConfigData } from '../production/CutListDownloadModal'
 import ExpandableProjectRow from '../production/ExpandableProjectRow'
 import FieldVerificationIndicator from '../production/FieldVerificationIndicator'
+import FieldVerificationWarningModal from '../production/FieldVerificationWarningModal'
+import FieldVerificationPreview from '../production/FieldVerificationPreview'
 
 // Types for bulk download configuration
 interface BomConfig {
@@ -213,6 +215,8 @@ export default function ProductionView() {
   const [stationCounts, setStationCounts] = useState<StationCount[]>([])
   const [generatingWorkOrders, setGeneratingWorkOrders] = useState<Set<number>>(new Set())
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<number>>(new Set())
+  const [fvWarningProject, setFvWarningProject] = useState<ProductionProject | null>(null)
+  const [showFvPreview, setShowFvPreview] = useState<{ projectId: number; projectName: string } | null>(null)
 
   // Bulk download queue state - stores configuration as user goes through modals
   const [bulkDownloadQueue, setBulkDownloadQueue] = useState<{
@@ -256,7 +260,22 @@ export default function ProductionView() {
     }
   }
 
-  async function generateWorkOrders(projectId: number) {
+  function handleGenerateWorkOrders(projectId: number) {
+    const project = projects.find(p => p.id === projectId)
+    if (!project) return
+
+    const uploadCount = project.fieldVerificationCount ?? 0
+    const confirmedCount = project.fieldVerificationConfirmedCount ?? 0
+    const allConfirmed = uploadCount > 0 && confirmedCount === uploadCount
+
+    if (allConfirmed) {
+      executeGenerateWorkOrders(projectId)
+    } else {
+      setFvWarningProject(project)
+    }
+  }
+
+  async function executeGenerateWorkOrders(projectId: number) {
     setGeneratingWorkOrders(prev => new Set([...prev, projectId]))
     try {
       const response = await fetch(`/api/projects/${projectId}/work-orders/generate`, {
@@ -282,6 +301,29 @@ export default function ProductionView() {
         return newSet
       })
     }
+  }
+
+  function handleFvWarningStartVerification() {
+    if (!fvWarningProject) return
+    const projectId = fvWarningProject.id
+    const projectName = fvWarningProject.name
+    setFvWarningProject(null)
+    downloadDocument(projectId, 'fieldverification', projectName)
+  }
+
+  function handleFvWarningReviewVerification() {
+    if (!fvWarningProject) return
+    const projectId = fvWarningProject.id
+    const projectName = fvWarningProject.name
+    setFvWarningProject(null)
+    setShowFvPreview({ projectId, projectName })
+  }
+
+  function handleFvWarningOverride() {
+    if (!fvWarningProject) return
+    const projectId = fvWarningProject.id
+    setFvWarningProject(null)
+    executeGenerateWorkOrders(projectId)
   }
 
   async function fetchSettings() {
@@ -1343,7 +1385,7 @@ export default function ProductionView() {
                     project={project}
                     isExpanded={expandedProjectIds.has(project.id)}
                     onToggleExpand={() => toggleExpand(project.id)}
-                    onGenerateWorkOrders={generateWorkOrders}
+                    onGenerateWorkOrders={handleGenerateWorkOrders}
                     isGeneratingWorkOrders={generatingWorkOrders.has(project.id)}
                     onFieldVerificationChange={fetchProjects}
                   >
@@ -1417,38 +1459,26 @@ export default function ProductionView() {
                     <td className="px-4 py-3">
                       {project.workOrderProgress && project.workOrderProgress.total > 0 ? (
                         <div className="flex items-center gap-1">
-                          {/* Stage pills showing count per stage */}
+                          {/* Stage dots — one per work order, colored by stage */}
                           {[
-                            { key: 'STAGED', label: 'STG', icon: Boxes, color: 'bg-gray-400 text-white', progressColor: 'bg-gray-600' },
-                            { key: 'CUTTING', label: 'CUT', icon: SawBlade, color: 'bg-orange-500 text-white', progressColor: 'bg-orange-700' },
-                            { key: 'MILLING', label: 'MIL', icon: DrillBit, color: 'bg-violet-500 text-white', progressColor: 'bg-violet-700' },
-                            { key: 'ASSEMBLY', label: 'ASM', icon: Package, color: 'bg-blue-500 text-white', progressColor: 'bg-blue-700' },
-                            { key: 'QC', label: 'QC', icon: ClipboardCheck, color: 'bg-purple-500 text-white', progressColor: 'bg-purple-700' },
-                            { key: 'SHIP', label: 'SHP', icon: Truck, color: 'bg-green-500 text-white', progressColor: 'bg-green-700' },
-                            { key: 'COMPLETE', label: 'DONE', icon: CheckCircle2, color: 'bg-emerald-600 text-white', progressColor: 'bg-emerald-800' },
-                          ].flatMap(stage => {
-                            // Get work orders for this stage
+                            { key: 'STAGED', dotColor: 'bg-gray-400' },
+                            { key: 'CUTTING', dotColor: 'bg-orange-500' },
+                            { key: 'MILLING', dotColor: 'bg-violet-500' },
+                            { key: 'ASSEMBLY', dotColor: 'bg-blue-500' },
+                            { key: 'QC', dotColor: 'bg-purple-500' },
+                            { key: 'SHIP', dotColor: 'bg-green-500' },
+                            { key: 'COMPLETE', dotColor: 'bg-emerald-600' },
+                          ].flatMap((stage, _si, _arr) => {
                             const stageWorkOrders = project.workOrderProgress!.workOrders?.filter(
                               wo => wo.stage === stage.key
                             ) || []
                             if (stageWorkOrders.length === 0) return []
-                            const IconComponent = stage.icon
-                            return stageWorkOrders.map((wo) => (
+                            return stageWorkOrders.map((wo, woIdx) => (
                               <span
                                 key={wo.id}
-                                className={`relative inline-flex items-center gap-1 px-2 h-7 rounded-lg ${stage.color} overflow-hidden`}
-                                title={`${stage.key}: ${wo.progressPercent}% complete`}
-                              >
-                                <IconComponent className="w-3.5 h-3.5" />
-                                <span className="text-[10px] font-bold">{stage.label}</span>
-                                {/* Progress bar at bottom */}
-                                <span className="absolute bottom-0 left-0 h-[3px] bg-black/20 w-full">
-                                  <span
-                                    className={`absolute bottom-0 left-0 h-full ${stage.progressColor}`}
-                                    style={{ width: `${wo.progressPercent}%` }}
-                                  />
-                                </span>
-                              </span>
+                                className={`w-2.5 h-2.5 rounded-full ${stage.dotColor}`}
+                                title={`Batch #${woIdx + 1} - ${stage.key}: ${wo.progressPercent}% complete`}
+                              />
                             ))
                           })}
                           {/* Total */}
@@ -1458,7 +1488,7 @@ export default function ProductionView() {
                         </div>
                       ) : (
                         <button
-                          onClick={() => generateWorkOrders(project.id)}
+                          onClick={() => handleGenerateWorkOrders(project.id)}
                           disabled={generatingWorkOrders.has(project.id)}
                           className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors disabled:opacity-50"
                         >
@@ -1580,6 +1610,29 @@ export default function ProductionView() {
           onSave={saveDefaultBatchSize}
           onClose={() => setShowSettingsModal(false)}
           loading={settingsLoading}
+        />
+      )}
+
+      {/* Field Verification Warning Modal */}
+      {fvWarningProject && (
+        <FieldVerificationWarningModal
+          projectName={fvWarningProject.name}
+          uploadCount={fvWarningProject.fieldVerificationCount ?? 0}
+          confirmedCount={fvWarningProject.fieldVerificationConfirmedCount ?? 0}
+          onStartVerification={handleFvWarningStartVerification}
+          onReviewVerification={handleFvWarningReviewVerification}
+          onOverride={handleFvWarningOverride}
+          onCancel={() => setFvWarningProject(null)}
+        />
+      )}
+
+      {/* Field Verification Preview (opened from warning flow) */}
+      {showFvPreview && (
+        <FieldVerificationPreview
+          projectId={showFvPreview.projectId}
+          projectName={showFvPreview.projectName}
+          onClose={() => setShowFvPreview(null)}
+          onConfirmStatusChange={fetchProjects}
         />
       )}
 

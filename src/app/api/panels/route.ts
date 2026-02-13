@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate component size for Finished Openings
+    // Validate component size against opening dimensions
     if (!skipValidation) {
       const opening = await prisma.opening.findUnique({
         where: { id: parseInt(openingId) },
@@ -100,7 +100,10 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      if (opening?.isFinishedOpening && opening.finishedWidth && opening.finishedHeight) {
+      const constraintWidth = opening?.finishedWidth || opening?.roughWidth
+      const constraintHeight = opening?.finishedHeight || opening?.roughHeight
+
+      if (constraintWidth && constraintHeight) {
         // Get product constraints if productId is provided
         let productConstraints: { minWidth?: number | null, maxWidth?: number | null, minHeight?: number | null, maxHeight?: number | null } = {}
         let skipProductValidation = false
@@ -145,8 +148,8 @@ export async function POST(request: NextRequest) {
             totalNewWidth,
             parsedHeight,
             {
-              finishedWidth: opening.finishedWidth,
-              finishedHeight: opening.finishedHeight,
+              finishedWidth: constraintWidth,
+              finishedHeight: constraintHeight,
               existingPanelWidths: existingWidths
             },
             productConstraints

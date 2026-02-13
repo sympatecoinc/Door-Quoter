@@ -166,7 +166,7 @@ export async function PUT(
           await tx.openingPresetPanel.createMany({
             data: panels.map((panel: any, index: number) => ({
               presetId,
-              type: panel.type || 'Swing Door',
+              type: panel.type || 'Component',
               productId: panel.productId || null,
               widthFormula: panel.widthFormula || null,
               heightFormula: panel.heightFormula || null,

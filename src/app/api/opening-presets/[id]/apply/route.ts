@@ -22,6 +22,7 @@ export async function POST(
     const {
       projectId,
       name,
+      openingId, // Optional: apply preset to an existing opening
       roughWidth,
       roughHeight,
       finishedWidth,
@@ -36,7 +37,8 @@ export async function POST(
       )
     }
 
-    if (!name || name.trim() === '') {
+    // Name is only required when creating a new opening
+    if (!openingId && (!name || name.trim() === '')) {
       return NextResponse.json(
         { error: 'Opening name is required' },
         { status: 400 }
@@ -60,19 +62,34 @@ export async function POST(
       return NextResponse.json(createLockedError(project.status), { status: 403 })
     }
 
-    // Check for duplicate opening name
-    const existingOpening = await prisma.opening.findFirst({
-      where: {
-        projectId: parseInt(projectId),
-        name: name.trim()
-      }
-    })
+    // Skip duplicate name check when applying to existing opening
+    if (!openingId) {
+      const existingOpening = await prisma.opening.findFirst({
+        where: {
+          projectId: parseInt(projectId),
+          name: name.trim()
+        }
+      })
 
-    if (existingOpening) {
-      return NextResponse.json(
-        { error: 'Opening name already exists for this project' },
-        { status: 400 }
-      )
+      if (existingOpening) {
+        return NextResponse.json(
+          { error: 'Opening name already exists for this project' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // If openingId provided, verify the opening exists
+    if (openingId) {
+      const targetOpening = await prisma.opening.findUnique({
+        where: { id: parseInt(openingId) }
+      })
+      if (!targetOpening) {
+        return NextResponse.json(
+          { error: 'Opening not found' },
+          { status: 404 }
+        )
+      }
     }
 
     // Fetch preset with panels and parts
@@ -147,27 +164,76 @@ export async function POST(
       finishedHeight: effectiveFinishedHeight
     }
 
-    // Create opening, panels, component instances, and part instances in a transaction
+    // Validate that preset panel dimensions fit within the opening
+    const openingConstraintWidth = effectiveFinishedWidth
+    const openingConstraintHeight = effectiveFinishedHeight
+    let cumulativePanelWidth = 0
+
+    for (const presetPanel of preset.panels) {
+      const formulaWidth = evaluatePresetFormula(presetPanel.widthFormula, formulaVariables)
+      const formulaHeight = evaluatePresetFormula(presetPanel.heightFormula, formulaVariables)
+      const panelWidth = formulaWidth ?? effectiveFinishedWidth
+      const panelHeight = formulaHeight ?? effectiveFinishedHeight
+
+      if (panelHeight > openingConstraintHeight) {
+        return NextResponse.json(
+          { error: `Panel "${presetPanel.type}" height (${panelHeight}") exceeds opening height (${openingConstraintHeight}")` },
+          { status: 400 }
+        )
+      }
+
+      cumulativePanelWidth += panelWidth
+    }
+
+    if (cumulativePanelWidth > openingConstraintWidth) {
+      return NextResponse.json(
+        { error: `Total panel width (${cumulativePanelWidth.toFixed(3)}") exceeds opening width (${openingConstraintWidth}")` },
+        { status: 400 }
+      )
+    }
+
+    // Create or update opening, panels, component instances, and part instances in a transaction
     const opening = await prisma.$transaction(async (tx) => {
-      // Create the opening
-      const newOpening = await tx.opening.create({
-        data: {
-          projectId: parseInt(projectId),
-          name: name.trim(),
-          roughWidth: effectiveRoughWidth,
-          roughHeight: effectiveRoughHeight,
-          finishedWidth: effectiveFinishedWidth,
-          finishedHeight: effectiveFinishedHeight,
-          price: 0,
-          isFinishedOpening: preset.isFinishedOpening,
-          openingType: preset.openingType,
-          widthToleranceTotal: preset.widthToleranceTotal,
-          heightToleranceTotal: preset.heightToleranceTotal,
-          finishColor: finishColor || null,
-          includeStarterChannels: preset.includeStarterChannels,
-          presetId: preset.id
-        }
-      })
+      let newOpening: any
+
+      if (openingId) {
+        // Update existing opening with preset metadata and dimensions
+        newOpening = await tx.opening.update({
+          where: { id: parseInt(openingId) },
+          data: {
+            roughWidth: effectiveRoughWidth,
+            roughHeight: effectiveRoughHeight,
+            finishedWidth: effectiveFinishedWidth,
+            finishedHeight: effectiveFinishedHeight,
+            isFinishedOpening: preset.isFinishedOpening,
+            openingType: preset.openingType,
+            widthToleranceTotal: preset.widthToleranceTotal,
+            heightToleranceTotal: preset.heightToleranceTotal,
+            includeStarterChannels: preset.includeStarterChannels,
+            presetId: preset.id
+          }
+        })
+      } else {
+        // Create the opening
+        newOpening = await tx.opening.create({
+          data: {
+            projectId: parseInt(projectId),
+            name: name.trim(),
+            roughWidth: effectiveRoughWidth,
+            roughHeight: effectiveRoughHeight,
+            finishedWidth: effectiveFinishedWidth,
+            finishedHeight: effectiveFinishedHeight,
+            price: 0,
+            isFinishedOpening: preset.isFinishedOpening,
+            openingType: preset.openingType,
+            widthToleranceTotal: preset.widthToleranceTotal,
+            heightToleranceTotal: preset.heightToleranceTotal,
+            finishColor: finishColor || null,
+            includeStarterChannels: preset.includeStarterChannels,
+            presetId: preset.id
+          }
+        })
+      }
 
       // Create panels from preset panels
       for (const presetPanel of preset.panels) {
@@ -186,7 +252,7 @@ export async function POST(
             type: presetPanel.type,
             width: panelWidth,
             height: panelHeight,
-            glassType: presetPanel.glassType,
+            glassType: '',  // Leave empty so user selects during configuration
             locking: presetPanel.locking,
             swingDirection: presetPanel.swingDirection,
             slidingDirection: presetPanel.slidingDirection,
@@ -327,6 +393,7 @@ export async function POST(
                 include: {
                   product: {
                     include: {
+                      planViews: true,
                       productBOMs: {
                         include: {
                           option: true
@@ -338,7 +405,18 @@ export async function POST(
                             include: {
                               individualOptions: {
                                 include: {
-                                  variants: true
+                                  variants: true,
+                                  linkedParts: {
+                                    select: {
+                                      id: true,
+                                      masterPartId: true,
+                                      variantId: true,
+                                      quantity: true,
+                                      masterPart: {
+                                        select: { id: true, partNumber: true, baseName: true }
+                                      }
+                                    }
+                                  }
                                 }
                               }
                             }
@@ -360,7 +438,13 @@ export async function POST(
           },
           presetPartInstances: {
             include: {
-              presetPart: true
+              presetPart: {
+                include: {
+                  masterPart: {
+                    select: { id: true, partNumber: true, baseName: true }
+                  }
+                }
+              }
             }
           }
         }

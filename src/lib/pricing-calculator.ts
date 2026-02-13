@@ -908,18 +908,10 @@ export function calculateOpeningCosts(
       try { includedOptions = JSON.parse(component.includedOptions) } catch (e) { /* continue */ }
     }
 
-    // Build set of selected option IDs for BOM filtering
-    const selectedOptionIds = new Set<number>()
-    for (const [, optionId] of Object.entries(selections)) {
-      if (optionId && typeof optionId === 'string' && !optionId.includes('_qty')) {
-        selectedOptionIds.add(parseInt(optionId))
-      }
-    }
-
     // Calculate BOM costs
     for (const bom of product.productBOMs || []) {
-      // Skip option-linked BOMs if option not selected
-      if (bom.optionId && !selectedOptionIds.has(bom.optionId)) continue
+      // Skip ALL option-linked BOM items - they are handled in the options section
+      if (bom.optionId) continue
       // Skip null-option BOMs if another option in same category is selected
       if (!bom.optionId && bom.option === null) {
         const category = product.productSubOptions?.find((pso: any) =>

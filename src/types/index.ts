@@ -267,6 +267,7 @@ export interface Product {
   maxHeight?: number | null
   widthTolerance?: number | null   // Product-specific width tolerance
   heightTolerance?: number | null  // Product-specific height tolerance
+  elevationImageData?: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -279,12 +280,21 @@ export interface SubOptionCategory {
   updatedAt: Date
 }
 
+export interface OptionLinkedPart {
+  id: number
+  masterPartId: number
+  variantId?: number | null
+  quantity: number
+  masterPart?: Pick<MasterPart, 'id' | 'partNumber' | 'baseName'>
+}
+
 export interface IndividualOption {
   id: number
   categoryId: number
   name: string
   description?: string
   price: number
+  linkedParts?: OptionLinkedPart[]
   createdAt: Date
   updatedAt: Date
 }

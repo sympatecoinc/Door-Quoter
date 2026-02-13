@@ -22,6 +22,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                   include: {
                     variants: {
                       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+                    },
+                    linkedParts: {
+                      select: {
+                        id: true,
+                        masterPartId: true,
+                        variantId: true,
+                        quantity: true,
+                        masterPart: {
+                          select: { id: true, partNumber: true, baseName: true }
+                        }
+                      }
                     }
                   }
                 }
@@ -228,6 +239,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                   include: {
                     variants: {
                       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+                    },
+                    linkedParts: {
+                      select: {
+                        id: true,
+                        masterPartId: true,
+                        variantId: true,
+                        quantity: true,
+                        masterPart: {
+                          select: { id: true, partNumber: true, baseName: true }
+                        }
+                      }
                     }
                   }
                 }
