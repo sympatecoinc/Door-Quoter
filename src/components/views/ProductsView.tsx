@@ -8,7 +8,7 @@ import OpeningPresetsView from './OpeningPresetsView'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 
-type ProductsViewTab = 'products' | 'presets'
+type ProductsViewTab = 'products' | 'presets' | 'frames'
 
 interface Product {
   id: number
@@ -19,6 +19,7 @@ interface Product {
   productCategory: string
   archived: boolean
   installationPrice?: number
+  frameConfigId?: number | null
   _count: {
     productBOMs: number
     productSubOptions: number
@@ -81,7 +82,6 @@ export default function ProductsView() {
   const [editingProduct, setEditingProduct] = useState<number | null>(null)
   const [editProductName, setEditProductName] = useState('')
   const [editProductDescription, setEditProductDescription] = useState('')
-  const [editProductInstallationPrice, setEditProductInstallationPrice] = useState('0')
   const [updating, setUpdating] = useState(false)
   const [showArchiveDialog, setShowArchiveDialog] = useState<{product: Product, projects: string[]} | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -149,14 +149,12 @@ export default function ProductsView() {
     setEditingProduct(product.id)
     setEditProductName(product.name)
     setEditProductDescription(product.description || '')
-    setEditProductInstallationPrice((product.installationPrice || 0).toString())
   }
 
   function cancelEditProduct() {
     setEditingProduct(null)
     setEditProductName('')
     setEditProductDescription('')
-    setEditProductInstallationPrice('0')
   }
 
   async function handleUpdateProduct(e: React.FormEvent) {
@@ -170,8 +168,7 @@ export default function ProductsView() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: editProductName,
-          description: editProductDescription,
-          installationPrice: parseFloat(editProductInstallationPrice) || 0
+          description: editProductDescription
         })
       })
 
@@ -179,7 +176,6 @@ export default function ProductsView() {
         setEditingProduct(null)
         setEditProductName('')
         setEditProductDescription('')
-        setEditProductInstallationPrice('0')
         fetchProducts()
       }
     } catch (error) {
@@ -324,6 +320,16 @@ export default function ProductsView() {
             >
               Opening Presets
             </button>
+            <button
+              onClick={() => setActiveTab('frames')}
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'frames'
+                  ? 'border-amber-500 text-amber-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Frame Configuration
+            </button>
           </nav>
         </div>
       )}
@@ -332,6 +338,12 @@ export default function ProductsView() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         {activeTab === 'presets' && !selectedProduct ? (
           <OpeningPresetsView />
+        ) : activeTab === 'frames' && !selectedProduct ? (
+          <FrameConfigurationTab
+            products={products}
+            onRefresh={fetchProducts}
+            onSelectProduct={setSelectedProduct}
+          />
         ) : loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(6)].map((_, i) => (
@@ -356,7 +368,6 @@ export default function ProductsView() {
             editingProduct={editingProduct}
             editProductName={editProductName}
             editProductDescription={editProductDescription}
-            editProductInstallationPrice={editProductInstallationPrice}
             updating={updating}
             onStartEdit={startEditProduct}
             onCancelEdit={cancelEditProduct}
@@ -365,7 +376,6 @@ export default function ProductsView() {
             onDuplicateProduct={handleDuplicateProduct}
             setEditProductName={setEditProductName}
             setEditProductDescription={setEditProductDescription}
-            setEditProductInstallationPrice={setEditProductInstallationPrice}
             showCreateForm={showCreateForm}
             setShowCreateForm={setShowCreateForm}
             showArchived={showArchived}
@@ -495,6 +505,270 @@ export default function ProductsView() {
   )
 }
 
+function FrameConfigurationTab({
+  products,
+  onRefresh,
+  onSelectProduct
+}: {
+  products: Product[],
+  onRefresh: () => void,
+  onSelectProduct: (product: Product) => void
+}) {
+  const [creatingFrame, setCreatingFrame] = useState(false)
+  const [expandedFrameId, setExpandedFrameId] = useState<number | null>(null)
+  const [savingAssignments, setSavingAssignments] = useState(false)
+  const [pendingChanges, setPendingChanges] = useState<Record<number, boolean>>({})
+
+  const frameProducts = products.filter(p => p.productType === 'FRAME')
+  const assignableProducts = products.filter(p => p.productType !== 'FRAME' && !p.archived && p.productCategory === 'TRIMMED')
+
+  // Count products assigned to each frame
+  function getAssignedCount(frameId: number) {
+    return products.filter(p => p.frameConfigId === frameId).length
+  }
+
+  // Check if a product is assigned to a specific frame
+  function isAssignedToFrame(productId: number, frameId: number) {
+    if (productId in pendingChanges) {
+      return pendingChanges[productId]
+    }
+    const product = products.find(p => p.id === productId)
+    return product?.frameConfigId === frameId
+  }
+
+  function toggleAssignment(productId: number, frameId: number) {
+    const currentlyAssigned = isAssignedToFrame(productId, frameId)
+    setPendingChanges(prev => ({ ...prev, [productId]: !currentlyAssigned }))
+  }
+
+  async function saveAssignments(frameId: number) {
+    setSavingAssignments(true)
+    try {
+      const updates: Promise<Response>[] = []
+
+      for (const [productIdStr, shouldBeAssigned] of Object.entries(pendingChanges)) {
+        const productId = parseInt(productIdStr)
+        const product = products.find(p => p.id === productId)
+        const currentlyAssigned = product?.frameConfigId === frameId
+
+        if (shouldBeAssigned !== currentlyAssigned) {
+          updates.push(
+            fetch(`/api/products/${productId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                frameConfigId: shouldBeAssigned ? frameId : null
+              })
+            })
+          )
+        }
+      }
+
+      await Promise.all(updates)
+      setPendingChanges({})
+      onRefresh()
+    } catch (error) {
+      console.error('Error saving frame assignments:', error)
+      alert('Error saving frame assignments')
+    } finally {
+      setSavingAssignments(false)
+    }
+  }
+
+  async function handleCreateFrame() {
+    setCreatingFrame(true)
+    try {
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Frame',
+          description: 'Automatically added to openings when assigned products are used',
+          productType: 'FRAME'
+        })
+      })
+
+      if (response.ok) {
+        onRefresh()
+      } else {
+        const errorData = await response.json()
+        alert(errorData.error || 'Failed to create Frame product')
+      }
+    } catch (error) {
+      console.error('Error creating Frame product:', error)
+      alert('Error creating Frame product')
+    } finally {
+      setCreatingFrame(false)
+    }
+  }
+
+  const hasPendingChanges = Object.keys(pendingChanges).length > 0
+
+  return (
+    <div>
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Frame Configuration</h3>
+            <p className="text-sm text-gray-600">
+              Assign products to each frame — when those products are added to an opening, the frame is automatically included.
+            </p>
+          </div>
+          <button
+            onClick={handleCreateFrame}
+            disabled={creatingFrame}
+            className="flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+          >
+            {creatingFrame ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Creating...
+              </>
+            ) : (
+              <>
+                <Plus className="w-5 h-5 mr-2" />
+                Create Frame Product
+              </>
+            )}
+          </button>
+        </div>
+        {frameProducts.length > 0 ? (
+          <div className="space-y-3">
+            {frameProducts.map((frameProduct) => {
+              const isExpanded = expandedFrameId === frameProduct.id
+              const assignedCount = getAssignedCount(frameProduct.id)
+
+              return (
+                <div
+                  key={frameProduct.id}
+                  className="bg-white border border-amber-300 rounded-lg overflow-hidden"
+                >
+                  <div className="p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-medium text-gray-900">{frameProduct.name}</h4>
+                          {frameProduct.archived && (
+                            <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">
+                              Archived
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600">{frameProduct.description || 'No description'}</p>
+                      </div>
+                      <div className="flex items-center gap-3 text-sm text-gray-500">
+                        <span>{assignedCount} product{assignedCount !== 1 ? 's' : ''} assigned</span>
+                        <span>{frameProduct._count.productBOMs} BOM items</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (isExpanded) {
+                            setExpandedFrameId(null)
+                            setPendingChanges({})
+                          } else {
+                            setExpandedFrameId(frameProduct.id)
+                            setPendingChanges({})
+                          }
+                        }}
+                        className="text-xs px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors"
+                      >
+                        {isExpanded ? 'Collapse' : 'Assign Products'}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onSelectProduct(frameProduct)
+                        }}
+                        className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Configure BOM
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Expandable product assignment section */}
+                  {isExpanded && (
+                    <div className="border-t border-amber-200 bg-amber-25 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-sm font-medium text-gray-700">
+                          Select products that should include this frame:
+                        </p>
+                        {hasPendingChanges && (
+                          <button
+                            onClick={() => saveAssignments(frameProduct.id)}
+                            disabled={savingAssignments}
+                            className="flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs disabled:opacity-50"
+                          >
+                            {savingAssignments ? (
+                              <>
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1.5"></div>
+                                Saving...
+                              </>
+                            ) : (
+                              <>
+                                <Save className="w-3 h-3 mr-1.5" />
+                                Save Changes
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
+                        {assignableProducts.map((p) => {
+                          const assigned = isAssignedToFrame(p.id, frameProduct.id)
+                          // Check if assigned to a different frame
+                          const assignedToOther = p.frameConfigId && p.frameConfigId !== frameProduct.id && !(p.id in pendingChanges)
+
+                          return (
+                            <label
+                              key={p.id}
+                              className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-sm transition-colors ${
+                                assigned
+                                  ? 'bg-amber-100 border border-amber-300'
+                                  : assignedToOther
+                                    ? 'bg-gray-50 border border-gray-200 opacity-50'
+                                    : 'bg-white border border-gray-200 hover:bg-gray-50'
+                              }`}
+                              title={assignedToOther ? `Assigned to another frame` : ''}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={assigned}
+                                onChange={() => toggleAssignment(p.id, frameProduct.id)}
+                                disabled={!!assignedToOther}
+                                className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                              />
+                              <span className={`truncate ${assigned ? 'font-medium text-gray-900' : 'text-gray-700'}`}>
+                                {p.name}
+                              </span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                      {assignableProducts.length === 0 && (
+                        <p className="text-sm text-gray-500 text-center py-2">
+                          No assignable products available. Create some products first.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-4 text-gray-500">
+            <p>No Frame product configured yet. Create one to define the Bill of Materials for frames.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ProductsTab({
   products,
   onRefresh,
@@ -502,7 +776,6 @@ function ProductsTab({
   editingProduct,
   editProductName,
   editProductDescription,
-  editProductInstallationPrice,
   updating,
   onStartEdit,
   onCancelEdit,
@@ -511,7 +784,6 @@ function ProductsTab({
   onDuplicateProduct,
   setEditProductName,
   setEditProductDescription,
-  setEditProductInstallationPrice,
   showCreateForm,
   setShowCreateForm,
   showArchived,
@@ -523,7 +795,6 @@ function ProductsTab({
   editingProduct: number | null,
   editProductName: string,
   editProductDescription: string,
-  editProductInstallationPrice: string,
   updating: boolean,
   onStartEdit: (product: Product) => void,
   onCancelEdit: () => void,
@@ -532,7 +803,6 @@ function ProductsTab({
   onDuplicateProduct: (product: Product) => void,
   setEditProductName: (name: string) => void,
   setEditProductDescription: (description: string) => void,
-  setEditProductInstallationPrice: (price: string) => void,
   showCreateForm: boolean,
   setShowCreateForm: (show: boolean) => void,
   showArchived: boolean,
@@ -542,12 +812,9 @@ function ProductsTab({
   const [newProductDescription, setNewProductDescription] = useState('')
   const [newProductType, setNewProductType] = useState('SWING_DOOR')
   const [newProductCategory, setNewProductCategory] = useState('BOTH')
-  const [newProductInstallationPrice, setNewProductInstallationPrice] = useState(0)
   const [creating, setCreating] = useState(false)
-  const [creatingFrame, setCreatingFrame] = useState(false)
 
-  // Separate Frame products from other products
-  const frameProducts = products.filter(p => p.productType === 'FRAME')
+  // Filter out Frame products (shown in their own tab)
   const nonFrameProducts = products.filter(p => p.productType !== 'FRAME')
 
   // Group products by productType (Swing Door, Sliding Door, etc.)
@@ -580,33 +847,6 @@ function ProductsTab({
     return indexA - indexB
   })
 
-  async function handleCreateFrame() {
-    setCreatingFrame(true)
-    try {
-      const response = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'Frame',
-          description: 'Automatically added to openings when set to Trimmed',
-          productType: 'FRAME'
-        })
-      })
-
-      if (response.ok) {
-        onRefresh()
-      } else {
-        const errorData = await response.json()
-        alert(errorData.error || 'Failed to create Frame product')
-      }
-    } catch (error) {
-      console.error('Error creating Frame product:', error)
-      alert('Error creating Frame product')
-    } finally {
-      setCreatingFrame(false)
-    }
-  }
-
   async function handleCreateProduct(e: React.FormEvent) {
     e.preventDefault()
     if (!newProductName.trim()) return
@@ -620,8 +860,7 @@ function ProductsTab({
           name: newProductName,
           description: newProductDescription,
           productType: newProductType,
-          productCategory: newProductCategory,
-          installationPrice: newProductInstallationPrice
+          productCategory: newProductCategory
         })
       })
 
@@ -630,7 +869,6 @@ function ProductsTab({
         setNewProductDescription('')
         setNewProductType('SWING_DOOR')
         setNewProductCategory('BOTH')
-        setNewProductInstallationPrice(0)
         setShowCreateForm(false)
         onRefresh()
       }
@@ -641,7 +879,6 @@ function ProductsTab({
       setCreating(false)
     }
   }
-
 
   return (
     <div>
@@ -676,23 +913,6 @@ function ProductsTab({
                       placeholder="Product description"
                       rows={2}
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Installation Price (Optional)
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={editProductInstallationPrice}
-                        onChange={(e) => setEditProductInstallationPrice(e.target.value)}
-                        className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                        placeholder="0.00"
-                      />
-                    </div>
                   </div>
                   <div className="flex justify-between items-center">
                     <button
@@ -796,70 +1016,6 @@ function ProductsTab({
         </div>
       )}
 
-      {/* Frame Configuration Section */}
-      <div className="mt-8 bg-amber-50 border border-amber-200 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Frame Configuration</h3>
-            <p className="text-sm text-gray-600">
-              Frames are automatically added to openings when set to "Trimmed"
-            </p>
-          </div>
-          <button
-            onClick={handleCreateFrame}
-            disabled={creatingFrame}
-            className="flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
-          >
-            {creatingFrame ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Creating...
-              </>
-            ) : (
-              <>
-                <Plus className="w-5 h-5 mr-2" />
-                Create Frame Product
-              </>
-            )}
-          </button>
-        </div>
-        {frameProducts.length > 0 ? (
-          <div className="space-y-3">
-            {frameProducts.map((frameProduct) => (
-              <div
-                key={frameProduct.id}
-                onClick={() => onSelectProduct(frameProduct)}
-                className="bg-white border border-amber-300 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-medium text-gray-900">{frameProduct.name}</h4>
-                      {frameProduct.archived && (
-                        <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">
-                          Archived
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-600">{frameProduct.description || 'No description'}</p>
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    {frameProduct._count.productBOMs} BOM items
-                  </div>
-                </div>
-                <div className="mt-3 text-xs text-amber-600">
-                  Click to configure Frame BOM →
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-4 text-gray-500">
-            <p>No Frame product configured yet. Create one to define the Bill of Materials for frames.</p>
-          </div>
-        )}
-      </div>
-
       {/* Show Archived Toggle */}
       <div className="mt-6 pt-6 border-t border-gray-200">
         <button
@@ -934,24 +1090,6 @@ function ProductsTab({
                 </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Installation Price</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                  <input
-                    type="number"
-                    value={newProductInstallationPrice}
-                    onChange={(e) => setNewProductInstallationPrice(parseFloat(e.target.value) || 0)}
-                    step="0.01"
-                    min="0"
-                    className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                    placeholder="0.00"
-                  />
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Base installation cost for this product type (optional)
-                </p>
-              </div>
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
@@ -960,7 +1098,6 @@ function ProductsTab({
                     setNewProductDescription('')
                     setNewProductType('SWING_DOOR')
                     setNewProductCategory('BOTH')
-                    setNewProductInstallationPrice(0)
                     setShowCreateForm(false)
                   }}
                   className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"

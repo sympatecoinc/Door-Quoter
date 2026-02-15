@@ -17,7 +17,8 @@ export async function GET(request: NextRequest) {
               select: {
                 id: true,
                 name: true,
-                productType: true
+                productType: true,
+                elevationImageData: true
               }
             }
           },
@@ -86,9 +87,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check for duplicate name
-    const existing = await prisma.openingPreset.findUnique({
-      where: { name: name.trim() }
+    // Check for duplicate name (only among non-archived presets)
+    const existing = await prisma.openingPreset.findFirst({
+      where: { name: name.trim(), isArchived: false }
     })
     if (existing) {
       return NextResponse.json(
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
         includeStarterChannels,
         panels: {
           create: panels.map((panel: any, index: number) => ({
-            type: panel.type || 'Swing Door',
+            type: panel.type || 'Component',
             productId: panel.productId || null,
             widthFormula: panel.widthFormula || null,
             heightFormula: panel.heightFormula || null,

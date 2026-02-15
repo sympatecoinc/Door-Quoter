@@ -387,14 +387,32 @@ export async function GET(
             })
           }
 
+          // Query glass type from database to get full specification (description)
+          const dbGlassType = await prisma.glassType.findUnique({
+            where: { name: panel.glassType },
+            include: {
+              parts: {
+                include: { masterPart: true }
+              }
+            }
+          })
+
+          // Build glass part number and name with full spec from description
+          const glassPartNumber = dbGlassType?.description
+            ? `GLASS-${panel.glassType.toUpperCase()} - ${dbGlassType.description.toUpperCase()}`
+            : `GLASS-${panel.glassType.toUpperCase()}`
+          const glassPartName = dbGlassType?.description
+            ? `${panel.glassType} - ${dbGlassType.description} Glass`
+            : `${panel.glassType} Glass`
+
           bomItems.push({
             openingName: opening.name,
             panelId: panel.id,
             productName: product.name,
             panelWidth: effectiveWidth,
             panelHeight: effectiveHeight,
-            partNumber: `GLASS-${panel.glassType.toUpperCase()}`,
-            partName: `${panel.glassType} Glass`,
+            partNumber: glassPartNumber,
+            partName: glassPartName,
             partType: 'Glass',
             quantity: 1,
             cutLength: null,
@@ -406,16 +424,6 @@ export async function GET(
             glassHeight: glassHeight,
             glassArea: Math.round((glassWidth * glassHeight / 144) * 100) / 100, // Convert to sq ft
             color: 'N/A'
-          })
-
-          // Add glass type parts to BOM (e.g., vinyl frosting by linear feet)
-          const dbGlassType = await prisma.glassType.findUnique({
-            where: { name: panel.glassType },
-            include: {
-              parts: {
-                include: { masterPart: true }
-              }
-            }
           })
 
           if (dbGlassType?.parts && dbGlassType.parts.length > 0) {
@@ -1321,10 +1329,7 @@ export async function GET(
         }
       }
 
-      // Note: Starter channels are now handled via category options with RANGE mode
-      // The old hardcoded includeStarterChannels logic has been removed
-
-      // Process preset part instances for this opening
+      // Process preset part instances for this opening (opening-level parts like starter channels, trim, etc.)
       if (opening.presetPartInstances && opening.presetPartInstances.length > 0) {
         for (const instance of opening.presetPartInstances) {
           const presetPart = instance.presetPart
@@ -1334,37 +1339,77 @@ export async function GET(
           if (!masterPart.baseName) continue
 
           // Determine unit based on part type
-          const partUnit = masterPart.unit || (masterPart.partType === 'Extrusion' ? 'EA' : 'EA')
+          const partUnit = masterPart.unit || (masterPart.partType === 'Extrusion' ? 'IN' : 'EA')
 
-          // Get stock length for extrusions
+          // Get stock length, cut length, and part number for extrusions
           let stockLength: number | null = null
+          let stockLengthOptions: number[] = []
           let cutLength: number | null = null
+          let percentOfStock: number | null = null
+          let isMillFinish = false
+          let binLocation: string | null = null
+          let displayPartNumber = masterPart.partNumber || `PRESET-${masterPart.baseName.replace(/\s+/g, '-').toUpperCase()}`
+          let basePartNumber = displayPartNumber
 
-          if (masterPart.partType === 'Extrusion') {
-            // Fetch stock length rules if needed
-            const masterPartWithRules = await prisma.masterPart.findUnique({
-              where: { id: masterPart.id },
-              include: {
-                stockLengthRules: { where: { isActive: true } }
-              }
-            })
-
-            if (masterPartWithRules?.stockLengthRules && masterPartWithRules.stockLengthRules.length > 0) {
-              const defaultRule = masterPartWithRules.stockLengthRules.find((r: any) => r.minHeight === null && r.maxHeight === null)
-              stockLength = defaultRule?.stockLength || masterPartWithRules.stockLengthRules[0]?.stockLength || null
-            }
-
-            // If formula produced a cut length (e.g., perimeter calculation), use it
+          if (masterPart.partType === 'Extrusion' && masterPart.partNumber) {
+            // For extrusions with formula, the formula produces the cut length
             if (presetPart.formula && instance.calculatedQuantity) {
               cutLength = instance.calculatedQuantity
             }
+
+            // Use findStockLength for proper stock length selection and mill finish detection
+            const stockInfo = await findStockLength(
+              masterPart.partNumber,
+              { formula: presetPart.formula, partType: 'Extrusion' },
+              {
+                width: opening.finishedWidth || opening.roughWidth || 0,
+                height: opening.finishedHeight || opening.roughHeight || 0,
+                finishedWidth: opening.finishedWidth || opening.roughWidth || 0,
+                finishedHeight: opening.finishedHeight || opening.roughHeight || 0
+              }
+            )
+            stockLength = stockInfo.stockLength
+            stockLengthOptions = stockInfo.stockLengthOptions
+            isMillFinish = stockInfo.isMillFinish
+            binLocation = stockInfo.binLocation
+
+            // Build full part number: base + finish code + stock length
+            if (opening.finishColor && masterPart.addFinishToPartNumber && !isMillFinish) {
+              const finishCode = await getFinishCode(opening.finishColor)
+              displayPartNumber = `${displayPartNumber}${finishCode}`
+              basePartNumber = displayPartNumber
+            }
+            if (stockLength) {
+              displayPartNumber = `${displayPartNumber}-${stockLength}`
+            }
+
+            // Calculate percent of stock used
+            if (cutLength && stockLength && stockLength > 0) {
+              percentOfStock = (cutLength / stockLength) * 100
+            }
+          } else {
+            // Non-extrusion: apply finish code if needed
+            if (masterPart.addFinishToPartNumber && opening.finishColor && masterPart.partNumber) {
+              const finishCode = await getFinishCode(opening.finishColor)
+              if (finishCode) {
+                displayPartNumber = `${displayPartNumber}${finishCode}`
+              }
+            }
           }
 
-          // Calculate part number with finish code for extrusions
-          let displayPartNumber = masterPart.partNumber || `PRESET-${masterPart.baseName.replace(/\s+/g, '-').toUpperCase()}`
-          if (masterPart.partType === 'Extrusion' && opening.finishColor && masterPart.addFinishToPartNumber) {
-            const finishCode = await getFinishCode(opening.finishColor)
-            displayPartNumber = `${displayPartNumber}${finishCode}`
+          // Determine quantity:
+          // For extrusions with formula: formula = cut length, quantity = piece count from presetPart.quantity
+          // For non-extrusions with formula: formula = quantity calculation
+          // Without formula: use presetPart.quantity or calculatedQuantity
+          let quantity: number
+          if (presetPart.formula) {
+            if (masterPart.partType === 'Extrusion') {
+              quantity = presetPart.quantity || 1
+            } else {
+              quantity = instance.calculatedQuantity || presetPart.quantity || 1
+            }
+          } else {
+            quantity = presetPart.quantity || instance.calculatedQuantity || 1
           }
 
           bomItems.push({
@@ -1376,19 +1421,23 @@ export async function GET(
             partNumber: displayPartNumber,
             partName: masterPart.baseName,
             partType: masterPart.partType || 'Hardware',
-            quantity: presetPart.formula ? 1 : (instance.calculatedQuantity || 1),
+            quantity: quantity,
             unit: partUnit,
             description: masterPart.description || 'From preset configuration',
             stockLength: stockLength,
             cutLength: cutLength,
+            percentOfStock: percentOfStock,
             color: (masterPart.partType === 'Extrusion' && opening.finishColor) ? opening.finishColor : 'N/A',
             addToPackingList: masterPart.addToPackingList ?? true,
             isLinkedPart: false,
             pickListStation: masterPart.pickListStation || null,
             includeInJambKit: masterPart.includeInJambKit ?? false,
-            isMilled: masterPart.isMillFinish || false,
-            binLocation: null, // Would need to fetch binLocationRef.code for bin location string
-            isPresetPart: true
+            isMilled: isMillFinish || masterPart.isMillFinish || false,
+            binLocation: binLocation,
+            isPresetPart: true,
+            // For yield-based stock length optimization
+            basePartNumber: masterPart.partType === 'Extrusion' ? basePartNumber : undefined,
+            stockLengthOptions: stockLengthOptions.length > 1 ? stockLengthOptions : undefined
           })
         }
       }
@@ -1838,10 +1887,13 @@ export async function GET(
 
     // If jambkit mode is requested, return jamb kit items grouped by opening
     if (jambkit) {
-      // Filter to items with includeInJambKit flag (Hardware, Extrusion, Fastener, or linked parts)
+      // Filter to items with includeInJambKit flag (Hardware, Extrusion, Fastener, or linked parts) or preset parts
       const jambKitItems = filteredBomItems.filter(item =>
-        (item.partType === 'Hardware' || item.partType === 'Extrusion' || item.partType === 'Fastener' || item.isLinkedPart === true) &&
-        item.includeInJambKit === true
+        (
+          (item.partType === 'Hardware' || item.partType === 'Extrusion' || item.partType === 'Fastener' || item.isLinkedPart === true) &&
+          item.includeInJambKit === true
+        ) ||
+        item.isPresetPart === true
       )
 
       // Group by opening name

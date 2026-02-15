@@ -1,8 +1,8 @@
 /**
  * Component Size Validation Utility
  *
- * Validates component dimensions against opening constraints (for Finished Openings)
- * and product min/max size constraints.
+ * Validates component dimensions against opening constraints and product min/max
+ * size constraints. Applies to any opening with dimensions (finished or rough).
  */
 
 export interface ValidationResult {
@@ -32,11 +32,11 @@ export interface AutoSizeResult {
 
 /**
  * Validates component dimensions against opening and product constraints.
- * Only applies to Finished Openings (isFinishedOpening = true).
+ * Applies to any opening with constraint dimensions (finishedWidth/Height or roughWidth/Height).
  *
  * @param width - Component width to validate
  * @param height - Component height to validate
- * @param opening - Opening constraints (finished dimensions and existing panel widths)
+ * @param opening - Opening constraints (constraint dimensions and existing panel widths)
  * @param product - Product size constraints (min/max width/height)
  * @returns ValidationResult with valid flag, errors, and warnings
  */

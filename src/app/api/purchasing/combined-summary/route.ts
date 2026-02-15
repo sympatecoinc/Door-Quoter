@@ -115,6 +115,13 @@ async function generateProjectBomItems(projectId: number): Promise<BomItem[]> {
                 }
               }
             }
+          },
+          presetPartInstances: {
+            include: {
+              presetPart: {
+                include: { masterPart: true }
+              }
+            }
           }
         }
       }
@@ -206,6 +213,28 @@ async function generateProjectBomItems(projectId: number): Promise<BomItem[]> {
           const finishCode = await getFinishCode(opening.finishColor)
           if (finishCode) {
             fullPartNumber = `${fullPartNumber}${finishCode}`
+          }
+        }
+
+        // Apply direction suffix for Hardware parts with appendDirectionToPartNumber flag
+        if (bom.partType === 'Hardware' && fullPartNumber && bom.partNumber) {
+          const masterPartForDirection = await prisma.masterPart.findUnique({
+            where: { partNumber: bom.partNumber },
+            select: { appendDirectionToPartNumber: true }
+          })
+          if (masterPartForDirection?.appendDirectionToPartNumber) {
+            const direction = ((panel as any).swingDirection && (panel as any).swingDirection !== 'None')
+              ? (panel as any).swingDirection
+              : (panel as any).slidingDirection
+            if (direction && direction !== 'None') {
+              const directionCode = direction
+                .replace(/-/g, ' ')
+                .split(' ')
+                .filter((word: string) => word.length > 0)
+                .map((word: string) => word.charAt(0).toUpperCase())
+                .join('')
+              fullPartNumber = `${fullPartNumber}-${directionCode}`
+            }
           }
         }
 
@@ -337,6 +366,32 @@ async function generateProjectBomItems(projectId: number): Promise<BomItem[]> {
                       partNumber = `${partNumber}-${stockLength}`
                     }
                   }
+                } else if (standardOption.partNumber) {
+                  // Non-cut-list option: apply direction suffix if applicable
+                  const masterPartForDir = await prisma.masterPart.findUnique({
+                    where: { partNumber: standardOption.partNumber },
+                    select: { appendDirectionToPartNumber: true, addFinishToPartNumber: true }
+                  })
+                  if (masterPartForDir?.addFinishToPartNumber && opening.finishColor) {
+                    const finishCode = await getFinishCode(opening.finishColor)
+                    if (finishCode) {
+                      partNumber = `${partNumber}${finishCode}`
+                    }
+                  }
+                  if (masterPartForDir?.appendDirectionToPartNumber) {
+                    const direction = ((panel as any).swingDirection && (panel as any).swingDirection !== 'None')
+                      ? (panel as any).swingDirection
+                      : (panel as any).slidingDirection
+                    if (direction && direction !== 'None') {
+                      const directionCode = direction
+                        .replace(/-/g, ' ')
+                        .split(' ')
+                        .filter((word: string) => word.length > 0)
+                        .map((word: string) => word.charAt(0).toUpperCase())
+                        .join('')
+                      partNumber = `${partNumber}-${directionCode}`
+                    }
+                  }
                 }
 
                 let optionQuantity = 1
@@ -409,6 +464,32 @@ async function generateProjectBomItems(projectId: number): Promise<BomItem[]> {
                   }
                   if (stockLength) {
                     partNumber = `${partNumber}-${stockLength}`
+                  }
+                }
+              } else if (individualOption.partNumber) {
+                // Non-cut-list option: apply finish code and direction suffix if applicable
+                const masterPartForDir = await prisma.masterPart.findUnique({
+                  where: { partNumber: individualOption.partNumber },
+                  select: { appendDirectionToPartNumber: true, addFinishToPartNumber: true }
+                })
+                if (masterPartForDir?.addFinishToPartNumber && opening.finishColor) {
+                  const finishCode = await getFinishCode(opening.finishColor)
+                  if (finishCode) {
+                    partNumber = `${partNumber}${finishCode}`
+                  }
+                }
+                if (masterPartForDir?.appendDirectionToPartNumber) {
+                  const direction = ((panel as any).swingDirection && (panel as any).swingDirection !== 'None')
+                    ? (panel as any).swingDirection
+                    : (panel as any).slidingDirection
+                  if (direction && direction !== 'None') {
+                    const directionCode = direction
+                      .replace(/-/g, ' ')
+                      .split(' ')
+                      .filter((word: string) => word.length > 0)
+                      .map((word: string) => word.charAt(0).toUpperCase())
+                      .join('')
+                    partNumber = `${partNumber}-${directionCode}`
                   }
                 }
               }
@@ -528,6 +609,22 @@ async function generateProjectBomItems(projectId: number): Promise<BomItem[]> {
                     linkedPartNumber = `${linkedPartNumber}-${linkedStockLength}`
                   }
 
+                  // Apply direction suffix for linked parts with appendDirectionToPartNumber flag
+                  if (linkedPart.masterPart.appendDirectionToPartNumber) {
+                    const direction = ((panel as any).swingDirection && (panel as any).swingDirection !== 'None')
+                      ? (panel as any).swingDirection
+                      : (panel as any).slidingDirection
+                    if (direction && direction !== 'None') {
+                      const directionCode = direction
+                        .replace(/-/g, ' ')
+                        .split(' ')
+                        .filter((word: string) => word.length > 0)
+                        .map((word: string) => word.charAt(0).toUpperCase())
+                        .join('')
+                      linkedPartNumber = `${linkedPartNumber}-${directionCode}`
+                    }
+                  }
+
                   const isLinkedExtrusion = linkedPart.masterPart.partType === 'Extrusion' || linkedPart.masterPart.partType === 'CutStock'
                   bomItems.push({
                     partNumber: linkedPartNumber,
@@ -603,6 +700,32 @@ async function generateProjectBomItems(projectId: number): Promise<BomItem[]> {
                   partNumber = `${partNumber}-${stockLength}`
                 }
               }
+            } else if (standardOption.partNumber) {
+              // Non-cut-list standard option: apply finish code and direction suffix
+              const masterPartForDir = await prisma.masterPart.findUnique({
+                where: { partNumber: standardOption.partNumber },
+                select: { appendDirectionToPartNumber: true, addFinishToPartNumber: true }
+              })
+              if (masterPartForDir?.addFinishToPartNumber && opening.finishColor) {
+                const finishCode = await getFinishCode(opening.finishColor)
+                if (finishCode) {
+                  partNumber = `${partNumber}${finishCode}`
+                }
+              }
+              if (masterPartForDir?.appendDirectionToPartNumber) {
+                const direction = ((panel as any).swingDirection && (panel as any).swingDirection !== 'None')
+                  ? (panel as any).swingDirection
+                  : (panel as any).slidingDirection
+                if (direction && direction !== 'None') {
+                  const directionCode = direction
+                    .replace(/-/g, ' ')
+                    .split(' ')
+                    .filter((word: string) => word.length > 0)
+                    .map((word: string) => word.charAt(0).toUpperCase())
+                    .join('')
+                  partNumber = `${partNumber}-${directionCode}`
+                }
+              }
             }
 
             let optionQuantity = 1
@@ -629,6 +752,114 @@ async function generateProjectBomItems(projectId: number): Promise<BomItem[]> {
             })
           }
         }
+      }
+    }
+
+    // Process preset part instances for this opening (opening-level parts like starter channels, trim, etc.)
+    if (opening.presetPartInstances && (opening as any).presetPartInstances.length > 0) {
+      for (const instance of (opening as any).presetPartInstances) {
+        const presetPart = instance.presetPart
+        if (!presetPart?.masterPart) continue
+
+        const masterPart = presetPart.masterPart
+        if (!masterPart.baseName) continue
+
+        const partUnit = masterPart.unit || (masterPart.partType === 'Extrusion' ? 'IN' : 'EA')
+
+        let stockLength: number | null = null
+        let stockLengthOptions: number[] = []
+        let cutLength: number | null = null
+        let isMillFinish = false
+        let displayPartNumber = masterPart.partNumber || `PRESET-${masterPart.baseName.replace(/\s+/g, '-').toUpperCase()}`
+        let basePartNumber = displayPartNumber
+
+        if (masterPart.partType === 'Extrusion' && masterPart.partNumber) {
+          // For extrusions with formula, the formula produces the cut length
+          if (presetPart.formula && instance.calculatedQuantity) {
+            cutLength = instance.calculatedQuantity
+          }
+
+          const stockInfo = await findStockLength(
+            masterPart.partNumber,
+            { formula: presetPart.formula, partType: 'Extrusion' },
+            {
+              width: opening.finishedWidth || opening.roughWidth || 0,
+              height: opening.finishedHeight || opening.roughHeight || 0,
+              finishedWidth: opening.finishedWidth || opening.roughWidth || 0,
+              finishedHeight: opening.finishedHeight || opening.roughHeight || 0
+            }
+          )
+          stockLength = stockInfo.stockLength
+          stockLengthOptions = stockInfo.stockLengthOptions
+          isMillFinish = stockInfo.isMillFinish
+
+          // Build full part number: base + finish code + stock length
+          if (opening.finishColor && masterPart.addFinishToPartNumber && !isMillFinish) {
+            const finishCode = await getFinishCode(opening.finishColor)
+            displayPartNumber = `${displayPartNumber}${finishCode}`
+            basePartNumber = displayPartNumber
+          }
+          if (stockLength) {
+            displayPartNumber = `${displayPartNumber}-${stockLength}`
+          }
+        } else if (masterPart.partType === 'CutStock' && masterPart.partNumber) {
+          // CutStock preset parts
+          if (presetPart.formula && instance.calculatedQuantity) {
+            cutLength = instance.calculatedQuantity
+          }
+
+          const stockInfo = await findStockLength(
+            masterPart.partNumber,
+            { formula: presetPart.formula, partType: 'CutStock' },
+            {
+              width: opening.finishedWidth || opening.roughWidth || 0,
+              height: opening.finishedHeight || opening.roughHeight || 0
+            }
+          )
+          stockLength = stockInfo.stockLength
+          stockLengthOptions = stockInfo.stockLengthOptions
+
+          if (stockLength) {
+            displayPartNumber = `${displayPartNumber}-${stockLength}`
+          }
+        } else {
+          // Non-extrusion: apply finish code if needed
+          if (masterPart.addFinishToPartNumber && opening.finishColor && masterPart.partNumber) {
+            const finishCode = await getFinishCode(opening.finishColor)
+            if (finishCode) {
+              displayPartNumber = `${displayPartNumber}${finishCode}`
+            }
+          }
+        }
+
+        // Determine quantity (matching bom/route.ts logic)
+        let quantity: number
+        if (presetPart.formula) {
+          if (masterPart.partType === 'Extrusion') {
+            quantity = presetPart.quantity || 1
+          } else {
+            quantity = instance.calculatedQuantity || presetPart.quantity || 1
+          }
+        } else {
+          quantity = presetPart.quantity || instance.calculatedQuantity || 1
+        }
+
+        bomItems.push({
+          partNumber: displayPartNumber,
+          partName: masterPart.baseName,
+          partType: masterPart.partType || 'Hardware',
+          quantity: quantity,
+          unit: partUnit,
+          stockLength: stockLength,
+          cutLength: cutLength,
+          calculatedLength: null,
+          glassWidth: null,
+          glassHeight: null,
+          glassArea: null,
+          isPresetPart: true,
+          basePartNumber: masterPart.partType === 'Extrusion' ? basePartNumber : undefined,
+          stockLengthOptions: stockLengthOptions.length > 1 ? stockLengthOptions : undefined
+        })
       }
     }
   }

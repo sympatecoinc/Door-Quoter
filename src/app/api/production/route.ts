@@ -150,7 +150,8 @@ export async function GET(request: NextRequest) {
       where: {
         status: {
           in: productionStatuses
-        }
+        },
+        isCurrentVersion: true
       },
       include: {
         customer: {

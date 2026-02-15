@@ -36,6 +36,17 @@ export async function GET(request: NextRequest) {
                   include: {
                     variants: {
                       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+                    },
+                    linkedParts: {
+                      select: {
+                        id: true,
+                        masterPartId: true,
+                        variantId: true,
+                        quantity: true,
+                        masterPart: {
+                          select: { id: true, partNumber: true, baseName: true }
+                        }
+                      }
                     }
                   }
                 }
@@ -49,7 +60,7 @@ export async function GET(request: NextRequest) {
             displayOrder: 'asc'
           }
         },
-        pairedProduct: {
+        frameConfig: {
           select: {
             id: true,
             name: true,
@@ -89,9 +100,7 @@ export async function POST(request: NextRequest) {
       elevationImageData,
       planImageData,
       elevationFileName,
-      planFileName,
-      widthTolerance,
-      heightTolerance
+      planFileName
     } = await request.json()
 
     if (!name) {
@@ -126,17 +135,6 @@ export async function POST(request: NextRequest) {
       type,
       productType,
       productCategory
-    }
-
-    // Add tolerance fields if provided (only for eligible product types)
-    const toleranceEligibleTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL']
-    if (toleranceEligibleTypes.includes(productType)) {
-      if (widthTolerance !== undefined && widthTolerance !== null && widthTolerance !== '') {
-        productData.widthTolerance = parseFloat(widthTolerance)
-      }
-      if (heightTolerance !== undefined && heightTolerance !== null && heightTolerance !== '') {
-        productData.heightTolerance = parseFloat(heightTolerance)
-      }
     }
 
     const product = await prisma.product.create({

@@ -746,7 +746,9 @@ export async function POST(
         },
         presetPartInstances: {
           include: {
-            presetPart: true
+            presetPart: {
+              include: { masterPart: true }
+            }
           }
         }
       }
@@ -830,6 +832,9 @@ export async function POST(
       totalPrice: 0
     }
 
+    // Get extrusion costing method from pricing mode (fallback to project's setting for backward compatibility, then to FULL_STOCK)
+    const extrusionCostingMethod = opening.project.pricingMode?.extrusionCostingMethod || opening.project.extrusionCostingMethod || 'FULL_STOCK'
+
     // Calculate price for each panel's component
     for (const panel of opening.panels) {
       if (!panel.componentInstance) continue
@@ -862,10 +867,6 @@ export async function POST(
         totalGlassCost: 0,
         totalComponentCost: 0
       }
-
-      // Calculate BOM costs using proper pricing rules
-      // Get extrusion costing method from pricing mode (fallback to project's setting for backward compatibility, then to FULL_STOCK)
-      const extrusionCostingMethod = opening.project.pricingMode?.extrusionCostingMethod || opening.project.extrusionCostingMethod || 'FULL_STOCK'
 
       // Parse selections to determine which option-linked BOMs should be included
       // and what quantities to use for RANGE mode options
@@ -933,7 +934,7 @@ export async function POST(
         // Track costs by category for accurate markup calculation
         if (breakdown.partType === 'Extrusion' || breakdown.partType === 'CutStock') {
           priceBreakdown.totalExtrusionCost += cost
-        } else if (breakdown.partType === 'Hardware') {
+        } else if (breakdown.partType === 'Hardware' || breakdown.partType === 'Fastener') {
           priceBreakdown.totalHardwareCost += cost
         } else if (breakdown.partType === 'Glass') {
           priceBreakdown.totalGlassCost += cost
@@ -1023,6 +1024,10 @@ export async function POST(
                 // Track in correct category based on part type
                 if (priceResult.isExtrusion) {
                   priceBreakdown.totalExtrusionCost += priceResult.totalPrice
+                  // Track hybrid remaining cost for extrusion options
+                  if (priceResult.breakdown?.hybridBreakdown?.remainingPortionCost) {
+                    priceBreakdown.totalHybridRemainingCost += priceResult.breakdown.hybridBreakdown.remainingPortionCost
+                  }
                 } else {
                   priceBreakdown.totalHardwareCost += priceResult.totalPrice
                 }
@@ -1090,6 +1095,10 @@ export async function POST(
                 // Track in correct category based on part type
                 if (priceResult.isExtrusion) {
                   priceBreakdown.totalExtrusionCost += optionPrice
+                  // Track hybrid remaining cost for extrusion options
+                  if (priceResult.breakdown?.hybridBreakdown?.remainingPortionCost) {
+                    priceBreakdown.totalHybridRemainingCost += priceResult.breakdown.hybridBreakdown.remainingPortionCost
+                  }
                 } else {
                   priceBreakdown.totalHardwareCost += optionPrice
                 }
@@ -1138,6 +1147,10 @@ export async function POST(
                 priceBreakdown.totalStandardOptionCost += standardPriceResult.totalPrice
                 if (priceResult.isExtrusion) {
                   priceBreakdown.totalExtrusionCost += optionPrice
+                  // Track hybrid remaining cost for extrusion options
+                  if (priceResult.breakdown?.hybridBreakdown?.remainingPortionCost) {
+                    priceBreakdown.totalHybridRemainingCost += priceResult.breakdown.hybridBreakdown.remainingPortionCost
+                  }
                 } else {
                   priceBreakdown.totalHardwareCost += optionPrice
                 }
@@ -1193,6 +1206,10 @@ export async function POST(
             // Track in correct category based on part type
             if (priceResult.isExtrusion) {
               priceBreakdown.totalExtrusionCost += priceResult.totalPrice
+              // Track hybrid remaining cost for extrusion options
+              if (priceResult.breakdown?.hybridBreakdown?.remainingPortionCost) {
+                priceBreakdown.totalHybridRemainingCost += priceResult.breakdown.hybridBreakdown.remainingPortionCost
+              }
             } else {
               priceBreakdown.totalHardwareCost += priceResult.totalPrice
             }
@@ -1328,6 +1345,71 @@ export async function POST(
       componentBreakdown.totalComponentCost = componentCost
       priceBreakdown.components.push(componentBreakdown)
       priceBreakdown.totalComponentCost += componentCost
+    }
+
+    // Calculate preset part instance costs (opening-level parts like starter channels)
+    if (opening.presetPartInstances && opening.presetPartInstances.length > 0) {
+      for (const instance of opening.presetPartInstances) {
+        const presetPart = instance.presetPart
+        const masterPart = (presetPart as any).masterPart
+        if (!masterPart) continue
+
+        const partType = masterPart.partType || 'Hardware'
+        const partNumber = masterPart.partNumber
+
+        let quantity: number
+        let formulaForPricing: string | null = null
+
+        if (presetPart.formula && partType === 'Extrusion') {
+          quantity = presetPart.quantity || 1
+          formulaForPricing = String(instance.calculatedQuantity || 0)
+        } else {
+          quantity = instance.calculatedQuantity || presetPart.quantity || 1
+          formulaForPricing = presetPart.formula
+        }
+
+        const bomForPricing = {
+          partNumber: partNumber,
+          partName: masterPart.baseName || partNumber,
+          partType: partType,
+          quantity: quantity,
+          formula: formulaForPricing,
+          cost: 0
+        }
+
+        const effectiveWidth = opening.finishedWidth || opening.roughWidth || 0
+        const effectiveHeight = opening.finishedHeight || opening.roughHeight || 0
+
+        const { cost, breakdown } = await calculateBOMItemPrice(
+          bomForPricing,
+          effectiveWidth,
+          effectiveHeight,
+          extrusionCostingMethod,
+          opening.project.excludedPartNumbers || [],
+          opening.finishColor,
+          globalMaterialPricePerLb
+        )
+
+        priceBreakdown.totalComponentCost += cost
+
+        // Track hybrid remaining cost
+        if ((breakdown as any).hybridBreakdown?.remainingPortionCost) {
+          priceBreakdown.totalHybridRemainingCost += (breakdown as any).hybridBreakdown.remainingPortionCost
+        }
+
+        // Categorize by part type
+        if (partType === 'Extrusion' || partType === 'CutStock') {
+          priceBreakdown.totalExtrusionCost += cost
+        } else if (partType === 'Hardware' || partType === 'Fastener') {
+          priceBreakdown.totalHardwareCost += cost
+        } else if (partType === 'Glass') {
+          priceBreakdown.totalGlassCost += cost
+        } else if (partType === 'Packaging') {
+          priceBreakdown.totalPackagingCost += cost
+        } else {
+          priceBreakdown.totalOtherCost += cost
+        }
+      }
     }
 
     priceBreakdown.totalPrice = Math.round(priceBreakdown.totalComponentCost * 100) / 100

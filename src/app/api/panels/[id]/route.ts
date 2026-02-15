@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { validateComponentSize } from '@/lib/component-validation'
 import { isProjectLocked, createLockedError } from '@/lib/project-status'
-import { recalculateTolerancesAfterDeletion } from '@/lib/tolerance-utils'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -53,7 +52,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json(createLockedError(panelForLockCheck.opening.project.status), { status: 403 })
     }
 
-    // Validate for Finished Openings
+    // Validate against opening dimensions
     if (!skipValidation) {
       const currentPanel = await prisma.panel.findUnique({
         where: { id: panelId },
@@ -85,50 +84,53 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
       })
 
-      if (currentPanel && currentPanel.opening.isFinishedOpening &&
-          currentPanel.opening.finishedWidth && currentPanel.opening.finishedHeight) {
+      if (currentPanel) {
+        const constraintWidth = currentPanel.opening.finishedWidth || currentPanel.opening.roughWidth
+        const constraintHeight = currentPanel.opening.finishedHeight || currentPanel.opening.roughHeight
 
-        const product = currentPanel.componentInstance?.product
+        if (constraintWidth && constraintHeight) {
+          const product = currentPanel.componentInstance?.product
 
-        // Skip validation for CORNER_90 and FRAME products
-        if (!product || (product.productType !== 'CORNER_90' && product.productType !== 'FRAME')) {
-          const parsedWidth = parseFloat(width)
-          const parsedHeight = parseFloat(height)
+          // Skip validation for CORNER_90 and FRAME products
+          if (!product || (product.productType !== 'CORNER_90' && product.productType !== 'FRAME')) {
+            const parsedWidth = parseFloat(width)
+            const parsedHeight = parseFloat(height)
 
-          // Skip validation if dimensions haven't actually changed
-          const widthChanged = Math.abs(parsedWidth - currentPanel.width) > 0.001
-          const heightChanged = Math.abs(parsedHeight - currentPanel.height) > 0.001
+            // Skip validation if dimensions haven't actually changed
+            const widthChanged = Math.abs(parsedWidth - currentPanel.width) > 0.001
+            const heightChanged = Math.abs(parsedHeight - currentPanel.height) > 0.001
 
-          if (widthChanged || heightChanged) {
-            // Exclude current panel AND CORNER_90/FRAME panels from width calculation
-            const otherPanelWidths = currentPanel.opening.panels
-              .filter(p => {
-                if (p.id === panelId) return false
-                const pType = p.componentInstance?.product?.productType
-                if (pType === 'CORNER_90' || pType === 'FRAME') return false
-                return true
-              })
-              .map(p => p.width)
+            if (widthChanged || heightChanged) {
+              // Exclude current panel AND CORNER_90/FRAME panels from width calculation
+              const otherPanelWidths = currentPanel.opening.panels
+                .filter(p => {
+                  if (p.id === panelId) return false
+                  const pType = p.componentInstance?.product?.productType
+                  if (pType === 'CORNER_90' || pType === 'FRAME') return false
+                  return true
+                })
+                .map(p => p.width)
 
-            const validationResult = validateComponentSize(
-              parsedWidth,
-              parsedHeight,
-              {
-                finishedWidth: currentPanel.opening.finishedWidth,
-                finishedHeight: currentPanel.opening.finishedHeight,
-                existingPanelWidths: otherPanelWidths
-              },
-              product || {}
-            )
-
-            if (!validationResult.valid) {
-              return NextResponse.json(
+              const validationResult = validateComponentSize(
+                parsedWidth,
+                parsedHeight,
                 {
-                  error: 'Component size validation failed',
-                  validationErrors: validationResult.errors
+                  finishedWidth: constraintWidth,
+                  finishedHeight: constraintHeight,
+                  existingPanelWidths: otherPanelWidths
                 },
-                { status: 400 }
+                product || {}
               )
+
+              if (!validationResult.valid) {
+                return NextResponse.json(
+                  {
+                    error: 'Component size validation failed',
+                    validationErrors: validationResult.errors
+                  },
+                  { status: 400 }
+                )
+              }
             }
           }
         }
@@ -196,7 +198,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (updateData.cornerDirection !== undefined) fieldsToUpdate.cornerDirection = updateData.cornerDirection
     if (updateData.displayOrder !== undefined) fieldsToUpdate.displayOrder = parseInt(updateData.displayOrder)
 
-    // Validate for Finished Openings if width or height is being updated
+    // Validate against opening dimensions if width or height is being updated
     const skipValidation = updateData.skipValidation || false
     if (!skipValidation && (updateData.width !== undefined || updateData.height !== undefined)) {
       const currentPanel = await prisma.panel.findUnique({
@@ -229,51 +231,54 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         }
       })
 
-      if (currentPanel && currentPanel.opening.isFinishedOpening &&
-          currentPanel.opening.finishedWidth && currentPanel.opening.finishedHeight) {
+      if (currentPanel) {
+        const constraintWidth = currentPanel.opening.finishedWidth || currentPanel.opening.roughWidth
+        const constraintHeight = currentPanel.opening.finishedHeight || currentPanel.opening.roughHeight
 
-        const product = currentPanel.componentInstance?.product
+        if (constraintWidth && constraintHeight) {
+          const product = currentPanel.componentInstance?.product
 
-        // Skip validation for CORNER_90 and FRAME products
-        if (!product || (product.productType !== 'CORNER_90' && product.productType !== 'FRAME')) {
-          // Use new value if provided, otherwise use current value
-          const parsedWidth = updateData.width !== undefined ? parseFloat(updateData.width) : currentPanel.width
-          const parsedHeight = updateData.height !== undefined ? parseFloat(updateData.height) : currentPanel.height
+          // Skip validation for CORNER_90 and FRAME products
+          if (!product || (product.productType !== 'CORNER_90' && product.productType !== 'FRAME')) {
+            // Use new value if provided, otherwise use current value
+            const parsedWidth = updateData.width !== undefined ? parseFloat(updateData.width) : currentPanel.width
+            const parsedHeight = updateData.height !== undefined ? parseFloat(updateData.height) : currentPanel.height
 
-          // Skip validation if dimensions haven't actually changed
-          const widthChanged = updateData.width !== undefined && Math.abs(parsedWidth - currentPanel.width) > 0.001
-          const heightChanged = updateData.height !== undefined && Math.abs(parsedHeight - currentPanel.height) > 0.001
+            // Skip validation if dimensions haven't actually changed
+            const widthChanged = updateData.width !== undefined && Math.abs(parsedWidth - currentPanel.width) > 0.001
+            const heightChanged = updateData.height !== undefined && Math.abs(parsedHeight - currentPanel.height) > 0.001
 
-          if (widthChanged || heightChanged) {
-            // Exclude current panel AND CORNER_90/FRAME panels from width calculation
-            const otherPanelWidths = currentPanel.opening.panels
-              .filter(p => {
-                if (p.id === panelId) return false
-                const pType = p.componentInstance?.product?.productType
-                if (pType === 'CORNER_90' || pType === 'FRAME') return false
-                return true
-              })
-              .map(p => p.width)
+            if (widthChanged || heightChanged) {
+              // Exclude current panel AND CORNER_90/FRAME panels from width calculation
+              const otherPanelWidths = currentPanel.opening.panels
+                .filter(p => {
+                  if (p.id === panelId) return false
+                  const pType = p.componentInstance?.product?.productType
+                  if (pType === 'CORNER_90' || pType === 'FRAME') return false
+                  return true
+                })
+                .map(p => p.width)
 
-            const validationResult = validateComponentSize(
-              parsedWidth,
-              parsedHeight,
-              {
-                finishedWidth: currentPanel.opening.finishedWidth,
-                finishedHeight: currentPanel.opening.finishedHeight,
-                existingPanelWidths: otherPanelWidths
-              },
-              product || {}
-            )
-
-            if (!validationResult.valid) {
-              return NextResponse.json(
+              const validationResult = validateComponentSize(
+                parsedWidth,
+                parsedHeight,
                 {
-                  error: 'Component size validation failed',
-                  validationErrors: validationResult.errors
+                  finishedWidth: constraintWidth,
+                  finishedHeight: constraintHeight,
+                  existingPanelWidths: otherPanelWidths
                 },
-                { status: 400 }
+                product || {}
               )
+
+              if (!validationResult.valid) {
+                return NextResponse.json(
+                  {
+                    error: 'Component size validation failed',
+                    validationErrors: validationResult.errors
+                  },
+                  { status: 400 }
+                )
+              }
             }
           }
         }
@@ -332,31 +337,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json(createLockedError(panel.opening.project.status), { status: 403 })
     }
 
-    const opening = panel.opening
-    const wasToleranceProduct = panel.componentInstance &&
-      opening.toleranceProductId === panel.componentInstance.productId
-
     // Delete the panel (this will cascade delete the componentInstance due to the schema)
     await prisma.panel.delete({
       where: { id: panelId }
     })
-
-    // Recalculate tolerances if this panel had the tolerance-setting product
-    if (wasToleranceProduct && opening.isFinishedOpening) {
-      const toleranceUpdate = await recalculateTolerancesAfterDeletion(opening.id)
-      if (toleranceUpdate) {
-        await prisma.opening.update({
-          where: { id: opening.id },
-          data: {
-            widthToleranceTotal: toleranceUpdate.widthToleranceTotal,
-            heightToleranceTotal: toleranceUpdate.heightToleranceTotal,
-            toleranceProductId: toleranceUpdate.toleranceProductId,
-            finishedWidth: toleranceUpdate.finishedWidth,
-            finishedHeight: toleranceUpdate.finishedHeight
-          }
-        })
-      }
-    }
 
     return NextResponse.json({ message: 'Panel deleted successfully' })
   } catch (error) {

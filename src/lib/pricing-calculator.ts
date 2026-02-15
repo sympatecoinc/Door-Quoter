@@ -148,10 +148,11 @@ export async function createPricingContext(
       }
     }
 
-    // Collect part numbers from preset part instances
+    // Collect part numbers from preset part instances (partNumber is on masterPart, not presetPart)
     for (const instance of opening.presetPartInstances || []) {
-      if (instance.presetPart?.partNumber) {
-        partNumbers.add(instance.presetPart.partNumber)
+      const pn = instance.presetPart?.masterPart?.partNumber || instance.presetPart?.partNumber
+      if (pn) {
+        partNumbers.add(pn)
       }
     }
   }
@@ -234,6 +235,10 @@ export async function createPricingContext(
 export interface OpeningWithIncludes {
   id: number
   finishColor: string | null
+  finishedWidth?: number | null
+  finishedHeight?: number | null
+  roughWidth?: number | null
+  roughHeight?: number | null
   panels: PanelWithIncludes[]
   presetPartInstances?: PresetPartInstanceWithIncludes[]
   project: {
@@ -250,12 +255,23 @@ interface PresetPartInstanceWithIncludes {
   calculatedQuantity: number
   calculatedCost: number
   presetPart: {
-    partType: string
-    partName: string
-    partNumber: string | null
-    unit: string | null
-    stockLength: number | null
-    isMilled: boolean
+    partType?: string
+    partName?: string
+    partNumber?: string | null
+    unit?: string | null
+    stockLength?: number | null
+    isMilled?: boolean
+    formula?: string | null
+    quantity?: number | null
+    masterPart?: {
+      partType: string
+      partNumber: string
+      baseName?: string | null
+      cost?: number | null
+      salePrice?: number | null
+      [key: string]: any
+    } | null
+    [key: string]: any
   }
 }
 
@@ -892,18 +908,10 @@ export function calculateOpeningCosts(
       try { includedOptions = JSON.parse(component.includedOptions) } catch (e) { /* continue */ }
     }
 
-    // Build set of selected option IDs for BOM filtering
-    const selectedOptionIds = new Set<number>()
-    for (const [, optionId] of Object.entries(selections)) {
-      if (optionId && typeof optionId === 'string' && !optionId.includes('_qty')) {
-        selectedOptionIds.add(parseInt(optionId))
-      }
-    }
-
     // Calculate BOM costs
     for (const bom of product.productBOMs || []) {
-      // Skip option-linked BOMs if option not selected
-      if (bom.optionId && !selectedOptionIds.has(bom.optionId)) continue
+      // Skip ALL option-linked BOM items - they are handled in the options section
+      if (bom.optionId) continue
       // Skip null-option BOMs if another option in same category is selected
       if (!bom.optionId && bom.option === null) {
         const category = product.productSubOptions?.find((pso: any) =>
@@ -1041,6 +1049,10 @@ export function calculateOpeningCosts(
 
           if (priceResult.isExtrusion) {
             costBreakdown.totalExtrusionCost += optionPrice
+            // Track hybrid remaining cost for extrusion options
+            if (priceResult.breakdown?.hybridBreakdown?.remainingPortionCost) {
+              costBreakdown.totalHybridRemainingCost += priceResult.breakdown.hybridBreakdown.remainingPortionCost
+            }
           } else {
             costBreakdown.totalHardwareCost += optionPrice
           }
@@ -1084,6 +1096,10 @@ export function calculateOpeningCosts(
 
           if (priceResult.isExtrusion) {
             costBreakdown.totalExtrusionCost += optionPrice
+            // Track hybrid remaining cost for extrusion options
+            if (priceResult.breakdown?.hybridBreakdown?.remainingPortionCost) {
+              costBreakdown.totalHybridRemainingCost += priceResult.breakdown.hybridBreakdown.remainingPortionCost
+            }
           } else {
             costBreakdown.totalHardwareCost += optionPrice
           }
@@ -1134,6 +1150,10 @@ export function calculateOpeningCosts(
 
       if (priceResult.isExtrusion) {
         costBreakdown.totalExtrusionCost += priceResult.totalPrice
+        // Track hybrid remaining cost for extrusion options
+        if (priceResult.breakdown?.hybridBreakdown?.remainingPortionCost) {
+          costBreakdown.totalHybridRemainingCost += priceResult.breakdown.hybridBreakdown.remainingPortionCost
+        }
       } else {
         costBreakdown.totalHardwareCost += priceResult.totalPrice
       }
@@ -1177,28 +1197,73 @@ export function calculateOpeningCosts(
   }
 
   // Calculate preset part instance costs
+  // presetPart fields (formula, quantity) are on OpeningPresetPart
+  // partType, partNumber, partName are on the related masterPart
   if (opening.presetPartInstances && opening.presetPartInstances.length > 0) {
     for (const instance of opening.presetPartInstances) {
       const part = instance.presetPart
-      const quantity = instance.calculatedQuantity
+      const mp = part.masterPart
+      if (!mp) continue
 
-      // Try to find master part by part number
-      let unitCost = 0
-      if (part.partNumber) {
-        const masterPart = context.masterParts.get(part.partNumber)
-        if (masterPart) {
-          unitCost = masterPart.cost ?? masterPart.salePrice ?? 0
+      const partType = mp.partType || part.partType
+      const partNumber = mp.partNumber || part.partNumber
+      const partName = mp.baseName || mp.partNumber || part.partName || ''
+      let totalPartCost = 0
+
+      if (partType === 'Extrusion' && part.formula && partNumber) {
+        // For extrusions with formula: use calculateBOMItemPrice with proper cut length
+        // calculatedQuantity = cut length (from preset formula), presetPart.quantity = piece count
+        const quantity = part.quantity || 1
+        const formulaForPricing = String(instance.calculatedQuantity || 0)
+
+        const bomForPricing = {
+          partNumber: partNumber,
+          partName: partName,
+          partType: 'Extrusion',
+          quantity: quantity,
+          formula: formulaForPricing,
+          cost: 0
         }
+
+        const effectiveWidth = opening.finishedWidth || opening.roughWidth || 0
+        const effectiveHeight = opening.finishedHeight || opening.roughHeight || 0
+
+        const { cost, breakdown } = calculateBOMItemPrice(
+          bomForPricing,
+          effectiveWidth,
+          effectiveHeight,
+          extrusionCostingMethod,
+          excludedPartNumbers,
+          opening.finishColor,
+          context
+        )
+        totalPartCost = Math.round(cost * 100) / 100
+
+        // Track hybrid remaining cost for preset extrusions
+        if (breakdown.hybridBreakdown?.remainingPortionCost) {
+          costBreakdown.totalHybridRemainingCost += breakdown.hybridBreakdown.remainingPortionCost
+        }
+      } else {
+        // Non-extrusion: use simple cost * quantity
+        const quantity = instance.calculatedQuantity
+        let unitCost = 0
+        if (partNumber) {
+          const masterPart = context.masterParts.get(partNumber)
+          if (masterPart) {
+            unitCost = masterPart.cost ?? masterPart.salePrice ?? 0
+          }
+        }
+        totalPartCost = Math.round(unitCost * quantity * 100) / 100
       }
 
-      const totalPartCost = Math.round(unitCost * quantity * 100) / 100
-
       // Categorize by part type
-      switch (part.partType) {
+      switch (partType) {
         case 'Extrusion':
+        case 'CutStock':
           costBreakdown.totalExtrusionCost += totalPartCost
           break
         case 'Hardware':
+        case 'Fastener':
           costBreakdown.totalHardwareCost += totalPartCost
           break
         case 'Glass':

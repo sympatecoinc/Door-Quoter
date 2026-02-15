@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate component size for Finished Openings
+    // Validate component size against opening dimensions
     if (!skipValidation) {
       const opening = await prisma.opening.findUnique({
         where: { id: parseInt(openingId) },
@@ -100,7 +100,10 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      if (opening?.isFinishedOpening && opening.finishedWidth && opening.finishedHeight) {
+      const constraintWidth = opening?.finishedWidth || opening?.roughWidth
+      const constraintHeight = opening?.finishedHeight || opening?.roughHeight
+
+      if (constraintWidth && constraintHeight) {
         // Get product constraints if productId is provided
         let productConstraints: { minWidth?: number | null, maxWidth?: number | null, minHeight?: number | null, maxHeight?: number | null } = {}
         let skipProductValidation = false
@@ -145,8 +148,8 @@ export async function POST(request: NextRequest) {
             totalNewWidth,
             parsedHeight,
             {
-              finishedWidth: opening.finishedWidth,
-              finishedHeight: opening.finishedHeight,
+              finishedWidth: constraintWidth,
+              finishedHeight: constraintHeight,
               existingPanelWidths: existingWidths
             },
             productConstraints
@@ -203,20 +206,20 @@ export async function POST(request: NextRequest) {
       panels.push(panel)
     }
 
-    // Check if the product has a paired product and create paired panels automatically
-    // Only for primary panels (not when parentPanelId is set, which means this IS a paired panel)
+    // Check if the product has a frame config and create frame panels automatically
+    // Only for primary panels (not when parentPanelId is set, which means this IS a frame panel)
     if (productId && !parentPanelId) {
-      const productWithPaired = await prisma.product.findUnique({
+      const productWithFrame = await prisma.product.findUnique({
         where: { id: parseInt(productId) },
-        include: { pairedProduct: true }
+        include: { frameConfig: true }
       })
 
-      // Only create paired panels if:
-      // 1. The product has a paired product configured
-      // 2. The paired product is NOT the same as the current product (prevent infinite recursion)
-      if (productWithPaired?.pairedProduct &&
-          productWithPaired.pairedProduct.id !== productWithPaired.id) {
-        // Fetch the opening to get OPENING dimensions for paired panels
+      // Only create frame panels if:
+      // 1. The product has a frame config configured
+      // 2. The frame product is NOT the same as the current product (prevent infinite recursion)
+      if (productWithFrame?.frameConfig &&
+          productWithFrame.frameConfig.id !== productWithFrame.id) {
+        // Fetch the opening to get OPENING dimensions for frame panels
         const opening = await prisma.opening.findUnique({
           where: { id: parseInt(openingId) },
           select: {
@@ -230,22 +233,22 @@ export async function POST(request: NextRequest) {
 
         if (opening) {
           // Use finished dimensions if available, otherwise rough dimensions
-          const pairedWidth = opening.finishedWidth ?? opening.roughWidth ?? 0
-          const pairedHeight = opening.finishedHeight ?? opening.roughHeight ?? 0
+          const frameWidth = opening.finishedWidth ?? opening.roughWidth ?? 0
+          const frameHeight = opening.finishedHeight ?? opening.roughHeight ?? 0
 
-          // Store the primary panels count BEFORE adding paired panels
+          // Store the primary panels count BEFORE adding frame panels
           const primaryPanelCount = panels.length
 
-          // Create a paired panel for each primary panel created
+          // Create a frame panel for each primary panel created
           // Use index-based loop to avoid issues with array mutation
           for (let i = 0; i < primaryPanelCount; i++) {
             const primaryPanel = panels[i]
-            const pairedPanel = await prisma.panel.create({
+            const framePanel = await prisma.panel.create({
               data: {
                 openingId: parseInt(openingId),
                 type: 'Component',
-                width: pairedWidth,
-                height: pairedHeight,
+                width: frameWidth,
+                height: frameHeight,
                 glassType: 'N/A',  // Frames don't have glass
                 locking: 'N/A',
                 swingDirection: 'None',
@@ -264,11 +267,11 @@ export async function POST(request: NextRequest) {
               }
             })
 
-            // Add pairedProductId to the panel response for the frontend to create component instance
+            // Add frameConfigId to the panel response for the frontend to create component instance
             panels.push({
-              ...pairedPanel,
-              _pairedProductId: productWithPaired.pairedProduct.id,
-              _isPairedPanel: true
+              ...framePanel,
+              _frameConfigId: productWithFrame.frameConfig.id,
+              _isFramePanel: true
             })
           }
         }

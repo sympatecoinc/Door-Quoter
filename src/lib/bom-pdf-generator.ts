@@ -203,13 +203,17 @@ export async function createBomPDF(data: BomPdfData): Promise<Buffer> {
 
     const headerText = continued
       ? `${component.productName} (continued)`
-      : `${component.productName} - ${component.width}" × ${component.height}"`
+      : (component.width === 0 && component.height === 0)
+        ? component.productName
+        : `${component.productName} - ${component.width}" × ${component.height}"`
     pdf.text(headerText, MARGIN + 3, yPos + 6)
 
     // Right side: finish, glass, quantity
     const rightInfo = continued
       ? ''
-      : `${component.finishColor} | ${component.glassType || 'No Glass'} | Qty: ${component.quantity}`
+      : (component.width === 0 && component.height === 0)
+        ? `Qty: ${component.quantity}`
+        : `${component.finishColor} | ${component.glassType || 'No Glass'} | Qty: ${component.quantity}`
     if (rightInfo) {
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)

@@ -61,6 +61,18 @@ function calculateRequiredPartLength(bom: any, variables: any): number {
   return bom.quantity || 0
 }
 
+// Helper function to get finish code from database (matching bom/route.ts)
+async function getFinishCode(finishType: string): Promise<string> {
+  try {
+    const finish = await prisma.extrusionFinishPricing.findUnique({
+      where: { finishType }
+    })
+    return finish?.finishCode ? `-${finish.finishCode}` : ''
+  } catch (error) {
+    return ''
+  }
+}
+
 // Calculate extrusion price per piece using weight-based formula
 function calculateExtrusionPricePerPiece(
   weightPerFoot: number | null | undefined,
@@ -87,7 +99,8 @@ async function calculateOptionPrice(
   excludedPartNumbers: string[],
   finishColor: string | null,
   globalMaterialPricePerLb: number,
-  selectedVariantId?: number | null
+  selectedVariantId?: number | null,
+  panelDirection?: string | null
 ): Promise<{ unitPrice: number; totalPrice: number; isExtrusion: boolean; breakdown?: any; linkedPartsCost?: number; linkedPartsBreakdown?: any[] }> {
   let baseUnitPrice = 0
   let baseTotalPrice = 0
@@ -124,7 +137,8 @@ async function calculateOptionPrice(
           extrusionCostingMethod,
           excludedPartNumbers,
           finishColor,
-          globalMaterialPricePerLb
+          globalMaterialPricePerLb,
+          panelDirection
         )
 
         baseUnitPrice = bomResult.cost / quantity
@@ -191,7 +205,8 @@ async function calculateBOMItemPrice(
   extrusionCostingMethod: string,
   excludedPartNumbers: string[],
   finishColor: string | null,
-  globalMaterialPricePerLb: number
+  globalMaterialPricePerLb: number,
+  panelDirection?: string | null
 ): Promise<{cost: number, breakdown: any}> {
   const variables = {
     width: componentWidth || 0,
@@ -212,7 +227,9 @@ async function calculateBOMItemPrice(
     finishCost: 0,
     finishDetails: '',
     stockLength: 0,
-    cutLength: 0
+    cutLength: 0,
+    bomQuantity: null as number | null,
+    bomUnit: null as string | null
   }
 
   // Method 0: Check for Hardware items with LF unit and formula
@@ -231,6 +248,10 @@ async function calculateBOMItemPrice(
         breakdown.unitCost = lfCheck.cost
         breakdown.totalCost = cost
         breakdown.details = `Hardware (LF): Formula "${bom.formula}" = ${dimensionInches}" = ${linearFeet.toFixed(2)} LF × $${lfCheck.cost}/LF × ${bom.quantity || 1}`
+        // BOM reconciled quantity: ceil(linearFeet * quantity * 1.05) matching roundUpWithOverage
+        breakdown.bomQuantity = Math.ceil(linearFeet * (bom.quantity || 1) * 1.05)
+        breakdown.bomUnit = 'LF'
+        await buildFullPartNumber(breakdown, bom, finishColor, panelDirection)
         return { cost, breakdown }
       }
     } catch (error) {
@@ -289,6 +310,15 @@ async function calculateBOMItemPrice(
       breakdown.totalCost = cost
       breakdown.details = `Formula: ${bom.formula} → ${formulaWithValues} = $${formulaResult.toFixed(2)} (no MasterPart cost found)`
     }
+    // BOM reconciled quantity for formula-based parts with IN/LF units
+    if (masterPartUnit === 'IN') {
+      breakdown.bomQuantity = Math.ceil(formulaResult * quantity * 1.05)
+      breakdown.bomUnit = 'IN'
+    } else if (masterPartUnit === 'LF') {
+      breakdown.bomQuantity = Math.ceil((formulaResult / 12) * quantity * 1.05)
+      breakdown.bomUnit = 'LF'
+    }
+    await buildFullPartNumber(breakdown, bom, finishColor, panelDirection)
     return { cost, breakdown }
   }
 
@@ -311,6 +341,7 @@ async function calculateBOMItemPrice(
           breakdown.unitCost = masterPart.cost
           breakdown.totalCost = cost
           breakdown.details = `Hardware cost: $${masterPart.cost} × ${bom.quantity || 1}`
+          await buildFullPartNumber(breakdown, bom, finishColor, panelDirection)
           return { cost, breakdown }
         }
 
@@ -365,6 +396,7 @@ async function calculateBOMItemPrice(
 
               breakdown.unitCost = cost / (bom.quantity || 1)
               breakdown.totalCost = cost
+              await buildFullPartNumber(breakdown, bom, finishColor, panelDirection)
               return { cost, breakdown }
             }
           }
@@ -434,6 +466,7 @@ async function calculateBOMItemPrice(
                   }
                 }
 
+                await buildFullPartNumber(breakdown, bom, finishColor, panelDirection)
                 return { cost, breakdown }
               }
             }
@@ -499,6 +532,7 @@ async function calculateBOMItemPrice(
                 }
               }
 
+              await buildFullPartNumber(breakdown, bom, finishColor, panelDirection)
               return { cost, breakdown }
             }
 
@@ -542,6 +576,7 @@ async function calculateBOMItemPrice(
                 }
               }
 
+              await buildFullPartNumber(breakdown, bom, finishColor, panelDirection)
               return { cost, breakdown }
             }
           }
@@ -562,6 +597,7 @@ async function calculateBOMItemPrice(
           }
           breakdown.unitCost = cost / (bom.quantity || 1)
           breakdown.totalCost = cost
+          await buildFullPartNumber(breakdown, bom, finishColor, panelDirection)
           return { cost, breakdown }
         }
 
@@ -572,6 +608,7 @@ async function calculateBOMItemPrice(
           breakdown.unitCost = masterPart.cost
           breakdown.totalCost = cost
           breakdown.details = `MasterPart direct: $${masterPart.cost} × ${bom.quantity || 1}`
+          await buildFullPartNumber(breakdown, bom, finishColor, panelDirection)
           return { cost, breakdown }
         }
       }
@@ -583,7 +620,84 @@ async function calculateBOMItemPrice(
   breakdown.method = 'no_cost_found'
   breakdown.details = 'No pricing method found'
   breakdown.totalCost = 0
+
+  // Build full part number (for parts that didn't return early with a MasterPart lookup)
+  await buildFullPartNumber(breakdown, bom, finishColor, panelDirection)
+
   return { cost: 0, breakdown }
+}
+
+// Build full part number with finish code, stock length suffix, and direction suffix
+// This matches the pattern in bom/route.ts for consistent output
+async function buildFullPartNumber(
+  breakdown: any,
+  bom: any,
+  finishColor: string | null,
+  panelDirection?: string | null
+): Promise<void> {
+  if (!bom.partNumber) return
+
+  const basePartNumber = bom.partNumber
+  let fullPartNumber = basePartNumber
+
+  try {
+    const masterPart = await prisma.masterPart.findUnique({
+      where: { partNumber: basePartNumber },
+      select: {
+        partType: true,
+        isMillFinish: true,
+        addFinishToPartNumber: true,
+        appendDirectionToPartNumber: true
+      }
+    })
+
+    if (!masterPart) return
+
+    const isExtrusion = masterPart.partType === 'Extrusion'
+    const isCutStock = masterPart.partType === 'CutStock'
+    const isHardware = masterPart.partType === 'Hardware'
+
+    // Add finish code for extrusions (not mill finish)
+    if (isExtrusion && finishColor && !masterPart.isMillFinish) {
+      const finishCode = await getFinishCode(finishColor)
+      if (finishCode) {
+        fullPartNumber = `${fullPartNumber}${finishCode}`
+      }
+    }
+
+    // Add finish code for Hardware/CutStock with addFinishToPartNumber
+    if ((isHardware || isCutStock) && masterPart.addFinishToPartNumber && finishColor) {
+      const finishCode = await getFinishCode(finishColor)
+      if (finishCode) {
+        fullPartNumber = `${fullPartNumber}${finishCode}`
+      }
+    }
+
+    // Append stock length for extrusions/CutStock
+    if ((isExtrusion || isCutStock) && breakdown.stockLength) {
+      fullPartNumber = `${fullPartNumber}-${breakdown.stockLength}`
+    }
+
+    // Append direction suffix for hardware parts
+    if (isHardware && masterPart.appendDirectionToPartNumber && panelDirection) {
+      const direction = panelDirection
+      if (direction && direction !== 'None') {
+        const directionCode = direction
+          .replace(/-/g, ' ')
+          .split(' ')
+          .filter((word: string) => word.length > 0)
+          .map((word: string) => word.charAt(0).toUpperCase())
+          .join('')
+        fullPartNumber = `${fullPartNumber}-${directionCode}`
+      }
+    }
+  } catch (error) {
+    // Continue with base part number on error
+  }
+
+  // Store both base and full part number
+  breakdown.basePartNumber = basePartNumber
+  breakdown.partNumber = fullPartNumber
 }
 
 // Helper to get FRAME dimensions from sibling panels
@@ -603,10 +717,226 @@ function getFrameDimensions(panels: any[], currentPanelId: number): { width: num
   return { width, height }
 }
 
+// Helper to escape CSV fields
+function csvEscape(val: any): string {
+  const str = String(val ?? '')
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`
+  }
+  return `"${str}"`
+}
+
+function pricingDebugToCSV(
+  project: { id: number; name: string; status: string },
+  pricingModeData: any,
+  openingsData: any[],
+  totals: any
+): string {
+  const lines: string[] = []
+
+  // Header
+  lines.push('=== PROJECT PRICING DEBUG ===')
+  lines.push(`Project,${csvEscape(project.name)}`)
+  lines.push(`Status,${csvEscape(project.status)}`)
+  lines.push('')
+
+  // Pricing mode
+  lines.push('=== PRICING MODE ===')
+  if (pricingModeData) {
+    lines.push(`Name,${csvEscape(pricingModeData.name)}`)
+    lines.push(`Extrusion Markup,${pricingModeData.extrusionMarkup ?? 0}%`)
+    lines.push(`Hardware Markup,${pricingModeData.hardwareMarkup ?? 0}%`)
+    lines.push(`Glass Markup,${pricingModeData.glassMarkup ?? 0}%`)
+    lines.push(`Packaging Markup,${pricingModeData.packagingMarkup ?? 0}%`)
+    lines.push(`Global Markup,${pricingModeData.globalMarkup ?? 0}%`)
+    lines.push(`Discount,${pricingModeData.discount ?? 0}%`)
+    lines.push(`Extrusion Costing,${csvEscape(pricingModeData.extrusionCostingMethod || 'FULL_STOCK')}`)
+  } else {
+    lines.push('Name,"None"')
+  }
+  lines.push('')
+
+  const extrusionMarkup = pricingModeData?.extrusionMarkup ?? pricingModeData?.globalMarkup ?? 0
+  const hardwareMarkup = pricingModeData?.hardwareMarkup ?? pricingModeData?.globalMarkup ?? 0
+  const glassMarkup = pricingModeData?.glassMarkup ?? pricingModeData?.globalMarkup ?? 0
+  const discount = pricingModeData?.discount ?? 0
+
+  // Per-opening sections
+  for (const opening of openingsData) {
+    lines.push(`=== OPENING: ${opening.name} ===`)
+    lines.push(`Finish Color,${csvEscape(opening.finishColor)}`)
+    lines.push('')
+
+    for (const comp of opening.components) {
+      lines.push(`--- Component: ${comp.productName} (Panel ${comp.panelId}) ---`)
+      lines.push(`Dimensions,${csvEscape(`${comp.dimensions.width}" W x ${comp.dimensions.height}" H`)}`)
+      lines.push('')
+
+      // BOM items table
+      lines.push('BOM ITEMS')
+      lines.push('Part Number,Part Name,Part Type,Stock Length,Cut Length,Quantity,BOM Qty,BOM Unit,Unit Cost,Finish Cost,Marked Up Cost,Non-Marked Up Cost,Total Cost,Method,Details,Finish Details')
+
+      for (const item of comp.bomItems) {
+        const isExtrusion = item.partType === 'Extrusion' || item.partType === 'CutStock'
+        const categoryMarkup = isExtrusion ? extrusionMarkup
+          : (item.partType === 'Hardware' || item.partType === 'Fastener') ? hardwareMarkup
+          : item.partType === 'Glass' ? glassMarkup : 0
+
+        const hybridBreakdown = (item as any).hybridBreakdown
+        let markedUpCost: number
+        let nonMarkedUpCost: number
+
+        if (hybridBreakdown?.remainingPortionCost) {
+          nonMarkedUpCost = hybridBreakdown.remainingPortionCost
+          const materialForMarkup = item.totalCost - item.finishCost - hybridBreakdown.remainingPortionCost
+          markedUpCost = materialForMarkup * (1 + categoryMarkup / 100) * (1 - discount / 100) + item.finishCost
+        } else {
+          nonMarkedUpCost = 0
+          markedUpCost = (item.totalCost - item.finishCost) * (1 + categoryMarkup / 100) * (1 - discount / 100) + item.finishCost
+        }
+
+        // Round total first, then adjust components to ensure exact sum
+        const totalCost = Math.round((markedUpCost + nonMarkedUpCost) * 100) / 100
+        const roundedNonMarkedUp = Math.round(nonMarkedUpCost * 100) / 100
+        const roundedMarkedUp = Math.round((totalCost - roundedNonMarkedUp) * 100) / 100
+
+        const stockLenStr = item.stockLength ? `${item.stockLength}in` : ''
+        const cutLenStr = item.cutLength ? `${item.cutLength.toFixed(2)}in` : ''
+
+        lines.push([
+          csvEscape(item.partNumber),
+          csvEscape(item.partName),
+          csvEscape(item.partType),
+          csvEscape(stockLenStr),
+          csvEscape(cutLenStr),
+          item.quantity,
+          item.bomQuantity !== null && item.bomQuantity !== undefined ? item.bomQuantity : '',
+          item.bomUnit || '',
+          `$${item.unitCost.toFixed(2)}`,
+          `$${(item.finishCost || 0).toFixed(2)}`,
+          `$${roundedMarkedUp.toFixed(2)}`,
+          `$${roundedNonMarkedUp.toFixed(2)}`,
+          `$${totalCost.toFixed(2)}`,
+          csvEscape(item.method),
+          csvEscape(item.details),
+          csvEscape(item.finishDetails || '')
+        ].join(','))
+      }
+      lines.push('')
+
+      // Option items table
+      lines.push('OPTION ITEMS')
+      lines.push('Category,Option Name,Part Number,Quantity,Unit Price,Total Price,Method,Details,Is Standard,Is Included')
+      for (const opt of comp.optionItems) {
+        lines.push([
+          csvEscape(opt.category),
+          csvEscape(opt.optionName),
+          csvEscape(opt.partNumber || ''),
+          opt.quantity || 1,
+          `$${(opt.unitPrice || 0).toFixed(2)}`,
+          `$${(opt.price || 0).toFixed(2)}`,
+          csvEscape(opt.method || ''),
+          csvEscape(opt.details || ''),
+          opt.isStandard ? 'Yes' : 'No',
+          opt.isIncluded ? 'Yes' : 'No'
+        ].join(','))
+      }
+      lines.push('')
+
+      // Glass table
+      lines.push('GLASS')
+      lines.push('Glass Type,Width Formula,Height Formula,Calc Width,Calc Height,Qty,Sqft,Price/Sqft,Total Cost')
+      if (comp.glassItem) {
+        const g = comp.glassItem
+        lines.push([
+          csvEscape(g.glassType),
+          csvEscape(g.widthFormula),
+          csvEscape(g.heightFormula),
+          g.calculatedWidth?.toFixed(3) ?? '',
+          g.calculatedHeight?.toFixed(3) ?? '',
+          g.quantity,
+          g.sqft,
+          `$${g.pricePerSqFt?.toFixed(2) ?? '0.00'}`,
+          `$${g.totalCost?.toFixed(2) ?? '0.00'}`
+        ].join(','))
+      }
+      lines.push('')
+
+      lines.push(`Component BOM Total,$${comp.totalBOMCost.toFixed(2)}`)
+      lines.push(`Component Options Total,$${comp.totalOptionCost.toFixed(2)}`)
+      lines.push(`Component Glass Total,$${comp.totalGlassCost.toFixed(2)}`)
+      lines.push('')
+    }
+
+    // Opening cost summary
+    lines.push('--- OPENING COST SUMMARY ---')
+    lines.push('Category,Base Cost,Markup %,Marked Up Cost')
+    const cs = opening.costSummary
+    lines.push(`Extrusion,$${cs.extrusion.base.toFixed(2)},${cs.extrusion.markup}%,$${cs.extrusion.markedUp.toFixed(2)}`)
+    lines.push(`Hardware,$${cs.hardware.base.toFixed(2)},${cs.hardware.markup}%,$${cs.hardware.markedUp.toFixed(2)}`)
+    lines.push(`Glass,$${cs.glass.base.toFixed(2)},${cs.glass.markup}%,$${cs.glass.markedUp.toFixed(2)}`)
+    lines.push(`Packaging,$${cs.packaging.base.toFixed(2)},${cs.packaging.markup}%,$${cs.packaging.markedUp.toFixed(2)}`)
+    lines.push(`Other,$${cs.other.base.toFixed(2)},${cs.other.markup}%,$${cs.other.markedUp.toFixed(2)}`)
+    lines.push(`Standard Options (no markup),$${cs.standardOptions.base.toFixed(2)},0%,$${cs.standardOptions.markedUp.toFixed(2)}`)
+    lines.push(`Hybrid Remaining (no markup),$${cs.hybridRemaining.base.toFixed(2)},0%,$${cs.hybridRemaining.markedUp.toFixed(2)}`)
+    lines.push('')
+    lines.push(`Opening Total (Base),$${opening.totalBaseCost.toFixed(2)}`)
+    lines.push(`Opening Total (Marked Up),$${opening.totalMarkedUpCost.toFixed(2)}`)
+    lines.push('')
+    lines.push('')
+  }
+
+  // Project totals
+  lines.push('=== PROJECT TOTALS ===')
+  lines.push(`Subtotal (Base),$${totals.subtotalBase.toFixed(2)}`)
+  lines.push(`Subtotal (Marked Up),$${totals.subtotalMarkedUp.toFixed(2)}`)
+  lines.push(`Installation,$${totals.installation.toFixed(2)}`)
+  lines.push(`Tax Rate,${(totals.taxRate * 100).toFixed(1)}%`)
+  lines.push(`Tax Amount,$${totals.taxAmount.toFixed(2)}`)
+  lines.push(`Grand Total,$${totals.grandTotal.toFixed(2)}`)
+  lines.push('')
+
+  // Extrusion markup breakdown
+  lines.push('=== EXTRUSION MARKUP BREAKDOWN ===')
+  lines.push('This section shows which portion of extrusion costs receive markup vs pass-through at cost')
+  lines.push('')
+  lines.push('Opening,Total Extrusion Cost,Extrusion With Markup,Extrusion Without Markup (Hybrid Remaining),Markup %,Marked Up Result')
+  for (const opening of openingsData) {
+    const cs = opening.costSummary
+    const extrusionWithMarkup = cs.extrusion.base - cs.hybridRemaining.base
+    lines.push([
+      csvEscape(opening.name),
+      `$${cs.extrusion.base.toFixed(2)}`,
+      `$${extrusionWithMarkup.toFixed(2)}`,
+      `$${cs.hybridRemaining.base.toFixed(2)}`,
+      `${cs.extrusion.markup}%`,
+      `$${cs.extrusion.markedUp.toFixed(2)}`
+    ].join(','))
+  }
+  lines.push('')
+
+  // Totals row for extrusion breakdown
+  const totalExtBase = openingsData.reduce((s, o) => s + o.costSummary.extrusion.base, 0)
+  const totalHybridRemaining = openingsData.reduce((s, o) => s + o.costSummary.hybridRemaining.base, 0)
+  const totalExtWithMarkup = totalExtBase - totalHybridRemaining
+  const totalExtMarkedUp = openingsData.reduce((s, o) => s + o.costSummary.extrusion.markedUp, 0)
+  lines.push(`TOTALS,$${totalExtBase.toFixed(2)},$${totalExtWithMarkup.toFixed(2)},$${totalHybridRemaining.toFixed(2)},${extrusionMarkup}%,$${totalExtMarkedUp.toFixed(2)}`)
+  lines.push('')
+  lines.push('Note: "Extrusion With Markup" = portion that receives the extrusion markup percentage')
+  lines.push('Note: "Extrusion Without Markup (Hybrid Remaining)" = portion passed through at cost (no markup applied)')
+  lines.push('Note: Marked Up Result = (With Markup × (1 + Markup%)) × (1 - Discount%) + Without Markup')
+
+  return lines.join('\n')
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const projectId = parseInt(id)
+
+    // Parse format query parameter
+    const { searchParams } = new URL(request.url)
+    const format = searchParams.get('format')
 
     // Fetch global material price per lb
     const materialPricePerLbSetting = await prisma.globalSetting.findUnique({
@@ -658,6 +988,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                       }
                     }
                   }
+                }
+              }
+            },
+            presetPartInstances: {
+              include: {
+                presetPart: {
+                  include: { masterPart: true }
                 }
               }
             }
@@ -719,6 +1056,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           effectiveHeight = frameDimensions.height
         }
 
+        // Get panel direction for part number suffix construction
+        const panelDirection = ((panel as any).swingDirection && (panel as any).swingDirection !== 'None')
+          ? (panel as any).swingDirection
+          : (panel as any).slidingDirection || null
+
         const componentData: any = {
           productName: product.name,
           productType: product.productType,
@@ -748,34 +1090,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           } catch (e) {}
         }
 
-        // Build set of selected option IDs for BOM filtering (matching pricing-calculator.ts)
-        const selectedOptionIds = new Set<number>()
-        for (const [, optionId] of Object.entries(selections)) {
-          if (optionId && typeof optionId === 'string' && !optionId.includes('_qty')) {
-            selectedOptionIds.add(parseInt(optionId))
-          }
-        }
-
-        // Build option quantity map for RANGE mode
-        const optionQuantityMap = new Map<number, number>()
-        for (const productSubOption of product.productSubOptions) {
-          const categoryId = productSubOption.category.id.toString()
-          const selectedOptionId = selections[categoryId]
-          if (selectedOptionId) {
-            const quantityKey = `${categoryId}_qty`
-            const rangeQuantity = selections[quantityKey] !== undefined
-              ? parseInt(selections[quantityKey] as string)
-              : null
-            if (rangeQuantity !== null) {
-              optionQuantityMap.set(parseInt(selectedOptionId), rangeQuantity)
-            }
-          }
-        }
-
         // Process BOM items (matching pricing-calculator.ts logic)
         for (const bom of product.productBOMs) {
-          // Skip option-linked BOMs if option not selected (matching pricing-calculator.ts)
-          if (bom.optionId && !selectedOptionIds.has(bom.optionId)) continue
+          // Skip ALL option-linked BOM items - they are handled in the options section
+          if (bom.optionId) continue
 
           // Skip null-option BOMs if another option in same category is selected (matching pricing-calculator.ts)
           if (!bom.optionId && (bom as any).option === null) {
@@ -789,11 +1107,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             }
           }
 
-          let bomWithQuantity = bom
-          if (bom.optionId && bom.quantityMode === 'RANGE' && optionQuantityMap.has(bom.optionId)) {
-            const userQuantity = optionQuantityMap.get(bom.optionId)!
-            bomWithQuantity = { ...bom, quantity: userQuantity }
-          }
+          const bomWithQuantity = bom
 
           const { cost, breakdown } = await calculateBOMItemPrice(
             bomWithQuantity,
@@ -802,7 +1116,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             extrusionCostingMethod,
             project.excludedPartNumbers || [],
             opening.finishColor,
-            globalMaterialPricePerLb
+            globalMaterialPricePerLb,
+            panelDirection
           )
 
           componentData.bomItems.push(breakdown)
@@ -880,7 +1195,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 project.excludedPartNumbers || [],
                 opening.finishColor,
                 globalMaterialPricePerLb,
-                selectedVariantId
+                selectedVariantId,
+                panelDirection
               )
 
               componentData.optionItems.push({
@@ -902,6 +1218,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               // Track in correct category based on part type
               if (priceResult.isExtrusion) {
                 openingData.costSummary.extrusion.base += priceResult.totalPrice
+                // Track hybrid remaining cost for extrusion options
+                if (priceResult.breakdown?.hybridBreakdown?.remainingPortionCost) {
+                  hybridRemainingCost += priceResult.breakdown.hybridBreakdown.remainingPortionCost
+                }
               } else {
                 openingData.costSummary.hardware.base += priceResult.totalPrice
               }
@@ -942,7 +1262,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               project.excludedPartNumbers || [],
               opening.finishColor,
               globalMaterialPricePerLb,
-              selectedVariantId
+              selectedVariantId,
+              panelDirection
             )
 
             if (isStandardSelected) {
@@ -968,6 +1289,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               // Track in correct category based on part type
               if (priceResult.isExtrusion) {
                 openingData.costSummary.extrusion.base += optionPrice
+                // Track hybrid remaining cost for extrusion options
+                if (priceResult.breakdown?.hybridBreakdown?.remainingPortionCost) {
+                  hybridRemainingCost += priceResult.breakdown.hybridBreakdown.remainingPortionCost
+                }
               } else {
                 openingData.costSummary.hardware.base += optionPrice
               }
@@ -991,7 +1316,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                     project.excludedPartNumbers || [],
                     opening.finishColor,
                     globalMaterialPricePerLb,
-                    standardVariantId
+                    standardVariantId,
+                    panelDirection
                   )
                 : { unitPrice: 0, totalPrice: 0, isExtrusion: false }
 
@@ -1017,6 +1343,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               // Track in correct category based on part type
               if (priceResult.isExtrusion) {
                 openingData.costSummary.extrusion.base += optionPrice
+                // Track hybrid remaining cost for extrusion options
+                if (priceResult.breakdown?.hybridBreakdown?.remainingPortionCost) {
+                  hybridRemainingCost += priceResult.breakdown.hybridBreakdown.remainingPortionCost
+                }
               } else {
                 openingData.costSummary.hardware.base += optionPrice
               }
@@ -1049,7 +1379,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 project.excludedPartNumbers || [],
                 opening.finishColor,
                 globalMaterialPricePerLb,
-                selectedVariantId
+                selectedVariantId,
+                panelDirection
               )
 
               componentData.optionItems.push({
@@ -1071,6 +1402,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               // Track in correct category based on part type
               if (priceResult.isExtrusion) {
                 openingData.costSummary.extrusion.base += priceResult.totalPrice
+                // Track hybrid remaining cost for extrusion options
+                if (priceResult.breakdown?.hybridBreakdown?.remainingPortionCost) {
+                  hybridRemainingCost += priceResult.breakdown.hybridBreakdown.remainingPortionCost
+                }
               } else {
                 openingData.costSummary.hardware.base += priceResult.totalPrice
               }
@@ -1116,6 +1451,94 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
 
         openingData.components.push(componentData)
+      }
+
+      // Process preset part instances (opening-level parts like starter channels, trim, etc.)
+      if (opening.presetPartInstances && opening.presetPartInstances.length > 0) {
+        const presetComponentData: any = {
+          productName: 'Opening / Jamb Parts',
+          productType: 'PRESET',
+          panelId: null,
+          dimensions: {
+            width: opening.finishedWidth || opening.roughWidth || 0,
+            height: opening.finishedHeight || opening.roughHeight || 0
+          },
+          bomItems: [],
+          optionItems: [],
+          glassItem: null,
+          totalBOMCost: 0,
+          totalOptionCost: 0,
+          totalGlassCost: 0
+        }
+
+        for (const instance of opening.presetPartInstances) {
+          const presetPart = instance.presetPart
+          if (!presetPart?.masterPart) continue
+
+          const masterPart = presetPart.masterPart
+
+          // For extrusions with formula: calculatedQuantity = cut length, presetPart.quantity = piece count
+          // For non-extrusions: calculatedQuantity or presetPart.quantity = piece count
+          let quantity: number
+          let formulaForPricing: string | null = null
+
+          if (presetPart.formula && masterPart.partType === 'Extrusion') {
+            quantity = presetPart.quantity || 1
+            formulaForPricing = String(instance.calculatedQuantity || 0)
+          } else {
+            quantity = instance.calculatedQuantity || presetPart.quantity || 1
+            formulaForPricing = presetPart.formula
+          }
+
+          // Build a BOM-like object for pricing
+          const bomForPricing = {
+            partNumber: masterPart.partNumber,
+            partName: masterPart.baseName || masterPart.partNumber,
+            partType: masterPart.partType || 'Hardware',
+            quantity: quantity,
+            formula: formulaForPricing,
+            cost: 0
+          }
+
+          const effectiveWidth = opening.finishedWidth || opening.roughWidth || 0
+          const effectiveHeight = opening.finishedHeight || opening.roughHeight || 0
+
+          const { cost, breakdown } = await calculateBOMItemPrice(
+            bomForPricing,
+            effectiveWidth,
+            effectiveHeight,
+            extrusionCostingMethod,
+            project.excludedPartNumbers || [],
+            opening.finishColor,
+            globalMaterialPricePerLb,
+            null // preset parts are opening-level, no panel direction
+          )
+
+          presetComponentData.bomItems.push(breakdown)
+          presetComponentData.totalBOMCost += cost
+
+          // Track hybrid remaining cost
+          if ((breakdown as any).hybridBreakdown?.remainingPortionCost) {
+            hybridRemainingCost += (breakdown as any).hybridBreakdown.remainingPortionCost
+          }
+
+          // Track by category
+          if (masterPart.partType === 'Extrusion' || masterPart.partType === 'CutStock') {
+            openingData.costSummary.extrusion.base += cost
+          } else if (masterPart.partType === 'Hardware' || masterPart.partType === 'Fastener') {
+            openingData.costSummary.hardware.base += cost
+          } else if (masterPart.partType === 'Glass') {
+            openingData.costSummary.glass.base += cost
+          } else if (masterPart.partType === 'Packaging') {
+            openingData.costSummary.packaging.base += cost
+          } else {
+            openingData.costSummary.other.base += cost
+          }
+        }
+
+        if (presetComponentData.bomItems.length > 0) {
+          openingData.components.push(presetComponentData)
+        }
       }
 
       // Store standard and hybrid costs
@@ -1198,6 +1621,44 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const taxAmount = (projectTotalMarkedUpCost + installationCost) * (project.taxRate || 0)
     const grandTotal = projectTotalMarkedUpCost + installationCost + taxAmount
 
+    const pricingModeData = pricingMode ? {
+      name: pricingMode.name,
+      extrusionMarkup: pricingMode.extrusionMarkup,
+      hardwareMarkup: pricingMode.hardwareMarkup,
+      glassMarkup: pricingMode.glassMarkup,
+      packagingMarkup: pricingMode.packagingMarkup,
+      globalMarkup: pricingMode.markup,
+      discount: pricingMode.discount,
+      extrusionCostingMethod: pricingMode.extrusionCostingMethod
+    } : null
+
+    const totalsData = {
+      subtotalBase: projectTotalBaseCost,
+      subtotalMarkedUp: projectTotalMarkedUpCost,
+      installation: installationCost,
+      taxRate: project.taxRate || 0,
+      taxAmount,
+      grandTotal
+    }
+
+    // CSV format
+    if (format === 'csv') {
+      const csvContent = pricingDebugToCSV(
+        { id: project.id, name: project.name, status: project.status },
+        pricingModeData,
+        openingsData,
+        totalsData
+      )
+      const filename = `${project.name.replace(/[^a-zA-Z0-9]/g, '-')}-pricing-debug.csv`
+      return new NextResponse(csvContent, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv',
+          'Content-Disposition': `attachment; filename="${filename}"`
+        }
+      })
+    }
+
     return NextResponse.json({
       success: true,
       project: {
@@ -1205,25 +1666,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         name: project.name,
         status: project.status
       },
-      pricingMode: pricingMode ? {
-        name: pricingMode.name,
-        extrusionMarkup: pricingMode.extrusionMarkup,
-        hardwareMarkup: pricingMode.hardwareMarkup,
-        glassMarkup: pricingMode.glassMarkup,
-        packagingMarkup: pricingMode.packagingMarkup,
-        globalMarkup: pricingMode.markup,
-        discount: pricingMode.discount,
-        extrusionCostingMethod: pricingMode.extrusionCostingMethod
-      } : null,
+      pricingMode: pricingModeData,
       openings: openingsData,
-      totals: {
-        subtotalBase: projectTotalBaseCost,
-        subtotalMarkedUp: projectTotalMarkedUpCost,
-        installation: installationCost,
-        taxRate: project.taxRate || 0,
-        taxAmount,
-        grandTotal
-      }
+      totals: totalsData
     })
   } catch (error) {
     console.error('Error generating pricing debug:', error)

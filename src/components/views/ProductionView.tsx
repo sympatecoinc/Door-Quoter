@@ -34,12 +34,15 @@ import ShopDrawingsDownloadModal from '../production/ShopDrawingsDownloadModal'
 import CutListDownloadModal, { CutListConfigData } from '../production/CutListDownloadModal'
 import ExpandableProjectRow from '../production/ExpandableProjectRow'
 import FieldVerificationIndicator from '../production/FieldVerificationIndicator'
+import FieldVerificationWarningModal from '../production/FieldVerificationWarningModal'
+import FieldVerificationPreview from '../production/FieldVerificationPreview'
 
 // Types for bulk download configuration
 interface BomConfig {
   projectId: number
   projectName: string
   selectedHashes: string[]
+  format?: 'csv' | 'pdf'
 }
 
 // Use CutListConfigData imported from CutListDownloadModal
@@ -212,6 +215,8 @@ export default function ProductionView() {
   const [stationCounts, setStationCounts] = useState<StationCount[]>([])
   const [generatingWorkOrders, setGeneratingWorkOrders] = useState<Set<number>>(new Set())
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<number>>(new Set())
+  const [fvWarningProject, setFvWarningProject] = useState<ProductionProject | null>(null)
+  const [showFvPreview, setShowFvPreview] = useState<{ projectId: number; projectName: string } | null>(null)
 
   // Bulk download queue state - stores configuration as user goes through modals
   const [bulkDownloadQueue, setBulkDownloadQueue] = useState<{
@@ -255,7 +260,22 @@ export default function ProductionView() {
     }
   }
 
-  async function generateWorkOrders(projectId: number) {
+  function handleGenerateWorkOrders(projectId: number) {
+    const project = projects.find(p => p.id === projectId)
+    if (!project) return
+
+    const uploadCount = project.fieldVerificationCount ?? 0
+    const confirmedCount = project.fieldVerificationConfirmedCount ?? 0
+    const allConfirmed = uploadCount > 0 && confirmedCount === uploadCount
+
+    if (allConfirmed) {
+      executeGenerateWorkOrders(projectId)
+    } else {
+      setFvWarningProject(project)
+    }
+  }
+
+  async function executeGenerateWorkOrders(projectId: number) {
     setGeneratingWorkOrders(prev => new Set([...prev, projectId]))
     try {
       const response = await fetch(`/api/projects/${projectId}/work-orders/generate`, {
@@ -281,6 +301,29 @@ export default function ProductionView() {
         return newSet
       })
     }
+  }
+
+  function handleFvWarningStartVerification() {
+    if (!fvWarningProject) return
+    const projectId = fvWarningProject.id
+    const projectName = fvWarningProject.name
+    setFvWarningProject(null)
+    downloadDocument(projectId, 'fieldverification', projectName)
+  }
+
+  function handleFvWarningReviewVerification() {
+    if (!fvWarningProject) return
+    const projectId = fvWarningProject.id
+    const projectName = fvWarningProject.name
+    setFvWarningProject(null)
+    setShowFvPreview({ projectId, projectName })
+  }
+
+  function handleFvWarningOverride() {
+    if (!fvWarningProject) return
+    const projectId = fvWarningProject.id
+    setFvWarningProject(null)
+    executeGenerateWorkOrders(projectId)
   }
 
   async function fetchSettings() {
@@ -582,7 +625,7 @@ export default function ProductionView() {
         try {
           const safeProjectName = bomConfig.projectName.replace(/[^a-zA-Z0-9]/g, '-')
           const selectedParam = bomConfig.selectedHashes.join('|')
-          const url = `/api/projects/${bomConfig.projectId}/bom/csv?zip=true&unique=true&selected=${encodeURIComponent(selectedParam)}`
+          const url = `/api/projects/${bomConfig.projectId}/bom/csv?zip=true&unique=true&format=${bomConfig.format || 'csv'}&selected=${encodeURIComponent(selectedParam)}`
 
           const response = await fetch(url)
           if (response.ok) {
@@ -610,7 +653,7 @@ export default function ProductionView() {
             } else {
               // It's a single CSV file
               const contentDisposition = response.headers.get('Content-Disposition') || ''
-              let filename = `${safeProjectName}-bom.csv`
+              let filename = `${safeProjectName}-bom.${bomConfig.format === 'pdf' ? 'pdf' : 'csv'}`
               const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/)
               if (filenameMatch) {
                 filename = `${safeProjectName}-${filenameMatch[1]}`
@@ -633,13 +676,13 @@ export default function ProductionView() {
         for (const group of cutListConfig.groups) {
           try {
             const safeProductName = group.productName.replace(/\s+/g, '-')
-            const url = `/api/projects/${cutListConfig.projectId}/bom?cutlist=true&format=csv&product=${encodeURIComponent(group.productName)}&size=${encodeURIComponent(group.sizeKey)}&batch=${group.batchSize}`
+            const url = `/api/projects/${cutListConfig.projectId}/bom?cutlist=true&format=${cutListConfig.format || 'csv'}&product=${encodeURIComponent(group.productName)}&size=${encodeURIComponent(group.sizeKey)}&batch=${group.batchSize}`
 
             const response = await fetch(url)
             if (response.ok) {
               const blob = await response.blob()
               filesToDownload.push({
-                filename: `${safeProjectName}-${safeProductName}-${group.sizeKey}-${group.batchSize}units-cutlist.csv`,
+                filename: `${safeProjectName}-${safeProductName}-${group.sizeKey}-${group.batchSize}units-cutlist.${cutListConfig.format === 'pdf' ? 'pdf' : 'csv'}`,
                 blob,
                 type: 'cutlist'
               })
@@ -824,16 +867,24 @@ export default function ProductionView() {
     return Object.values(state).some(v => v)
   }
 
-  // Selectable options (can be checked and downloaded together)
-  const selectableOptions = [
+  // Selectable options grouped by section
+  const bomOptions = [
     { value: 'bom' as DownloadType, label: 'BOM (CSV)', icon: FileSpreadsheet },
     { value: 'bomPdf' as DownloadType, label: 'BOM (PDF)', icon: FileText },
+  ]
+
+  const cutlistOptions = [
     { value: 'cutlist' as DownloadType, label: 'Cut List (CSV)', icon: SawBlade },
     { value: 'cutlistPdf' as DownloadType, label: 'Cut List (PDF)', icon: FileText },
+  ]
+
+  const productionOptions = [
     { value: 'picklist' as DownloadType, label: 'Pick List (PDF)', icon: ClipboardList },
     { value: 'jambkit' as DownloadType, label: 'Jamb Kit List (PDF)', icon: Package2 },
     { value: 'fieldverification' as DownloadType, label: 'Field Verification (PDF)', icon: Ruler },
   ]
+
+  const selectableOptions = [...bomOptions, ...cutlistOptions, ...productionOptions]
 
   // Direct download options (no checkbox, download immediately)
   const directOptions = [
@@ -880,7 +931,7 @@ export default function ProductionView() {
         if (buttonRef.current) {
           const rect = buttonRef.current.getBoundingClientRect()
           const spaceBelow = window.innerHeight - rect.bottom
-          const dropdownHeight = 240
+          const dropdownHeight = 320
           const openUpward = spaceBelow < dropdownHeight
 
           setMenuPosition({
@@ -1000,19 +1051,20 @@ export default function ProductionView() {
     const dropdownMenu = isOpen && menuPosition && createPortal(
       <div
         ref={menuRef}
-        className="fixed z-50 w-56 bg-white border border-gray-200 rounded-lg shadow-xl max-h-52 overflow-y-auto"
+        className="fixed z-50 w-56 bg-white border border-gray-200 rounded-lg shadow-xl max-h-80 overflow-y-auto"
         style={{ top: menuPosition.top, left: menuPosition.left }}
       >
-        {/* Selectable options with checkboxes */}
-        {selectableOptions.map((option, index) => (
+        {/* BOM section */}
+        <div className="px-3 pt-2 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wider">BOM</div>
+        {bomOptions.map((option) => (
           <button
             key={option.value}
             onClick={() => toggleSelection(option.value)}
-            className={`flex items-center w-full px-3 py-2.5 text-sm text-left transition-colors ${
+            className={`flex items-center w-full px-3 py-2 text-sm text-left transition-colors ${
               selectedTypes.has(option.value)
                 ? 'bg-blue-50 text-blue-700'
                 : 'text-gray-700 hover:bg-gray-50'
-            } ${index === 0 ? 'rounded-t-lg' : ''}`}
+            }`}
           >
             <div className={`w-4 h-4 mr-3 border rounded flex items-center justify-center ${
               selectedTypes.has(option.value)
@@ -1029,11 +1081,67 @@ export default function ProductionView() {
           </button>
         ))}
 
-        {/* Separator with label */}
-        <div className="border-t border-gray-200 mt-2">
-          <div className="px-3 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
-            Other Downloads
-          </div>
+        {/* Cut List section */}
+        <div className="border-t border-gray-200 mt-1">
+          <div className="px-3 pt-2 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wider">Cut List</div>
+        </div>
+        {cutlistOptions.map((option) => (
+          <button
+            key={option.value}
+            onClick={() => toggleSelection(option.value)}
+            className={`flex items-center w-full px-3 py-2 text-sm text-left transition-colors ${
+              selectedTypes.has(option.value)
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <div className={`w-4 h-4 mr-3 border rounded flex items-center justify-center ${
+              selectedTypes.has(option.value)
+                ? 'bg-blue-600 border-blue-600'
+                : 'border-gray-300'
+            }`}>
+              {selectedTypes.has(option.value) && (
+                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+            <span className="flex-1">{option.label}</span>
+          </button>
+        ))}
+
+        {/* Production Documents section */}
+        <div className="border-t border-gray-200 mt-1">
+          <div className="px-3 pt-2 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wider">Production</div>
+        </div>
+        {productionOptions.map((option) => (
+          <button
+            key={option.value}
+            onClick={() => toggleSelection(option.value)}
+            className={`flex items-center w-full px-3 py-2 text-sm text-left transition-colors ${
+              selectedTypes.has(option.value)
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <div className={`w-4 h-4 mr-3 border rounded flex items-center justify-center ${
+              selectedTypes.has(option.value)
+                ? 'bg-blue-600 border-blue-600'
+                : 'border-gray-300'
+            }`}>
+              {selectedTypes.has(option.value) && (
+                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+            <span className="flex-1">{option.label}</span>
+          </button>
+        ))}
+
+        {/* Other Downloads section */}
+        <div className="border-t border-gray-200 mt-1">
+          <div className="px-3 pt-2 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wider">Other Downloads</div>
         </div>
 
         {/* Direct download options (Shop Drawings) */}
@@ -1277,7 +1385,7 @@ export default function ProductionView() {
                     project={project}
                     isExpanded={expandedProjectIds.has(project.id)}
                     onToggleExpand={() => toggleExpand(project.id)}
-                    onGenerateWorkOrders={generateWorkOrders}
+                    onGenerateWorkOrders={handleGenerateWorkOrders}
                     isGeneratingWorkOrders={generatingWorkOrders.has(project.id)}
                     onFieldVerificationChange={fetchProjects}
                   >
@@ -1351,38 +1459,26 @@ export default function ProductionView() {
                     <td className="px-4 py-3">
                       {project.workOrderProgress && project.workOrderProgress.total > 0 ? (
                         <div className="flex items-center gap-1">
-                          {/* Stage pills showing count per stage */}
+                          {/* Stage dots — one per work order, colored by stage */}
                           {[
-                            { key: 'STAGED', label: 'STG', icon: Boxes, color: 'bg-gray-400 text-white', progressColor: 'bg-gray-600' },
-                            { key: 'CUTTING', label: 'CUT', icon: SawBlade, color: 'bg-orange-500 text-white', progressColor: 'bg-orange-700' },
-                            { key: 'MILLING', label: 'MIL', icon: DrillBit, color: 'bg-violet-500 text-white', progressColor: 'bg-violet-700' },
-                            { key: 'ASSEMBLY', label: 'ASM', icon: Package, color: 'bg-blue-500 text-white', progressColor: 'bg-blue-700' },
-                            { key: 'QC', label: 'QC', icon: ClipboardCheck, color: 'bg-purple-500 text-white', progressColor: 'bg-purple-700' },
-                            { key: 'SHIP', label: 'SHP', icon: Truck, color: 'bg-green-500 text-white', progressColor: 'bg-green-700' },
-                            { key: 'COMPLETE', label: 'DONE', icon: CheckCircle2, color: 'bg-emerald-600 text-white', progressColor: 'bg-emerald-800' },
-                          ].flatMap(stage => {
-                            // Get work orders for this stage
+                            { key: 'STAGED', dotColor: 'bg-gray-400' },
+                            { key: 'CUTTING', dotColor: 'bg-orange-500' },
+                            { key: 'MILLING', dotColor: 'bg-violet-500' },
+                            { key: 'ASSEMBLY', dotColor: 'bg-blue-500' },
+                            { key: 'QC', dotColor: 'bg-purple-500' },
+                            { key: 'SHIP', dotColor: 'bg-green-500' },
+                            { key: 'COMPLETE', dotColor: 'bg-emerald-600' },
+                          ].flatMap((stage, _si, _arr) => {
                             const stageWorkOrders = project.workOrderProgress!.workOrders?.filter(
                               wo => wo.stage === stage.key
                             ) || []
                             if (stageWorkOrders.length === 0) return []
-                            const IconComponent = stage.icon
-                            return stageWorkOrders.map((wo) => (
+                            return stageWorkOrders.map((wo, woIdx) => (
                               <span
                                 key={wo.id}
-                                className={`relative inline-flex items-center gap-1 px-2 h-7 rounded-lg ${stage.color} overflow-hidden`}
-                                title={`${stage.key}: ${wo.progressPercent}% complete`}
-                              >
-                                <IconComponent className="w-3.5 h-3.5" />
-                                <span className="text-[10px] font-bold">{stage.label}</span>
-                                {/* Progress bar at bottom */}
-                                <span className="absolute bottom-0 left-0 h-[3px] bg-black/20 w-full">
-                                  <span
-                                    className={`absolute bottom-0 left-0 h-full ${stage.progressColor}`}
-                                    style={{ width: `${wo.progressPercent}%` }}
-                                  />
-                                </span>
-                              </span>
+                                className={`w-2.5 h-2.5 rounded-full ${stage.dotColor}`}
+                                title={`Batch #${woIdx + 1} - ${stage.key}: ${wo.progressPercent}% complete`}
+                              />
                             ))
                           })}
                           {/* Total */}
@@ -1392,7 +1488,7 @@ export default function ProductionView() {
                         </div>
                       ) : (
                         <button
-                          onClick={() => generateWorkOrders(project.id)}
+                          onClick={() => handleGenerateWorkOrders(project.id)}
                           disabled={generatingWorkOrders.has(project.id)}
                           className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors disabled:opacity-50"
                         >
@@ -1514,6 +1610,29 @@ export default function ProductionView() {
           onSave={saveDefaultBatchSize}
           onClose={() => setShowSettingsModal(false)}
           loading={settingsLoading}
+        />
+      )}
+
+      {/* Field Verification Warning Modal */}
+      {fvWarningProject && (
+        <FieldVerificationWarningModal
+          projectName={fvWarningProject.name}
+          uploadCount={fvWarningProject.fieldVerificationCount ?? 0}
+          confirmedCount={fvWarningProject.fieldVerificationConfirmedCount ?? 0}
+          onStartVerification={handleFvWarningStartVerification}
+          onReviewVerification={handleFvWarningReviewVerification}
+          onOverride={handleFvWarningOverride}
+          onCancel={() => setFvWarningProject(null)}
+        />
+      )}
+
+      {/* Field Verification Preview (opened from warning flow) */}
+      {showFvPreview && (
+        <FieldVerificationPreview
+          projectId={showFvPreview.projectId}
+          projectName={showFvPreview.projectName}
+          onClose={() => setShowFvPreview(null)}
+          onConfirmStatusChange={fetchProjects}
         />
       )}
 

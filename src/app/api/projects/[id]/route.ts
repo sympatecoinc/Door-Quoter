@@ -77,6 +77,17 @@ export async function GET(
                                   include: {
                                     variants: {
                                       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+                                    },
+                                    linkedParts: {
+                                      select: {
+                                        id: true,
+                                        masterPartId: true,
+                                        variantId: true,
+                                        quantity: true,
+                                        masterPart: {
+                                          select: { id: true, partNumber: true, baseName: true }
+                                        }
+                                      }
                                     }
                                   }
                                 }
@@ -85,6 +96,17 @@ export async function GET(
                           }
                         }
                       }
+                    }
+                  }
+                }
+              }
+            },
+            presetPartInstances: {
+              include: {
+                presetPart: {
+                  include: {
+                    masterPart: {
+                      select: { id: true, partNumber: true, baseName: true }
                     }
                   }
                 }

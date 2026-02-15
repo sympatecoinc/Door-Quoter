@@ -476,8 +476,13 @@ export async function GET(
     }
 
     // Calculate total width (sum of all panel widths) and total height (max panel height)
-    const totalWidth = opening.panels.reduce((sum, panel) => sum + panel.width, 0)
-    const totalHeight = Math.max(...opening.panels.map((panel) => panel.height))
+    // Exclude FRAME and CORNER_90 panels - frames occupy the same physical space as the door
+    const sizePanels = opening.panels.filter(panel => {
+      const pType = panel.componentInstance?.product?.productType
+      return pType !== 'CORNER_90' && pType !== 'FRAME'
+    })
+    const totalWidth = sizePanels.reduce((sum, panel) => sum + panel.width, 0)
+    const totalHeight = Math.max(...sizePanels.map((panel) => panel.height))
 
     // Prepare opening data for PDF generation
     const openingData: OpeningDrawingData = {

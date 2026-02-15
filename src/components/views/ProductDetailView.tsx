@@ -419,8 +419,8 @@ interface Product {
   maxWidth?: number | null
   minHeight?: number | null
   maxHeight?: number | null
-  pairedProductId?: number | null
-  pairedProduct?: {
+  frameConfigId?: number | null
+  frameConfig?: {
     id: number
     name: string
     productType: string
@@ -541,8 +541,6 @@ export default function ProductDetailView({
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [editProductType, setEditProductType] = useState('SWING_DOOR')
-  const [editPairedProductId, setEditPairedProductId] = useState<string>('')
-  const [frameProducts, setFrameProducts] = useState<{id: number, name: string, productType: string}[]>([])
   const [saving, setSaving] = useState(false)
   const [showCSVUpload, setShowCSVUpload] = useState(false)
   const [csvFile, setCsvFile] = useState<File | null>(null)
@@ -589,20 +587,11 @@ export default function ProductDetailView({
   const [minHeightValue, setMinHeightValue] = useState('')
   const [maxHeightValue, setMaxHeightValue] = useState('')
   const [savingSizeConstraints, setSavingSizeConstraints] = useState(false)
-  // Product Tolerances
-  const [editingTolerances, setEditingTolerances] = useState(false)
-  const [widthToleranceValue, setWidthToleranceValue] = useState('')
-  const [heightToleranceValue, setHeightToleranceValue] = useState('')
-  const [savingTolerances, setSavingTolerances] = useState(false)
   // Product Settings (Category & Default Width)
   const [editingProductSettings, setEditingProductSettings] = useState(false)
   const [productCategoryValue, setProductCategoryValue] = useState('')
   const [defaultWidthValue, setDefaultWidthValue] = useState('')
   const [savingProductSettings, setSavingProductSettings] = useState(false)
-  // Paired Product inline editing
-  const [editingPairedProduct, setEditingPairedProduct] = useState(false)
-  const [pairedProductValue, setPairedProductValue] = useState<string>('')
-  const [savingPairedProduct, setSavingPairedProduct] = useState(false)
   const [expandedCategory, setExpandedCategory] = useState<number | null>(null)
   const [settingStandard, setSettingStandard] = useState(false)
   const [optionBomModalOpen, setOptionBomModalOpen] = useState(false)
@@ -663,24 +652,8 @@ export default function ProductDetailView({
       }
     }
 
-    async function fetchFrameProducts() {
-      try {
-        // Fetch all products that can be paired (typically FRAME products)
-        const response = await fetch('/api/products')
-        if (response.ok) {
-          const data = await response.json()
-          // Filter to FRAME products only (products that are typically auto-added)
-          const frames = data.filter((p: any) => p.productType === 'FRAME' && p.id !== product.id)
-          setFrameProducts(frames)
-        }
-      } catch (error) {
-        console.error('Error fetching frame products:', error)
-      }
-    }
-
     fetchProductDetails()
     fetchPlanViews()
-    fetchFrameProducts()
   }, [product.id])
 
   // Handle Escape key to close modals one at a time
@@ -708,8 +681,7 @@ export default function ProductDetailView({
         body: JSON.stringify({
           name: editName,
           description: editDescription,
-          productType: editProductType,
-          pairedProductId: editPairedProductId ? parseInt(editPairedProductId) : null
+          productType: editProductType
         })
       })
 
@@ -1182,52 +1154,6 @@ export default function ProductDetailView({
     }
   }
 
-  // Product Tolerances functions
-  function startEditTolerances() {
-    setWidthToleranceValue(productDetails?.widthTolerance?.toString() || '')
-    setHeightToleranceValue(productDetails?.heightTolerance?.toString() || '')
-    setEditingTolerances(true)
-  }
-
-  function cancelEditTolerances() {
-    setWidthToleranceValue('')
-    setHeightToleranceValue('')
-    setEditingTolerances(false)
-  }
-
-  async function handleSaveTolerances() {
-    setSavingTolerances(true)
-    try {
-      const response = await fetch(`/api/products/${product.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          widthTolerance: widthToleranceValue || null,
-          heightTolerance: heightToleranceValue || null
-        })
-      })
-
-      if (response.ok) {
-        // Refresh product details
-        const detailsResponse = await fetch(`/api/products/${product.id}`)
-        if (detailsResponse.ok) {
-          const data = await detailsResponse.json()
-          setProductDetails(data)
-        }
-        setEditingTolerances(false)
-        onRefresh()
-        showSuccess('Product tolerances updated successfully!')
-      } else {
-        showError('Failed to update product tolerances')
-      }
-    } catch (error) {
-      console.error('Error updating product tolerances:', error)
-      showError('Error updating product tolerances')
-    } finally {
-      setSavingTolerances(false)
-    }
-  }
-
   function startEditProductSettings() {
     setProductCategoryValue(productDetails?.productCategory || 'BOTH')
     setDefaultWidthValue(productDetails?.defaultWidth?.toString() || '')
@@ -1270,46 +1196,6 @@ export default function ProductDetailView({
       showError('Error updating product settings')
     } finally {
       setSavingProductSettings(false)
-    }
-  }
-
-  function startEditPairedProduct() {
-    setPairedProductValue(productDetails?.pairedProductId?.toString() || '')
-    setEditingPairedProduct(true)
-  }
-
-  function cancelEditPairedProduct() {
-    setPairedProductValue('')
-    setEditingPairedProduct(false)
-  }
-
-  async function handleSavePairedProduct() {
-    setSavingPairedProduct(true)
-    try {
-      const response = await fetch(`/api/products/${product.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pairedProductId: pairedProductValue ? parseInt(pairedProductValue) : null
-        })
-      })
-      if (response.ok) {
-        const detailsResponse = await fetch(`/api/products/${product.id}`)
-        if (detailsResponse.ok) {
-          const data = await detailsResponse.json()
-          setProductDetails(data)
-        }
-        setEditingPairedProduct(false)
-        onRefresh()
-        showSuccess('Paired product updated successfully!')
-      } else {
-        showError('Failed to update paired product')
-      }
-    } catch (error) {
-      console.error('Error updating paired product:', error)
-      showError('Error updating paired product')
-    } finally {
-      setSavingPairedProduct(false)
     }
   }
 
@@ -1889,7 +1775,6 @@ export default function ProductDetailView({
               setEditName(product.name)
               setEditDescription(product.description || '')
               setEditProductType(product.productType || 'SWING_DOOR')
-              setEditPairedProductId(productDetails?.pairedProductId?.toString() || '')
               setShowEditModal(true)
             }}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
@@ -2740,87 +2625,6 @@ export default function ProductDetailView({
         </div>
         )}
 
-        {/* Paired Product Section - Hidden for Frame products */}
-        {!isFrameProduct && frameProducts.length > 0 && (
-          <div className="col-span-full mt-6">
-            <div className="bg-gray-50 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Paired Product</h3>
-                  <p className="text-sm text-gray-500">
-                    Auto-add another product when this product is added to an opening
-                  </p>
-                </div>
-                {!editingPairedProduct && (
-                  <button
-                    onClick={startEditPairedProduct}
-                    className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-                  >
-                    <Edit2 className="w-4 h-4 mr-1" />
-                    Edit
-                  </button>
-                )}
-              </div>
-
-              {editingPairedProduct ? (
-                <div className="bg-white rounded-lg p-4 border border-gray-200">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Paired Product</label>
-                      <select
-                        value={pairedProductValue}
-                        onChange={(e) => setPairedProductValue(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        <option value="">None (no paired product)</option>
-                        {frameProducts.map((fp) => (
-                          <option key={fp.id} value={fp.id}>
-                            {fp.name}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1">
-                        When this product is added to an opening, the paired product will be automatically added as well using the opening dimensions.
-                      </p>
-                    </div>
-                    <div className="flex justify-end space-x-2 pt-2">
-                      <button
-                        onClick={cancelEditPairedProduct}
-                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm"
-                        disabled={savingPairedProduct}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSavePairedProduct}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50"
-                        disabled={savingPairedProduct}
-                      >
-                        {savingPairedProduct ? 'Saving...' : 'Save'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-gray-900">
-                  {productDetails?.pairedProduct ? (
-                    <div className="flex items-center space-x-2">
-                      <span className="text-lg font-medium text-blue-600">
-                        {productDetails.pairedProduct.name}
-                      </span>
-                      <span className="text-sm text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
-                        {productDetails.pairedProduct.productType.replace('_', ' ')}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-gray-500">No paired product configured</span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Product Settings Section - Hidden for Frame products */}
         {!isFrameProduct && (
           <div className="col-span-full mt-6">
@@ -3085,115 +2889,6 @@ export default function ProductDetailView({
         </div>
         )}
 
-        {/* Product Tolerances Section - Only for SWING_DOOR, SLIDING_DOOR, FIXED_PANEL */}
-        {['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL'].includes(productDetails?.productType || product?.productType || '') && (
-          <div className="col-span-full mt-6">
-            <div className="bg-gray-50 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Product Tolerances</h3>
-                  <p className="text-sm text-gray-500">
-                    Custom tolerances applied when this product is added to a finished opening
-                  </p>
-                </div>
-                {!editingTolerances && (
-                  <button
-                    onClick={startEditTolerances}
-                    className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-                  >
-                    <Edit2 className="w-4 h-4 mr-1" />
-                    Edit Tolerances
-                  </button>
-                )}
-              </div>
-
-              {editingTolerances ? (
-                <div className="bg-white rounded-lg p-4 border border-gray-200">
-                  <div className="space-y-4">
-                    <p className="text-xs text-gray-500 bg-amber-50 p-3 rounded-lg border border-amber-200">
-                      <strong>Note:</strong> When this product is added to a finished opening, these tolerances will be used instead of the opening type defaults. Only the first product&apos;s tolerances apply to each opening.
-                    </p>
-                    <div className="grid grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Width Tolerance (inches)</label>
-                        <input
-                          type="number"
-                          step="0.0625"
-                          min="0"
-                          value={widthToleranceValue}
-                          onChange={(e) => setWidthToleranceValue(e.target.value)}
-                          placeholder="Use defaults"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <p className="text-xs text-gray-400 mt-1">Total deducted from rough width</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Height Tolerance (inches)</label>
-                        <input
-                          type="number"
-                          step="0.0625"
-                          min="0"
-                          value={heightToleranceValue}
-                          onChange={(e) => setHeightToleranceValue(e.target.value)}
-                          placeholder="Use defaults"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <p className="text-xs text-gray-400 mt-1">Total deducted from rough height</p>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end space-x-3 pt-2">
-                      <button
-                        onClick={cancelEditTolerances}
-                        disabled={savingTolerances}
-                        className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSaveTolerances}
-                        disabled={savingTolerances}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
-                      >
-                        {savingTolerances ? (
-                          <>
-                            <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                            Saving...
-                          </>
-                        ) : (
-                          <>
-                            <Save className="w-4 h-4 mr-2" />
-                            Save
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Width Tolerance</h4>
-                    <span className="text-gray-900">
-                      {productDetails?.widthTolerance !== null && productDetails?.widthTolerance !== undefined
-                        ? `${productDetails.widthTolerance}"`
-                        : 'Use opening defaults'}
-                    </span>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Height Tolerance</h4>
-                    <span className="text-gray-900">
-                      {productDetails?.heightTolerance !== null && productDetails?.heightTolerance !== undefined
-                        ? `${productDetails.heightTolerance}"`
-                        : 'Use opening defaults'}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Export Product Section */}
         <div className="col-span-full mt-6">
           <div className="bg-gray-50 rounded-lg p-6">
@@ -3270,27 +2965,6 @@ export default function ProductDetailView({
                     <option value="SLIDING_DOOR">Sliding Door</option>
                     <option value="FIXED_PANEL">Fixed Panel</option>
                   </select>
-                </div>
-              )}
-              {/* Paired Product - auto-add another product when this one is added (e.g., door adds frame) */}
-              {!isFrameProduct && frameProducts.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Paired Product</label>
-                  <select
-                    value={editPairedProductId}
-                    onChange={(e) => setEditPairedProductId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                  >
-                    <option value="">None (no paired product)</option>
-                    {frameProducts.map((fp) => (
-                      <option key={fp.id} value={fp.id}>
-                        {fp.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    When this product is added to an opening, the paired product will be automatically added as well.
-                  </p>
                 </div>
               )}
               <div className="border-t pt-4">

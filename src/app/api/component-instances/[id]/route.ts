@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isProjectLocked, createLockedError } from '@/lib/project-status'
-import { recalculateTolerancesAfterDeletion } from '@/lib/tolerance-utils'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -118,30 +117,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json(createLockedError(componentInstance.panel.opening.project.status), { status: 403 })
     }
 
-    const opening = componentInstance.panel.opening
-    const wasToleranceProduct = opening.toleranceProductId === componentInstance.productId
-
     // Delete the component instance
     await prisma.componentInstance.delete({
       where: { id: instanceId }
     })
-
-    // Recalculate tolerances if this was the tolerance-setting product
-    if (wasToleranceProduct && opening.isFinishedOpening) {
-      const toleranceUpdate = await recalculateTolerancesAfterDeletion(opening.id)
-      if (toleranceUpdate) {
-        await prisma.opening.update({
-          where: { id: opening.id },
-          data: {
-            widthToleranceTotal: toleranceUpdate.widthToleranceTotal,
-            heightToleranceTotal: toleranceUpdate.heightToleranceTotal,
-            toleranceProductId: toleranceUpdate.toleranceProductId,
-            finishedWidth: toleranceUpdate.finishedWidth,
-            finishedHeight: toleranceUpdate.finishedHeight
-          }
-        })
-      }
-    }
 
     return NextResponse.json({ message: 'Component instance deleted successfully' })
   } catch (error) {

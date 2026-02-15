@@ -174,7 +174,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             },
             presetPartInstances: {
               include: {
-                presetPart: true
+                presetPart: {
+                  include: { masterPart: true }
+                }
               }
             }
           }
@@ -218,6 +220,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           {
             id: opening.id,
             finishColor: opening.finishColor,
+            finishedWidth: (opening as any).finishedWidth,
+            finishedHeight: (opening as any).finishedHeight,
+            roughWidth: (opening as any).roughWidth,
+            roughHeight: (opening as any).roughHeight,
             panels: opening.panels,
             presetPartInstances: opening.presetPartInstances,
             project: {
@@ -387,8 +393,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
 
         // Calculate opening dimensions (sum of panel widths, max height)
-        const totalWidth = opening.panels.reduce((sum, panel) => sum + panel.width, 0)
-        const maxHeight = Math.max(...opening.panels.map(panel => panel.height), 0)
+        // Exclude FRAME and CORNER_90 panels - frames occupy the same physical space as the door
+        const sizePanels = opening.panels.filter(panel => {
+          const pType = panel.componentInstance?.product?.productType
+          return pType !== 'CORNER_90' && pType !== 'FRAME'
+        })
+        const totalWidth = sizePanels.reduce((sum, panel) => sum + panel.width, 0)
+        const maxHeight = Math.max(...sizePanels.map(panel => panel.height), 0)
 
         // Get hardware and glass types
         const hardwareItems: Array<{name: string, price: number, isIncluded: boolean, isStandard: boolean}> = []
@@ -575,6 +586,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           if (!panel.componentInstance) continue
 
           const productType = panel.componentInstance.product.productType
+          // Skip FRAME panels from customer-facing description
+          if (productType === 'FRAME') continue
+
           const displayType = productType === 'SWING_DOOR' ? 'Swing Door' :
                             productType === 'SLIDING_DOOR' ? 'Sliding Door' :
                             productType === 'FIXED_PANEL' ? 'Fixed Panel' :
