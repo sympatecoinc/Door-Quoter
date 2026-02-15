@@ -146,13 +146,9 @@ export async function PUT(
         ? (heightToleranceTotal !== null ? parseFloat(heightToleranceTotal) : null)
         : existingOpening.heightToleranceTotal
 
-      // If no overrides, get defaults based on opening type
+      // If no overrides, use hardcoded defaults based on opening type
       if (widthTol === null || heightTol === null) {
-        const toleranceSettings = await prisma.toleranceSettings.findFirst({
-          where: { name: 'default' }
-        })
-
-        const defaults = toleranceSettings || {
+        const defaults = {
           thinwallWidthTolerance: 1.0,
           thinwallHeightTolerance: 1.5,
           framedWidthTolerance: 0.5,

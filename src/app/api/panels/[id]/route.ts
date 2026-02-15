@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { validateComponentSize } from '@/lib/component-validation'
 import { isProjectLocked, createLockedError } from '@/lib/project-status'
-import { recalculateTolerancesAfterDeletion } from '@/lib/tolerance-utils'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -338,31 +337,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json(createLockedError(panel.opening.project.status), { status: 403 })
     }
 
-    const opening = panel.opening
-    const wasToleranceProduct = panel.componentInstance &&
-      opening.toleranceProductId === panel.componentInstance.productId
-
     // Delete the panel (this will cascade delete the componentInstance due to the schema)
     await prisma.panel.delete({
       where: { id: panelId }
     })
-
-    // Recalculate tolerances if this panel had the tolerance-setting product
-    if (wasToleranceProduct && opening.isFinishedOpening) {
-      const toleranceUpdate = await recalculateTolerancesAfterDeletion(opening.id)
-      if (toleranceUpdate) {
-        await prisma.opening.update({
-          where: { id: opening.id },
-          data: {
-            widthToleranceTotal: toleranceUpdate.widthToleranceTotal,
-            heightToleranceTotal: toleranceUpdate.heightToleranceTotal,
-            toleranceProductId: toleranceUpdate.toleranceProductId,
-            finishedWidth: toleranceUpdate.finishedWidth,
-            finishedHeight: toleranceUpdate.finishedHeight
-          }
-        })
-      }
-    }
 
     return NextResponse.json({ message: 'Panel deleted successfully' })
   } catch (error) {

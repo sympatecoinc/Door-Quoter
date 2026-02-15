@@ -93,25 +93,22 @@ interface ProductConfig {
   id: number
   name: string
   productType: string
-  widthTolerance: number | null
-  heightTolerance: number | null
   frameConfigId: number | null
 }
-
-const TOLERANCE_ELIGIBLE_TYPES = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL']
 
 async function discoverProducts(): Promise<{ productA: ProductConfig; productB: ProductConfig }> {
   console.log('\n=== Step 2: Discovering Products ===')
   const products: any[] = await apiJSON('GET', '/api/products')
 
-  // Filter to non-archived, tolerance-eligible types
+  // Filter to non-archived, door/panel types
+  const eligibleTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL']
   const eligible = products.filter(
-    (p: any) => !p.archived && TOLERANCE_ELIGIBLE_TYPES.includes(p.productType)
+    (p: any) => !p.archived && eligibleTypes.includes(p.productType)
   )
 
   console.log(`  Found ${eligible.length} eligible products (out of ${products.length} total):`)
   for (const p of eligible) {
-    console.log(`    - ${p.name} (id=${p.id}, type=${p.productType}, wTol=${p.widthTolerance ?? 'null'}, hTol=${p.heightTolerance ?? 'null'}, frame=${p.frameConfig?.id ?? 'none'})`)
+    console.log(`    - ${p.name} (id=${p.id}, type=${p.productType}, frame=${p.frameConfig?.id ?? 'none'})`)
   }
 
   if (eligible.length < 2) {
@@ -138,8 +135,6 @@ async function discoverProducts(): Promise<{ productA: ProductConfig; productB: 
     id: p.id,
     name: p.name,
     productType: p.productType,
-    widthTolerance: p.widthTolerance ?? null,
-    heightTolerance: p.heightTolerance ?? null,
     frameConfigId: p.frameConfig?.id ?? null
   })
 

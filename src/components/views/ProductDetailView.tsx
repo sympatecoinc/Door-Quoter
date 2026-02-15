@@ -587,11 +587,6 @@ export default function ProductDetailView({
   const [minHeightValue, setMinHeightValue] = useState('')
   const [maxHeightValue, setMaxHeightValue] = useState('')
   const [savingSizeConstraints, setSavingSizeConstraints] = useState(false)
-  // Product Tolerances
-  const [editingTolerances, setEditingTolerances] = useState(false)
-  const [widthToleranceValue, setWidthToleranceValue] = useState('')
-  const [heightToleranceValue, setHeightToleranceValue] = useState('')
-  const [savingTolerances, setSavingTolerances] = useState(false)
   // Product Settings (Category & Default Width)
   const [editingProductSettings, setEditingProductSettings] = useState(false)
   const [productCategoryValue, setProductCategoryValue] = useState('')
@@ -1156,52 +1151,6 @@ export default function ProductDetailView({
       showError('Error updating size constraints')
     } finally {
       setSavingSizeConstraints(false)
-    }
-  }
-
-  // Product Tolerances functions
-  function startEditTolerances() {
-    setWidthToleranceValue(productDetails?.widthTolerance?.toString() || '')
-    setHeightToleranceValue(productDetails?.heightTolerance?.toString() || '')
-    setEditingTolerances(true)
-  }
-
-  function cancelEditTolerances() {
-    setWidthToleranceValue('')
-    setHeightToleranceValue('')
-    setEditingTolerances(false)
-  }
-
-  async function handleSaveTolerances() {
-    setSavingTolerances(true)
-    try {
-      const response = await fetch(`/api/products/${product.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          widthTolerance: widthToleranceValue || null,
-          heightTolerance: heightToleranceValue || null
-        })
-      })
-
-      if (response.ok) {
-        // Refresh product details
-        const detailsResponse = await fetch(`/api/products/${product.id}`)
-        if (detailsResponse.ok) {
-          const data = await detailsResponse.json()
-          setProductDetails(data)
-        }
-        setEditingTolerances(false)
-        onRefresh()
-        showSuccess('Product tolerances updated successfully!')
-      } else {
-        showError('Failed to update product tolerances')
-      }
-    } catch (error) {
-      console.error('Error updating product tolerances:', error)
-      showError('Error updating product tolerances')
-    } finally {
-      setSavingTolerances(false)
     }
   }
 
@@ -2938,115 +2887,6 @@ export default function ProductDetailView({
             )}
           </div>
         </div>
-        )}
-
-        {/* Product Tolerances Section - Only for SWING_DOOR, SLIDING_DOOR, FIXED_PANEL */}
-        {['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL'].includes(productDetails?.productType || product?.productType || '') && (
-          <div className="col-span-full mt-6">
-            <div className="bg-gray-50 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Product Tolerances</h3>
-                  <p className="text-sm text-gray-500">
-                    Custom tolerances applied when this product is added to a finished opening
-                  </p>
-                </div>
-                {!editingTolerances && (
-                  <button
-                    onClick={startEditTolerances}
-                    className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-                  >
-                    <Edit2 className="w-4 h-4 mr-1" />
-                    Edit Tolerances
-                  </button>
-                )}
-              </div>
-
-              {editingTolerances ? (
-                <div className="bg-white rounded-lg p-4 border border-gray-200">
-                  <div className="space-y-4">
-                    <p className="text-xs text-gray-500 bg-amber-50 p-3 rounded-lg border border-amber-200">
-                      <strong>Note:</strong> When this product is added to a finished opening, these tolerances will be used instead of the opening type defaults. Only the first product&apos;s tolerances apply to each opening.
-                    </p>
-                    <div className="grid grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Width Tolerance (inches)</label>
-                        <input
-                          type="number"
-                          step="0.0625"
-                          min="0"
-                          value={widthToleranceValue}
-                          onChange={(e) => setWidthToleranceValue(e.target.value)}
-                          placeholder="Use defaults"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <p className="text-xs text-gray-400 mt-1">Total deducted from rough width</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Height Tolerance (inches)</label>
-                        <input
-                          type="number"
-                          step="0.0625"
-                          min="0"
-                          value={heightToleranceValue}
-                          onChange={(e) => setHeightToleranceValue(e.target.value)}
-                          placeholder="Use defaults"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <p className="text-xs text-gray-400 mt-1">Total deducted from rough height</p>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end space-x-3 pt-2">
-                      <button
-                        onClick={cancelEditTolerances}
-                        disabled={savingTolerances}
-                        className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSaveTolerances}
-                        disabled={savingTolerances}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
-                      >
-                        {savingTolerances ? (
-                          <>
-                            <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                            Saving...
-                          </>
-                        ) : (
-                          <>
-                            <Save className="w-4 h-4 mr-2" />
-                            Save
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Width Tolerance</h4>
-                    <span className="text-gray-900">
-                      {productDetails?.widthTolerance !== null && productDetails?.widthTolerance !== undefined
-                        ? `${productDetails.widthTolerance}"`
-                        : 'Use opening defaults'}
-                    </span>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Height Tolerance</h4>
-                    <span className="text-gray-900">
-                      {productDetails?.heightTolerance !== null && productDetails?.heightTolerance !== undefined
-                        ? `${productDetails.heightTolerance}"`
-                        : 'Use opening defaults'}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
         )}
 
         {/* Export Product Section */}

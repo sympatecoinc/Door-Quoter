@@ -156,7 +156,6 @@ model Opening {
   openingType           String?   // "THINWALL" or "FRAMED" - determines which default tolerances to use
   widthToleranceTotal   Float?    // Override: total inches to deduct from width (null = use defaults)
   heightToleranceTotal  Float?    // Override: total inches to deduct from height (null = use defaults)
-  toleranceProductId    Int?      // ID of product that defined tolerances (first eligible product added)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   project               Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -254,8 +253,6 @@ model Product {
   maxWidth             Float?                 // Maximum allowed width (inches)
   minHeight            Float?                 // Minimum allowed height (inches)
   maxHeight            Float?                 // Maximum allowed height (inches)
-  widthTolerance       Float?                 // Product-specific width tolerance (null = use defaults)
-  heightTolerance      Float?                 // Product-specific height tolerance (null = use defaults)
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
   componentInstances   ComponentInstance[]

@@ -100,9 +100,7 @@ export async function POST(request: NextRequest) {
       elevationImageData,
       planImageData,
       elevationFileName,
-      planFileName,
-      widthTolerance,
-      heightTolerance
+      planFileName
     } = await request.json()
 
     if (!name) {
@@ -137,17 +135,6 @@ export async function POST(request: NextRequest) {
       type,
       productType,
       productCategory
-    }
-
-    // Add tolerance fields if provided (only for eligible product types)
-    const toleranceEligibleTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL']
-    if (toleranceEligibleTypes.includes(productType)) {
-      if (widthTolerance !== undefined && widthTolerance !== null && widthTolerance !== '') {
-        productData.widthTolerance = parseFloat(widthTolerance)
-      }
-      if (heightTolerance !== undefined && heightTolerance !== null && heightTolerance !== '') {
-        productData.heightTolerance = parseFloat(heightTolerance)
-      }
     }
 
     const product = await prisma.product.create({

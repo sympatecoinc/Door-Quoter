@@ -150,7 +150,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Set finished dimensions - use provided values or copy from rough
-    // Tolerances will be applied when the first component is added to the opening
     if (finishedWidth && finishedWidth !== '') {
       openingData.finishedWidth = parseFloat(finishedWidth)
     } else if (finalRoughWidth !== null) {

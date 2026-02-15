@@ -63,7 +63,6 @@ interface Opening {
   finishedHeight?: number
   isFinishedOpening?: boolean
   openingType?: 'THINWALL' | 'FRAMED'
-  toleranceProductId?: number | null  // If set, tolerances have been applied to this opening
   price: number
   multiplier: number
   priceCalculatedAt?: string | null
@@ -328,6 +327,7 @@ export default function ProjectDetailView() {
   })
   const [finishTypes, setFinishTypes] = useState<any[]>([])
   const [pendingComponentOpeningId, setPendingComponentOpeningId] = useState<number | null>(null)
+  const [deferredAddComponentOpeningId, setDeferredAddComponentOpeningId] = useState<number | null>(null)
   const [showAddComponent, setShowAddComponent] = useState(false)
   const [selectedOpeningId, setSelectedOpeningId] = useState<number | null>(null)
   const [products, setProducts] = useState<any[]>([])
@@ -452,12 +452,7 @@ export default function ProjectDetailView() {
     return results
   }
 
-  // Tolerance-eligible product types for opening size calculations
-  const TOLERANCE_ELIGIBLE_TYPES = ['SWING_DOOR', 'SLIDING_DOOR', 'FIXED_PANEL']
-
   // Helper to calculate effective finished dimensions for an opening
-  // Uses existing finishedWidth/finishedHeight if tolerances have been applied,
-  // otherwise calculates from rough dimensions and selected product tolerances
   function getEffectiveFinishedDimensions(
     opening: Opening | undefined,
     selectedProduct: any | undefined
@@ -466,29 +461,17 @@ export default function ProjectDetailView() {
       return { width: null, height: null }
     }
 
-    // If tolerances have already been applied to this opening (toleranceProductId is set),
-    // use the stored finished dimensions
-    if (opening.toleranceProductId && opening.finishedWidth && opening.finishedHeight) {
+    // Use stored finished dimensions if available
+    if (opening.finishedWidth && opening.finishedHeight) {
       return { width: opening.finishedWidth, height: opening.finishedHeight }
     }
 
-    // For finished openings where tolerances haven't been applied yet
-    // (first tolerance-eligible product being added)
+    // For finished openings, use rough dimensions as fallback
     if (opening.isFinishedOpening && opening.roughWidth && opening.roughHeight) {
-      // If a tolerance-eligible product is selected, use its tolerances to calculate effective dimensions
-      if (selectedProduct && TOLERANCE_ELIGIBLE_TYPES.includes(selectedProduct.productType)) {
-        const widthTolerance = selectedProduct.widthTolerance || 0
-        const heightTolerance = selectedProduct.heightTolerance || 0
-        return {
-          width: opening.roughWidth - widthTolerance,
-          height: opening.roughHeight - heightTolerance
-        }
-      }
-      // If no product selected or not tolerance-eligible, use rough dimensions (0 tolerance)
       return { width: opening.roughWidth, height: opening.roughHeight }
     }
 
-    // For any opening without tolerances applied, use finishedWidth/Height or roughWidth/Height
+    // For any opening, use finishedWidth/Height or roughWidth/Height
     const w = opening.finishedWidth || opening.roughWidth
     const h = opening.finishedHeight || opening.roughHeight
     if (w && h) {
@@ -611,6 +594,18 @@ export default function ProjectDetailView() {
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [expandedCostOpeningId])
+
+  // Deferred Add Component: open modal after project state has updated with dimensions
+  useEffect(() => {
+    if (deferredAddComponentOpeningId && project) {
+      const opening = project.openings.find((o: any) => o.id === deferredAddComponentOpeningId)
+      if (opening) {
+        handleShowAddComponent(deferredAddComponentOpeningId)
+        setAddComponentMode('single')
+        setDeferredAddComponentOpeningId(null)
+      }
+    }
+  }, [deferredAddComponentOpeningId, project])
 
   // Cmd+N to add new opening
   const anyModalOpen = showAddOpening || showAddComponent || showEditModal || showBOM || showDrawingViewer ||
@@ -2203,7 +2198,7 @@ export default function ProjectDetailView() {
         // First panel in opening (or only Frame panels)
         // Only auto-populate height if tolerances have already been applied to the opening
         // If tolerances haven't been applied yet, leave blank - user should use "Auto" after selecting product
-        if (opening?.isFinishedOpening && opening.finishedHeight && opening.toleranceProductId) {
+        if (opening?.isFinishedOpening && opening.finishedHeight) {
           setComponentHeight(opening.finishedHeight.toString())
         } else {
           setComponentHeight('')
@@ -4617,14 +4612,13 @@ export default function ProjectDetailView() {
                           console.error('Error saving dimensions:', error)
                         }
                       }
-                      // Close modal and open Add Component directly at product selection
+                      // Close modal and open Add Component after project state updates
                       const openingId = newlyCreatedOpeningId
                       if (openingId) setPendingComponentOpeningId(openingId)
                       resetAddOpeningModal(true)
                       showSuccess('Opening added successfully!')
                       if (openingId) {
-                        handleShowAddComponent(openingId)
-                        setAddComponentMode('single')
+                        setDeferredAddComponentOpeningId(openingId)
                       }
                     }}
                     disabled={newOpening.isFinishedOpening && (!newOpening.roughWidth || !newOpening.roughHeight)}

@@ -214,21 +214,8 @@ export interface Opening {
   openingType?: OpeningType | null
   widthToleranceTotal?: number | null
   heightToleranceTotal?: number | null
-  toleranceProductId?: number | null  // ID of product that defined tolerances
   createdAt: Date
   updatedAt: Date
-}
-
-// Tolerance Settings for finished openings
-export interface ToleranceSettings {
-  id?: number
-  name?: string
-  thinwallWidthTolerance: number
-  thinwallHeightTolerance: number
-  framedWidthTolerance: number
-  framedHeightTolerance: number
-  createdAt?: Date
-  updatedAt?: Date
 }
 
 export interface Panel {
@@ -265,8 +252,6 @@ export interface Product {
   maxWidth?: number | null
   minHeight?: number | null
   maxHeight?: number | null
-  widthTolerance?: number | null   // Product-specific width tolerance
-  heightTolerance?: number | null  // Product-specific height tolerance
   elevationImageData?: string | null
   createdAt: Date
   updatedAt: Date

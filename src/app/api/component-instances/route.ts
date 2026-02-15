@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isProjectLocked, createLockedError } from '@/lib/project-status'
-import { calculateProductTolerances, isToleranceEligible } from '@/lib/tolerance-utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -158,42 +157,6 @@ export async function POST(request: NextRequest) {
         panel: true
       }
     })
-
-    // Apply product tolerances to opening if applicable (first-product-wins)
-    if (isToleranceEligible(product.productType)) {
-      const opening = panel.opening
-      const toleranceUpdate = await calculateProductTolerances(
-        {
-          id: opening.id,
-          roughWidth: opening.roughWidth,
-          roughHeight: opening.roughHeight,
-          openingType: opening.openingType,
-          isFinishedOpening: opening.isFinishedOpening,
-          toleranceProductId: opening.toleranceProductId,
-          widthToleranceTotal: opening.widthToleranceTotal,
-          heightToleranceTotal: opening.heightToleranceTotal
-        },
-        {
-          id: product.id,
-          productType: product.productType,
-          widthTolerance: product.widthTolerance,
-          heightTolerance: product.heightTolerance
-        }
-      )
-
-      if (toleranceUpdate) {
-        await prisma.opening.update({
-          where: { id: opening.id },
-          data: {
-            widthToleranceTotal: toleranceUpdate.widthToleranceTotal,
-            heightToleranceTotal: toleranceUpdate.heightToleranceTotal,
-            toleranceProductId: toleranceUpdate.toleranceProductId,
-            finishedWidth: toleranceUpdate.finishedWidth,
-            finishedHeight: toleranceUpdate.finishedHeight
-          }
-        })
-      }
-    }
 
     return NextResponse.json(componentInstance, { status: 201 })
   } catch (error) {
