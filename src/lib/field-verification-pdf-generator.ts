@@ -15,6 +15,7 @@ export interface FieldVerificationOpening {
   roughHeight: number | null
   finishedWidth: number | null
   finishedHeight: number | null
+  openingType: string | null // "THINWALL" or "FRAMED"
 }
 
 export interface FieldVerificationData {
@@ -361,23 +362,33 @@ export async function createFieldVerificationPDF(data: FieldVerificationData): P
     pdf.setFont('helvetica', 'normal')
     xPos += COL_NAME
 
-    // Rough Opening Spec
-    const roughSpec = formatDimension(opening.roughWidth, opening.roughHeight)
-    pdf.text(roughSpec, xPos + COL_ROUGH_SPEC / 2, yPos + 6.5, { align: 'center' })
-    xPos += COL_ROUGH_SPEC
+    // Rough Opening columns - only show for FRAMED (trimmed) openings
+    if (opening.openingType !== 'THINWALL') {
+      const roughSpec = formatDimension(opening.roughWidth, opening.roughHeight)
+      pdf.text(roughSpec, xPos + COL_ROUGH_SPEC / 2, yPos + 6.5, { align: 'center' })
+      xPos += COL_ROUGH_SPEC
+      drawDashedUnderline(xPos, yPos + 7.5, COL_ROUGH_ACTUAL)
+      xPos += COL_ROUGH_ACTUAL
+    } else {
+      // Grey out rough columns for thinwall openings
+      pdf.setFillColor(235, 235, 235)
+      pdf.rect(xPos, yPos, COL_ROUGH_SPEC + COL_ROUGH_ACTUAL, ROW_HEIGHT, 'F')
+      xPos += COL_ROUGH_SPEC + COL_ROUGH_ACTUAL
+    }
 
-    // Rough Opening Actual (blank with dashed underline)
-    drawDashedUnderline(xPos, yPos + 7.5, COL_ROUGH_ACTUAL)
-    xPos += COL_ROUGH_ACTUAL
-
-    // Finished Opening Spec
-    const finishedSpec = formatDimension(opening.finishedWidth, opening.finishedHeight)
-    pdf.text(finishedSpec, xPos + COL_FINISHED_SPEC / 2, yPos + 6.5, { align: 'center' })
-    xPos += COL_FINISHED_SPEC
-
-    // Finished Opening Actual (blank with dashed underline)
-    drawDashedUnderline(xPos, yPos + 7.5, COL_FINISHED_ACTUAL)
-    xPos += COL_FINISHED_ACTUAL
+    // Finished Opening columns - only show for THINWALL openings
+    if (opening.openingType === 'THINWALL') {
+      const finishedSpec = formatDimension(opening.finishedWidth, opening.finishedHeight)
+      pdf.text(finishedSpec, xPos + COL_FINISHED_SPEC / 2, yPos + 6.5, { align: 'center' })
+      xPos += COL_FINISHED_SPEC
+      drawDashedUnderline(xPos, yPos + 7.5, COL_FINISHED_ACTUAL)
+      xPos += COL_FINISHED_ACTUAL
+    } else {
+      // Grey out finished columns for trimmed/framed openings
+      pdf.setFillColor(235, 235, 235)
+      pdf.rect(xPos, yPos, COL_FINISHED_SPEC + COL_FINISHED_ACTUAL, ROW_HEIGHT, 'F')
+      xPos += COL_FINISHED_SPEC + COL_FINISHED_ACTUAL
+    }
 
     // Notes column (blank with dashed underline)
     drawDashedUnderline(xPos, yPos + 7.5, COL_NOTES)

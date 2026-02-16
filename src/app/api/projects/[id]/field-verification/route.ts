@@ -135,7 +135,8 @@ export async function GET(
         roughHeight: opening.roughHeight ?? calculatedHeight,
         // Use stored finished dimensions, or fall back to calculated from panels
         finishedWidth: opening.finishedWidth ?? calculatedWidth,
-        finishedHeight: opening.finishedHeight ?? calculatedHeight
+        finishedHeight: opening.finishedHeight ?? calculatedHeight,
+        openingType: opening.openingType ?? null
       }
     })
 
