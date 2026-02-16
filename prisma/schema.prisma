@@ -253,6 +253,7 @@ model Product {
   maxWidth             Float?                 // Maximum allowed width (inches)
   minHeight            Float?                 // Minimum allowed height (inches)
   maxHeight            Float?                 // Maximum allowed height (inches)
+  jambThickness        Float?                 // Profile thickness in inches (FRAME products). Interior = Opening - (2 × jambThickness)
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
   componentInstances   ComponentInstance[]

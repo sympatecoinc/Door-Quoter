@@ -110,6 +110,7 @@ interface Panel {
       maxWidth?: number | null
       minHeight?: number | null
       maxHeight?: number | null
+      jambThickness?: number | null
       productBOMs?: {
         id: number
         updatedAt: string
@@ -479,6 +480,29 @@ export default function ProjectDetailView() {
     }
 
     return { width: null, height: null }
+  }
+
+  // Helper to get jambThickness from FRAME panel in an opening and compute interior dims
+  function getInteriorDimensions(opening: Opening | undefined): { interiorWidth: number | null; interiorHeight: number | null; jambThickness: number } {
+    if (!opening) return { interiorWidth: null, interiorHeight: null, jambThickness: 0 }
+
+    let jt = 0
+    for (const p of opening.panels || []) {
+      if (p.componentInstance?.product?.productType === 'FRAME' &&
+          p.componentInstance.product.jambThickness) {
+        jt = p.componentInstance.product.jambThickness
+        break
+      }
+    }
+
+    const w = opening.finishedWidth || opening.roughWidth
+    const h = opening.finishedHeight || opening.roughHeight
+
+    if (jt > 0 && w && h) {
+      return { interiorWidth: w - (2 * jt), interiorHeight: h - jt, jambThickness: jt }
+    }
+
+    return { interiorWidth: w || null, interiorHeight: h || null, jambThickness: 0 }
   }
 
   // Handle back navigation
@@ -2199,7 +2223,9 @@ export default function ProjectDetailView() {
         // Only auto-populate height if tolerances have already been applied to the opening
         // If tolerances haven't been applied yet, leave blank - user should use "Auto" after selecting product
         if (opening?.isFinishedOpening && opening.finishedHeight) {
-          setComponentHeight(opening.finishedHeight.toString())
+          // Use interior height if a frame with jambThickness exists
+          const { interiorHeight } = getInteriorDimensions(opening)
+          setComponentHeight((interiorHeight ?? opening.finishedHeight).toString())
         } else {
           setComponentHeight('')
         }
@@ -2390,7 +2416,7 @@ export default function ProjectDetailView() {
     }
   }
 
-  // Auto-fill height only to opening height
+  // Auto-fill height only to opening height (uses interior height when frame is present)
   function handleAutoHeight() {
     const opening = project?.openings.find(o => o.id === selectedOpeningId)
     const selectedProduct = products.find(p => p.id === selectedProductId)
@@ -2403,7 +2429,14 @@ export default function ProjectDetailView() {
       return
     }
 
+    // Use interior height when a frame with jambThickness exists (for non-FRAME products)
     let finalHeight = effectiveDimensions.height
+    if (selectedProduct?.productType !== 'FRAME') {
+      const { interiorHeight } = getInteriorDimensions(opening)
+      if (interiorHeight !== null) {
+        finalHeight = interiorHeight
+      }
+    }
 
     // Apply product constraints
     if (selectedProduct?.minHeight && finalHeight < selectedProduct.minHeight) {
@@ -3649,6 +3682,17 @@ export default function ProjectDetailView() {
 {`${opening.openingType === 'THINWALL' ? 'Finished' : 'Rough'} Opening Size: ${opening.roughWidth}" W × ${opening.roughHeight}" H`}
                       </span>
                     )}
+                    {(() => {
+                      const { interiorWidth, interiorHeight, jambThickness: jt } = getInteriorDimensions(opening)
+                      if (jt > 0 && interiorWidth && interiorHeight) {
+                        return (
+                          <span className="text-gray-500">
+                            {`| Interior: ${interiorWidth.toFixed(3)}" W × ${interiorHeight.toFixed(3)}" H`}
+                          </span>
+                        )
+                      }
+                      return null
+                    })()}
                   </div>
                 </div>
                 

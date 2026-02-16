@@ -106,7 +106,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       maxWidth,
       minHeight,
       maxHeight,
-      frameConfigId
+      frameConfigId,
+      jambThickness
     } = await request.json()
 
     // Prepare update data
@@ -147,6 +148,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (maxWidth !== undefined) updateData.maxWidth = maxWidth !== null && maxWidth !== '' ? parseFloat(maxWidth) : null
     if (minHeight !== undefined) updateData.minHeight = minHeight !== null && minHeight !== '' ? parseFloat(minHeight) : null
     if (maxHeight !== undefined) updateData.maxHeight = maxHeight !== null && maxHeight !== '' ? parseFloat(maxHeight) : null
+
+    // Jamb thickness for FRAME products
+    if (jambThickness !== undefined) {
+      updateData.jambThickness = jambThickness !== null && jambThickness !== '' ? parseFloat(jambThickness) : null
+    }
 
     // Frame configuration - which frame product to auto-add when this product is added to an opening
     if (frameConfigId !== undefined) {

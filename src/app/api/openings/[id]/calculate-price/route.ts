@@ -137,7 +137,8 @@ async function calculateOptionPrice(
   excludedPartNumbers: string[],
   finishColor: string | null,
   globalMaterialPricePerLb: number,
-  selectedVariantId?: number | null
+  selectedVariantId?: number | null,
+  extraVars?: Record<string, number>
 ): Promise<{ unitPrice: number; totalPrice: number; isExtrusion: boolean; breakdown?: any; linkedPartsCost?: number }> {
   // Initialize base option pricing
   let baseUnitPrice = 0
@@ -178,7 +179,8 @@ async function calculateOptionPrice(
           extrusionCostingMethod,
           excludedPartNumbers,
           finishColor,
-          globalMaterialPricePerLb
+          globalMaterialPricePerLb,
+          extraVars
         )
 
         baseUnitPrice = bomResult.cost / quantity
@@ -237,11 +239,12 @@ async function calculateOptionPrice(
 }
 
 // Function to calculate the price of a single BOM item using component dimensions
-async function calculateBOMItemPrice(bom: any, componentWidth: number, componentHeight: number, extrusionCostingMethod?: string, excludedPartNumbers?: string[], finishColor?: string | null, globalMaterialPricePerLb?: number): Promise<{cost: number, breakdown: any}> {
+async function calculateBOMItemPrice(bom: any, componentWidth: number, componentHeight: number, extrusionCostingMethod?: string, excludedPartNumbers?: string[], finishColor?: string | null, globalMaterialPricePerLb?: number, extraVars?: Record<string, number>): Promise<{cost: number, breakdown: any}> {
   const variables = {
     width: componentWidth || 0,
     height: componentHeight || 0,
-    quantity: bom.quantity || 1
+    quantity: bom.quantity || 1,
+    ...extraVars
   }
 
   let cost = 0
@@ -836,6 +839,25 @@ export async function POST(
     // Get extrusion costing method from pricing mode (fallback to project's setting for backward compatibility, then to FULL_STOCK)
     const extrusionCostingMethod = opening.project.pricingMode?.extrusionCostingMethod || opening.project.extrusionCostingMethod || 'FULL_STOCK'
 
+    // Detect FRAME panel and get jambThickness for this opening
+    let jambThickness = 0
+    for (const p of opening.panels) {
+      if (p.componentInstance?.product?.productType === 'FRAME' &&
+          p.componentInstance.product.jambThickness) {
+        jambThickness = p.componentInstance.product.jambThickness
+        break
+      }
+    }
+
+    // Compute opening and interior dimensions
+    const calcOpeningWidth = opening.finishedWidth ?? opening.roughWidth ?? 0
+    const calcOpeningHeight = opening.finishedHeight ?? opening.roughHeight ?? 0
+    const interiorWidth = jambThickness > 0 ? calcOpeningWidth - (2 * jambThickness) : calcOpeningWidth
+    const interiorHeight = jambThickness > 0 ? calcOpeningHeight - jambThickness : calcOpeningHeight
+
+    // Reusable base variables for all formulas in this opening
+    const openingLevelVars = { interiorWidth, interiorHeight, openingWidth: calcOpeningWidth, openingHeight: calcOpeningHeight, jambThickness }
+
     // Calculate price for each panel's component
     for (const panel of opening.panels) {
       if (!panel.componentInstance) continue
@@ -850,8 +872,11 @@ export async function POST(
       let effectiveHeight = panel.height
 
       if (isFrameProduct) {
-        effectiveWidth = opening.roughWidth ?? opening.finishedWidth ?? panel.width
-        effectiveHeight = opening.roughHeight ?? opening.finishedHeight ?? panel.height
+        effectiveWidth = calcOpeningWidth || panel.width
+        effectiveHeight = calcOpeningHeight || panel.height
+      } else if (jambThickness > 0) {
+        // TRIMMED component inside frame: height = interiorHeight
+        effectiveHeight = interiorHeight
       }
 
       const componentBreakdown = {
@@ -920,7 +945,8 @@ export async function POST(
           extrusionCostingMethod,
           opening.project.excludedPartNumbers || [],
           opening.finishColor,
-          globalMaterialPricePerLb
+          globalMaterialPricePerLb,
+          openingLevelVars
         )
         componentBreakdown.bomCosts.push(breakdown)
         componentBreakdown.totalBOMCost += cost
@@ -1007,7 +1033,8 @@ export async function POST(
                   opening.project.excludedPartNumbers || [],
                   opening.finishColor,
                   globalMaterialPricePerLb,
-                  standardSelectedVariantId
+                  standardSelectedVariantId,
+                  openingLevelVars
                 )
 
                 componentBreakdown.optionCosts.push({
@@ -1073,7 +1100,8 @@ export async function POST(
                 opening.project.excludedPartNumbers || [],
                 opening.finishColor,
                 globalMaterialPricePerLb,
-                selectedVariantId
+                selectedVariantId,
+                openingLevelVars
               )
 
               if (isStandardSelected) {
@@ -1125,7 +1153,8 @@ export async function POST(
                       opening.project.excludedPartNumbers || [],
                       opening.finishColor,
                       globalMaterialPricePerLb,
-                      standardVariantId
+                      standardVariantId,
+                      openingLevelVars
                     )
                   : { unitPrice: 0, totalPrice: 0, isExtrusion: false }
 
@@ -1189,7 +1218,8 @@ export async function POST(
               opening.project.excludedPartNumbers || [],
               opening.finishColor,
               globalMaterialPricePerLb,
-              unprocessedSelectedVariantId
+              unprocessedSelectedVariantId,
+              openingLevelVars
             )
 
             componentBreakdown.optionCosts.push({
@@ -1242,8 +1272,9 @@ export async function POST(
 
           if (glassType && product.glassWidthFormula && product.glassHeightFormula) {
             const variables = {
-              width: panel.width,
-              height: panel.height
+              width: effectiveWidth,
+              height: effectiveHeight,
+              ...openingLevelVars
             }
 
             console.log(`[Glass Pricing] Variables for formulas:`, variables)
@@ -1299,10 +1330,11 @@ export async function POST(
 
               for (const gtp of glassType.parts) {
                 const partVariables = {
-                  width: panel.width,
-                  height: panel.height,
+                  width: effectiveWidth,
+                  height: effectiveHeight,
                   glassWidth: glassWidth,
-                  glassHeight: glassHeight
+                  glassHeight: glassHeight,
+                  ...openingLevelVars
                 }
 
                 // Calculate quantity from formula or use fixed quantity
@@ -1377,17 +1409,18 @@ export async function POST(
           cost: 0
         }
 
-        const effectiveWidth = opening.finishedWidth || opening.roughWidth || 0
-        const effectiveHeight = opening.finishedHeight || opening.roughHeight || 0
+        const presetEffectiveWidth = opening.finishedWidth || opening.roughWidth || 0
+        const presetEffectiveHeight = opening.finishedHeight || opening.roughHeight || 0
 
         const { cost, breakdown } = await calculateBOMItemPrice(
           bomForPricing,
-          effectiveWidth,
-          effectiveHeight,
+          presetEffectiveWidth,
+          presetEffectiveHeight,
           extrusionCostingMethod,
           opening.project.excludedPartNumbers || [],
           opening.finishColor,
-          globalMaterialPricePerLb
+          globalMaterialPricePerLb,
+          openingLevelVars
         )
 
         priceBreakdown.totalComponentCost += cost
