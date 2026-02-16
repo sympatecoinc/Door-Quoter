@@ -459,6 +459,7 @@ export interface ExtrusionVariant {
   stockLength: number
   finishPricingId: number | null
   qtyOnHand: number
+  qtyReserved: number
   binLocationLegacy: string | null  // Legacy string field (deprecated)
   binLocationId: number | null
   binLocationRef?: BinLocation | null

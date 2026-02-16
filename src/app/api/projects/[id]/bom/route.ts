@@ -8,7 +8,6 @@ import {
   calculateStockOptimization,
   cutlistToCSV,
   summaryToCSV,
-  getFrameDimensions,
   calculateRequiredPartLength,
   findBestStockLengthRule,
   applyYieldOptimizationToBomItems
@@ -203,15 +202,14 @@ export async function GET(
 
         const product = panel.componentInstance.product
 
-        // For FRAME products, calculate dimensions dynamically from sibling panels
+        // For FRAME products, use full opening dimensions (not sibling panel sum)
         const isFrameProduct = product.productType === 'FRAME'
         let effectiveWidth = panel.width || 0
         let effectiveHeight = panel.height || 0
 
         if (isFrameProduct) {
-          const frameDimensions = getFrameDimensions(opening.panels as any, panel.id)
-          effectiveWidth = frameDimensions.width
-          effectiveHeight = frameDimensions.height
+          effectiveWidth = opening.roughWidth ?? opening.finishedWidth ?? panel.width ?? 0
+          effectiveHeight = opening.roughHeight ?? opening.finishedHeight ?? panel.height ?? 0
         }
 
         // Process each BOM item for this component

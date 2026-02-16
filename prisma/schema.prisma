@@ -956,6 +956,7 @@ model ExtrusionVariant {
   stockLength      Float                   // Stock length in inches (e.g., 144 = 12ft)
   finishPricingId  Int?                    // null = Mill Finish
   qtyOnHand        Float                   @default(0)     // Current quantity in stock (pieces)
+  qtyReserved      Float                   @default(0)     // Quantity reserved for confirmed SOs
   binLocationLegacy String?   @map("binLocation") // DEPRECATED: Legacy bin location string (kept for migration)
   binLocationId    Int?                    // Physical bin/location reference
   binLocationRef   BinLocation?            @relation(fields: [binLocationId], references: [id], onDelete: SetNull)
@@ -967,8 +968,9 @@ model ExtrusionVariant {
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
 
-  masterPart      MasterPart              @relation(fields: [masterPartId], references: [id], onDelete: Cascade)
-  finishPricing   ExtrusionFinishPricing? @relation(fields: [finishPricingId], references: [id], onDelete: SetNull)
+  masterPart       MasterPart              @relation(fields: [masterPartId], references: [id], onDelete: Cascade)
+  finishPricing    ExtrusionFinishPricing? @relation(fields: [finishPricingId], references: [id], onDelete: SetNull)
+  salesOrderParts  SalesOrderPart[]
 
   @@unique([masterPartId, stockLength, finishPricingId])
   @@map("ExtrusionVariants")
@@ -1422,9 +1424,11 @@ model SalesOrderPart {
   salesOrder      SalesOrder    @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
 
   // Part reference
-  masterPartId    Int?
-  masterPart      MasterPart?   @relation(fields: [masterPartId], references: [id], onDelete: SetNull)
-  partNumber      String        // Full part number (with finish code, stock length)
+  masterPartId         Int?
+  masterPart           MasterPart?        @relation(fields: [masterPartId], references: [id], onDelete: SetNull)
+  extrusionVariantId   Int?
+  extrusionVariant     ExtrusionVariant?  @relation(fields: [extrusionVariantId], references: [id], onDelete: SetNull)
+  partNumber           String             // Full part number (with finish code, stock length)
   partName        String
   partType        String        // Extrusion, Hardware, Glass, Option, etc.
 

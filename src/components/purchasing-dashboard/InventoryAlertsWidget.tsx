@@ -233,27 +233,27 @@ export default function InventoryAlertsWidget({ refreshKey = 0, compact = false,
                     <div className="text-right text-sm">
                       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
                         <span className="text-xs opacity-70 text-right">On Hand:</span>
-                        <span className="font-medium">{alert.qtyOnHand}</span>
+                        <span className="font-medium">{alert.qtyOnHand}{alert.unit ? ` ${alert.unit}` : ''}</span>
                         {alert.qtyReserved > 0 && (
                           <>
                             <span className="text-xs opacity-70 text-right">Reserved:</span>
-                            <span className="font-medium text-orange-600">-{alert.qtyReserved}</span>
+                            <span className="font-medium text-orange-600">-{alert.qtyReserved}{alert.unit ? ` ${alert.unit}` : ''}</span>
                           </>
                         )}
                         {alert.projectedDemand > 0 && (
                           <>
                             <span className="text-xs opacity-70 text-right">Projected:</span>
-                            <span className="font-medium text-blue-600">-{alert.projectedDemand}</span>
+                            <span className="font-medium text-blue-600">-{alert.projectedDemand}{alert.unit ? ` ${alert.unit}` : ''}</span>
                           </>
                         )}
                         <span className="text-xs opacity-70 text-right border-t pt-0.5">Available:</span>
                         <span className={`font-bold border-t pt-0.5 ${alert.availableQty < 0 ? 'text-red-600' : ''}`}>
-                          {alert.availableQty}
+                          {alert.availableQty}{alert.unit ? ` ${alert.unit}` : ''}
                         </span>
                         {alert.shortage > 0 && (
                           <>
                             <span className="text-xs opacity-70 text-right">Shortage:</span>
-                            <span className="font-bold text-red-600">{alert.shortage}</span>
+                            <span className="font-bold text-red-600">{alert.shortage}{alert.unit ? ` ${alert.unit}` : ''}</span>
                           </>
                         )}
                       </div>
@@ -279,7 +279,7 @@ export default function InventoryAlertsWidget({ refreshKey = 0, compact = false,
                               <span className="opacity-60">({source.projectStatus})</span>
                             </div>
                             <div className="flex items-center gap-3">
-                              <span className="font-medium">{source.quantity} units</span>
+                              <span className="font-medium">{source.quantity} {source.unit || 'units'}</span>
                               {source.shipDate && (
                                 <span className="opacity-60">
                                   Ship: {new Date(source.shipDate).toLocaleDateString()}

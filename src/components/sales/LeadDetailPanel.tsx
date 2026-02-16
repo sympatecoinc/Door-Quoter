@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { FileText, LayoutGrid, Receipt, ChevronDown, GitBranch, History, AlertTriangle } from 'lucide-react'
+import { FileText, LayoutGrid, Receipt, ChevronDown, GitBranch, History, AlertTriangle, Lock } from 'lucide-react'
 import { ProjectStatus, STATUS_CONFIG, LEAD_STATUSES, PROJECT_STATUSES, isLeadStatus, isProjectStatus } from '@/types'
 import { SalesViewMode } from '@/stores/appStore'
 import StatusBadge from '@/components/projects/StatusBadge'
@@ -152,6 +152,9 @@ export default function LeadDetailPanel({
   // Quote existence tracking for status restrictions
   const [hasQuotes, setHasQuotes] = useState(false)
 
+  // Sales order tracking for project-phase locking
+  const [hasActiveSalesOrder, setHasActiveSalesOrder] = useState(false)
+
   const fetchQuoteStatus = useCallback(async () => {
     try {
       const response = await fetch(`/api/projects/${leadId}/quote-versions`)
@@ -171,6 +174,7 @@ export default function LeadDetailPanel({
       if (response.ok) {
         const data = await response.json()
         setLead(data)
+        setHasActiveSalesOrder((data._count?.salesOrders ?? 0) > 0)
       }
     } catch (error) {
       console.error('Error fetching lead:', error)
@@ -281,6 +285,22 @@ export default function LeadDetailPanel({
       })
 
       if (response.ok) {
+        const responseData = await response.json()
+
+        // Handle revision creation response
+        if (responseData.revisionCreated) {
+          // Revert optimistic status update - original project keeps its status
+          setLead(prev => prev ? { ...prev, status: previousStatus } : null)
+          // Refresh versions list
+          await fetchVersions()
+          onLeadUpdated()
+          // Navigate to the new revision
+          if (onVersionSwitch) {
+            onVersionSwitch(responseData.id)
+          }
+          return
+        }
+
         // Notify that status change completed successfully (for dashboard refresh)
         onStatusChangeComplete?.()
 
@@ -321,6 +341,13 @@ export default function LeadDetailPanel({
 
   // Check if status change is moving from lead to project
   const isMovingToProject = pendingStatus && PROJECT_STATUSES.includes(pendingStatus) && lead && LEAD_STATUSES.includes(lead.status)
+
+  // Project-phase status restrictions
+  const isInProjectPhase = lead ? isProjectStatus(lead.status) : false
+  const isStatusLocked = isInProjectPhase && hasActiveSalesOrder
+
+  // Check if pending status is a revision from project phase
+  const isRevisionFromProjectPhase = pendingStatus === ProjectStatus.REVISE && isInProjectPhase
 
   // Check if project can create revision (locked status + current version)
   const canCreateRevision = lead && LOCKED_STATUSES.includes(lead.status) && lead.isCurrentVersion
@@ -432,38 +459,60 @@ export default function LeadDetailPanel({
                 </div>
               )}
               <div className="relative">
-                <button
-                  onClick={() => setShowStatusDropdown(!showStatusDropdown)}
-                  disabled={updatingStatus}
-                  className="flex items-center gap-1 hover:opacity-80 transition-opacity disabled:opacity-50"
-                >
-                  <StatusBadge status={lead.status} />
-                  <ChevronDown className="w-4 h-4 text-gray-400" />
-                </button>
-                {showStatusDropdown && (
+                {isStatusLocked ? (
+                  <div className="flex items-center gap-1.5 cursor-not-allowed opacity-75">
+                    <StatusBadge status={lead.status} />
+                    <Lock className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-[10px] text-gray-400 font-medium">Locked by SO</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                    disabled={updatingStatus}
+                    className="flex items-center gap-1 hover:opacity-80 transition-opacity disabled:opacity-50"
+                  >
+                    <StatusBadge status={lead.status} />
+                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                  </button>
+                )}
+                {showStatusDropdown && !isStatusLocked && (
                   <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[150px]">
-                    <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase">Leads</div>
-                    {LEAD_STATUSES
-                      .filter(status => status !== ProjectStatus.QUOTE_SENT || hasQuotes)
-                      .map((status) => (
-                      <button
-                        key={status}
-                        onClick={() => initiateStatusChange(status)}
-                        className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
-                          lead.status === status ? 'bg-blue-50' : ''
-                        }`}
-                      >
-                        <span
-                          className={`w-2 h-2 rounded-full ${STATUS_CONFIG[status].bgColor}`}
-                        />
-                        {STATUS_CONFIG[status].label}
-                      </button>
-                    ))}
-                    {hasQuotes && (
+                    {isInProjectPhase ? (
                       <>
+                        <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase">Project Status</div>
+                        <button
+                          onClick={() => initiateStatusChange(ProjectStatus.ACTIVE)}
+                          className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                            lead.status === ProjectStatus.ACTIVE ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${STATUS_CONFIG[ProjectStatus.ACTIVE].bgColor}`} />
+                          {STATUS_CONFIG[ProjectStatus.ACTIVE].label}
+                        </button>
+                        <button
+                          onClick={() => initiateStatusChange(ProjectStatus.COMPLETE)}
+                          className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                            lead.status === ProjectStatus.COMPLETE ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${STATUS_CONFIG[ProjectStatus.COMPLETE].bgColor}`} />
+                          {STATUS_CONFIG[ProjectStatus.COMPLETE].label}
+                        </button>
                         <div className="border-t border-gray-100 my-1" />
-                        <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase">Projects</div>
-                        {PROJECT_STATUSES.map((status) => (
+                        <button
+                          onClick={() => initiateStatusChange(ProjectStatus.REVISE)}
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-amber-50 flex items-center gap-2 text-amber-700"
+                        >
+                          <GitBranch className="w-3.5 h-3.5" />
+                          Revise (Create New Version)
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase">Leads</div>
+                        {LEAD_STATUSES
+                          .filter(status => status !== ProjectStatus.QUOTE_SENT || hasQuotes)
+                          .map((status) => (
                           <button
                             key={status}
                             onClick={() => initiateStatusChange(status)}
@@ -477,31 +526,51 @@ export default function LeadDetailPanel({
                             {STATUS_CONFIG[status].label}
                           </button>
                         ))}
+                        {hasQuotes && (
+                          <>
+                            <div className="border-t border-gray-100 my-1" />
+                            <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase">Projects</div>
+                            {PROJECT_STATUSES.map((status) => (
+                              <button
+                                key={status}
+                                onClick={() => initiateStatusChange(status)}
+                                className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                                  lead.status === status ? 'bg-blue-50' : ''
+                                }`}
+                              >
+                                <span
+                                  className={`w-2 h-2 rounded-full ${STATUS_CONFIG[status].bgColor}`}
+                                />
+                                {STATUS_CONFIG[status].label}
+                              </button>
+                            ))}
+                          </>
+                        )}
+                        <div className="border-t border-gray-100 my-1" />
+                        <button
+                          onClick={() => initiateStatusChange(ProjectStatus.BID_LOST)}
+                          className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                            lead.status === ProjectStatus.BID_LOST ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <span
+                            className={`w-2 h-2 rounded-full ${STATUS_CONFIG[ProjectStatus.BID_LOST].bgColor}`}
+                          />
+                          Bid Lost
+                        </button>
+                        <button
+                          onClick={() => initiateStatusChange(ProjectStatus.ARCHIVE)}
+                          className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                            lead.status === ProjectStatus.ARCHIVE ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <span
+                            className={`w-2 h-2 rounded-full ${STATUS_CONFIG[ProjectStatus.ARCHIVE].bgColor}`}
+                          />
+                          Archive
+                        </button>
                       </>
                     )}
-                    <div className="border-t border-gray-100 my-1" />
-                    <button
-                      onClick={() => initiateStatusChange(ProjectStatus.BID_LOST)}
-                      className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
-                        lead.status === ProjectStatus.BID_LOST ? 'bg-blue-50' : ''
-                      }`}
-                    >
-                      <span
-                        className={`w-2 h-2 rounded-full ${STATUS_CONFIG[ProjectStatus.BID_LOST].bgColor}`}
-                      />
-                      Bid Lost
-                    </button>
-                    <button
-                      onClick={() => initiateStatusChange(ProjectStatus.ARCHIVE)}
-                      className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
-                        lead.status === ProjectStatus.ARCHIVE ? 'bg-blue-50' : ''
-                      }`}
-                    >
-                      <span
-                        className={`w-2 h-2 rounded-full ${STATUS_CONFIG[ProjectStatus.ARCHIVE].bgColor}`}
-                      />
-                      Archive
-                    </button>
                   </div>
                 )}
               </div>
@@ -618,36 +687,83 @@ export default function LeadDetailPanel({
       {showStatusConfirm && pendingStatus && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Confirm Status Change
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Are you sure you want to change the status from{' '}
-              <span className="font-medium">{STATUS_CONFIG[lead.status].label}</span> to{' '}
-              <span className="font-medium">{STATUS_CONFIG[pendingStatus].label}</span>?
-            </p>
-            {isMovingToProject && (
-              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <p className="text-sm text-amber-800">
-                  <strong>Note:</strong> Changing to "{STATUS_CONFIG[pendingStatus].label}" will convert this lead into a project. This may trigger additional actions like creating a Sales Order.
+            {isRevisionFromProjectPhase ? (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-amber-100 rounded-lg">
+                    <GitBranch className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Create New Revision
+                  </h3>
+                </div>
+                <p className="text-gray-600 mb-4">
+                  This will create a new revision of this project:
                 </p>
-              </div>
+                <ul className="text-sm text-gray-600 mb-4 space-y-2">
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-500 mt-0.5">•</span>
+                    <span>A new version will be created starting at <strong>Preparing Quote</strong> status</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-500 mt-0.5">•</span>
+                    <span>The new revision can progress through the full quote cycle</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-500 mt-0.5">•</span>
+                    <span>This project remains at <strong>{STATUS_CONFIG[lead.status].label}</strong> status</span>
+                  </li>
+                </ul>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={cancelStatusChange}
+                    className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleStatusChange}
+                    disabled={updatingStatus}
+                    className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                  >
+                    {updatingStatus ? 'Creating...' : 'Create Revision'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Confirm Status Change
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Are you sure you want to change the status from{' '}
+                  <span className="font-medium">{STATUS_CONFIG[lead.status].label}</span> to{' '}
+                  <span className="font-medium">{STATUS_CONFIG[pendingStatus].label}</span>?
+                </p>
+                {isMovingToProject && (
+                  <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-800">
+                      <strong>Note:</strong> Changing to "{STATUS_CONFIG[pendingStatus].label}" will convert this lead into a project. This may trigger additional actions like creating a Sales Order.
+                    </p>
+                  </div>
+                )}
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={cancelStatusChange}
+                    className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleStatusChange}
+                    disabled={updatingStatus}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    {updatingStatus ? 'Updating...' : 'Confirm'}
+                  </button>
+                </div>
+              </>
             )}
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={cancelStatusChange}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleStatusChange}
-                disabled={updatingStatus}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-              >
-                {updatingStatus ? 'Updating...' : 'Confirm'}
-              </button>
-            </div>
           </div>
         </div>
       )}

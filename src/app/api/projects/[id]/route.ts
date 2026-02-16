@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { ProjectStatus } from '@prisma/client'
 import { ensureProjectPricingMode, getDefaultPricingMode } from '@/lib/pricing-mode'
 import { createProjectRevision } from '@/lib/project-revisions'
-import { LEAD_STATUSES } from '@/types'
+import { LEAD_STATUSES, PROJECT_STATUSES, isProjectStatus } from '@/types'
 import { triggerProjectSync, triggerProjectDeletion } from '@/lib/clickup-sync/trigger'
 
 export async function GET(
@@ -131,7 +131,10 @@ export async function GET(
         _count: {
           select: {
             openings: true,
-            boms: true
+            boms: true,
+            salesOrders: {
+              where: { status: { not: 'VOIDED' } }
+            }
           }
         }
       }
@@ -442,12 +445,55 @@ export async function PUT(
           prospectAddress: true,
           prospectCity: true,
           prospectState: true,
-          prospectZipCode: true
+          prospectZipCode: true,
+          _count: {
+            select: {
+              salesOrders: {
+                where: { status: { not: 'VOIDED' } }
+              }
+            }
+          }
         }
       })
 
       if (!currentProject) {
         throw new Error('Project not found')
+      }
+
+      // Project-phase status transition restrictions
+      if (status && status !== currentProject.status && isProjectStatus(currentProject.status as any)) {
+        const hasActiveSO = currentProject._count.salesOrders > 0
+
+        // Block ALL status changes when project has active sales orders
+        if (hasActiveSO) {
+          throw new Error('Cannot change status: this project has an active Sales Order.')
+        }
+
+        // Only allow ACTIVE, COMPLETE, or REVISE from project phase
+        const allowedProjectTransitions = [ProjectStatus.ACTIVE, ProjectStatus.COMPLETE, ProjectStatus.REVISE]
+        if (!allowedProjectTransitions.includes(status)) {
+          throw new Error(`Cannot change from project status "${currentProject.status}" to "${status}". Only Active, Complete, or Revise are allowed.`)
+        }
+
+        // Handle REVISE: create a new revision at STAGING
+        if (status === ProjectStatus.REVISE) {
+          const revisionResult = await createProjectRevision(tx, {
+            sourceProjectId: projectId,
+            targetStatus: ProjectStatus.STAGING,
+            changedBy: 'System (Revision from Project Phase)'
+          })
+
+          if (!revisionResult.success) {
+            throw new Error(revisionResult.error)
+          }
+
+          return {
+            ...revisionResult.revision,
+            revisionCreated: true,
+            originalProjectId: projectId,
+            message: `New revision (v${revisionResult.revision.version}) created at "Preparing Quote" status. The current project remains at "${currentProject.status}".`
+          }
+        }
       }
 
       // Check if status change requires a quote to exist
@@ -579,7 +625,11 @@ export async function PUT(
     console.error('Error updating project:', error)
 
     // Return specific error message for validation errors
-    if (error instanceof Error && error.message.includes('quote must be generated')) {
+    if (error instanceof Error && (
+      error.message.includes('quote must be generated') ||
+      error.message.includes('Cannot change status') ||
+      error.message.includes('Cannot change from project status')
+    )) {
       return NextResponse.json(
         { error: error.message },
         { status: 400 }

@@ -52,6 +52,7 @@ export async function GET(
             binLocationRef: true
           }
         },
+        extrusionVariant: true,
         pickedBy: {
           select: { id: true, name: true }
         }
@@ -65,8 +66,19 @@ export async function GET(
 
     // Calculate availability for each part
     const partsWithAvailability = parts.map(part => {
-      const onHand = part.masterPart?.qtyOnHand ?? 0
-      const reserved = part.masterPart?.qtyReserved ?? 0
+      let onHand: number
+      let reserved: number
+
+      if (part.extrusionVariant) {
+        // Extrusion: use variant-level inventory
+        onHand = part.extrusionVariant.qtyOnHand ?? 0
+        reserved = part.extrusionVariant.qtyReserved ?? 0
+      } else {
+        // Non-extrusion: use master part inventory
+        onHand = part.masterPart?.qtyOnHand ?? 0
+        reserved = part.masterPart?.qtyReserved ?? 0
+      }
+
       const available = Math.max(0, onHand - reserved)
 
       return {

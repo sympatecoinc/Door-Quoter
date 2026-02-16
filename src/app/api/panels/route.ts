@@ -232,9 +232,9 @@ export async function POST(request: NextRequest) {
         })
 
         if (opening) {
-          // Use finished dimensions if available, otherwise rough dimensions
-          const frameWidth = opening.finishedWidth ?? opening.roughWidth ?? 0
-          const frameHeight = opening.finishedHeight ?? opening.roughHeight ?? 0
+          // Frames fill the full opening — use rough (opening) dimensions, not tolerance-reduced finished size
+          const frameWidth = opening.roughWidth ?? opening.finishedWidth ?? 0
+          const frameHeight = opening.roughHeight ?? opening.finishedHeight ?? 0
 
           // Store the primary panels count BEFORE adding frame panels
           const primaryPanelCount = panels.length

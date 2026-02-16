@@ -31,17 +31,20 @@ function getDirectionAbbreviation(name: string): string {
 }
 
 // Helper function to render formula with variable highlighting
-function renderFormulaWithHighlights(formula: string) {
+function renderFormulaWithHighlights(formula: string, isFrameProduct?: boolean) {
   if (!formula) return null
-  
+
   // Split the formula by words and operators to highlight width/height variables (case-insensitive)
   const parts = formula.split(/(\s+|[+\-*/()=])/g)
-  
+
   return parts.map((part, index) => {
     if (part.toLowerCase() === 'width' || part.toLowerCase() === 'height') {
+      const displayLabel = isFrameProduct
+        ? `opening ${part.toLowerCase()}`
+        : part
       return (
         <span key={index} className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium mx-1">
-          {part}
+          {displayLabel}
         </span>
       )
     }
@@ -86,24 +89,24 @@ function evaluateGlassFormulaWithTestValues(formula: string, baseValue: number):
 }
 
 // Function to evaluate formula with test values (for BOM parts)
-function evaluateFormulaWithTestValues(formula: string): string {
+function evaluateFormulaWithTestValues(formula: string, isFrameProduct?: boolean): string {
   if (!formula) return ''
-  
+
   try {
     // Replace variables with test values (case-insensitive)
     let evaluatedFormula = formula.replace(/\bwidth\b/gi, '36')
     evaluatedFormula = evaluatedFormula.replace(/\bheight\b/gi, '96')
-    
+
     // Clean up common mathematical operations and formatting
     evaluatedFormula = evaluatedFormula.replace(/\s+/g, '') // Remove spaces
     evaluatedFormula = evaluatedFormula.replace(/([0-9]+)in/gi, '$1') // Remove 'in' units
-    
+
     // Validate that the formula contains only allowed characters
     const allowedPattern = /^[0-9+\-*/.()]+$/
     if (!allowedPattern.test(evaluatedFormula)) {
       return 'Invalid characters in formula'
     }
-    
+
     // Basic mathematical evaluation (for display purposes only)
     // Note: This is a simplified evaluation for preview only
     const result = eval(evaluatedFormula)
@@ -113,15 +116,24 @@ function evaluateFormulaWithTestValues(formula: string): string {
   }
 }
 
+// Get test value label text for formula preview
+function getFormulaTestLabel(isFrameProduct?: boolean): string {
+  return isFrameProduct
+    ? '(using opening width=36, opening height=96)'
+    : '(using width=36, height=96)'
+}
+
 // Formula input component with live highlighting
-function FormulaInput({ 
-  value, 
-  onChange, 
-  placeholder 
-}: { 
+function FormulaInput({
+  value,
+  onChange,
+  placeholder,
+  isFrameProduct
+}: {
   value: string
   onChange: (value: string) => void
-  placeholder: string 
+  placeholder: string
+  isFrameProduct?: boolean
 }) {
   return (
     <div className="relative">
@@ -136,15 +148,15 @@ function FormulaInput({
         <div className="mt-2 space-y-2">
           <div className="p-2 bg-gray-50 rounded-lg text-sm">
             <span className="text-gray-600">Formula: </span>
-            {renderFormulaWithHighlights(value)}
+            {renderFormulaWithHighlights(value, isFrameProduct)}
           </div>
           <div className="p-2 bg-blue-50 rounded-lg text-sm">
             <span className="text-blue-600">Example output: </span>
             <span className="font-mono text-blue-800">
-              {evaluateFormulaWithTestValues(value)}
+              {evaluateFormulaWithTestValues(value, isFrameProduct)}
             </span>
             <span className="text-xs text-blue-600 ml-2">
-              (using width=36, height=96)
+              {getFormulaTestLabel(isFrameProduct)}
             </span>
           </div>
         </div>
@@ -1904,7 +1916,7 @@ export default function ProductDetailView({
                         <td className="px-6 py-4 text-sm text-gray-900 min-w-[180px] whitespace-nowrap">
                           {part.formula ? (
                             <div className="font-mono text-xs">
-                              {renderFormulaWithHighlights(part.formula)}
+                              {renderFormulaWithHighlights(part.formula, isFrameProduct)}
                             </div>
                           ) : '-'}
                         </td>
@@ -2006,6 +2018,7 @@ export default function ProductDetailView({
                       value={newPartFormula}
                       onChange={setNewPartFormula}
                       placeholder="e.g., Width/4-4.094, height + 2, width * 0.5"
+                      isFrameProduct={isFrameProduct}
                     />
                     <p className="text-xs text-gray-500 mt-1">
                       Use width/height variables. See Settings for full reference.
@@ -2064,6 +2077,7 @@ export default function ProductDetailView({
                         value={newPartFormula}
                         onChange={setNewPartFormula}
                         placeholder="e.g., width + height, (width * 2) + (height * 2)"
+                        isFrameProduct={isFrameProduct}
                       />
                       <p className="text-xs text-gray-500 mt-1">
                         Use width/height variables to calculate length. Leave blank to use fixed quantity.
@@ -2095,6 +2109,7 @@ export default function ProductDetailView({
                         value={newPartFormula}
                         onChange={setNewPartFormula}
                         placeholder="e.g., width + height, (width * 2) + (height * 2)"
+                        isFrameProduct={isFrameProduct}
                       />
                       <p className="text-xs text-gray-500 mt-1">
                         Use width/height variables to calculate length. Leave blank to use fixed quantity.
@@ -3106,6 +3121,7 @@ export default function ProductDetailView({
                         value={editPartFormula}
                         onChange={setEditPartFormula}
                         placeholder="e.g., width + 2, height * 0.5"
+                        isFrameProduct={isFrameProduct}
                       />
                       <p className="text-xs text-gray-500 mt-1">
                         Use "width" and "height" variables (case-insensitive). Supports +, -, *, /, parentheses, and decimal numbers.
@@ -3123,6 +3139,7 @@ export default function ProductDetailView({
                       value={editPartFormula}
                       onChange={setEditPartFormula}
                       placeholder="e.g., Width/4-4.094, height + 2, width * 0.5"
+                      isFrameProduct={isFrameProduct}
                     />
                     <p className="text-xs text-gray-500 mt-1">
                       Use "width" and "height" variables (case-insensitive). Supports +, -, *, /, parentheses, and decimal numbers.
@@ -3208,6 +3225,7 @@ export default function ProductDetailView({
                         value={optionBomFormula}
                         onChange={setOptionBomFormula}
                         placeholder="e.g., height - 8, width / 2"
+                        isFrameProduct={isFrameProduct}
                       />
                       <p className="text-xs text-gray-500 mt-1">
                         Variables: width, height

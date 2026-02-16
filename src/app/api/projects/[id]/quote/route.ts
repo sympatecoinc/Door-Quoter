@@ -254,6 +254,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Store pricing mode for later use in component-specific markup calculations
     const pricingMode = project.pricingMode
 
+    // Fetch tolerance defaults for reverse tolerance (panel-derived → opening dimensions)
+    const toleranceSettings = await prisma.globalSetting.findMany({
+      where: { category: 'tolerances' }
+    })
+    const tolMap = new Map(toleranceSettings.map(s => [s.key, parseFloat(s.value)]))
+    const toleranceDefaults = {
+      thinwallWidth: tolMap.get('tolerance.thinwall.width') ?? 1.0,
+      thinwallHeight: tolMap.get('tolerance.thinwall.height') ?? 1.5,
+      framedWidth: tolMap.get('tolerance.framed.width') ?? 0.5,
+      framedHeight: tolMap.get('tolerance.framed.height') ?? 0.75,
+    }
+
     // Calculate global pricing multiplier (used only if category-specific markups are not set)
     let globalPricingMultiplier = 1.0
     if (pricingMode) {
@@ -398,8 +410,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           const pType = panel.componentInstance?.product?.productType
           return pType !== 'CORNER_90' && pType !== 'FRAME'
         })
-        const totalWidth = sizePanels.reduce((sum, panel) => sum + panel.width, 0)
-        const maxHeight = Math.max(...sizePanels.map(panel => panel.height), 0)
+        let totalWidth = sizePanels.reduce((sum, panel) => sum + panel.width, 0)
+        let maxHeight = Math.max(...sizePanels.map(panel => panel.height), 0)
+
+        // Reverse tolerance: if opening has no explicit dimensions (derived from panels),
+        // add tolerance back to get the full opening size for display
+        if (!(opening as any).roughWidth && !(opening as any).finishedWidth) {
+          const openingType = (opening as any).openingType
+          totalWidth += openingType === 'FRAMED'
+            ? toleranceDefaults.framedWidth : toleranceDefaults.thinwallWidth
+          maxHeight += openingType === 'FRAMED'
+            ? toleranceDefaults.framedHeight : toleranceDefaults.thinwallHeight
+        }
 
         // Get hardware and glass types
         const hardwareItems: Array<{name: string, price: number, isIncluded: boolean, isStandard: boolean}> = []

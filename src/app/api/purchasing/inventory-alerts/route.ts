@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { POStatus } from '@prisma/client'
+import { evaluateFormula } from '@/lib/bom/calculations'
 import type { InventoryAlertsResponse, InventoryAlert, AlertUrgency, DemandSource } from '@/components/purchasing-dashboard/types'
 
 export async function GET() {
@@ -17,6 +18,7 @@ export async function GET() {
         baseName: true,
         description: true,
         partType: true,
+        unit: true,
         qtyOnHand: true,
         qtyReserved: true,
         reorderPoint: true,
@@ -87,6 +89,7 @@ export async function GET() {
         baseName: variant.masterPart.baseName,
         description: variant.masterPart.description,
         partType: variant.masterPart.partType,
+        unit: null as string | null,
         qtyOnHand: variant.qtyOnHand,
         qtyReserved: variant.masterPart.qtyReserved,
         reorderPoint: variant.masterPart.reorderPoint,
@@ -113,6 +116,7 @@ export async function GET() {
         masterPartId: true,
         partNumber: true,
         quantity: true,
+        unit: true,
         qtyShipped: true,
         salesOrder: {
           select: {
@@ -154,6 +158,7 @@ export async function GET() {
           projectName,
           projectStatus: soPart.salesOrder.status,
           quantity: remaining,
+          unit: soPart.unit || undefined,
           shipDate: soPart.salesOrder.shipDate?.toISOString() || null
         })
       }
@@ -233,11 +238,27 @@ export async function GET() {
         for (const panel of opening.panels) {
           if (!panel.componentInstance) continue
           const product = panel.componentInstance.product
+          const panelWidth = panel.width || 0
+          const panelHeight = panel.height || 0
 
           for (const bom of product.productBOMs) {
             if (!bom.partNumber || bom.optionId) continue
+
+            const bomUnit = (bom.unit || 'EA').toUpperCase()
+            let demand: number
+
+            // For linear units (LF/IN) with a formula, evaluate the formula to get actual linear demand
+            if ((bomUnit === 'LF' || bomUnit === 'IN') && bom.formula) {
+              const calculatedLength = evaluateFormula(bom.formula, { width: panelWidth, height: panelHeight })
+              // Convert inches to feet for LF units
+              const linearDemand = bomUnit === 'LF' ? calculatedLength / 12 : calculatedLength
+              demand = linearDemand * (bom.quantity || 1)
+            } else {
+              demand = bom.quantity || 1
+            }
+
             const currentQty = projectPartQuantities.get(bom.partNumber) || 0
-            projectPartQuantities.set(bom.partNumber, currentQty + (bom.quantity || 1))
+            projectPartQuantities.set(bom.partNumber, currentQty + demand)
           }
         }
       }
@@ -316,6 +337,7 @@ export async function GET() {
         vendorId: part.vendorId,
         vendorName: part.vendor?.displayName || null,
         category: part.vendor?.category || part.partType,
+        unit: part.unit || undefined,
         demandSources,
         // Extrusion variant details
         color: part.color,

@@ -43,7 +43,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
     }
 
-    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, perimeterInches, customPricePerLb, partType, isOption, addFinishToPartNumber, appendDirectionToPartNumber, addToPackingList, pickListStation, includeInJambKit } = body
+    const { partNumber, baseName, description, unit, cost, weightPerUnit, weightPerFoot, perimeterInches, customPricePerLb, partType, isOption, isMillFinish, addFinishToPartNumber, appendDirectionToPartNumber, addToPackingList, pickListStation, includeInJambKit } = body
 
     if (!partNumber || !baseName) {
       return NextResponse.json({
@@ -79,11 +79,13 @@ export async function PUT(
       }, { status: 409 })
     }
 
-    // Get the old part number before updating
+    // Get the old part data before updating
     const oldPart = await prisma.masterPart.findUnique({
       where: { id },
-      select: { partNumber: true }
+      select: { partNumber: true, isMillFinish: true }
     })
+
+    const switchingToMillFinish = partType === 'Extrusion' && isMillFinish && oldPart && !oldPart.isMillFinish
 
     const updatedPart = await prisma.masterPart.update({
       where: { id },
@@ -99,6 +101,7 @@ export async function PUT(
         customPricePerLb: (partType === 'Extrusion' && customPricePerLb !== undefined) ? (customPricePerLb ? parseFloat(customPricePerLb) : null) : undefined,
         partType: partType || 'Hardware',
         isOption: (partType === 'Hardware' || partType === 'Extrusion' || partType === 'CutStock') ? (isOption || false) : false,
+        isMillFinish: (partType === 'Extrusion') ? (isMillFinish || false) : false,
         addFinishToPartNumber: (partType === 'Hardware') ? (addFinishToPartNumber || false) : false,
         appendDirectionToPartNumber: (partType === 'Hardware') ? (appendDirectionToPartNumber || false) : false,
         addToPackingList: (partType === 'Hardware') ? (addToPackingList || false) : false,
@@ -106,6 +109,78 @@ export async function PUT(
         includeInJambKit: (partType === 'Hardware' || partType === 'Fastener' || partType === 'Extrusion') ? (includeInJambKit || false) : false
       }
     })
+
+    // Consolidate finished variants into mill finish when switching to isMillFinish
+    if (switchingToMillFinish) {
+      try {
+        // Get all active variants with a finish (non-mill) for this part
+        const finishedVariants = await prisma.extrusionVariant.findMany({
+          where: {
+            masterPartId: id,
+            isActive: true,
+            finishPricingId: { not: null }
+          }
+        })
+
+        if (finishedVariants.length > 0) {
+          // Group finished variants by stock length and sum inventory
+          const inventoryByLength = new Map<number, { qtyOnHand: number; qtyReserved: number }>()
+          for (const v of finishedVariants) {
+            const existing = inventoryByLength.get(v.stockLength) || { qtyOnHand: 0, qtyReserved: 0 }
+            existing.qtyOnHand += v.qtyOnHand
+            existing.qtyReserved += v.qtyReserved
+            inventoryByLength.set(v.stockLength, existing)
+          }
+
+          // For each length, upsert a mill finish variant with consolidated qty
+          for (const [stockLength, totals] of inventoryByLength) {
+            const existingMill = await prisma.extrusionVariant.findFirst({
+              where: {
+                masterPartId: id,
+                stockLength,
+                finishPricingId: null
+              }
+            })
+
+            if (existingMill) {
+              // Add consolidated inventory to existing mill variant
+              await prisma.extrusionVariant.update({
+                where: { id: existingMill.id },
+                data: {
+                  qtyOnHand: existingMill.qtyOnHand + totals.qtyOnHand,
+                  qtyReserved: existingMill.qtyReserved + totals.qtyReserved,
+                  isActive: true
+                }
+              })
+            } else {
+              // Create new mill finish variant with consolidated inventory
+              await prisma.extrusionVariant.create({
+                data: {
+                  masterPartId: id,
+                  stockLength,
+                  finishPricingId: null,
+                  qtyOnHand: totals.qtyOnHand,
+                  qtyReserved: totals.qtyReserved
+                }
+              })
+            }
+          }
+
+          // Deactivate all finished (non-mill) variants
+          await prisma.extrusionVariant.updateMany({
+            where: {
+              masterPartId: id,
+              isActive: true,
+              finishPricingId: { not: null }
+            },
+            data: { isActive: false }
+          })
+        }
+      } catch (consolidateError) {
+        console.error('Error consolidating variants to mill finish:', consolidateError)
+        // Don't fail the master part update if consolidation fails
+      }
+    }
 
     // Update related ProductBOMs with the new cost and part data
     if (oldPart && oldPart.partNumber) {

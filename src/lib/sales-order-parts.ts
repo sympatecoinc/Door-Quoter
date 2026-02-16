@@ -6,7 +6,7 @@
  */
 
 import { prisma } from '@/lib/prisma'
-import { checkAvailability, AvailabilityResult } from './inventory-availability'
+import { checkAvailability, AvailabilityResult, extractBasePartNumber, findExtrusionVariant } from './inventory-availability'
 
 export interface BOMPart {
   partNumber: string
@@ -138,7 +138,14 @@ export async function generatePartsFromProject(projectId: number, cookies?: stri
     }
 
     const existing = aggregated.get(key)!
-    existing.quantity += item.quantity || 1
+    // For linear units (LF/IN) with a cutLength, sum the total linear demand
+    // instead of counting individual parts
+    const unit = (item.unit || 'EA').toUpperCase()
+    if ((unit === 'LF' || unit === 'IN') && item.cutLength) {
+      existing.quantity += item.cutLength * (item.quantity || 1)
+    } else {
+      existing.quantity += item.quantity || 1
+    }
   }
 
   const parts: BOMPart[] = Array.from(aggregated.values())
@@ -148,7 +155,8 @@ export async function generatePartsFromProject(projectId: number, cookies?: stri
     partNumber: p.partNumber,
     partName: p.partName,
     quantity: p.quantity,
-    masterPartId: p.masterPartId
+    masterPartId: p.masterPartId,
+    partType: p.partType
   }))
 
   const availability = await checkAvailability(availabilityInput)
@@ -172,15 +180,26 @@ export async function createSalesOrderParts(
 
   for (const part of parts) {
     // Try to find the master part by part number (base number without finish/length)
-    const basePartNumber = extractBasePartNumber(part.partNumber)
+    const isExtrusion = part.partType?.toLowerCase() === 'extrusion'
+    const basePartNumber = await extractBasePartNumber(part.partNumber, isExtrusion)
     const masterPart = await prisma.masterPart.findUnique({
       where: { partNumber: basePartNumber }
     })
+
+    // For extrusion parts, also find the specific variant
+    let extrusionVariantId: number | null = null
+    if (part.partType?.toLowerCase() === 'extrusion' && masterPart) {
+      const variant = await findExtrusionVariant(part.partNumber, masterPart.id)
+      if (variant) {
+        extrusionVariantId = variant.id
+      }
+    }
 
     await prisma.salesOrderPart.create({
       data: {
         salesOrderId,
         masterPartId: masterPart?.id ?? null,
+        extrusionVariantId,
         partNumber: part.partNumber,
         partName: part.partName,
         partType: part.partType,
@@ -201,73 +220,94 @@ export async function createSalesOrderParts(
 
 /**
  * Reserve inventory for confirmed sales order parts
- * Increments qtyReserved on MasterPart for each part
+ * Increments qtyReserved on ExtrusionVariant (for extrusions) or MasterPart (for others)
  */
 export async function reserveInventory(salesOrderId: number): Promise<void> {
-  // Get all parts for this sales order
   const parts = await prisma.salesOrderPart.findMany({
-    where: { salesOrderId },
-    include: { masterPart: true }
+    where: { salesOrderId }
   })
 
-  // Group by master part to aggregate quantities
+  // Group by extrusion variant or master part
+  const reservationsByVariant = new Map<number, number>()
   const reservationsByMasterPart = new Map<number, number>()
 
   for (const part of parts) {
-    if (part.masterPartId) {
+    if (part.extrusionVariantId) {
+      const current = reservationsByVariant.get(part.extrusionVariantId) || 0
+      reservationsByVariant.set(part.extrusionVariantId, current + part.quantity)
+    } else if (part.masterPartId) {
       const current = reservationsByMasterPart.get(part.masterPartId) || 0
       reservationsByMasterPart.set(part.masterPartId, current + part.quantity)
     }
   }
 
-  // Update qtyReserved for each master part
+  // Update qtyReserved on extrusion variants
+  for (const [variantId, quantity] of reservationsByVariant) {
+    await prisma.extrusionVariant.update({
+      where: { id: variantId },
+      data: { qtyReserved: { increment: quantity } }
+    })
+  }
+
+  // Update qtyReserved on master parts (non-extrusions)
   for (const [masterPartId, quantity] of reservationsByMasterPart) {
     await prisma.masterPart.update({
       where: { id: masterPartId },
-      data: {
-        qtyReserved: { increment: quantity }
-      }
+      data: { qtyReserved: { increment: quantity } }
     })
   }
 
   // Update part status to RESERVED
   await prisma.salesOrderPart.updateMany({
-    where: { salesOrderId, masterPartId: { not: null } },
+    where: {
+      salesOrderId,
+      OR: [
+        { masterPartId: { not: null } },
+        { extrusionVariantId: { not: null } }
+      ]
+    },
     data: { status: 'RESERVED' }
   })
 }
 
 /**
  * Release inventory reservations for a cancelled sales order
- * Decrements qtyReserved on MasterPart for each part
+ * Decrements qtyReserved on ExtrusionVariant (for extrusions) or MasterPart (for others)
  */
 export async function releaseInventory(salesOrderId: number): Promise<void> {
-  // Get all parts for this sales order that are reserved
   const parts = await prisma.salesOrderPart.findMany({
     where: {
       salesOrderId,
-      status: { in: ['RESERVED', 'PENDING'] },
-      masterPartId: { not: null }
+      status: { in: ['RESERVED', 'PENDING'] }
     }
   })
 
-  // Group by master part to aggregate quantities
+  const releasesByVariant = new Map<number, number>()
   const releasesByMasterPart = new Map<number, number>()
 
   for (const part of parts) {
-    if (part.masterPartId) {
+    if (part.extrusionVariantId) {
+      const current = releasesByVariant.get(part.extrusionVariantId) || 0
+      releasesByVariant.set(part.extrusionVariantId, current + part.quantity)
+    } else if (part.masterPartId) {
       const current = releasesByMasterPart.get(part.masterPartId) || 0
       releasesByMasterPart.set(part.masterPartId, current + part.quantity)
     }
   }
 
-  // Decrement qtyReserved for each master part
+  // Decrement qtyReserved on extrusion variants
+  for (const [variantId, quantity] of releasesByVariant) {
+    await prisma.extrusionVariant.update({
+      where: { id: variantId },
+      data: { qtyReserved: { decrement: quantity } }
+    })
+  }
+
+  // Decrement qtyReserved on master parts (non-extrusions)
   for (const [masterPartId, quantity] of releasesByMasterPart) {
     await prisma.masterPart.update({
       where: { id: masterPartId },
-      data: {
-        qtyReserved: { decrement: quantity }
-      }
+      data: { qtyReserved: { decrement: quantity } }
     })
   }
 
@@ -280,7 +320,7 @@ export async function releaseInventory(salesOrderId: number): Promise<void> {
 
 /**
  * Deduct inventory when parts are picked
- * Decreases qtyOnHand and qtyReserved on MasterPart
+ * Decreases qtyOnHand and qtyReserved on ExtrusionVariant or MasterPart
  */
 export async function deductInventory(
   partId: number,
@@ -288,26 +328,35 @@ export async function deductInventory(
   userId?: number
 ): Promise<void> {
   const part = await prisma.salesOrderPart.findUnique({
-    where: { id: partId },
-    include: { masterPart: true }
+    where: { id: partId }
   })
 
   if (!part) {
     throw new Error('Part not found')
   }
 
-  if (!part.masterPartId) {
-    throw new Error('Part has no associated master part')
+  if (!part.masterPartId && !part.extrusionVariantId) {
+    throw new Error('Part has no associated master part or extrusion variant')
   }
 
-  // Update master part inventory
-  await prisma.masterPart.update({
-    where: { id: part.masterPartId },
-    data: {
-      qtyOnHand: { decrement: quantity },
-      qtyReserved: { decrement: quantity }
-    }
-  })
+  // Deduct from extrusion variant if linked, otherwise from master part
+  if (part.extrusionVariantId) {
+    await prisma.extrusionVariant.update({
+      where: { id: part.extrusionVariantId },
+      data: {
+        qtyOnHand: { decrement: quantity },
+        qtyReserved: { decrement: quantity }
+      }
+    })
+  } else if (part.masterPartId) {
+    await prisma.masterPart.update({
+      where: { id: part.masterPartId },
+      data: {
+        qtyOnHand: { decrement: quantity },
+        qtyReserved: { decrement: quantity }
+      }
+    })
+  }
 
   // Update the sales order part
   await prisma.salesOrderPart.update({
@@ -453,26 +502,3 @@ export async function getPartsSummary(salesOrderId: number): Promise<{
   return summary
 }
 
-/**
- * Extract base part number from full part number
- * Removes finish code (e.g., -BL, -C2) and stock length suffix (e.g., -144)
- */
-function extractBasePartNumber(fullPartNumber: string): string {
-  // Common finish codes to remove
-  const finishCodes = ['-BL', '-C2', '-AL', '-AN', '-MF']
-
-  let baseNumber = fullPartNumber
-
-  // Remove finish code if present
-  for (const code of finishCodes) {
-    if (baseNumber.includes(code)) {
-      baseNumber = baseNumber.replace(code, '')
-      break
-    }
-  }
-
-  // Remove trailing stock length suffix (e.g., -144, -192)
-  baseNumber = baseNumber.replace(/-\d+$/, '')
-
-  return baseNumber
-}
