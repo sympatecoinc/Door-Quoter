@@ -233,9 +233,14 @@ export default function ExtrusionVariantCard({
                           <button
                             onClick={() => onEditVariant({ ...variant, masterPart: masterPart as any })}
                             className={`w-full px-2 py-1.5 rounded text-sm font-medium transition-colors cursor-pointer ${getStockStatusColor(variant.stockStatus)}`}
-                            title={`${variant.qtyOnHand} pcs${variant.binLocationRef?.name ? ` - Bin: ${variant.binLocationRef.name}` : ''}`}
+                            title={`On Hand: ${variant.qtyOnHand} | Reserved: ${variant.qtyReserved} | Available: ${Math.max(0, variant.qtyOnHand - variant.qtyReserved)}${variant.binLocationRef?.name ? ` | Bin: ${variant.binLocationRef.name}` : ''}`}
                           >
-                            {variant.qtyOnHand}
+                            <span>{variant.qtyOnHand}</span>
+                            {variant.qtyReserved > 0 && (
+                              <span className="block text-[10px] opacity-75">
+                                ({variant.qtyReserved} res)
+                              </span>
+                            )}
                           </button>
                         ) : (
                           <button

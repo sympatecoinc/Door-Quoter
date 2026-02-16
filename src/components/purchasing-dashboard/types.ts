@@ -14,6 +14,7 @@ export interface DemandSource {
   projectName: string
   projectStatus: string
   quantity: number
+  unit?: string
   shipDate: string | null
 }
 
@@ -32,6 +33,7 @@ export interface InventoryAlert {
   vendorId: number | null
   vendorName: string | null
   category: string | null
+  unit?: string                 // Unit of measure (EA, LF, IN)
   demandSources: DemandSource[] // Breakdown of where demand comes from
   // Extrusion variant details (optional - only for extrusion parts)
   color: string | null          // Finish type (e.g., "Mill Finish", "Black", "Clear Anodized")

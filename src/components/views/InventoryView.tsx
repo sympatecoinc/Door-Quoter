@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Search, Filter, Package, AlertTriangle, AlertCircle, CheckCircle, X, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 import InventoryEditModal from '@/components/inventory/InventoryEditModal'
 import ExtrusionInventoryTab from '@/components/inventory/ExtrusionInventoryTab'
@@ -73,10 +73,14 @@ export default function InventoryView() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [pagination, setPagination] = useState<Pagination | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const initialLoadDone = useRef(false)
   const [error, setError] = useState<string | null>(null)
 
   // Filters
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null)
   const [partType, setPartType] = useState('all')
   const [vendorFilter, setVendorFilter] = useState('all')
   const [stockStatus, setStockStatus] = useState('all')
@@ -91,15 +95,34 @@ export default function InventoryView() {
   // Inventory notifications (new parts added, etc.)
   const [inventoryNotifications, setInventoryNotifications] = useState<InventoryNotification[]>([])
 
+  // Debounce search input - only update debouncedSearch after user stops typing
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current)
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 150)
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current)
+      }
+    }
+  }, [search])
+
   const fetchInventory = useCallback(async () => {
-    setLoading(true)
+    if (initialLoadDone.current) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
     setError(null)
 
     try {
       const params = new URLSearchParams({
         page: page.toString(),
         limit: '50',
-        ...(search && { search }),
+        ...(debouncedSearch && { search: debouncedSearch }),
         ...(partType !== 'all' && { partType }),
         ...(vendorFilter !== 'all' && { vendorId: vendorFilter }),
         ...(stockStatus !== 'all' && { stockStatus })
@@ -113,12 +136,14 @@ export default function InventoryView() {
       setVendors(data.vendors)
       setSummary(data.summary)
       setPagination(data.pagination)
+      initialLoadDone.current = true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch inventory')
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
-  }, [page, search, partType, vendorFilter, stockStatus])
+  }, [page, debouncedSearch, partType, vendorFilter, stockStatus])
 
   useEffect(() => {
     fetchInventory()
@@ -138,7 +163,7 @@ export default function InventoryView() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1)
-  }, [search, partType, vendorFilter, stockStatus])
+  }, [debouncedSearch, partType, vendorFilter, stockStatus])
 
   async function fetchInventoryNotifications() {
     try {
@@ -396,14 +421,6 @@ export default function InventoryView() {
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm mb-6">
-        {loading ? (
-          <div className="flex flex-wrap items-center gap-4 animate-pulse">
-            <div className="flex-1 min-w-[200px] h-10 bg-gray-200 rounded-lg" />
-            <div className="h-10 bg-gray-200 rounded-lg w-32" />
-            <div className="h-10 bg-gray-200 rounded-lg w-32" />
-            <div className="h-10 bg-gray-200 rounded-lg w-36" />
-          </div>
-        ) : (
           <div className="flex flex-wrap items-center gap-4">
             {/* Search */}
             <div className="flex-1 min-w-[200px]">
@@ -459,7 +476,6 @@ export default function InventoryView() {
               <option value="out_of_stock">Out of Stock</option>
             </select>
           </div>
-        )}
       </div>
 
       {/* Table */}

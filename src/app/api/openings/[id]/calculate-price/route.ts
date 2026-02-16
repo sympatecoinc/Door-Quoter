@@ -769,23 +769,24 @@ export async function POST(
       ? parseFloat(materialPricePerLbSetting.value)
       : 0 // Default to $0 if not set
 
-    // Auto-update frame panel dimensions based on sibling panels
-    // This ensures frames resize when components are added/removed/modified
+    // Auto-update frame panel dimensions to match full opening dimensions
+    // This ensures frames resize when opening dimensions change
     for (const panel of opening.panels) {
       if (panel.componentInstance?.product?.productType === 'FRAME') {
-        const frameDimensions = getFrameDimensions(opening.panels, panel.id)
+        const frameWidth = opening.roughWidth ?? opening.finishedWidth ?? panel.width
+        const frameHeight = opening.roughHeight ?? opening.finishedHeight ?? panel.height
         // Only update if dimensions have changed
-        if (panel.width !== frameDimensions.width || panel.height !== frameDimensions.height) {
+        if (panel.width !== frameWidth || panel.height !== frameHeight) {
           await prisma.panel.update({
             where: { id: panel.id },
             data: {
-              width: frameDimensions.width,
-              height: frameDimensions.height
+              width: frameWidth,
+              height: frameHeight
             }
           })
           // Update local panel object for accurate pricing in this calculation
-          ;(panel as any).width = frameDimensions.width
-          ;(panel as any).height = frameDimensions.height
+          ;(panel as any).width = frameWidth
+          ;(panel as any).height = frameHeight
         }
       }
     }
@@ -843,15 +844,14 @@ export async function POST(
       const product = component.product
       let componentCost = 0
 
-      // For FRAME products, calculate dimensions dynamically from sibling panels
+      // For FRAME products, use full opening dimensions (not sibling panel sum)
       const isFrameProduct = product.productType === 'FRAME'
       let effectiveWidth = panel.width
       let effectiveHeight = panel.height
 
       if (isFrameProduct) {
-        const frameDimensions = getFrameDimensions(opening.panels, panel.id)
-        effectiveWidth = frameDimensions.width
-        effectiveHeight = frameDimensions.height
+        effectiveWidth = opening.roughWidth ?? opening.finishedWidth ?? panel.width
+        effectiveHeight = opening.roughHeight ?? opening.finishedHeight ?? panel.height
       }
 
       const componentBreakdown = {

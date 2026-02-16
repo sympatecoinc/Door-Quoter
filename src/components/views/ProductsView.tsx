@@ -8,7 +8,7 @@ import OpeningPresetsView from './OpeningPresetsView'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 
-type ProductsViewTab = 'products' | 'presets' | 'frames'
+type ProductsViewTab = 'products' | 'presets' | 'frames' | 'tolerances'
 
 interface Product {
   id: number
@@ -330,13 +330,25 @@ export default function ProductsView() {
             >
               Frame Configuration
             </button>
+            <button
+              onClick={() => setActiveTab('tolerances')}
+              className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'tolerances'
+                  ? 'border-green-500 text-green-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Standard Tolerances
+            </button>
           </nav>
         </div>
       )}
 
       {/* Content */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        {activeTab === 'presets' && !selectedProduct ? (
+        {activeTab === 'tolerances' && !selectedProduct ? (
+          <StandardTolerancesTab />
+        ) : activeTab === 'presets' && !selectedProduct ? (
           <OpeningPresetsView />
         ) : activeTab === 'frames' && !selectedProduct ? (
           <FrameConfigurationTab
@@ -501,6 +513,176 @@ export default function ProductsView() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function StandardTolerancesTab() {
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const [values, setValues] = useState({
+    thinwallWidthTolerance: 1.0,
+    thinwallHeightTolerance: 1.5,
+    framedWidthTolerance: 0.5,
+    framedHeightTolerance: 0.75,
+  })
+
+  useEffect(() => {
+    fetchSettings()
+  }, [])
+
+  async function fetchSettings() {
+    try {
+      const res = await fetch('/api/tolerance-settings')
+      if (res.ok) {
+        const data = await res.json()
+        setValues(data)
+      }
+    } catch (error) {
+      console.error('Error fetching tolerance settings:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleChange(key: keyof typeof values, val: string) {
+    const num = parseFloat(val)
+    if (!isNaN(num) && num >= 0) {
+      setValues(prev => ({ ...prev, [key]: num }))
+      setDirty(true)
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/tolerance-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      })
+      if (res.ok) {
+        setDirty(false)
+      }
+    } catch (error) {
+      console.error('Error saving tolerance settings:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Standard Tolerances</h3>
+            <p className="text-sm text-gray-600">
+              Default tolerance values applied when calculating finished dimensions from rough openings. Per-opening overrides take precedence.
+            </p>
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={!dirty || saving}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+          >
+            {saving ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Save Changes
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+          {/* ThinWall Tolerances */}
+          <div className="bg-white border border-green-200 rounded-lg p-5">
+            <h4 className="font-medium text-gray-900 mb-1">ThinWall (Finished) Openings</h4>
+            <p className="text-xs text-gray-500 mb-4">
+              Subtracted from rough opening to get panel finished size. Added back when deriving opening from panels.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Width Tolerance (inches)</label>
+                <input
+                  type="number"
+                  step="0.125"
+                  min="0"
+                  value={values.thinwallWidthTolerance}
+                  onChange={(e) => handleChange('thinwallWidthTolerance', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Height Tolerance (inches)</label>
+                <input
+                  type="number"
+                  step="0.125"
+                  min="0"
+                  value={values.thinwallHeightTolerance}
+                  onChange={(e) => handleChange('thinwallHeightTolerance', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Framed Tolerances */}
+          <div className="bg-white border border-green-200 rounded-lg p-5">
+            <h4 className="font-medium text-gray-900 mb-1">Framed (Trimmed) Openings</h4>
+            <p className="text-xs text-gray-500 mb-4">
+              Subtracted from rough opening to get panel finished size. Added back when deriving opening from panels.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Width Tolerance (inches)</label>
+                <input
+                  type="number"
+                  step="0.125"
+                  min="0"
+                  value={values.framedWidthTolerance}
+                  onChange={(e) => handleChange('framedWidthTolerance', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Height Tolerance (inches)</label>
+                <input
+                  type="number"
+                  step="0.125"
+                  min="0"
+                  value={values.framedHeightTolerance}
+                  onChange={(e) => handleChange('framedHeightTolerance', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-gray-900"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+          <p className="text-xs text-gray-600">
+            <strong>How tolerances work:</strong> When a "finished opening" is checked, the finished panel size is calculated as
+            rough opening minus tolerance. When generating quotes for openings without explicit dimensions (derived from panels),
+            the tolerance is added back to the panel sum to get the full opening size.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }

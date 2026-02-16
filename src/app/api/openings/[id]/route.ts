@@ -146,13 +146,17 @@ export async function PUT(
         ? (heightToleranceTotal !== null ? parseFloat(heightToleranceTotal) : null)
         : existingOpening.heightToleranceTotal
 
-      // If no overrides, use hardcoded defaults based on opening type
+      // If no overrides, fetch defaults from GlobalSetting (tolerances category)
       if (widthTol === null || heightTol === null) {
+        const toleranceSettings = await prisma.globalSetting.findMany({
+          where: { category: 'tolerances' }
+        })
+        const tolMap = new Map(toleranceSettings.map(s => [s.key, parseFloat(s.value)]))
         const defaults = {
-          thinwallWidthTolerance: 1.0,
-          thinwallHeightTolerance: 1.5,
-          framedWidthTolerance: 0.5,
-          framedHeightTolerance: 0.75
+          thinwallWidthTolerance: tolMap.get('tolerance.thinwall.width') ?? 1.0,
+          thinwallHeightTolerance: tolMap.get('tolerance.thinwall.height') ?? 1.5,
+          framedWidthTolerance: tolMap.get('tolerance.framed.width') ?? 0.5,
+          framedHeightTolerance: tolMap.get('tolerance.framed.height') ?? 0.75,
         }
 
         if (widthTol === null) {
