@@ -319,6 +319,82 @@ export async function releaseInventory(salesOrderId: number): Promise<void> {
 }
 
 /**
+ * Bulk deduct inventory for all RESERVED parts on a sales order
+ * Used when work orders are generated to transition parts from RESERVED → PICKED
+ * Only processes parts with status 'RESERVED', so re-running is a safe no-op
+ */
+export async function bulkDeductInventory(
+  salesOrderId: number,
+  userId?: number
+): Promise<{ deductedCount: number; skippedCount: number }> {
+  const parts = await prisma.salesOrderPart.findMany({
+    where: { salesOrderId, status: 'RESERVED' }
+  })
+
+  if (parts.length === 0) {
+    return { deductedCount: 0, skippedCount: 0 }
+  }
+
+  // Aggregate quantities by extrusion variant and master part
+  const deductionsByVariant = new Map<number, number>()
+  const deductionsByMasterPart = new Map<number, number>()
+  let skippedCount = 0
+
+  for (const part of parts) {
+    if (part.extrusionVariantId) {
+      const current = deductionsByVariant.get(part.extrusionVariantId) || 0
+      deductionsByVariant.set(part.extrusionVariantId, current + part.quantity)
+    } else if (part.masterPartId) {
+      const current = deductionsByMasterPart.get(part.masterPartId) || 0
+      deductionsByMasterPart.set(part.masterPartId, current + part.quantity)
+    } else {
+      skippedCount++
+    }
+  }
+
+  // Decrement qtyOnHand and qtyReserved on extrusion variants
+  for (const [variantId, quantity] of deductionsByVariant) {
+    await prisma.extrusionVariant.update({
+      where: { id: variantId },
+      data: {
+        qtyOnHand: { decrement: quantity },
+        qtyReserved: { decrement: quantity }
+      }
+    })
+  }
+
+  // Decrement qtyOnHand and qtyReserved on master parts (non-extrusions)
+  for (const [masterPartId, quantity] of deductionsByMasterPart) {
+    await prisma.masterPart.update({
+      where: { id: masterPartId },
+      data: {
+        qtyOnHand: { decrement: quantity },
+        qtyReserved: { decrement: quantity }
+      }
+    })
+  }
+
+  // Update all RESERVED parts to PICKED
+  const now = new Date()
+  for (const part of parts) {
+    if (part.extrusionVariantId || part.masterPartId) {
+      await prisma.salesOrderPart.update({
+        where: { id: part.id },
+        data: {
+          status: 'PICKED',
+          qtyPicked: part.quantity,
+          pickedAt: now,
+          pickedById: userId
+        }
+      })
+    }
+  }
+
+  const deductedCount = parts.length - skippedCount
+  return { deductedCount, skippedCount }
+}
+
+/**
  * Deduct inventory when parts are picked
  * Decreases qtyOnHand and qtyReserved on ExtrusionVariant or MasterPart
  */
