@@ -156,12 +156,46 @@ export async function POST(
     const effectiveFinishedWidth = finalFinishedWidth ?? finalRoughWidth!
     const effectiveFinishedHeight = finalFinishedHeight ?? finalRoughHeight!
 
+    // Look up jambThickness from FRAME products in the preset
+    // Check preset panels' products and their frameConfig products for jambThickness
+    let jambThickness = 0
+    const presetProductIds = preset.panels.map(p => p.productId).filter(Boolean) as number[]
+    if (presetProductIds.length > 0) {
+      const presetProducts = await prisma.product.findMany({
+        where: { id: { in: presetProductIds } },
+        select: { id: true, productType: true, jambThickness: true, frameConfig: { select: { id: true, jambThickness: true } } }
+      })
+      // Check if any preset panel product is itself a FRAME with jambThickness
+      for (const pp of presetProducts) {
+        if (pp.productType === 'FRAME' && pp.jambThickness) {
+          jambThickness = pp.jambThickness
+          break
+        }
+      }
+      // If no direct FRAME product, check frameConfig products
+      if (jambThickness === 0) {
+        for (const pp of presetProducts) {
+          if (pp.frameConfig?.jambThickness) {
+            jambThickness = pp.frameConfig.jambThickness
+            break
+          }
+        }
+      }
+    }
+
+    // Compute interior dimensions
+    const interiorWidth = jambThickness > 0 ? effectiveFinishedWidth - (2 * jambThickness) : effectiveFinishedWidth
+    const interiorHeight = jambThickness > 0 ? effectiveFinishedHeight - jambThickness : effectiveFinishedHeight
+
     // Build formula variables for evaluation
     const formulaVariables: PresetFormulaVariables = {
       roughWidth: effectiveRoughWidth,
       roughHeight: effectiveRoughHeight,
       finishedWidth: effectiveFinishedWidth,
-      finishedHeight: effectiveFinishedHeight
+      finishedHeight: effectiveFinishedHeight,
+      interiorWidth,
+      interiorHeight,
+      jambThickness
     }
 
     // Validate that preset panel dimensions fit within the opening

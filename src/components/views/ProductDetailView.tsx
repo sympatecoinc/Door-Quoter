@@ -431,6 +431,7 @@ interface Product {
   maxWidth?: number | null
   minHeight?: number | null
   maxHeight?: number | null
+  jambThickness?: number | null
   frameConfigId?: number | null
   frameConfig?: {
     id: number
@@ -599,6 +600,10 @@ export default function ProductDetailView({
   const [minHeightValue, setMinHeightValue] = useState('')
   const [maxHeightValue, setMaxHeightValue] = useState('')
   const [savingSizeConstraints, setSavingSizeConstraints] = useState(false)
+  // Jamb Thickness (FRAME products)
+  const [editingJambThickness, setEditingJambThickness] = useState(false)
+  const [jambThicknessValue, setJambThicknessValue] = useState('')
+  const [savingJambThickness, setSavingJambThickness] = useState(false)
   // Product Settings (Category & Default Width)
   const [editingProductSettings, setEditingProductSettings] = useState(false)
   const [productCategoryValue, setProductCategoryValue] = useState('')
@@ -1163,6 +1168,47 @@ export default function ProductDetailView({
       showError('Error updating size constraints')
     } finally {
       setSavingSizeConstraints(false)
+    }
+  }
+
+  function startEditJambThickness() {
+    setJambThicknessValue(productDetails?.jambThickness?.toString() || '')
+    setEditingJambThickness(true)
+  }
+
+  function cancelEditJambThickness() {
+    setJambThicknessValue('')
+    setEditingJambThickness(false)
+  }
+
+  async function handleSaveJambThickness() {
+    setSavingJambThickness(true)
+    try {
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jambThickness: jambThicknessValue || null
+        })
+      })
+
+      if (response.ok) {
+        const detailsResponse = await fetch(`/api/products/${product.id}`)
+        if (detailsResponse.ok) {
+          const data = await detailsResponse.json()
+          setProductDetails(data)
+        }
+        setEditingJambThickness(false)
+        onRefresh()
+        showSuccess('Jamb thickness updated successfully!')
+      } else {
+        showError('Failed to update jamb thickness')
+      }
+    } catch (error) {
+      console.error('Error updating jamb thickness:', error)
+      showError('Error updating jamb thickness')
+    } finally {
+      setSavingJambThickness(false)
     }
   }
 
@@ -2742,6 +2788,75 @@ export default function ProductDetailView({
                       {productDetails?.defaultWidth ? `${productDetails.defaultWidth}"` : 'None'}
                     </span>
                   </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Jamb Thickness Section - Only for Frame products */}
+        {isFrameProduct && (
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Jamb Thickness</h3>
+                <p className="text-sm text-gray-500 mt-0.5">Profile thickness reduces interior dimensions for components inside this frame</p>
+              </div>
+              {!editingJambThickness && (
+                <button
+                  onClick={startEditJambThickness}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+            <div className="px-6 py-4">
+              {editingJambThickness ? (
+                <div className="space-y-4">
+                  <div className="max-w-xs">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Thickness (inches)</label>
+                    <input
+                      type="number"
+                      step="0.0625"
+                      min="0"
+                      value={jambThicknessValue}
+                      onChange={(e) => setJambThicknessValue(e.target.value)}
+                      placeholder="e.g. 1.5"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    {jambThicknessValue && parseFloat(jambThicknessValue) > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Width deduction: {(parseFloat(jambThicknessValue) * 2).toFixed(4)}&quot; (2x) | Height deduction: {parseFloat(jambThicknessValue).toFixed(4)}&quot; (1x)
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSaveJambThickness}
+                      disabled={savingJambThickness}
+                      className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {savingJambThickness ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      onClick={cancelEditJambThickness}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <span className="text-gray-900 font-medium">
+                    {productDetails?.jambThickness ? `${productDetails.jambThickness}"` : 'Not set'}
+                  </span>
+                  {productDetails?.jambThickness && productDetails.jambThickness > 0 && (
+                    <span className="text-sm text-gray-500 ml-2">
+                      (W: -{(productDetails.jambThickness * 2).toFixed(4)}&quot;, H: -{productDetails.jambThickness.toFixed(4)}&quot;)
+                    </span>
+                  )}
                 </div>
               )}
             </div>

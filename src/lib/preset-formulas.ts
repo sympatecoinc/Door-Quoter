@@ -14,6 +14,9 @@ export interface PresetFormulaVariables {
   roughHeight: number
   finishedWidth: number
   finishedHeight: number
+  interiorWidth?: number
+  interiorHeight?: number
+  jambThickness?: number
 }
 
 /**
@@ -47,6 +50,10 @@ export function evaluatePresetFormula(
     // Order matters: replace longer names first to avoid partial matches
     // (e.g., "finishedWidth" before "width")
     let evaluatedFormula = formula
+      // Replace longer names first to avoid partial matches
+      .replace(/interiorWidth/g, String(variables.interiorWidth ?? variables.finishedWidth))
+      .replace(/interiorHeight/g, String(variables.interiorHeight ?? variables.finishedHeight))
+      .replace(/jambThickness/g, String(variables.jambThickness ?? 0))
       .replace(/finishedWidth/g, String(variables.finishedWidth))
       .replace(/finishedHeight/g, String(variables.finishedHeight))
       .replace(/roughWidth/g, String(variables.roughWidth))
@@ -94,7 +101,7 @@ export function validatePresetFormula(formula: string | null | undefined): boole
   }
 
   // Check that it only contains valid variable names and operators
-  const validVariables = ['width', 'height', 'roughWidth', 'roughHeight', 'finishedWidth', 'finishedHeight']
+  const validVariables = ['width', 'height', 'roughWidth', 'roughHeight', 'finishedWidth', 'finishedHeight', 'interiorWidth', 'interiorHeight', 'jambThickness']
 
   // Check used variables are valid
   const usedVariables = formula.match(/[a-zA-Z]+/g) || []
@@ -116,5 +123,8 @@ export function getFormulaVariables(): Array<{ name: string; description: string
   return [
     { name: 'width', description: 'Opening finished width (inches)' },
     { name: 'height', description: 'Opening finished height (inches)' },
+    { name: 'interiorWidth', description: 'Interior width after jamb deduction (inches)' },
+    { name: 'interiorHeight', description: 'Interior height after jamb deduction (inches)' },
+    { name: 'jambThickness', description: 'Frame jamb profile thickness (inches)' },
   ]
 }

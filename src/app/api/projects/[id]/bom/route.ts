@@ -196,6 +196,25 @@ export async function GET(
 
     // Process each opening
     for (const opening of project.openings) {
+      // Detect FRAME panel and get jambThickness for this opening
+      let jambThickness = 0
+      for (const p of opening.panels) {
+        if (p.componentInstance?.product?.productType === 'FRAME' &&
+            p.componentInstance.product.jambThickness) {
+          jambThickness = p.componentInstance.product.jambThickness
+          break
+        }
+      }
+
+      // Compute opening and interior dimensions
+      const openingWidth = opening.finishedWidth ?? opening.roughWidth ?? 0
+      const openingHeight = opening.finishedHeight ?? opening.roughHeight ?? 0
+      const interiorWidth = jambThickness > 0 ? openingWidth - (2 * jambThickness) : openingWidth
+      const interiorHeight = jambThickness > 0 ? openingHeight - jambThickness : openingHeight
+
+      // Reusable base variables for all formulas in this opening
+      const openingLevelVars = { interiorWidth, interiorHeight, openingWidth, openingHeight, jambThickness }
+
       // Process each panel in the opening
       for (const panel of opening.panels) {
         if (!panel.componentInstance) continue
@@ -208,8 +227,11 @@ export async function GET(
         let effectiveHeight = panel.height || 0
 
         if (isFrameProduct) {
-          effectiveWidth = opening.finishedWidth ?? opening.roughWidth ?? panel.width ?? 0
-          effectiveHeight = opening.finishedHeight ?? opening.roughHeight ?? panel.height ?? 0
+          effectiveWidth = openingWidth || panel.width || 0
+          effectiveHeight = openingHeight || panel.height || 0
+        } else if (jambThickness > 0) {
+          // TRIMMED component inside frame: height = interiorHeight, width = panel.width (user-entered)
+          effectiveHeight = interiorHeight
         }
 
         // Process each BOM item for this component
@@ -222,7 +244,8 @@ export async function GET(
             height: effectiveHeight,
             Width: effectiveWidth,    // Support both uppercase and lowercase
             Height: effectiveHeight,  // Support both uppercase and lowercase
-            quantity: bom.quantity || 1
+            quantity: bom.quantity || 1,
+            ...openingLevelVars
           }
 
           // Calculate cut length if formula exists
@@ -369,7 +392,8 @@ export async function GET(
             }
             glassWidth = evaluateFormula(formula, {
               width: effectiveWidth,
-              height: effectiveHeight
+              height: effectiveHeight,
+              ...openingLevelVars
             })
           }
 
@@ -381,7 +405,8 @@ export async function GET(
             }
             glassHeight = evaluateFormula(formula, {
               width: effectiveWidth,
-              height: effectiveHeight
+              height: effectiveHeight,
+              ...openingLevelVars
             })
           }
 
@@ -430,7 +455,8 @@ export async function GET(
                 width: effectiveWidth,
                 height: effectiveHeight,
                 glassWidth: glassWidth,
-                glassHeight: glassHeight
+                glassHeight: glassHeight,
+                ...openingLevelVars
               }
 
               // Calculate quantity from formula or use fixed quantity
@@ -535,7 +561,8 @@ export async function GET(
                       width: effectiveWidth,
                       height: effectiveHeight,
                       Width: effectiveWidth,
-                      Height: effectiveHeight
+                      Height: effectiveHeight,
+                      ...openingLevelVars
                     })
 
                     // Look up stock length from MasterPart if partNumber exists
@@ -684,7 +711,8 @@ export async function GET(
                     width: effectiveWidth,
                     height: effectiveHeight,
                     Width: effectiveWidth,
-                    Height: effectiveHeight
+                    Height: effectiveHeight,
+                    ...openingLevelVars
                   })
 
                   // Look up stock length from MasterPart if partNumber exists
@@ -861,7 +889,8 @@ export async function GET(
                         width: effectiveWidth,
                         height: effectiveHeight,
                         Width: effectiveWidth,
-                        Height: effectiveHeight
+                        Height: effectiveHeight,
+                        ...openingLevelVars
                       })
 
                       // Handle LF/IN units - convert and use as quantity
@@ -992,7 +1021,8 @@ export async function GET(
                       height: effectiveHeight,
                       Width: effectiveWidth,
                       Height: effectiveHeight,
-                      quantity: optionQuantity
+                      quantity: optionQuantity,
+                      ...openingLevelVars
                     }
                     let calculatedLength = evaluateFormula(optionPart.formula, formulaVariables)
 
@@ -1079,7 +1109,8 @@ export async function GET(
                   width: effectiveWidth,
                   height: effectiveHeight,
                   Width: effectiveWidth,
-                  Height: effectiveHeight
+                  Height: effectiveHeight,
+                  ...openingLevelVars
                 })
 
                 // Look up stock length from MasterPart if partNumber exists
@@ -1226,7 +1257,8 @@ export async function GET(
                       width: effectiveWidth,
                       height: effectiveHeight,
                       Width: effectiveWidth,
-                      Height: effectiveHeight
+                      Height: effectiveHeight,
+                      ...openingLevelVars
                     })
 
                     // Handle LF/IN units - convert and use as quantity

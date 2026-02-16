@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
               componentInstance: {
                 select: {
                   product: {
-                    select: { productType: true }
+                    select: { productType: true, jambThickness: true }
                   }
                 }
               }
@@ -100,8 +100,22 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      const constraintWidth = opening?.finishedWidth || opening?.roughWidth
-      const constraintHeight = opening?.finishedHeight || opening?.roughHeight
+      // Detect FRAME panel and compute interior dimensions for validation
+      let jambThickness = 0
+      if (opening?.panels) {
+        for (const p of opening.panels) {
+          if (p.componentInstance?.product?.productType === 'FRAME' &&
+              p.componentInstance.product.jambThickness) {
+            jambThickness = p.componentInstance.product.jambThickness
+            break
+          }
+        }
+      }
+
+      const baseWidth = opening?.finishedWidth || opening?.roughWidth
+      const baseHeight = opening?.finishedHeight || opening?.roughHeight
+      const constraintWidth = jambThickness > 0 && baseWidth ? baseWidth - (2 * jambThickness) : baseWidth
+      const constraintHeight = jambThickness > 0 && baseHeight ? baseHeight - jambThickness : baseHeight
 
       if (constraintWidth && constraintHeight) {
         // Get product constraints if productId is provided
