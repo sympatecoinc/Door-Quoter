@@ -208,8 +208,8 @@ export async function GET(
         let effectiveHeight = panel.height || 0
 
         if (isFrameProduct) {
-          effectiveWidth = opening.roughWidth ?? opening.finishedWidth ?? panel.width ?? 0
-          effectiveHeight = opening.roughHeight ?? opening.finishedHeight ?? panel.height ?? 0
+          effectiveWidth = opening.finishedWidth ?? opening.roughWidth ?? panel.width ?? 0
+          effectiveHeight = opening.finishedHeight ?? opening.roughHeight ?? panel.height ?? 0
         }
 
         // Process each BOM item for this component

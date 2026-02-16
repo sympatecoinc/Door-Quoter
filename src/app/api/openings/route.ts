@@ -149,16 +149,56 @@ export async function POST(request: NextRequest) {
       openingData.roughHeight = finalRoughHeight
     }
 
-    // Set finished dimensions - use provided values or copy from rough
-    if (finishedWidth && finishedWidth !== '') {
-      openingData.finishedWidth = parseFloat(finishedWidth)
-    } else if (finalRoughWidth !== null) {
-      openingData.finishedWidth = finalRoughWidth
-    }
-    if (finishedHeight && finishedHeight !== '') {
-      openingData.finishedHeight = parseFloat(finishedHeight)
-    } else if (finalRoughHeight !== null) {
-      openingData.finishedHeight = finalRoughHeight
+    // Calculate finished dimensions
+    if (Boolean(isFinishedOpening) && finalRoughWidth !== null && finalRoughHeight !== null) {
+      // Resolve tolerances: use provided overrides, else fetch defaults from GlobalSetting
+      let widthTol = (widthToleranceTotal !== undefined && widthToleranceTotal !== null)
+        ? parseFloat(widthToleranceTotal)
+        : null
+      let heightTol = (heightToleranceTotal !== undefined && heightToleranceTotal !== null)
+        ? parseFloat(heightToleranceTotal)
+        : null
+
+      if (widthTol === null || heightTol === null) {
+        const toleranceSettings = await prisma.globalSetting.findMany({
+          where: { category: 'tolerances' }
+        })
+        const tolMap = new Map(toleranceSettings.map(s => [s.key, parseFloat(s.value)]))
+        const defaults = {
+          thinwallWidthTolerance: tolMap.get('tolerance.thinwall.width') ?? 1.0,
+          thinwallHeightTolerance: tolMap.get('tolerance.thinwall.height') ?? 1.5,
+          framedWidthTolerance: tolMap.get('tolerance.framed.width') ?? 0.5,
+          framedHeightTolerance: tolMap.get('tolerance.framed.height') ?? 0.75,
+        }
+
+        const finalOpeningType = openingType || null
+        if (widthTol === null) {
+          widthTol = finalOpeningType === 'FRAMED'
+            ? defaults.framedWidthTolerance
+            : defaults.thinwallWidthTolerance
+        }
+        if (heightTol === null) {
+          heightTol = finalOpeningType === 'FRAMED'
+            ? defaults.framedHeightTolerance
+            : defaults.thinwallHeightTolerance
+        }
+      }
+
+      // Calculate finished dimensions (rough - tolerance)
+      openingData.finishedWidth = finalRoughWidth - widthTol
+      openingData.finishedHeight = finalRoughHeight - heightTol
+    } else {
+      // Non-finished opening: use provided values or copy from rough
+      if (finishedWidth && finishedWidth !== '') {
+        openingData.finishedWidth = parseFloat(finishedWidth)
+      } else if (finalRoughWidth !== null) {
+        openingData.finishedWidth = finalRoughWidth
+      }
+      if (finishedHeight && finishedHeight !== '') {
+        openingData.finishedHeight = parseFloat(finishedHeight)
+      } else if (finalRoughHeight !== null) {
+        openingData.finishedHeight = finalRoughHeight
+      }
     }
 
     const opening = await prisma.opening.create({
