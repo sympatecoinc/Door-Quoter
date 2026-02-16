@@ -61,9 +61,7 @@ export default function OpeningPresetsView() {
     defaultRoughHeight: '',
     defaultFinishedWidth: '',
     defaultFinishedHeight: '',
-    openingType: '' as '' | 'THINWALL' | 'FRAMED',
-    widthToleranceTotal: '',
-    heightToleranceTotal: ''
+    openingType: '' as '' | 'THINWALL' | 'FRAMED'
   })
   const [panels, setPanels] = useState<Partial<OpeningPresetPanel>[]>([])
   const [openComponentDropdown, setOpenComponentDropdown] = useState<number | null>(null)
@@ -77,7 +75,6 @@ export default function OpeningPresetsView() {
 
   const [expandedSections, setExpandedSections] = useState({
     dimensions: true,
-    tolerances: false,
     panels: true,
     parts: true
   })
@@ -158,9 +155,7 @@ export default function OpeningPresetsView() {
       defaultRoughHeight: '',
       defaultFinishedWidth: '',
       defaultFinishedHeight: '',
-      openingType: '',
-      widthToleranceTotal: '',
-      heightToleranceTotal: ''
+      openingType: ''
     })
     setPanels([])
     setParts([])
@@ -181,9 +176,7 @@ export default function OpeningPresetsView() {
       defaultRoughHeight: preset.defaultRoughHeight?.toString() || '',
       defaultFinishedWidth: preset.defaultFinishedWidth?.toString() || '',
       defaultFinishedHeight: preset.defaultFinishedHeight?.toString() || '',
-      openingType: resolvedOpeningType as 'THINWALL' | 'FRAMED',
-      widthToleranceTotal: preset.widthToleranceTotal?.toString() || '',
-      heightToleranceTotal: preset.heightToleranceTotal?.toString() || ''
+      openingType: resolvedOpeningType as 'THINWALL' | 'FRAMED'
     })
     setPanels(preset.panels || [])
     setParts(preset.parts || [])
@@ -214,8 +207,6 @@ export default function OpeningPresetsView() {
         defaultFinishedWidth: formData.defaultFinishedWidth ? parseFloat(formData.defaultFinishedWidth) : null,
         defaultFinishedHeight: formData.defaultFinishedHeight ? parseFloat(formData.defaultFinishedHeight) : null,
         openingType: formData.openingType || null,
-        widthToleranceTotal: formData.widthToleranceTotal ? parseFloat(formData.widthToleranceTotal) : null,
-        heightToleranceTotal: formData.heightToleranceTotal ? parseFloat(formData.heightToleranceTotal) : null,
         panels: panels.map((p, idx) => ({
           type: p.type || 'Component',
           productId: p.productId || null,
@@ -278,8 +269,6 @@ export default function OpeningPresetsView() {
         defaultFinishedWidth: preset.defaultFinishedWidth,
         defaultFinishedHeight: preset.defaultFinishedHeight,
         openingType: preset.openingType,
-        widthToleranceTotal: preset.widthToleranceTotal,
-        heightToleranceTotal: preset.heightToleranceTotal,
         panels: preset.panels?.map((p, idx) => ({
           type: p.type,
           productId: p.productId,
@@ -387,7 +376,7 @@ export default function OpeningPresetsView() {
     }])
   }
 
-  // Calculate auto width based on preset dimensions, tolerances, and panel count
+  // Calculate auto width based on preset dimensions and panel count
   function handleAutoWidth(panelIndex: number) {
     // Get base dimension based on opening type
     let baseWidth = formData.openingType === 'THINWALL'
@@ -399,19 +388,15 @@ export default function OpeningPresetsView() {
       return
     }
 
-    // Subtract tolerance if set
-    const tolerance = parseFloat(formData.widthToleranceTotal) || 0
-    let availableWidth = baseWidth - tolerance
-
     // Divide by number of panels to get per-panel width
     const panelCount = panels.length || 1
-    const panelWidth = availableWidth / panelCount
+    const panelWidth = baseWidth / panelCount
 
     // Set as static numeric value
     updatePanel(panelIndex, 'widthFormula', panelWidth.toFixed(3))
   }
 
-  // Calculate auto height based on preset dimensions and tolerances
+  // Calculate auto height based on preset dimensions
   function handleAutoHeight(panelIndex: number) {
     // Get base dimension based on opening type
     let baseHeight = formData.openingType === 'THINWALL'
@@ -423,12 +408,8 @@ export default function OpeningPresetsView() {
       return
     }
 
-    // Subtract tolerance if set
-    const tolerance = parseFloat(formData.heightToleranceTotal) || 0
-    const finalHeight = baseHeight - tolerance
-
     // Set as static numeric value
-    updatePanel(panelIndex, 'heightFormula', finalHeight.toFixed(3))
+    updatePanel(panelIndex, 'heightFormula', baseHeight.toFixed(3))
   }
 
   // Check if Auto buttons should be enabled (has preset dimensions)
@@ -748,13 +729,13 @@ export default function OpeningPresetsView() {
                 )}
               </div>
 
-              {/* Dimensions + Tolerances - conditional based on opening type */}
+              {/* Dimensions - conditional based on opening type */}
               {formData.openingType && (
                 <div className="border border-gray-200 rounded-lg p-4">
                   <label className="block text-sm font-medium text-gray-700 mb-3">
                     {formData.openingType === 'THINWALL' ? 'Finished Opening Size' : 'Rough Opening Size'}
                   </label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     {formData.openingType === 'THINWALL' ? (
                       <>
                         <div>
@@ -806,28 +787,6 @@ export default function OpeningPresetsView() {
                         </div>
                       </>
                     )}
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">Width Tolerance</label>
-                      <input
-                        type="number"
-                        step="0.0625"
-                        value={formData.widthToleranceTotal}
-                        onChange={(e) => setFormData({ ...formData, widthToleranceTotal: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="inches"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">Height Tolerance</label>
-                      <input
-                        type="number"
-                        step="0.0625"
-                        value={formData.heightToleranceTotal}
-                        onChange={(e) => setFormData({ ...formData, heightToleranceTotal: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="inches"
-                      />
-                    </div>
                   </div>
                 </div>
               )}

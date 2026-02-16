@@ -129,6 +129,7 @@ export async function POST(
     let finalFinishedHeight = finishedHeight ?? preset.defaultFinishedHeight
 
     // If finished dimensions not provided, default to rough dimensions
+    // Tolerances are applied later in the project configurator based on opening type
     if (finalFinishedWidth === null || finalFinishedWidth === undefined) {
       finalFinishedWidth = finalRoughWidth
     }
@@ -241,8 +242,6 @@ export async function POST(
             finishedHeight: effectiveFinishedHeight,
             isFinishedOpening: preset.isFinishedOpening,
             openingType: preset.openingType,
-            widthToleranceTotal: preset.widthToleranceTotal,
-            heightToleranceTotal: preset.heightToleranceTotal,
             includeStarterChannels: preset.includeStarterChannels,
             presetId: preset.id
           }
@@ -260,8 +259,6 @@ export async function POST(
             price: 0,
             isFinishedOpening: preset.isFinishedOpening,
             openingType: preset.openingType,
-            widthToleranceTotal: preset.widthToleranceTotal,
-            heightToleranceTotal: preset.heightToleranceTotal,
             finishColor: finishColor || null,
             includeStarterChannels: preset.includeStarterChannels,
             presetId: preset.id

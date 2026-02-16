@@ -142,8 +142,6 @@ export async function PUT(
     if (defaultFinishedHeight !== undefined) updateData.defaultFinishedHeight = defaultFinishedHeight ?? null
     if (isFinishedOpening !== undefined) updateData.isFinishedOpening = isFinishedOpening
     if (openingType !== undefined) updateData.openingType = openingType || null
-    if (widthToleranceTotal !== undefined) updateData.widthToleranceTotal = widthToleranceTotal ?? null
-    if (heightToleranceTotal !== undefined) updateData.heightToleranceTotal = heightToleranceTotal ?? null
     if (includeStarterChannels !== undefined) updateData.includeStarterChannels = includeStarterChannels
     if (isArchived !== undefined) updateData.isArchived = isArchived
 

@@ -117,8 +117,6 @@ export async function POST(request: NextRequest) {
         defaultFinishedHeight: defaultFinishedHeight ?? null,
         isFinishedOpening,
         openingType: isFinishedOpening ? openingType : null,
-        widthToleranceTotal: widthToleranceTotal ?? null,
-        heightToleranceTotal: heightToleranceTotal ?? null,
         includeStarterChannels,
         panels: {
           create: panels.map((panel: any, index: number) => ({
