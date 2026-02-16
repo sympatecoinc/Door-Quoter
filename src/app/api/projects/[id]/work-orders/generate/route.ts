@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getSessionToken } from '@/lib/auth'
 import { getSessionWithUser } from '@/lib/db-session'
 import { generateWorkOrdersFromProject } from '@/lib/work-order-generator'
+import { bulkDeductInventory } from '@/lib/sales-order-parts'
 
 // POST - Generate work orders from project cut lists
 export async function POST(
@@ -67,12 +68,37 @@ export async function POST(
       )
     }
 
+    // Gate: require a confirmed sales order before generating work orders
+    const confirmedSO = await prisma.salesOrder.findFirst({
+      where: { projectId, status: 'CONFIRMED' }
+    })
+
+    if (!confirmedSO) {
+      return NextResponse.json(
+        { error: 'Cannot generate work orders: project must have a confirmed sales order' },
+        { status: 400 }
+      )
+    }
+
     // Generate work orders
     const result = await generateWorkOrdersFromProject({
       projectId,
       userId,
       batchSize: batchSize ?? project.batchSize
     })
+
+    // Deduct inventory (RESERVED → PICKED) after successful generation
+    let inventoryDeducted = false
+    let deductionSummary: { deductedCount: number; skippedCount: number } | null = null
+
+    if (result.created > 0) {
+      try {
+        deductionSummary = await bulkDeductInventory(confirmedSO.id, userId ?? undefined)
+        inventoryDeducted = true
+      } catch (deductionError) {
+        console.error('Inventory deduction failed (work orders still created):', deductionError)
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -85,7 +111,9 @@ export async function POST(
         created: result.created,
         skipped: result.skipped,
         total: result.workOrders.length
-      }
+      },
+      inventoryDeducted,
+      deductionSummary
     })
   } catch (error) {
     console.error('Error generating work orders:', error)
