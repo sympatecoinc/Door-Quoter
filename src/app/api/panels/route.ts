@@ -172,7 +172,8 @@ export async function POST(request: NextRequest) {
           // Filter out CORNER_90/FRAME panels from existing panels width calculation
           const existingWidths = opening.panels
             .filter(p => {
-              const pType = p.componentInstance?.product?.productType
+              if (!p.componentInstance) return false
+              const pType = p.componentInstance.product?.productType
               return pType !== 'CORNER_90' && pType !== 'FRAME'
             })
             .map(p => p.width)

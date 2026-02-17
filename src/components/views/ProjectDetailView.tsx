@@ -2346,8 +2346,9 @@ export default function ProjectDetailView() {
 
     // Width validation - sum of all panels
     const existingPanels = opening.panels.filter(p =>
-      p.componentInstance?.product?.productType !== 'CORNER_90' &&
-      p.componentInstance?.product?.productType !== 'FRAME'
+      p.componentInstance &&
+      p.componentInstance.product?.productType !== 'CORNER_90' &&
+      p.componentInstance.product?.productType !== 'FRAME'
     )
     const existingWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
     const totalWidth = existingWidth + (width * quantity)
@@ -2404,8 +2405,9 @@ export default function ProjectDetailView() {
 
     // Calculate existing panel widths (exclude corners and frames)
     const existingPanels = opening.panels.filter(p =>
-      p.componentInstance?.product?.productType !== 'CORNER_90' &&
-      p.componentInstance?.product?.productType !== 'FRAME'
+      p.componentInstance &&
+      p.componentInstance.product?.productType !== 'CORNER_90' &&
+      p.componentInstance.product?.productType !== 'FRAME'
     )
     const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
     let availableWidth = constraintWidth - usedWidth
@@ -2465,8 +2467,9 @@ export default function ProjectDetailView() {
 
     // Calculate existing panel widths (exclude corners and frames)
     const existingPanels = opening.panels.filter(p =>
-      p.componentInstance?.product?.productType !== 'CORNER_90' &&
-      p.componentInstance?.product?.productType !== 'FRAME'
+      p.componentInstance &&
+      p.componentInstance.product?.productType !== 'CORNER_90' &&
+      p.componentInstance.product?.productType !== 'FRAME'
     )
     const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
     let availableWidth = constraintWidth - usedWidth
@@ -3843,9 +3846,9 @@ export default function ProjectDetailView() {
                 {/* Components */}
                 <div className="mt-4">
                   <div className="mb-2">
-                    <h4 className="text-sm font-medium text-gray-700">Components ({opening.panels.filter(p => p.componentInstance && !p.parentPanelId).length})</h4>
+                    <h4 className="text-sm font-medium text-gray-700">Components ({opening.panels.filter(p => p.componentInstance && !p.parentPanelId && p.componentInstance.product?.productType !== 'FRAME').length})</h4>
                   </div>
-                  {opening.panels.filter(p => p.componentInstance && !p.parentPanelId).length > 0 ? (
+                  {opening.panels.filter(p => p.componentInstance && !p.parentPanelId && p.componentInstance.product?.productType !== 'FRAME').length > 0 ? (
                     <DragDropContext onDragEnd={(result) => handleDragEnd(result, opening.id)}>
                       <Droppable droppableId={`opening-${opening.id}`}>
                         {(provided) => (
@@ -3855,7 +3858,7 @@ export default function ProjectDetailView() {
                             className="space-y-2"
                           >
                             {opening.panels
-                              .filter(p => p.componentInstance && !p.parentPanelId)
+                              .filter(p => p.componentInstance && !p.parentPanelId && p.componentInstance.product?.productType !== 'FRAME')
                               .sort((a, b) => a.displayOrder - b.displayOrder)
                               .map((panel, index) => (
                               <Draggable key={panel.id} draggableId={`panel-${panel.id}`} index={index}>
@@ -5112,18 +5115,24 @@ export default function ProjectDetailView() {
                           // Calculate effective dimensions with product tolerances
                           const effectiveDims = getEffectiveFinishedDimensions(opening, product)
 
+                          // Use interior dimensions (deducting jamb thickness) when a frame is present
+                          const { interiorWidth, interiorHeight } = getInteriorDimensions(opening, product)
+                          const constraintWidth = interiorWidth ?? effectiveDims.width
+                          const constraintHeight = interiorHeight ?? effectiveDims.height
+
                           // Get existing panels to calculate remaining space
                           const nonFramePanels = opening?.panels?.filter(p =>
-                            p.componentInstance?.product?.productType !== 'FRAME' &&
-                            p.componentInstance?.product?.productType !== 'CORNER_90'
+                            p.componentInstance &&
+                            p.componentInstance.product?.productType !== 'FRAME' &&
+                            p.componentInstance.product?.productType !== 'CORNER_90'
                           ) || []
 
                           // Calculate remaining width
                           const usedWidth = nonFramePanels.reduce((sum, p) => sum + (p.width || 0), 0)
-                          const remainingWidth = (effectiveDims.width || 0) - usedWidth
+                          const remainingWidth = (constraintWidth || 0) - usedWidth
 
                           // Auto-calculate width: use remaining space or defaultWidth, whichever is smaller
-                          if (opening?.isFinishedOpening && effectiveDims.width) {
+                          if (opening?.isFinishedOpening && constraintWidth) {
                             let finalWidth = remainingWidth
                             // If product has defaultWidth and it's smaller than remaining, use defaultWidth
                             if (product.defaultWidth && product.defaultWidth < remainingWidth) {
@@ -5150,9 +5159,9 @@ export default function ProjectDetailView() {
                             if (nonFramePanels.length > 0) {
                               // Use existing panel height for consistency
                               setComponentHeight(nonFramePanels[0].height.toString())
-                            } else if (effectiveDims.height) {
-                              // First panel - use effective height with product tolerances
-                              let finalHeight = effectiveDims.height
+                            } else if (constraintHeight) {
+                              // First panel - use interior height (deducting jamb thickness if framed)
+                              let finalHeight = constraintHeight
                               if (product.maxHeight && finalHeight > product.maxHeight) {
                                 finalHeight = product.maxHeight
                               }
@@ -5406,15 +5415,21 @@ export default function ProjectDetailView() {
                             const opening = project?.openings.find(o => o.id === selectedOpeningId)
                             const selectedProduct = products.find(p => p.id === selectedProductId)
                             const existingNonFramePanels = opening?.panels.filter(p =>
-                              p.componentInstance?.product?.productType !== 'CORNER_90' &&
-                              p.componentInstance?.product?.productType !== 'FRAME'
+                              p.componentInstance &&
+                              p.componentInstance.product?.productType !== 'CORNER_90' &&
+                              p.componentInstance.product?.productType !== 'FRAME'
                             ) || []
 
                             // Calculate effective dimensions with product tolerances
                             const effectiveDims = getEffectiveFinishedDimensions(opening, selectedProduct)
 
+                            // Use interior dimensions (deducting jamb thickness) when a frame is present
+                            const { interiorWidth: intW, interiorHeight: intH } = getInteriorDimensions(opening, selectedProduct)
+                            const cWidth = intW ?? effectiveDims.width
+                            const cHeight = intH ?? effectiveDims.height
+
                             const usedW = existingNonFramePanels.reduce((sum, p) => sum + (p.width || 0), 0)
-                            const remainingW = (effectiveDims.width || 0) - usedW
+                            const remainingW = (cWidth || 0) - usedW
                             let wPerPanel = multiPanelCount > 0 ? remainingW / multiPanelCount : 0
 
                             // Apply product width constraints to per-panel width
@@ -5425,10 +5440,10 @@ export default function ProjectDetailView() {
                               wPerPanel = selectedProduct.minWidth
                             }
 
-                            // Calculate height: use existing panel height or effective finished height with tolerances
+                            // Calculate height: use existing panel height or interior height with tolerances
                             let defaultHeight = existingNonFramePanels.length > 0
                               ? Math.max(...existingNonFramePanels.map(p => p.height || 0))
-                              : (effectiveDims.height || 0)
+                              : (cHeight || 0)
 
                             // Apply product height constraints
                             if (selectedProduct?.maxHeight && defaultHeight > selectedProduct.maxHeight) {
