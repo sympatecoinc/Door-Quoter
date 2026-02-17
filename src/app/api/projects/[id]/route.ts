@@ -61,6 +61,11 @@ export async function GET(
                         glassQuantityFormula: true,
                         createdAt: true,
                         updatedAt: true,
+                        minWidth: true,
+                        maxWidth: true,
+                        minHeight: true,
+                        maxHeight: true,
+                        jambThickness: true,
                         productBOMs: {
                           select: {
                             id: true,

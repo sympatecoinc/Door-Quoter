@@ -337,10 +337,41 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json(createLockedError(panel.opening.project.status), { status: 403 })
     }
 
+    const openingId = panel.opening.id
+    const isFramePanel = panel.componentInstance?.product?.productType === 'FRAME'
+
     // Delete the panel (this will cascade delete the componentInstance due to the schema)
     await prisma.panel.delete({
       where: { id: panelId }
     })
+
+    // If we deleted a non-FRAME, non-CORNER panel, check if we should auto-remove the frame
+    if (!isFramePanel && panel.componentInstance?.product?.productType !== 'CORNER_90') {
+      // Count remaining non-FRAME, non-CORNER panels in the opening
+      const remainingPanels = await prisma.panel.findMany({
+        where: {
+          openingId,
+          componentInstance: {
+            product: {
+              productType: { notIn: ['FRAME', 'CORNER_90'] }
+            }
+          }
+        },
+        select: { id: true }
+      })
+
+      if (remainingPanels.length === 0) {
+        // No more content panels — delete the frame panel too
+        await prisma.panel.deleteMany({
+          where: {
+            openingId,
+            componentInstance: {
+              product: { productType: 'FRAME' }
+            }
+          }
+        })
+      }
+    }
 
     return NextResponse.json({ message: 'Panel deleted successfully' })
   } catch (error) {

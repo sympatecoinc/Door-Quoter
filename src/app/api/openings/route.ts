@@ -56,7 +56,9 @@ export async function POST(request: NextRequest) {
       isFinishedOpening = false,
       openingType,
       widthToleranceTotal,
-      heightToleranceTotal
+      heightToleranceTotal,
+      // Opening-level frame product
+      frameProductId
       // Note: includeStarterChannels removed - now handled via category options
     } = await request.json()
 
@@ -114,6 +116,11 @@ export async function POST(request: NextRequest) {
     // Add opening type if provided
     if (openingType && ['THINWALL', 'FRAMED'].includes(openingType)) {
       openingData.openingType = openingType
+    }
+
+    // Add frame product for FRAMED openings
+    if (frameProductId) {
+      openingData.frameProductId = parseInt(frameProductId)
     }
 
     // Add tolerance overrides if provided
@@ -212,6 +219,9 @@ export async function POST(request: NextRequest) {
               }
             }
           }
+        },
+        frameProduct: {
+          select: { id: true, name: true, productType: true, jambThickness: true }
         }
       }
     })

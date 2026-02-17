@@ -62,6 +62,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             archived: true
           }
         },
+        frameAssignments: {
+          select: {
+            id: true,
+            frameProductId: true,
+            frameProduct: {
+              select: { id: true, name: true }
+            }
+          }
+        },
+        assignedToFrames: {
+          select: {
+            id: true,
+            productId: true,
+            product: {
+              select: { id: true, name: true, productType: true, productCategory: true }
+            }
+          }
+        },
         _count: {
           select: {
             productBOMs: true,
@@ -107,7 +125,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       minHeight,
       maxHeight,
       frameConfigId,
-      jambThickness
+      jambThickness,
+      frameAssignments // Array of frame product IDs for many-to-many junction table
     } = await request.json()
 
     // Prepare update data
@@ -270,6 +289,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             archived: true
           }
         },
+        frameAssignments: {
+          select: {
+            id: true,
+            frameProductId: true,
+            frameProduct: {
+              select: { id: true, name: true }
+            }
+          }
+        },
+        assignedToFrames: {
+          select: {
+            id: true,
+            productId: true,
+            product: {
+              select: { id: true, name: true, productType: true, productCategory: true }
+            }
+          }
+        },
         _count: {
           select: {
             productBOMs: true,
@@ -278,6 +315,40 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
     })
+
+    // Sync many-to-many frame assignments via junction table
+    if (frameAssignments !== undefined && Array.isArray(frameAssignments)) {
+      // Get current assignments for this product
+      const currentAssignments = await prisma.productFrameAssignment.findMany({
+        where: { productId },
+        select: { frameProductId: true }
+      })
+      const currentFrameIds = currentAssignments.map(a => a.frameProductId)
+      const desiredFrameIds = frameAssignments.map((id: number) => parseInt(String(id)))
+
+      // Delete removed assignments
+      const toRemove = currentFrameIds.filter(id => !desiredFrameIds.includes(id))
+      if (toRemove.length > 0) {
+        await prisma.productFrameAssignment.deleteMany({
+          where: {
+            productId,
+            frameProductId: { in: toRemove }
+          }
+        })
+      }
+
+      // Create new assignments
+      const toAdd = desiredFrameIds.filter(id => !currentFrameIds.includes(id))
+      if (toAdd.length > 0) {
+        await prisma.productFrameAssignment.createMany({
+          data: toAdd.map((frameProductId: number) => ({
+            productId,
+            frameProductId
+          })),
+          skipDuplicates: true
+        })
+      }
+    }
 
     // Update or create corresponding ComponentLibrary entry if elevation image is provided
     if (elevationImageData !== undefined ||

@@ -112,6 +112,28 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // If no existing frame panel, check opening-level frameProductId for jambThickness
+      if (jambThickness === 0 && opening?.frameProductId) {
+        const frameProduct = await prisma.product.findUnique({
+          where: { id: opening.frameProductId },
+          select: { jambThickness: true }
+        })
+        if (frameProduct?.jambThickness) {
+          jambThickness = frameProduct.jambThickness
+        }
+      }
+
+      // Fallback: check if the product being added has a frameConfig (legacy support)
+      if (jambThickness === 0 && productId) {
+        const productWithFrame = await prisma.product.findUnique({
+          where: { id: parseInt(productId) },
+          select: { frameConfig: { select: { jambThickness: true } } }
+        })
+        if (productWithFrame?.frameConfig?.jambThickness) {
+          jambThickness = productWithFrame.frameConfig.jambThickness
+        }
+      }
+
       const baseWidth = opening?.finishedWidth || opening?.roughWidth
       const baseHeight = opening?.finishedHeight || opening?.roughHeight
       const constraintWidth = jambThickness > 0 && baseWidth ? baseWidth - (2 * jambThickness) : baseWidth
@@ -150,7 +172,8 @@ export async function POST(request: NextRequest) {
           // Filter out CORNER_90/FRAME panels from existing panels width calculation
           const existingWidths = opening.panels
             .filter(p => {
-              const pType = p.componentInstance?.product?.productType
+              if (!p.componentInstance) return false
+              const pType = p.componentInstance.product?.productType
               return pType !== 'CORNER_90' && pType !== 'FRAME'
             })
             .map(p => p.width)
@@ -220,73 +243,126 @@ export async function POST(request: NextRequest) {
       panels.push(panel)
     }
 
-    // Check if the product has a frame config and create frame panels automatically
+    // Opening-level frame auto-creation: ONE frame panel per opening (not per product)
     // Only for primary panels (not when parentPanelId is set, which means this IS a frame panel)
     if (productId && !parentPanelId) {
-      const productWithFrame = await prisma.product.findUnique({
-        where: { id: parseInt(productId) },
-        include: { frameConfig: true }
-      })
-
-      // Only create frame panels if:
-      // 1. The product has a frame config configured
-      // 2. The frame product is NOT the same as the current product (prevent infinite recursion)
-      if (productWithFrame?.frameConfig &&
-          productWithFrame.frameConfig.id !== productWithFrame.id) {
-        // Fetch the opening to get OPENING dimensions for frame panels
-        const opening = await prisma.opening.findUnique({
-          where: { id: parseInt(openingId) },
-          select: {
-            finishedWidth: true,
-            finishedHeight: true,
-            roughWidth: true,
-            roughHeight: true,
-            isFinishedOpening: true
-          }
-        })
-
-        if (opening) {
-          // Frames fill the full opening — use rough (opening) dimensions, not tolerance-reduced finished size
-          const frameWidth = opening.roughWidth ?? opening.finishedWidth ?? 0
-          const frameHeight = opening.roughHeight ?? opening.finishedHeight ?? 0
-
-          // Store the primary panels count BEFORE adding frame panels
-          const primaryPanelCount = panels.length
-
-          // Create a frame panel for each primary panel created
-          // Use index-based loop to avoid issues with array mutation
-          for (let i = 0; i < primaryPanelCount; i++) {
-            const primaryPanel = panels[i]
-            const framePanel = await prisma.panel.create({
-              data: {
-                openingId: parseInt(openingId),
-                type: 'Component',
-                width: frameWidth,
-                height: frameHeight,
-                glassType: 'N/A',  // Frames don't have glass
-                locking: 'N/A',
-                swingDirection: 'None',
-                slidingDirection: 'Left',
-                isCorner: false,
-                cornerDirection: 'Up',
-                displayOrder: nextDisplayOrder + primaryPanelCount + i,  // Place after primary panels
-                parentPanelId: primaryPanel.id  // Link to parent panel
-              },
-              include: {
-                componentInstance: {
-                  include: {
-                    product: true
-                  }
+      // Fetch the opening with frameProductId and existing panels
+      const openingForFrame = await prisma.opening.findUnique({
+        where: { id: parseInt(openingId) },
+        select: {
+          frameProductId: true,
+          finishedWidth: true,
+          finishedHeight: true,
+          roughWidth: true,
+          roughHeight: true,
+          isFinishedOpening: true,
+          panels: {
+            select: {
+              id: true,
+              componentInstance: {
+                select: {
+                  product: { select: { productType: true } }
                 }
               }
+            }
+          }
+        }
+      })
+
+      if (openingForFrame?.frameProductId) {
+        // Check if a frame panel already exists in this opening
+        const existingFramePanel = openingForFrame.panels.find(p =>
+          p.componentInstance?.product?.productType === 'FRAME'
+        )
+
+        if (!existingFramePanel) {
+          // No frame panel yet — create ONE for the opening
+          const frameWidth = openingForFrame.roughWidth ?? openingForFrame.finishedWidth ?? 0
+          const frameHeight = openingForFrame.roughHeight ?? openingForFrame.finishedHeight ?? 0
+
+          const framePanel = await prisma.panel.create({
+            data: {
+              openingId: parseInt(openingId),
+              type: 'Component',
+              width: frameWidth,
+              height: frameHeight,
+              glassType: 'N/A',
+              locking: 'N/A',
+              swingDirection: 'None',
+              slidingDirection: 'Left',
+              isCorner: false,
+              cornerDirection: 'Up',
+              displayOrder: nextDisplayOrder + panelCount  // Place after primary panels
+            },
+            include: {
+              componentInstance: {
+                include: {
+                  product: true
+                }
+              }
+            }
+          })
+
+          // Add frame info to the panel response for the frontend to create component instance
+          panels.push({
+            ...framePanel,
+            _frameConfigId: openingForFrame.frameProductId,
+            _isFramePanel: true
+          })
+        }
+      } else {
+        // Fallback: legacy per-product frame config (for openings without frameProductId)
+        const productWithFrame = await prisma.product.findUnique({
+          where: { id: parseInt(productId) },
+          include: { frameConfig: true }
+        })
+
+        if (productWithFrame?.frameConfig &&
+            productWithFrame.frameConfig.id !== productWithFrame.id) {
+          // Check if a frame panel already exists
+          const openingPanels = await prisma.panel.findMany({
+            where: { openingId: parseInt(openingId) },
+            include: { componentInstance: { select: { product: { select: { productType: true } } } } }
+          })
+          const existingFramePanel = openingPanels.find(p =>
+            p.componentInstance?.product?.productType === 'FRAME'
+          )
+
+          if (!existingFramePanel) {
+            const legacyOpening = await prisma.opening.findUnique({
+              where: { id: parseInt(openingId) },
+              select: { finishedWidth: true, finishedHeight: true, roughWidth: true, roughHeight: true }
             })
 
-            // Add frameConfigId to the panel response for the frontend to create component instance
-            panels.push({
-              ...framePanel,
-              _frameConfigId: productWithFrame.frameConfig.id,
-              _isFramePanel: true
-            })
+            if (legacyOpening) {
+              const frameWidth = legacyOpening.roughWidth ?? legacyOpening.finishedWidth ?? 0
+              const frameHeight = legacyOpening.roughHeight ?? legacyOpening.finishedHeight ?? 0
+
+              const framePanel = await prisma.panel.create({
+                data: {
+                  openingId: parseInt(openingId),
+                  type: 'Component',
+                  width: frameWidth,
+                  height: frameHeight,
+                  glassType: 'N/A',
+                  locking: 'N/A',
+                  swingDirection: 'None',
+                  slidingDirection: 'Left',
+                  isCorner: false,
+                  cornerDirection: 'Up',
+                  displayOrder: nextDisplayOrder + panelCount
+                },
+                include: {
+                  componentInstance: { include: { product: true } }
+                }
+              })
+
+              panels.push({
+                ...framePanel,
+                _frameConfigId: productWithFrame.frameConfig.id,
+                _isFramePanel: true
+              })
+            }
           }
         }
       }

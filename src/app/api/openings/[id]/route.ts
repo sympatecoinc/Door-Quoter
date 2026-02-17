@@ -79,7 +79,9 @@ export async function PUT(
       isFinishedOpening,
       openingType,
       widthToleranceTotal,
-      heightToleranceTotal
+      heightToleranceTotal,
+      // Opening-level frame product
+      frameProductId
     } = await request.json()
 
     // Get existing opening data with project status
@@ -196,6 +198,34 @@ export async function PUT(
       updateData.finishColor = finishColor
     }
 
+    // Handle frame product change
+    if (frameProductId !== undefined) {
+      const newFrameProductId = frameProductId !== null ? parseInt(frameProductId) : null
+      updateData.frameProductId = newFrameProductId
+
+      // If frame changed on existing opening, update the frame panel's product
+      if (newFrameProductId && existingOpening.frameProductId !== newFrameProductId) {
+        // Find existing frame panel in this opening
+        const existingFramePanel = await prisma.panel.findFirst({
+          where: {
+            openingId,
+            componentInstance: {
+              product: { productType: 'FRAME' }
+            }
+          },
+          include: { componentInstance: true }
+        })
+
+        if (existingFramePanel?.componentInstance) {
+          // Swap the frame product on the existing frame panel
+          await prisma.componentInstance.update({
+            where: { id: existingFramePanel.componentInstance.id },
+            data: { productId: newFrameProductId }
+          })
+        }
+      }
+    }
+
     const updatedOpening = await prisma.opening.update({
       where: { id: openingId },
       data: updateData,
@@ -208,6 +238,9 @@ export async function PUT(
               }
             }
           }
+        },
+        frameProduct: {
+          select: { id: true, name: true, productType: true, jambThickness: true }
         }
       }
     })
