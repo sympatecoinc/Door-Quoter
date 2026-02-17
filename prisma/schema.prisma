@@ -275,6 +275,7 @@ model Product {
   assignedToFrames           ProductFrameAssignment[] @relation("FrameProductAssignments")
   // Opening Preset support
   presetPanels         OpeningPresetPanel[]
+  presetsAsFrame       OpeningPreset[] @relation("PresetFrameProduct")
 
   @@map("Products")
 }
@@ -1748,7 +1749,7 @@ model FieldVerificationUpload {
 // Opening Preset - Reusable opening configurations with pre-defined panels and parts
 model OpeningPreset {
   id                    Int                     @id @default(autoincrement())
-  name                  String                  @unique
+  name                  String
   description           String?
 
   // Default dimensions (nullable - user can override when applying)
@@ -1771,11 +1772,16 @@ model OpeningPreset {
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
 
+  // Frame selection (for FRAMED opening type)
+  frameProductId  Int?
+  frameProduct    Product? @relation("PresetFrameProduct", fields: [frameProductId], references: [id], onDelete: SetNull)
+
   // Relations
   panels                OpeningPresetPanel[]
   parts                 OpeningPresetPart[]
   appliedOpenings       Opening[]
 
+  @@index([name, isArchived])
   @@map("OpeningPresets")
 }
 

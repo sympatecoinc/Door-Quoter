@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Plus, Edit2, Trash2, Copy, Archive, RotateCcw, ChevronDown, ChevronRight, X, Search, Check } from 'lucide-react'
 import { useEscapeKey } from '@/hooks/useEscapeKey'
 import { OpeningPreset, OpeningPresetPanel, OpeningPresetPart, MasterPart } from '@/types'
+import ConfirmModal from '@/components/ui/ConfirmModal'
 
 interface Product {
   id: number
@@ -15,6 +16,12 @@ interface Product {
     name: string
     productType: string
   } | null
+}
+
+interface FrameProduct {
+  id: number
+  name: string
+  jambThickness?: number | null
 }
 
 type PartType = 'Hardware' | 'Extrusion' | 'Glass' | 'Sealant' | 'Other'
@@ -41,6 +48,7 @@ interface PresetPartLocal {
 export default function OpeningPresetsView() {
   const [presets, setPresets] = useState<OpeningPreset[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [frameProducts, setFrameProducts] = useState<FrameProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [showArchived, setShowArchived] = useState(false)
 
@@ -52,6 +60,7 @@ export default function OpeningPresetsView() {
   // Delete/Archive confirmation
   const [confirmDelete, setConfirmDelete] = useState<OpeningPreset | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [confirmArchive, setConfirmArchive] = useState<OpeningPreset | null>(null)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -61,7 +70,8 @@ export default function OpeningPresetsView() {
     defaultRoughHeight: '',
     defaultFinishedWidth: '',
     defaultFinishedHeight: '',
-    openingType: '' as '' | 'THINWALL' | 'FRAMED'
+    openingType: '' as '' | 'THINWALL' | 'FRAMED',
+    frameProductId: null as number | null
   })
   const [panels, setPanels] = useState<Partial<OpeningPresetPanel>[]>([])
   const [openComponentDropdown, setOpenComponentDropdown] = useState<number | null>(null)
@@ -73,6 +83,14 @@ export default function OpeningPresetsView() {
   const [showPartSelector, setShowPartSelector] = useState(false)
   const [masterPartsLoading, setMasterPartsLoading] = useState(false)
 
+  // Tolerance settings
+  const [tolerances, setTolerances] = useState({
+    thinwallWidthTolerance: 1.0,
+    thinwallHeightTolerance: 1.5,
+    framedWidthTolerance: 0.5,
+    framedHeightTolerance: 0.75,
+  })
+
   const [expandedSections, setExpandedSections] = useState({
     dimensions: true,
     panels: true,
@@ -80,6 +98,7 @@ export default function OpeningPresetsView() {
   })
 
   useEscapeKey([
+    { isOpen: confirmArchive !== null, isBlocked: false, onClose: () => setConfirmArchive(null) },
     { isOpen: confirmDelete !== null, isBlocked: deleting, onClose: () => setConfirmDelete(null) },
     { isOpen: showEditor, isBlocked: saving, onClose: () => closeEditor() }
   ])
@@ -91,9 +110,21 @@ export default function OpeningPresetsView() {
   async function loadData() {
     setLoading(true)
     try {
-      await Promise.all([fetchPresets(), fetchProducts()])
+      await Promise.all([fetchPresets(), fetchProducts(), fetchFrameProducts(), fetchTolerances()])
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function fetchTolerances() {
+    try {
+      const response = await fetch('/api/tolerance-settings')
+      if (response.ok) {
+        const data = await response.json()
+        setTolerances(data)
+      }
+    } catch (error) {
+      console.error('Error fetching tolerances:', error)
     }
   }
 
@@ -110,12 +141,16 @@ export default function OpeningPresetsView() {
     }
   }
 
-  async function fetchProducts(openingType?: 'THINWALL' | 'FRAMED') {
+  async function fetchProducts(openingType?: 'THINWALL' | 'FRAMED', frameId?: number | null) {
     try {
-      // Filter products by opening type just like ProjectDetailView does
-      const url = openingType
-        ? `/api/products?openingType=${openingType}`
-        : '/api/products'
+      // For FRAMED with a selected frame, filter by frameProductId
+      // For THINWALL or no frame selected, filter by openingType
+      let url = '/api/products'
+      if (frameId) {
+        url = `/api/products?frameProductId=${frameId}`
+      } else if (openingType) {
+        url = `/api/products?openingType=${openingType}`
+      }
       const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
@@ -123,6 +158,22 @@ export default function OpeningPresetsView() {
       }
     } catch (error) {
       console.error('Error fetching products:', error)
+    }
+  }
+
+  async function fetchFrameProducts() {
+    try {
+      const res = await fetch('/api/products?includeArchived=false')
+      if (res.ok) {
+        const data = await res.json()
+        setFrameProducts(data.filter((p: any) => p.productType === 'FRAME').map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          jambThickness: p.jambThickness
+        })))
+      }
+    } catch (err) {
+      console.error('Error fetching frame products:', err)
     }
   }
 
@@ -155,7 +206,8 @@ export default function OpeningPresetsView() {
       defaultRoughHeight: '',
       defaultFinishedWidth: '',
       defaultFinishedHeight: '',
-      openingType: ''
+      openingType: '',
+      frameProductId: null
     })
     setPanels([])
     setParts([])
@@ -176,14 +228,19 @@ export default function OpeningPresetsView() {
       defaultRoughHeight: preset.defaultRoughHeight?.toString() || '',
       defaultFinishedWidth: preset.defaultFinishedWidth?.toString() || '',
       defaultFinishedHeight: preset.defaultFinishedHeight?.toString() || '',
-      openingType: resolvedOpeningType as 'THINWALL' | 'FRAMED'
+      openingType: resolvedOpeningType as 'THINWALL' | 'FRAMED',
+      frameProductId: preset.frameProductId || null
     })
     setPanels(preset.panels || [])
     setParts(preset.parts || [])
     setShowEditor(true)
     fetchMasterParts() // Load master parts for the selector
-    // Load products filtered by the preset's opening type
-    fetchProducts(resolvedOpeningType as 'THINWALL' | 'FRAMED')
+    // Load products filtered by the preset's opening type and frame
+    if (resolvedOpeningType === 'FRAMED' && preset.frameProductId) {
+      fetchProducts(resolvedOpeningType, preset.frameProductId)
+    } else {
+      fetchProducts(resolvedOpeningType as 'THINWALL' | 'FRAMED')
+    }
   }
 
   function closeEditor() {
@@ -207,6 +264,7 @@ export default function OpeningPresetsView() {
         defaultFinishedWidth: formData.defaultFinishedWidth ? parseFloat(formData.defaultFinishedWidth) : null,
         defaultFinishedHeight: formData.defaultFinishedHeight ? parseFloat(formData.defaultFinishedHeight) : null,
         openingType: formData.openingType || null,
+        frameProductId: formData.openingType === 'FRAMED' ? formData.frameProductId : null,
         panels: panels.map((p, idx) => ({
           type: p.type || 'Component',
           productId: p.productId || null,
@@ -269,6 +327,7 @@ export default function OpeningPresetsView() {
         defaultFinishedWidth: preset.defaultFinishedWidth,
         defaultFinishedHeight: preset.defaultFinishedHeight,
         openingType: preset.openingType,
+        frameProductId: preset.frameProductId || null,
         panels: preset.panels?.map((p, idx) => ({
           type: p.type,
           productId: p.productId,
@@ -376,6 +435,11 @@ export default function OpeningPresetsView() {
     }])
   }
 
+  // Get the selected frame's jamb thickness (for FRAMED presets)
+  const selectedFrameJambThickness = formData.frameProductId
+    ? frameProducts.find(fp => fp.id === formData.frameProductId)?.jambThickness || 0
+    : 0
+
   // Calculate auto width based on preset dimensions and panel count
   function handleAutoWidth(panelIndex: number) {
     // Get base dimension based on opening type
@@ -388,9 +452,37 @@ export default function OpeningPresetsView() {
       return
     }
 
-    // Divide by number of panels to get per-panel width
-    const panelCount = panels.length || 1
-    const panelWidth = baseWidth / panelCount
+    // Apply tolerance: entered dimension → minus tolerance = component-fit dimension
+    if (formData.openingType === 'THINWALL') {
+      baseWidth = baseWidth - tolerances.thinwallWidthTolerance
+    } else if (formData.openingType === 'FRAMED') {
+      // FRAMED: rough → minus tolerance = finished → minus jamb = interior
+      baseWidth = baseWidth - tolerances.framedWidthTolerance
+      if (selectedFrameJambThickness > 0) {
+        baseWidth = baseWidth - (2 * selectedFrameJambThickness)
+      }
+    }
+
+    // Subtract widths already set on OTHER panels, then divide remaining
+    // among panels without a width (including the current one)
+    let otherPanelsWidth = 0
+    let panelsWithoutWidth = 0
+
+    panels.forEach((p, i) => {
+      if (i === panelIndex) {
+        panelsWithoutWidth++
+      } else {
+        const w = parseFloat(p.widthFormula || '') || 0
+        if (w > 0) {
+          otherPanelsWidth += w
+        } else {
+          panelsWithoutWidth++
+        }
+      }
+    })
+
+    const remainingWidth = baseWidth - otherPanelsWidth
+    const panelWidth = remainingWidth / Math.max(panelsWithoutWidth, 1)
 
     // Set as static numeric value
     updatePanel(panelIndex, 'widthFormula', panelWidth.toFixed(3))
@@ -406,6 +498,17 @@ export default function OpeningPresetsView() {
     if (baseHeight <= 0) {
       alert('Please set default dimensions first')
       return
+    }
+
+    // Apply tolerance: entered dimension → minus tolerance = component-fit dimension
+    if (formData.openingType === 'THINWALL') {
+      baseHeight = baseHeight - tolerances.thinwallHeightTolerance
+    } else if (formData.openingType === 'FRAMED') {
+      // FRAMED: rough → minus tolerance = finished → minus jamb = interior
+      baseHeight = baseHeight - tolerances.framedHeightTolerance
+      if (selectedFrameJambThickness > 0) {
+        baseHeight = baseHeight - selectedFrameJambThickness
+      }
     }
 
     // Set as static numeric value
@@ -597,7 +700,7 @@ export default function OpeningPresetsView() {
                         </>
                       ) : (
                         <button
-                          onClick={() => handleArchiveToggle(preset)}
+                          onClick={() => setConfirmArchive(preset)}
                           className="p-1.5 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded"
                           title="Archive"
                         >
@@ -612,6 +715,23 @@ export default function OpeningPresetsView() {
           </table>
         </div>
       )}
+
+      {/* Archive Confirmation Modal */}
+      <ConfirmModal
+        isOpen={confirmArchive !== null}
+        title="Archive Preset"
+        message={`Are you sure you want to archive "${confirmArchive?.name}"? It will be hidden from the active list but can be restored later.`}
+        confirmLabel="Archive"
+        cancelLabel="Cancel"
+        variant="warning"
+        onConfirm={() => {
+          if (confirmArchive) {
+            handleArchiveToggle(confirmArchive)
+          }
+          setConfirmArchive(null)
+        }}
+        onCancel={() => setConfirmArchive(null)}
+      />
 
       {/* Delete Confirmation Modal */}
       {confirmDelete && (
@@ -702,7 +822,15 @@ export default function OpeningPresetsView() {
                   onChange={(e) => {
                     const newType = e.target.value as '' | 'THINWALL' | 'FRAMED'
 
-                    setFormData({ ...formData, openingType: newType })
+                    setFormData({
+                      ...formData,
+                      openingType: newType,
+                      frameProductId: null,
+                      defaultRoughWidth: newType === 'THINWALL' ? '' : formData.defaultRoughWidth,
+                      defaultRoughHeight: newType === 'THINWALL' ? '' : formData.defaultRoughHeight,
+                      defaultFinishedWidth: newType === 'FRAMED' ? '' : formData.defaultFinishedWidth,
+                      defaultFinishedHeight: newType === 'FRAMED' ? '' : formData.defaultFinishedHeight,
+                    })
 
                     // Re-fetch products filtered by the new opening type
                     if (newType) {
@@ -729,8 +857,50 @@ export default function OpeningPresetsView() {
                 )}
               </div>
 
-              {/* Dimensions - conditional based on opening type */}
-              {formData.openingType && (
+              {/* Frame Selection - only for FRAMED opening type */}
+              {formData.openingType === 'FRAMED' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Frame Type *</label>
+                  <select
+                    value={formData.frameProductId || ''}
+                    disabled={!!editingPreset || (formData.frameProductId !== null && panels.length > 0)}
+                    onChange={(e) => {
+                      const newFrameId = e.target.value ? parseInt(e.target.value) : null
+                      setFormData({ ...formData, frameProductId: newFrameId })
+
+                      // Re-fetch products filtered by the selected frame
+                      if (newFrameId) {
+                        fetchProducts('FRAMED', newFrameId)
+                      } else {
+                        fetchProducts('FRAMED')
+                      }
+                    }}
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                      editingPreset || (formData.frameProductId !== null && panels.length > 0) ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <option value="">Select frame...</option>
+                    {frameProducts.map(fp => (
+                      <option key={fp.id} value={fp.id}>
+                        {fp.name}{fp.jambThickness ? ` (${fp.jambThickness}" jamb)` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {editingPreset && formData.frameProductId && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Frame type cannot be changed after creation.
+                    </p>
+                  )}
+                  {!editingPreset && formData.frameProductId !== null && panels.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Remove all components to change the frame type.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Dimensions - requires opening type + frame (for FRAMED) */}
+              {formData.openingType && (formData.openingType !== 'FRAMED' || formData.frameProductId) && (
                 <div className="border border-gray-200 rounded-lg p-4">
                   <label className="block text-sm font-medium text-gray-700 mb-3">
                     {formData.openingType === 'THINWALL' ? 'Finished Opening Size' : 'Rough Opening Size'}
@@ -788,29 +958,84 @@ export default function OpeningPresetsView() {
                       </>
                     )}
                   </div>
+                  {/* Tolerance + dimension info */}
+                  {(() => {
+                    if (formData.openingType === 'THINWALL') {
+                      const enteredW = parseFloat(formData.defaultFinishedWidth) || 0
+                      const enteredH = parseFloat(formData.defaultFinishedHeight) || 0
+                      if (enteredW > 0 || enteredH > 0) {
+                        const componentW = enteredW > 0 ? enteredW - tolerances.thinwallWidthTolerance : 0
+                        const componentH = enteredH > 0 ? enteredH - tolerances.thinwallHeightTolerance : 0
+                        return (
+                          <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2 mt-3">
+                            Component dimensions: {componentW > 0 ? componentW.toFixed(3) : '?'}" W × {componentH > 0 ? componentH.toFixed(3) : '?'}" H
+                            {' '}(after {tolerances.thinwallWidthTolerance}" W / {tolerances.thinwallHeightTolerance}" H tolerance)
+                          </p>
+                        )
+                      }
+                    } else if (formData.openingType === 'FRAMED') {
+                      const roughW = parseFloat(formData.defaultRoughWidth) || 0
+                      const roughH = parseFloat(formData.defaultRoughHeight) || 0
+                      if (roughW > 0 || roughH > 0) {
+                        const finishedW = roughW > 0 ? roughW - tolerances.framedWidthTolerance : 0
+                        const finishedH = roughH > 0 ? roughH - tolerances.framedHeightTolerance : 0
+                        const hasJamb = formData.frameProductId && selectedFrameJambThickness > 0
+                        const interiorW = hasJamb && finishedW > 0 ? finishedW - (2 * selectedFrameJambThickness) : finishedW
+                        const interiorH = hasJamb && finishedH > 0 ? finishedH - selectedFrameJambThickness : finishedH
+                        return (
+                          <div className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2 mt-3 space-y-1">
+                            <p>
+                              Finished dimensions: {finishedW > 0 ? finishedW.toFixed(3) : '?'}" W × {finishedH > 0 ? finishedH.toFixed(3) : '?'}" H
+                              {' '}(after {tolerances.framedWidthTolerance}" W / {tolerances.framedHeightTolerance}" H tolerance)
+                            </p>
+                            {hasJamb && (
+                              <p>
+                                Interior dimensions: {interiorW > 0 ? interiorW.toFixed(3) : '?'}" W × {interiorH > 0 ? interiorH.toFixed(3) : '?'}" H
+                                {' '}(after deducting {selectedFrameJambThickness}" jamb thickness)
+                              </p>
+                            )}
+                          </div>
+                        )
+                      }
+                    }
+                    return null
+                  })()}
                 </div>
               )}
 
-              {/* Components Section - requires opening type to be selected first */}
-              <div className={`border rounded-lg ${formData.openingType ? 'border-gray-200' : 'border-gray-100 bg-gray-50'}`}>
+              {/* Components Section - requires opening type + frame (for FRAMED) to be selected first */}
+              {(() => {
+                // Components are unlocked when: opening type selected, AND frame selected (if FRAMED)
+                const componentsReady = formData.openingType && (formData.openingType !== 'FRAMED' || formData.frameProductId)
+                // Determine what's missing for the hint text
+                const missingStep = !formData.openingType
+                  ? 'Select opening type first'
+                  : formData.openingType === 'FRAMED' && !formData.frameProductId
+                    ? 'Select frame type first'
+                    : null
+                return (
+              <div className={`border rounded-lg ${componentsReady ? 'border-gray-200' : 'border-gray-100 bg-gray-50'}`}>
                 <button
                   type="button"
-                  onClick={() => formData.openingType && toggleSection('panels')}
-                  disabled={!formData.openingType}
-                  className={`w-full px-4 py-3 flex items-center justify-between text-left ${formData.openingType ? 'hover:bg-gray-50' : 'cursor-not-allowed'}`}
+                  onClick={() => componentsReady && toggleSection('panels')}
+                  disabled={!componentsReady}
+                  className={`w-full px-4 py-3 flex items-center justify-between text-left ${componentsReady ? 'hover:bg-gray-50' : 'cursor-not-allowed'}`}
                 >
-                  <span className={`font-medium ${formData.openingType ? 'text-gray-900' : 'text-gray-400'}`}>
+                  <span className={`font-medium ${componentsReady ? 'text-gray-900' : 'text-gray-400'}`}>
                     Components ({panels.length})
-                    {!formData.openingType && <span className="ml-2 text-xs font-normal">— Select opening type first</span>}
+                    {missingStep && <span className="ml-2 text-xs font-normal">&mdash; {missingStep}</span>}
                   </span>
-                  {formData.openingType && (
+                  {componentsReady && (
                     expandedSections.panels ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />
                   )}
                 </button>
-                {formData.openingType && expandedSections.panels && (
+                {componentsReady && expandedSections.panels && (
                   <div className="px-4 pb-4 space-y-4">
                     <p className="text-sm text-gray-500">
-                      Showing {formData.openingType === 'THINWALL' ? 'Thinwall' : 'Trimmed'} compatible products only.
+                      {formData.openingType === 'FRAMED' && formData.frameProductId
+                        ? `Showing products assigned to ${frameProducts.find(fp => fp.id === formData.frameProductId)?.name || 'selected frame'}.`
+                        : `Showing ${formData.openingType === 'THINWALL' ? 'Thinwall' : 'Trimmed'} compatible products only.`
+                      }
                     </p>
                     {panels.map((panel, index) => (
                       <div key={index} className="border border-gray-200 rounded-lg p-4">
@@ -969,6 +1194,8 @@ export default function OpeningPresetsView() {
                   </div>
                 )}
               </div>
+                )
+              })()}
 
               {/* Parts Section */}
               <div className="border border-gray-200 rounded-lg">

@@ -11,6 +11,9 @@ export async function GET(request: NextRequest) {
     const presets = await prisma.openingPreset.findMany({
       where,
       include: {
+        frameProduct: {
+          select: { id: true, name: true, jambThickness: true }
+        },
         panels: {
           include: {
             product: {
@@ -76,6 +79,7 @@ export async function POST(request: NextRequest) {
       widthToleranceTotal,
       heightToleranceTotal,
       includeStarterChannels = false,
+      frameProductId,
       panels = [],
       parts = []
     } = data
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check for duplicate name (only among non-archived presets)
+    // Check for duplicate name among active (non-archived) presets
     const existing = await prisma.openingPreset.findFirst({
       where: { name: name.trim(), isArchived: false }
     })
@@ -115,8 +119,9 @@ export async function POST(request: NextRequest) {
         defaultRoughHeight: defaultRoughHeight ?? null,
         defaultFinishedWidth: defaultFinishedWidth ?? null,
         defaultFinishedHeight: defaultFinishedHeight ?? null,
-        isFinishedOpening,
-        openingType: isFinishedOpening ? openingType : null,
+        isFinishedOpening: openingType === 'THINWALL' || openingType === 'FRAMED',
+        openingType: openingType || null,
+        frameProductId: openingType === 'FRAMED' ? (frameProductId || null) : null,
         includeStarterChannels,
         panels: {
           create: panels.map((panel: any, index: number) => ({
@@ -146,6 +151,9 @@ export async function POST(request: NextRequest) {
         }
       },
       include: {
+        frameProduct: {
+          select: { id: true, name: true, jambThickness: true }
+        },
         panels: {
           include: {
             product: {

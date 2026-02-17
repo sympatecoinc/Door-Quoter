@@ -19,6 +19,9 @@ export async function GET(
     const preset = await prisma.openingPreset.findUnique({
       where: { id: presetId },
       include: {
+        frameProduct: {
+          select: { id: true, name: true, jambThickness: true }
+        },
         panels: {
           include: {
             product: {
@@ -103,6 +106,7 @@ export async function PUT(
       widthToleranceTotal,
       heightToleranceTotal,
       includeStarterChannels,
+      frameProductId,
       isArchived,
       panels,
       parts
@@ -143,6 +147,7 @@ export async function PUT(
     if (isFinishedOpening !== undefined) updateData.isFinishedOpening = isFinishedOpening
     if (openingType !== undefined) updateData.openingType = openingType || null
     if (includeStarterChannels !== undefined) updateData.includeStarterChannels = includeStarterChannels
+    if (frameProductId !== undefined) updateData.frameProductId = frameProductId || null
     if (isArchived !== undefined) updateData.isArchived = isArchived
 
     // Use transaction to update preset and replace panels/parts
@@ -206,6 +211,9 @@ export async function PUT(
       return tx.openingPreset.findUnique({
         where: { id: presetId },
         include: {
+          frameProduct: {
+            select: { id: true, name: true, jambThickness: true }
+          },
           panels: {
             include: {
               product: {

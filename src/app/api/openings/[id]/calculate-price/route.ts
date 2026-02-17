@@ -772,12 +772,29 @@ export async function POST(
       ? parseFloat(materialPricePerLbSetting.value)
       : 0 // Default to $0 if not set
 
+    // Fetch framed tolerance defaults from GlobalSettings (used for FRAMED openings)
+    const toleranceSettings = await prisma.globalSetting.findMany({
+      where: { category: 'tolerances' }
+    })
+    const tolMap = new Map(toleranceSettings.map(s => [s.key, parseFloat(s.value)]))
+    const framedDefaults = {
+      framedWidthTolerance: tolMap.get('tolerance.framed.width') ?? 0.5,
+      framedHeightTolerance: tolMap.get('tolerance.framed.height') ?? 0.75,
+    }
+
     // Auto-update frame panel dimensions to match full opening dimensions
     // This ensures frames resize when opening dimensions change
+    // For FRAMED openings, apply tolerance to get effective frame dimensions
     for (const panel of opening.panels) {
       if (panel.componentInstance?.product?.productType === 'FRAME') {
-        const frameWidth = opening.roughWidth ?? opening.finishedWidth ?? panel.width
-        const frameHeight = opening.roughHeight ?? opening.finishedHeight ?? panel.height
+        let frameWidth = opening.roughWidth ?? opening.finishedWidth ?? panel.width
+        let frameHeight = opening.roughHeight ?? opening.finishedHeight ?? panel.height
+        if (opening.openingType === 'FRAMED' && opening.roughWidth) {
+          const widthTol = opening.widthToleranceTotal ?? framedDefaults.framedWidthTolerance
+          const heightTol = opening.heightToleranceTotal ?? framedDefaults.framedHeightTolerance
+          frameWidth = opening.roughWidth - widthTol
+          frameHeight = (opening.roughHeight ?? 0) - heightTol
+        }
         // Only update if dimensions have changed
         if (panel.width !== frameWidth || panel.height !== frameHeight) {
           await prisma.panel.update({
@@ -850,8 +867,20 @@ export async function POST(
     }
 
     // Compute opening and interior dimensions
-    const calcOpeningWidth = opening.finishedWidth ?? opening.roughWidth ?? 0
-    const calcOpeningHeight = opening.finishedHeight ?? opening.roughHeight ?? 0
+    // For FRAMED openings, apply tolerance to roughWidth/roughHeight
+    let calcOpeningWidth = opening.roughWidth ?? 0
+    let calcOpeningHeight = opening.roughHeight ?? 0
+
+    if (opening.openingType === 'FRAMED' && opening.roughWidth) {
+      const widthTol = opening.widthToleranceTotal ?? framedDefaults.framedWidthTolerance
+      const heightTol = opening.heightToleranceTotal ?? framedDefaults.framedHeightTolerance
+      calcOpeningWidth = opening.roughWidth - widthTol
+      calcOpeningHeight = (opening.roughHeight ?? 0) - heightTol
+    } else if (opening.finishedWidth) {
+      // Finished openings: use pre-calculated finishedWidth (already has tolerance)
+      calcOpeningWidth = opening.finishedWidth
+      calcOpeningHeight = opening.finishedHeight ?? calcOpeningHeight
+    }
     const interiorWidth = jambThickness > 0 ? calcOpeningWidth - (2 * jambThickness) : calcOpeningWidth
     const interiorHeight = jambThickness > 0 ? calcOpeningHeight - jambThickness : calcOpeningHeight
 
@@ -1409,8 +1438,8 @@ export async function POST(
           cost: 0
         }
 
-        const presetEffectiveWidth = opening.finishedWidth || opening.roughWidth || 0
-        const presetEffectiveHeight = opening.finishedHeight || opening.roughHeight || 0
+        const presetEffectiveWidth = calcOpeningWidth || opening.roughWidth || 0
+        const presetEffectiveHeight = calcOpeningHeight || opening.roughHeight || 0
 
         const { cost, breakdown } = await calculateBOMItemPrice(
           bomForPricing,
