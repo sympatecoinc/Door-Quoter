@@ -2271,6 +2271,17 @@ export default function ProjectDetailView() {
       return true
     }
 
+    // Use interior dimensions when a frame with jambThickness exists (matches backend validation)
+    let constraintWidth = effectiveDimensions.width
+    let constraintHeight = effectiveDimensions.height
+    const { interiorWidth, interiorHeight } = getInteriorDimensions(opening)
+    if (interiorWidth !== null) {
+      constraintWidth = interiorWidth
+    }
+    if (interiorHeight !== null) {
+      constraintHeight = interiorHeight
+    }
+
     const width = parseFloat(componentWidth) || 0
     const height = parseFloat(componentHeight) || 0
     const quantity = parseInt(componentQuantity) || 1
@@ -2278,8 +2289,8 @@ export default function ProjectDetailView() {
     const errors: string[] = []
 
     // Height validation
-    if (height > effectiveDimensions.height) {
-      errors.push(`Height (${height}") exceeds opening finished height (${effectiveDimensions.height}")`)
+    if (height > constraintHeight) {
+      errors.push(`Height (${height}") exceeds opening interior height (${constraintHeight}")`)
     }
 
     // Width validation - sum of all panels
@@ -2290,9 +2301,9 @@ export default function ProjectDetailView() {
     const existingWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
     const totalWidth = existingWidth + (width * quantity)
 
-    if (totalWidth > effectiveDimensions.width) {
-      const available = effectiveDimensions.width - existingWidth
-      errors.push(`Total width (${totalWidth.toFixed(3)}") exceeds opening (${effectiveDimensions.width}"). Available: ${available.toFixed(3)}"`)
+    if (totalWidth > constraintWidth) {
+      const available = constraintWidth - existingWidth
+      errors.push(`Total width (${totalWidth.toFixed(3)}") exceeds opening interior width (${constraintWidth}"). Available: ${available.toFixed(3)}"`)
     }
 
     // Product min/max constraints
@@ -2326,17 +2337,30 @@ export default function ProjectDetailView() {
       return
     }
 
+    // Use interior dimensions when a frame with jambThickness exists (for non-FRAME products)
+    let constraintWidth = effectiveDimensions.width
+    let constraintHeight = effectiveDimensions.height
+    if (selectedProduct?.productType !== 'FRAME') {
+      const { interiorWidth, interiorHeight } = getInteriorDimensions(opening)
+      if (interiorWidth !== null) {
+        constraintWidth = interiorWidth
+      }
+      if (interiorHeight !== null) {
+        constraintHeight = interiorHeight
+      }
+    }
+
     // Calculate existing panel widths (exclude corners and frames)
     const existingPanels = opening.panels.filter(p =>
       p.componentInstance?.product?.productType !== 'CORNER_90' &&
       p.componentInstance?.product?.productType !== 'FRAME'
     )
     const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
-    let availableWidth = effectiveDimensions.width - usedWidth
-    let finalHeight = effectiveDimensions.height
+    let availableWidth = constraintWidth - usedWidth
+    let finalHeight = constraintHeight
 
     if (availableWidth <= 0) {
-      showError(`No space available - existing components use ${usedWidth.toFixed(3)}" of ${effectiveDimensions.width}" opening width`)
+      showError(`No space available - existing components use ${usedWidth.toFixed(3)}" of ${constraintWidth}" opening width`)
       return
     }
 
@@ -2377,16 +2401,25 @@ export default function ProjectDetailView() {
       return { width: null, error: 'Auto width requires an opening with dimensions set' }
     }
 
+    // Use interior width when a frame with jambThickness exists (for non-FRAME products)
+    let constraintWidth = effectiveDimensions.width
+    if (selectedProduct?.productType !== 'FRAME') {
+      const { interiorWidth } = getInteriorDimensions(opening)
+      if (interiorWidth !== null) {
+        constraintWidth = interiorWidth
+      }
+    }
+
     // Calculate existing panel widths (exclude corners and frames)
     const existingPanels = opening.panels.filter(p =>
       p.componentInstance?.product?.productType !== 'CORNER_90' &&
       p.componentInstance?.product?.productType !== 'FRAME'
     )
     const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
-    let availableWidth = effectiveDimensions.width - usedWidth
+    let availableWidth = constraintWidth - usedWidth
 
     if (availableWidth <= 0) {
-      return { width: null, error: `No space available - existing components use ${usedWidth.toFixed(3)}" of ${effectiveDimensions.width}" opening width` }
+      return { width: null, error: `No space available - existing components use ${usedWidth.toFixed(3)}" of ${constraintWidth}" opening width` }
     }
 
     // Apply product constraints
@@ -2460,8 +2493,8 @@ export default function ProjectDetailView() {
     const selectedProduct = currentPanel?.componentInstance?.product
 
     // Resolve constraint dimensions: finishedWidth/Height or roughWidth/Height
-    const constraintWidth = currentOpening?.finishedWidth || currentOpening?.roughWidth
-    const constraintHeight = currentOpening?.finishedHeight || currentOpening?.roughHeight
+    let constraintWidth = currentOpening?.finishedWidth || currentOpening?.roughWidth
+    let constraintHeight = currentOpening?.finishedHeight || currentOpening?.roughHeight
 
     // Skip validation if no dimensions available
     if (!constraintWidth || !constraintHeight) {
@@ -2475,6 +2508,15 @@ export default function ProjectDetailView() {
       return true
     }
 
+    // Use interior dimensions when a frame with jambThickness exists (matches backend validation)
+    const { interiorWidth, interiorHeight } = getInteriorDimensions(currentOpening)
+    if (interiorWidth !== null) {
+      constraintWidth = interiorWidth
+    }
+    if (interiorHeight !== null) {
+      constraintHeight = interiorHeight
+    }
+
     const width = parseFloat(editingComponentWidth) || 0
     const height = parseFloat(editingComponentHeight) || 0
 
@@ -2482,7 +2524,7 @@ export default function ProjectDetailView() {
 
     // Height validation
     if (height > constraintHeight) {
-      errors.push(`Height (${height}") exceeds opening height (${constraintHeight}")`)
+      errors.push(`Height (${height}") exceeds opening interior height (${constraintHeight}")`)
     }
 
     // Width validation - exclude current panel from sum
@@ -2496,7 +2538,7 @@ export default function ProjectDetailView() {
 
     if (totalWidth > constraintWidth) {
       const available = constraintWidth - otherWidth
-      errors.push(`Total width (${totalWidth.toFixed(3)}") exceeds opening (${constraintWidth}"). Available: ${available.toFixed(3)}"`)
+      errors.push(`Total width (${totalWidth.toFixed(3)}") exceeds opening interior width (${constraintWidth}"). Available: ${available.toFixed(3)}"`)
     }
 
     // Product min/max constraints
@@ -2523,12 +2565,23 @@ export default function ProjectDetailView() {
     const currentPanel = currentOpening?.panels.find(p => p.id === currentPanelId)
     const selectedProduct = currentPanel?.componentInstance?.product
 
-    const constraintWidth = currentOpening?.finishedWidth || currentOpening?.roughWidth
-    const constraintHeight = currentOpening?.finishedHeight || currentOpening?.roughHeight
+    let constraintWidth = currentOpening?.finishedWidth || currentOpening?.roughWidth
+    let constraintHeight = currentOpening?.finishedHeight || currentOpening?.roughHeight
 
     if (!constraintWidth || !constraintHeight) {
       showError('Auto-size requires an opening with dimensions set')
       return
+    }
+
+    // Use interior dimensions when a frame with jambThickness exists (for non-FRAME products)
+    if (selectedProduct?.productType !== 'FRAME') {
+      const { interiorWidth, interiorHeight } = getInteriorDimensions(currentOpening)
+      if (interiorWidth !== null) {
+        constraintWidth = interiorWidth
+      }
+      if (interiorHeight !== null) {
+        constraintHeight = interiorHeight
+      }
     }
 
     // Calculate available width (excluding current panel)
@@ -2578,11 +2631,19 @@ export default function ProjectDetailView() {
     const selectedProduct = currentPanel?.componentInstance?.product
     const divisor = Math.max(1, parseInt(editWidthDivisor) || 1)
 
-    const constraintWidth = currentOpening?.finishedWidth || currentOpening?.roughWidth
+    let constraintWidth = currentOpening?.finishedWidth || currentOpening?.roughWidth
 
     if (!constraintWidth) {
       showError('Auto width requires an opening with dimensions set')
       return
+    }
+
+    // Use interior width when a frame with jambThickness exists (for non-FRAME products)
+    if (selectedProduct?.productType !== 'FRAME') {
+      const { interiorWidth } = getInteriorDimensions(currentOpening)
+      if (interiorWidth !== null) {
+        constraintWidth = interiorWidth
+      }
     }
 
     // Calculate available width (excluding current panel)
@@ -2626,11 +2687,19 @@ export default function ProjectDetailView() {
     const currentPanel = currentOpening?.panels.find(p => p.id === currentPanelId)
     const selectedProduct = currentPanel?.componentInstance?.product
 
-    const constraintHeight = currentOpening?.finishedHeight || currentOpening?.roughHeight
+    let constraintHeight = currentOpening?.finishedHeight || currentOpening?.roughHeight
 
     if (!constraintHeight) {
       showError('Auto height requires an opening with dimensions set')
       return
+    }
+
+    // Use interior height when a frame with jambThickness exists (for non-FRAME products)
+    if (selectedProduct?.productType !== 'FRAME') {
+      const { interiorHeight } = getInteriorDimensions(currentOpening)
+      if (interiorHeight !== null) {
+        constraintHeight = interiorHeight
+      }
     }
 
     let finalHeight = constraintHeight
