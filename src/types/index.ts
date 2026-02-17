@@ -652,6 +652,8 @@ export interface OpeningPreset {
   defaultFinishedHeight?: number | null
   isFinishedOpening: boolean
   openingType?: 'THINWALL' | 'FRAMED' | null
+  frameProductId?: number | null
+  frameProduct?: { id: number; name: string; jambThickness?: number | null } | null
   widthToleranceTotal?: number | null
   heightToleranceTotal?: number | null
   includeStarterChannels: boolean

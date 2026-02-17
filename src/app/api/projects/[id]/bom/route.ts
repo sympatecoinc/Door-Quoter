@@ -194,6 +194,16 @@ export async function GET(
 
     const bomItems: any[] = []
 
+    // Fetch framed tolerance defaults from GlobalSettings (used for FRAMED openings)
+    const toleranceSettings = await prisma.globalSetting.findMany({
+      where: { category: 'tolerances' }
+    })
+    const tolMap = new Map(toleranceSettings.map(s => [s.key, parseFloat(s.value)]))
+    const framedDefaults = {
+      framedWidthTolerance: tolMap.get('tolerance.framed.width') ?? 0.5,
+      framedHeightTolerance: tolMap.get('tolerance.framed.height') ?? 0.75,
+    }
+
     // Process each opening
     for (const opening of project.openings) {
       // Detect FRAME panel and get jambThickness for this opening
@@ -207,8 +217,20 @@ export async function GET(
       }
 
       // Compute opening and interior dimensions
-      const openingWidth = opening.finishedWidth ?? opening.roughWidth ?? 0
-      const openingHeight = opening.finishedHeight ?? opening.roughHeight ?? 0
+      // For FRAMED openings, apply tolerance to roughWidth/roughHeight (rough - tolerance = effective frame dimension)
+      let openingWidth = opening.roughWidth ?? 0
+      let openingHeight = opening.roughHeight ?? 0
+
+      if (opening.openingType === 'FRAMED' && opening.roughWidth) {
+        const widthTol = opening.widthToleranceTotal ?? framedDefaults.framedWidthTolerance
+        const heightTol = opening.heightToleranceTotal ?? framedDefaults.framedHeightTolerance
+        openingWidth = opening.roughWidth - widthTol
+        openingHeight = (opening.roughHeight ?? 0) - heightTol
+      } else if (opening.finishedWidth) {
+        // Finished openings: use pre-calculated finishedWidth (already has tolerance)
+        openingWidth = opening.finishedWidth
+        openingHeight = opening.finishedHeight ?? openingHeight
+      }
       const interiorWidth = jambThickness > 0 ? openingWidth - (2 * jambThickness) : openingWidth
       const interiorHeight = jambThickness > 0 ? openingHeight - jambThickness : openingHeight
 

@@ -63,6 +63,8 @@ interface Opening {
   finishedHeight?: number
   isFinishedOpening?: boolean
   openingType?: 'THINWALL' | 'FRAMED'
+  widthToleranceTotal?: number | null
+  heightToleranceTotal?: number | null
   price: number
   multiplier: number
   priceCalculatedAt?: string | null
@@ -317,6 +319,8 @@ export default function ProjectDetailView() {
   const [presetPanelDirections, setPresetPanelDirections] = useState<Record<number, string>>({}) // panelIndex -> direction value
   const [savingPresetConfig, setSavingPresetConfig] = useState(false)
   const [presetOverlapBannerDismissed, setPresetOverlapBannerDismissed] = useState(false)
+  const [presetConfigSubStep, setPresetConfigSubStep] = useState<'direction' | 'glassType' | 'options'>('direction')
+  const [presetCurrentOptionIndex, setPresetCurrentOptionIndex] = useState(0)
   // Post-creation flow state
   const [postCreationStep, setPostCreationStep] = useState<
     'action-select' | 'template-select' | 'component-dimensions' | null
@@ -514,8 +518,16 @@ export default function ProjectDetailView() {
       jt = selectedProduct.frameConfig.jambThickness
     }
 
-    const w = opening.finishedWidth || opening.roughWidth
-    const h = opening.finishedHeight || opening.roughHeight
+    let w = opening.finishedWidth || opening.roughWidth
+    let h = opening.finishedHeight || opening.roughHeight
+
+    // For FRAMED openings, apply tolerance to roughWidth/roughHeight
+    if (opening.openingType === 'FRAMED' && opening.roughWidth) {
+      const widthTol = opening.widthToleranceTotal ?? toleranceDefaults.framedWidthTolerance
+      const heightTol = opening.heightToleranceTotal ?? toleranceDefaults.framedHeightTolerance
+      w = opening.roughWidth - widthTol
+      h = (opening.roughHeight ?? 0) - heightTol
+    }
 
     if (jt > 0 && w && h) {
       return { interiorWidth: w - (2 * jt), interiorHeight: h - jt, jambThickness: jt }
@@ -1307,11 +1319,7 @@ export default function ProjectDetailView() {
       return
     }
 
-    // For FRAMED openings, require a frame type selection
-    if (newOpening.openingType === 'FRAMED' && !newOpening.frameProductId) {
-      showError('Please select a frame type for this Trimmed opening')
-      return
-    }
+    // Frame type for FRAMED openings is now selected later in the flow (Add Component step)
 
     // For finished openings, validate dimensions are provided
     if (newOpening.isFinishedOpening && (!newOpening.roughWidth || !newOpening.roughHeight)) {
@@ -1330,10 +1338,7 @@ export default function ProjectDetailView() {
         openingType: newOpening.openingType // Always send for Frame auto-add and product filtering
       }
 
-      // Include frame product for FRAMED openings
-      if (newOpening.openingType === 'FRAMED' && newOpening.frameProductId) {
-        requestBody.frameProductId = newOpening.frameProductId
-      }
+      // Frame product for FRAMED openings is set later (Add Component or Template apply step)
 
       // Add dimension fields if specified
       if (newOpening.isFinishedOpening) {
@@ -1381,6 +1386,43 @@ export default function ProjectDetailView() {
     } finally {
       setAddingOpening(false)
     }
+  }
+
+  // Helper: get the first applicable sub-step for a preset panel
+  function getFirstPresetSubStep(panel: any): 'direction' | 'glassType' | 'options' {
+    const product = panel?.componentInstance?.product
+    const directionTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'CORNER_90']
+    const planViews = product?.planViews || []
+    if (directionTypes.includes(product?.productType || '') && planViews.length > 0) return 'direction'
+    if (product?.productType !== 'FRAME') return 'glassType'
+    return 'options'
+  }
+
+  // Helper: get the last applicable sub-step for a preset panel
+  function getLastPresetSubStep(panel: any): { step: 'direction' | 'glassType' | 'options', optionIndex: number } {
+    const product = panel?.componentInstance?.product
+    const allOptions = [...(product?.productSubOptions || [])].sort((a: any, b: any) => {
+      if (a.isMandatory && !b.isMandatory) return -1
+      if (!a.isMandatory && b.isMandatory) return 1
+      return 0
+    })
+    if (allOptions.length > 0) return { step: 'options', optionIndex: allOptions.length - 1 }
+    if (product?.productType !== 'FRAME') return { step: 'glassType', optionIndex: 0 }
+    const directionTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'CORNER_90']
+    const planViews = product?.planViews || []
+    if (directionTypes.includes(product?.productType || '') && planViews.length > 0) return { step: 'direction', optionIndex: 0 }
+    return { step: 'options', optionIndex: 0 }
+  }
+
+  // Helper: initialize preset wizard position for first non-FRAME panel
+  function initPresetWizardPosition(panels: any[]) {
+    const firstNonFrameIndex = panels.findIndex(
+      (p: any) => p.componentInstance?.product?.productType !== 'FRAME'
+    )
+    const idx = firstNonFrameIndex >= 0 ? firstNonFrameIndex : 0
+    setConfiguringPanelIndex(idx)
+    setPresetConfigSubStep(getFirstPresetSubStep(panels[idx]))
+    setPresetCurrentOptionIndex(0)
   }
 
   async function handleApplyPreset() {
@@ -1476,7 +1518,7 @@ export default function ProjectDetailView() {
           setPresetPanelOptions(initialOptions)
           setPresetPanelVariants(initialVariants)
           setPresetPanelGlassTypes(initialGlassTypes)
-          setConfiguringPanelIndex(0)
+          initPresetWizardPosition(openingData.panels || [])
           setPresetConfigStep('configuring')
 
           // Refresh project in background to show the new opening
@@ -1601,7 +1643,7 @@ export default function ProjectDetailView() {
           setPresetPanelOptions(initialOptions)
           setPresetPanelVariants(initialVariants)
           setPresetPanelGlassTypes(initialGlassTypes)
-          setConfiguringPanelIndex(0)
+          initPresetWizardPosition(openingData.panels || [])
           setPresetConfigStep('configuring')
 
           refreshProject().catch(console.error)
@@ -1640,6 +1682,9 @@ export default function ProjectDetailView() {
       const product = panel.componentInstance?.product
       const isFrame = product?.productType === 'FRAME'
 
+      // Skip FRAME panels - they have no configurable options
+      if (isFrame) continue
+
       // Validate direction is selected for panels that need it
       const productType = product?.productType || ''
       const pViews = product?.planViews || []
@@ -1648,17 +1693,17 @@ export default function ProjectDetailView() {
         if (!dirValue) {
           showError(`Please select an opening direction for Panel ${panelIndex + 1}`)
           setConfiguringPanelIndex(panelIndex)
+          setPresetConfigSubStep('direction')
           return
         }
       }
 
-      if (!isFrame) {
-        const glassTypeValue = presetPanelGlassTypes[panelIndex] ?? panel.glassType ?? ''
-        if (!glassTypeValue) {
-          showError(`Please select a glass type for Panel ${panelIndex + 1}`)
-          setConfiguringPanelIndex(panelIndex)
-          return
-        }
+      const glassTypeValue = presetPanelGlassTypes[panelIndex] ?? panel.glassType ?? ''
+      if (!glassTypeValue) {
+        showError(`Please select a glass type for Panel ${panelIndex + 1}`)
+        setConfiguringPanelIndex(panelIndex)
+        setPresetConfigSubStep('glassType')
+        return
       }
     }
 
@@ -1750,7 +1795,8 @@ export default function ProjectDetailView() {
       roughWidth: '',
       roughHeight: '',
       widthToleranceTotal: null,
-      heightToleranceTotal: null
+      heightToleranceTotal: null,
+      frameProductId: null
     })
     setSelectedPresetId(null)
     setPresetConfigStep(null)
@@ -1762,6 +1808,8 @@ export default function ProjectDetailView() {
     setPresetPanelDirections({})
     setConfiguringPanelIndex(0)
     setPresetOverlapBannerDismissed(false)
+    setPresetConfigSubStep('direction')
+    setPresetCurrentOptionIndex(0)
     setPostCreationStep(null)
     setNewlyCreatedOpeningId(null)
     setNewlyCreatedOpeningType('THINWALL')
@@ -4023,212 +4071,431 @@ export default function ProjectDetailView() {
             {/* Preset Configuration Step */}
             {presetConfigStep === 'configuring' && appliedPresetOpening ? (
               <>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">Configure Hardware Options</h2>
-                <p className="text-sm text-gray-600 mb-4">
-                  Opening "{appliedPresetOpening.name}" has been created. Configure hardware options for each panel.
-                </p>
-
-                {/* Duplicate parts warning banner */}
                 {(() => {
-                  if (presetOverlapBannerDismissed) return null
-                  const allOverlaps = computeAllPresetOverlaps()
-                  if (allOverlaps.length === 0) return null
-                  return (
-                    <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg relative">
-                      <button
-                        type="button"
-                        onClick={() => setPresetOverlapBannerDismissed(true)}
-                        className="absolute top-2 right-2 text-amber-500 hover:text-amber-700"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                      <div className="flex items-start gap-2 pr-6">
-                        <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-sm font-semibold text-amber-800">Duplicate Parts Detected</p>
-                          <p className="text-xs text-amber-700 mt-1">
-                            The following hardware options include parts that are already in this preset's parts list. They will appear twice on the BOM.
-                          </p>
-                          <ul className="mt-2 space-y-1">
-                            {allOverlaps.map((item, idx) => (
-                              <li key={idx} className="text-xs text-amber-800">
-                                <span className="font-medium">Panel {item.panelIndex + 1} ({item.panelName})</span>
-                                {' — '}{item.categoryName}:{' '}
-                                {item.overlaps.map(o => o.partName).join(', ')}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
+                  const allPanels = appliedPresetOpening.panels || []
+                  // Build configurable panels list (exclude FRAME panels)
+                  const configurablePanels = allPanels
+                    .map((panel: any, index: number) => ({ panel, originalIndex: index }))
+                    .filter(({ panel }: any) => panel.componentInstance?.product?.productType !== 'FRAME')
+
+                  const currentConfigPos = configurablePanels.findIndex(
+                    (cp: any) => cp.originalIndex === configuringPanelIndex
                   )
-                })()}
-
-                {/* Panel tabs */}
-                {appliedPresetOpening.panels?.length > 1 && (
-                  <div className="flex gap-1 mb-4 border-b border-gray-200">
-                    {appliedPresetOpening.panels.map((panel: any, index: number) => (
-                      <button
-                        key={panel.id}
-                        type="button"
-                        onClick={() => setConfiguringPanelIndex(index)}
-                        className={`px-3 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                          configuringPanelIndex === index
-                            ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-600'
-                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                        }`}
-                      >
-                        Panel {index + 1}
-                        {panel.componentInstance?.product?.name && (
-                          <span className="ml-1 text-xs text-gray-400">
-                            ({panel.componentInstance.product.name})
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Current panel configuration */}
-                {(() => {
-                  const currentPanel = appliedPresetOpening.panels?.[configuringPanelIndex]
+                  const currentPanelData = configurablePanels[currentConfigPos]
+                  const currentPanel = currentPanelData?.panel
+                  const panelOrigIdx = currentPanelData?.originalIndex ?? 0
                   const product = currentPanel?.componentInstance?.product
                   const productSubOptions = product?.productSubOptions || []
                   const productBOMs = product?.productBOMs || []
-                  const isFrame = product?.productType === 'FRAME'
-                  const showGlassType = !isFrame && currentPanel
 
-                  // Check if panel needs direction selection
+                  // Direction info
                   const directionProductTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'CORNER_90']
                   const needsDirectionSelect = directionProductTypes.includes(product?.productType || '')
                   const planViewNames: string[] = product?.planViews?.map((v: any) => v.name) || []
-                  const uniqueDirectionNames = [...new Set(planViewNames)]
+                  const elevationViewNames: string[] = product?.elevationViews?.map((v: any) => v.name) || []
+                  const uniqueDirectionNames = [...new Set([...planViewNames, ...elevationViewNames])]
                   const hasDirectionOptions = needsDirectionSelect && uniqueDirectionNames.length > 0
 
-                  // Check if panel has any configuration options
-                  const hasOptions = productSubOptions.length > 0
-                  const needsGlassType = showGlassType && (!currentPanel?.glassType || currentPanel.glassType === '')
+                  // Glass type info
+                  const needsGlassType = product?.productType !== 'FRAME'
 
-                  if (!hasOptions && !needsGlassType && !hasDirectionOptions) {
-                    return (
-                      <div className="p-4 bg-gray-50 rounded-lg text-center text-gray-500">
-                        This panel has no hardware options to configure.
-                      </div>
-                    )
+                  // Sorted options (mandatory first)
+                  const allOptions = [...productSubOptions].sort((a: any, b: any) => {
+                    if (a.isMandatory && !b.isMandatory) return -1
+                    if (!a.isMandatory && b.isMandatory) return 1
+                    return 0
+                  })
+                  const hasOptions = allOptions.length > 0
+
+                  // Calculate total steps for progress
+                  let totalSteps = 0
+                  let currentStepNumber = 0
+                  configurablePanels.forEach((cp: any, cpIdx: number) => {
+                    const p = cp.panel?.componentInstance?.product
+                    const pDirTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'CORNER_90']
+                    const pPlanViews = p?.planViews?.map((v: any) => v.name) || []
+                    const pElevViews = p?.elevationViews?.map((v: any) => v.name) || []
+                    const pUniqueDir = [...new Set([...pPlanViews, ...pElevViews])]
+                    const pHasDir = pDirTypes.includes(p?.productType || '') && pUniqueDir.length > 0
+                    const pHasGlass = p?.productType !== 'FRAME'
+                    const pOptions = [...(p?.productSubOptions || [])].sort((a: any, b: any) => {
+                      if (a.isMandatory && !b.isMandatory) return -1
+                      if (!a.isMandatory && b.isMandatory) return 1
+                      return 0
+                    })
+                    const panelSteps = (pHasDir ? 1 : 0) + (pHasGlass ? 1 : 0) + pOptions.length
+                    if (cpIdx < currentConfigPos) {
+                      currentStepNumber += panelSteps
+                    } else if (cpIdx === currentConfigPos) {
+                      if (presetConfigSubStep === 'direction') {
+                        currentStepNumber += 1
+                      } else if (presetConfigSubStep === 'glassType') {
+                        currentStepNumber += (pHasDir ? 1 : 0) + 1
+                      } else if (presetConfigSubStep === 'options') {
+                        currentStepNumber += (pHasDir ? 1 : 0) + (pHasGlass ? 1 : 0) + presetCurrentOptionIndex + 1
+                      }
+                    }
+                    totalSteps += panelSteps
+                  })
+
+                  // Navigation helpers
+                  const goToNextPresetStep = () => {
+                    if (presetConfigSubStep === 'direction') {
+                      if (needsGlassType) {
+                        setPresetConfigSubStep('glassType')
+                      } else if (hasOptions) {
+                        setPresetConfigSubStep('options')
+                        setPresetCurrentOptionIndex(0)
+                      } else {
+                        moveToNextPanel()
+                      }
+                    } else if (presetConfigSubStep === 'glassType') {
+                      if (hasOptions) {
+                        setPresetConfigSubStep('options')
+                        setPresetCurrentOptionIndex(0)
+                      } else {
+                        moveToNextPanel()
+                      }
+                    } else if (presetConfigSubStep === 'options') {
+                      if (presetCurrentOptionIndex < allOptions.length - 1) {
+                        setPresetCurrentOptionIndex(presetCurrentOptionIndex + 1)
+                      } else {
+                        moveToNextPanel()
+                      }
+                    }
                   }
 
+                  const goToPrevPresetStep = () => {
+                    if (presetConfigSubStep === 'options') {
+                      if (presetCurrentOptionIndex > 0) {
+                        setPresetCurrentOptionIndex(presetCurrentOptionIndex - 1)
+                      } else if (needsGlassType) {
+                        setPresetConfigSubStep('glassType')
+                      } else if (hasDirectionOptions) {
+                        setPresetConfigSubStep('direction')
+                      } else {
+                        moveToPrevPanel()
+                      }
+                    } else if (presetConfigSubStep === 'glassType') {
+                      if (hasDirectionOptions) {
+                        setPresetConfigSubStep('direction')
+                      } else {
+                        moveToPrevPanel()
+                      }
+                    } else if (presetConfigSubStep === 'direction') {
+                      moveToPrevPanel()
+                    }
+                  }
+
+                  const moveToNextPanel = () => {
+                    if (currentConfigPos < configurablePanels.length - 1) {
+                      const nextCP = configurablePanels[currentConfigPos + 1]
+                      setConfiguringPanelIndex(nextCP.originalIndex)
+                      setPresetConfigSubStep(getFirstPresetSubStep(nextCP.panel))
+                      setPresetCurrentOptionIndex(0)
+                    } else {
+                      // Last panel done - save
+                      handleSavePresetPanelConfig()
+                    }
+                  }
+
+                  const moveToPrevPanel = () => {
+                    if (currentConfigPos > 0) {
+                      const prevCP = configurablePanels[currentConfigPos - 1]
+                      setConfiguringPanelIndex(prevCP.originalIndex)
+                      const lastStep = getLastPresetSubStep(prevCP.panel)
+                      setPresetConfigSubStep(lastStep.step)
+                      setPresetCurrentOptionIndex(lastStep.optionIndex)
+                    }
+                    // If first panel, do nothing (back button hidden)
+                  }
+
+                  const isFirstStep = currentConfigPos === 0 && (
+                    (presetConfigSubStep === 'direction') ||
+                    (presetConfigSubStep === 'glassType' && !hasDirectionOptions) ||
+                    (presetConfigSubStep === 'options' && !needsGlassType && !hasDirectionOptions && presetCurrentOptionIndex === 0)
+                  )
+
+                  const isLastStep = currentConfigPos === configurablePanels.length - 1 && (
+                    (presetConfigSubStep === 'options' && presetCurrentOptionIndex === allOptions.length - 1) ||
+                    (presetConfigSubStep === 'options' && !hasOptions) ||
+                    (presetConfigSubStep === 'glassType' && !hasOptions) ||
+                    (presetConfigSubStep === 'direction' && !needsGlassType && !hasOptions)
+                  )
+
+                  // Validate current step before allowing next
+                  const canGoNext = () => {
+                    if (presetConfigSubStep === 'direction') {
+                      return !!(presetPanelDirections[panelOrigIdx])
+                    }
+                    if (presetConfigSubStep === 'glassType') {
+                      return !!(presetPanelGlassTypes[panelOrigIdx] ?? currentPanel?.glassType)
+                    }
+                    if (presetConfigSubStep === 'options') {
+                      const currentOption = allOptions[presetCurrentOptionIndex]
+                      if (!currentOption) return true
+                      if (currentOption.isMandatory && presetPanelOptions[panelOrigIdx]?.[currentOption.category.id] === undefined) return false
+                      const selOptId = presetPanelOptions[panelOrigIdx]?.[currentOption.category.id]
+                      if (selOptId) {
+                        const selOpt = currentOption.category.individualOptions?.find((o: any) => o.id === selOptId)
+                        if (selOpt?.variants?.length > 0 && !presetPanelVariants[panelOrigIdx]?.[String(selOptId)]) return false
+                      }
+                      return true
+                    }
+                    return true
+                  }
+
+                  // Current hardware option (when on options step)
+                  const currentOption = allOptions[presetCurrentOptionIndex]
+
                   return (
-                    <div className="space-y-4">
-                      <div className="p-3 bg-blue-50 rounded-lg">
-                        <p className="text-sm font-medium text-blue-800">
-                          {product?.name || 'Panel'}
-                        </p>
-                        <p className="text-xs text-blue-600">
-                          {currentPanel.width}" × {currentPanel.height}" - {currentPanel.type}
-                        </p>
+                    <>
+                      {/* Header */}
+                      <h2 className="text-xl font-bold text-gray-900 mb-3">Configure Opening</h2>
+
+                      {/* Panel progress bar for multi-panel */}
+                      {configurablePanels.length > 1 && (
+                        <div className="mb-4">
+                          <div className="flex gap-1">
+                            {configurablePanels.map((cp: any, idx: number) => {
+                              const cpProduct = cp.panel?.componentInstance?.product
+                              const isActive = idx === currentConfigPos
+                              const isComplete = idx < currentConfigPos
+                              return (
+                                <div key={idx} className="flex-1">
+                                  <div className={`h-1.5 rounded-full mb-1 transition-all ${
+                                    isComplete ? 'bg-green-500' :
+                                    isActive ? 'bg-blue-500' :
+                                    'bg-gray-200'
+                                  }`} />
+                                  <p className={`text-xs text-center truncate ${
+                                    isActive ? 'text-blue-700 font-semibold' :
+                                    isComplete ? 'text-green-600' :
+                                    'text-gray-400'
+                                  }`}>
+                                    {cpProduct?.name || `Panel ${idx + 1}`}
+                                  </p>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Current panel banner */}
+                      <div className="rounded-lg mb-4 border-2 border-blue-300 overflow-hidden">
+                        <div className="bg-blue-600 px-4 py-2 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="flex items-center justify-center w-8 h-8 rounded-full bg-white text-blue-600 text-sm font-bold">
+                              {currentConfigPos + 1}
+                            </span>
+                            <div>
+                              <p className="text-sm font-semibold text-white">
+                                {product?.name || 'Panel'}
+                              </p>
+                              <p className="text-xs text-blue-200">
+                                {currentPanel?.width}" x {currentPanel?.height}"
+                              </p>
+                            </div>
+                          </div>
+                          {configurablePanels.length > 1 && (
+                            <span className="text-xs text-blue-200 bg-blue-700 px-2 py-1 rounded-full">
+                              Panel {currentConfigPos + 1} of {configurablePanels.length}
+                            </span>
+                          )}
+                        </div>
+                        <div className="bg-blue-50 px-4 py-1.5 flex items-center justify-between">
+                          <span className="text-xs text-blue-600">
+                            Step {currentStepNumber} of {totalSteps}
+                          </span>
+                          <div className="flex gap-0.5">
+                            {Array.from({ length: totalSteps }).map((_, idx) => (
+                              <div
+                                key={idx}
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  idx < currentStepNumber ? 'bg-blue-500' :
+                                  idx === currentStepNumber ? 'bg-blue-600 ring-1 ring-blue-300' :
+                                  'bg-blue-200'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Opening Direction Selection */}
-                      {hasDirectionOptions && (
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Opening Direction
-                            <span className="text-red-500 ml-1">*</span>
-                          </label>
-                          <select
-                            value={presetPanelDirections[configuringPanelIndex] ?? currentPanel?.swingDirection ?? currentPanel?.slidingDirection ?? ''}
-                            onChange={(e) => {
+                      {/* Duplicate parts warning banner */}
+                      {(() => {
+                        if (presetOverlapBannerDismissed) return null
+                        const allOverlaps = computeAllPresetOverlaps()
+                        if (allOverlaps.length === 0) return null
+                        return (
+                          <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg relative">
+                            <button
+                              type="button"
+                              onClick={() => setPresetOverlapBannerDismissed(true)}
+                              className="absolute top-2 right-2 text-amber-500 hover:text-amber-700"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                            <div className="flex items-start gap-2 pr-6">
+                              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-sm font-semibold text-amber-800">Duplicate Parts Detected</p>
+                                <p className="text-xs text-amber-700 mt-1">
+                                  Some hardware options include parts already in this preset's parts list.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })()}
+
+                      {/* Step: Opening Direction */}
+                      {presetConfigSubStep === 'direction' && hasDirectionOptions && (
+                        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-medium">1</span>
+                            <h4 className="text-sm font-semibold text-gray-800">Opening Direction</h4>
+                            <span className="text-red-500 text-sm">*</span>
+                          </div>
+                          <Listbox
+                            value={presetPanelDirections[panelOrigIdx] || null}
+                            onChange={(value: string | null) => {
                               setPresetPanelDirections(prev => ({
                                 ...prev,
-                                [configuringPanelIndex]: e.target.value
+                                [panelOrigIdx]: value || ''
                               }))
                             }}
-                            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
-                              !(presetPanelDirections[configuringPanelIndex] ?? currentPanel?.swingDirection ?? currentPanel?.slidingDirection) ? 'border-red-300' : 'border-gray-300'
-                            }`}
                           >
-                            <option value="">Select opening direction...</option>
-                            {uniqueDirectionNames.map((name: string) => (
-                              <option key={name} value={name}>
-                                {name}
-                              </option>
-                            ))}
-                          </select>
+                            <div className="relative">
+                              <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
+                                {presetPanelDirections[panelOrigIdx] ? (
+                                  <span>{presetPanelDirections[panelOrigIdx]}</span>
+                                ) : (
+                                  <span className="text-gray-500">Select opening direction...</span>
+                                )}
+                                <ChevronDown className="w-4 h-4 text-gray-400" />
+                              </ListboxButton>
+                              <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                                {uniqueDirectionNames.map((name: string) => (
+                                  <ListboxOption
+                                    key={name}
+                                    value={name}
+                                    className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
+                                  >
+                                    {({ selected }) => (
+                                      <>
+                                        <span>{name}</span>
+                                        {selected && <Check className="w-4 h-4 text-blue-600" />}
+                                      </>
+                                    )}
+                                  </ListboxOption>
+                                ))}
+                              </ListboxOptions>
+                            </div>
+                          </Listbox>
                         </div>
                       )}
 
-                      {/* Glass Type Selection */}
-                      {showGlassType && (
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Glass Type
-                            <span className="text-red-500 ml-1">*</span>
-                          </label>
-                          <select
-                            value={presetPanelGlassTypes[configuringPanelIndex] ?? currentPanel?.glassType ?? ''}
-                            onChange={(e) => {
+                      {/* Step: Glass Type */}
+                      {presetConfigSubStep === 'glassType' && needsGlassType && (
+                        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-medium">{hasDirectionOptions ? '2' : '1'}</span>
+                            <h4 className="text-sm font-semibold text-gray-800">Glass Type</h4>
+                            <span className="text-red-500 text-sm">*</span>
+                          </div>
+                          <Listbox
+                            value={presetPanelGlassTypes[panelOrigIdx] ?? currentPanel?.glassType ?? null}
+                            onChange={(value: string | null) => {
                               setPresetPanelGlassTypes(prev => ({
                                 ...prev,
-                                [configuringPanelIndex]: e.target.value
+                                [panelOrigIdx]: value || ''
                               }))
                             }}
-                            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
-                              !(presetPanelGlassTypes[configuringPanelIndex] ?? currentPanel?.glassType) ? 'border-red-300' : 'border-gray-300'
-                            }`}
                           >
-                            <option value="">Select glass type...</option>
-                            {glassTypes.map((gt: any) => (
-                              <option key={gt.id} value={gt.name}>
-                                {gt.name}
-                                {gt.name === defaultGlassTypeName ? ' (Default)' : ''}
-                              </option>
-                            ))}
-                          </select>
+                            <div className="relative">
+                              <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
+                                {(() => {
+                                  const gt = presetPanelGlassTypes[panelOrigIdx] ?? currentPanel?.glassType ?? ''
+                                  const selectedGlassType = glassTypes.find((t: any) => t.name === gt)
+                                  if (selectedGlassType) {
+                                    return <span>{selectedGlassType.name} (${selectedGlassType.pricePerSqFt}/sqft)</span>
+                                  }
+                                  return <span className="text-gray-500">Select glass type...</span>
+                                })()}
+                                <ChevronDown className="w-4 h-4 text-gray-400" />
+                              </ListboxButton>
+                              <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                                {glassTypes.map((type: any) => (
+                                  <ListboxOption
+                                    key={type.id}
+                                    value={type.name}
+                                    className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
+                                  >
+                                    {({ selected }) => (
+                                      <>
+                                        <span>{type.name} (${type.pricePerSqFt}/sqft)</span>
+                                        {selected && <Check className="w-4 h-4 text-blue-600" />}
+                                      </>
+                                    )}
+                                  </ListboxOption>
+                                ))}
+                              </ListboxOptions>
+                            </div>
+                          </Listbox>
                         </div>
                       )}
 
-                      {productSubOptions.map((pso: any) => {
-                        const selectedOptionId = presetPanelOptions[configuringPanelIndex]?.[pso.category.id]
-                        const selectedOption = pso.category.individualOptions?.find(
+                      {/* Step: Hardware Option (one at a time) */}
+                      {presetConfigSubStep === 'options' && currentOption && (() => {
+                        const selectedOptionId = presetPanelOptions[panelOrigIdx]?.[currentOption.category.id]
+                        const selectedOption = currentOption.category.individualOptions?.find(
                           (opt: any) => opt.id === selectedOptionId
                         )
                         const hasVariants = selectedOption?.variants?.length > 0
-
-                        // Check for RANGE mode
                         const optionBom = productBOMs.find(
                           (bom: any) => bom.optionId === selectedOptionId
                         )
                         const isRangeMode = optionBom?.quantityMode === 'RANGE'
-                        const quantityKey = `${pso.category.id}_qty`
+                        const quantityKey = `${currentOption.category.id}_qty`
 
-                        // Check for preset part overlaps on selected option
+                        // Overlap checks
                         const selectedOverlaps = selectedOptionId
                           ? getPresetOverlaps(appliedPresetOpening?.presetPartInstances, selectedOptionId, productBOMs, selectedOption?.linkedParts)
                           : []
-
-                        // Check if ANY option in this category has overlap with preset parts
-                        const categoryHasOverlap = (pso.category.individualOptions || []).some((opt: any) =>
+                        const categoryHasOverlap = (currentOption.category.individualOptions || []).some((opt: any) =>
                           getPresetOverlaps(appliedPresetOpening?.presetPartInstances, opt.id, productBOMs, opt.linkedParts).length > 0
                         )
 
                         return (
-                          <div key={pso.category.id}>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              {pso.category.name}
-                              {pso.isMandatory && <span className="text-red-500 ml-1">*</span>}
-                            </label>
-                            <div className={`flex gap-2`}>
+                          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-medium">
+                                  {(hasDirectionOptions ? 1 : 0) + (needsGlassType ? 1 : 0) + presetCurrentOptionIndex + 1}
+                                </span>
+                                <h4 className="text-sm font-semibold text-gray-800">{currentOption.category.name}</h4>
+                                {currentOption.isMandatory && (
+                                  <span className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded-full">Required</span>
+                                )}
+                              </div>
+                              <span className="text-xs text-gray-500">
+                                Option {presetCurrentOptionIndex + 1} of {allOptions.length}
+                              </span>
+                            </div>
+                            <div className="flex gap-2">
                               <Listbox
                                 value={selectedOptionId ?? null}
                                 onChange={(newValue: number | null) => {
-                                  // Check for preset part overlaps before applying
+                                  // Check for preset part overlaps
                                   if (newValue) {
-                                    const newOpt = pso.category.individualOptions?.find((opt: any) => opt.id === newValue)
+                                    const newOpt = currentOption.category.individualOptions?.find((opt: any) => opt.id === newValue)
                                     const overlaps = getPresetOverlaps(appliedPresetOpening?.presetPartInstances, newValue, productBOMs, newOpt?.linkedParts)
                                     if (overlaps.length > 0) {
                                       setDuplicatePartWarningData({
                                         overlaps,
-                                        pendingCategoryId: pso.category.id,
+                                        pendingCategoryId: currentOption.category.id,
                                         pendingOptionId: newValue,
                                         pendingContext: 'preset-config' as any
                                       })
@@ -4239,13 +4506,13 @@ export default function ProjectDetailView() {
 
                                   setPresetPanelOptions(prev => ({
                                     ...prev,
-                                    [configuringPanelIndex]: {
-                                      ...(prev[configuringPanelIndex] || {}),
-                                      [pso.category.id]: newValue
+                                    [panelOrigIdx]: {
+                                      ...(prev[panelOrigIdx] || {}),
+                                      [currentOption.category.id]: newValue
                                     }
                                   }))
                                   if (newValue) {
-                                    const newOption = pso.category.individualOptions?.find(
+                                    const newOption = currentOption.category.individualOptions?.find(
                                       (opt: any) => opt.id === newValue
                                     )
                                     if (newOption?.variants?.length > 0) {
@@ -4253,8 +4520,8 @@ export default function ProjectDetailView() {
                                       if (defaultVariant) {
                                         setPresetPanelVariants(prev => ({
                                           ...prev,
-                                          [configuringPanelIndex]: {
-                                            ...(prev[configuringPanelIndex] || {}),
+                                          [panelOrigIdx]: {
+                                            ...(prev[panelOrigIdx] || {}),
                                             [String(newValue)]: defaultVariant.id
                                           }
                                         }))
@@ -4266,16 +4533,16 @@ export default function ProjectDetailView() {
                                     if (newOptionBom?.quantityMode === 'RANGE') {
                                       setPresetPanelQuantities(prev => ({
                                         ...prev,
-                                        [configuringPanelIndex]: {
-                                          ...(prev[configuringPanelIndex] || {}),
+                                        [panelOrigIdx]: {
+                                          ...(prev[panelOrigIdx] || {}),
                                           [quantityKey]: newOptionBom.defaultQuantity || newOptionBom.minQuantity || 0
                                         }
                                       }))
                                     } else {
                                       setPresetPanelQuantities(prev => {
                                         const newQuantities = { ...prev }
-                                        if (newQuantities[configuringPanelIndex]) {
-                                          delete newQuantities[configuringPanelIndex][quantityKey]
+                                        if (newQuantities[panelOrigIdx]) {
+                                          delete newQuantities[panelOrigIdx][quantityKey]
                                         }
                                         return newQuantities
                                       })
@@ -4283,7 +4550,7 @@ export default function ProjectDetailView() {
                                   }
                                 }}
                               >
-                                <div className={`${isRangeMode ? 'flex-1' : 'w-full'} relative`}>
+                                <div className={`${isRangeMode || hasVariants ? 'flex-1' : 'w-full'} relative`}>
                                   <ListboxButton className={`w-full px-3 py-2 border ${selectedOverlaps.length > 0 ? 'border-amber-400' : 'border-gray-300'} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between`}>
                                     {(() => {
                                       if (selectedOptionId === null || selectedOptionId === undefined) {
@@ -4292,7 +4559,7 @@ export default function ProjectDetailView() {
                                             None (No hardware)
                                             {categoryHasOverlap ? (
                                               <span className="px-1.5 py-0.5 text-xs bg-green-200 text-green-800 rounded font-medium">Added to Opening</span>
-                                            ) : !pso.standardOptionId ? (
+                                            ) : !currentOption.standardOptionId ? (
                                               <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
                                             ) : null}
                                           </span>
@@ -4304,13 +4571,13 @@ export default function ProjectDetailView() {
                                             {selectedOption.name}
                                             {selectedOverlaps.length > 0 ? (
                                               <span className="px-1.5 py-0.5 text-xs bg-green-200 text-green-800 rounded font-medium">Added to Opening</span>
-                                            ) : selectedOption.id === pso.standardOptionId ? (
+                                            ) : selectedOption.id === currentOption.standardOptionId ? (
                                               <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
                                             ) : null}
                                           </span>
                                         )
                                       }
-                                      return <span className="text-gray-500">Select {pso.category.name}...</span>
+                                      return <span className="text-gray-500">Select {currentOption.category.name}...</span>
                                     })()}
                                     <ChevronDown className="w-4 h-4 text-gray-400" />
                                   </ListboxButton>
@@ -4325,7 +4592,7 @@ export default function ProjectDetailView() {
                                             None (No hardware)
                                             {categoryHasOverlap ? (
                                               <span className="px-1.5 py-0.5 text-xs bg-green-200 text-green-800 rounded font-medium">Added to Opening</span>
-                                            ) : !pso.standardOptionId ? (
+                                            ) : !currentOption.standardOptionId ? (
                                               <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
                                             ) : null}
                                           </span>
@@ -4334,8 +4601,7 @@ export default function ProjectDetailView() {
                                       )}
                                     </ListboxOption>
                                     {(() => {
-                                      const options = pso.category.individualOptions || []
-                                      // Sort: non-overlapping first, overlapping last
+                                      const options = currentOption.category.individualOptions || []
                                       const sorted = [...options].sort((a: any, b: any) => {
                                         const aOverlap = getPresetOverlaps(appliedPresetOpening?.presetPartInstances, a.id, productBOMs, a.linkedParts).length > 0
                                         const bOverlap = getPresetOverlaps(appliedPresetOpening?.presetPartInstances, b.id, productBOMs, b.linkedParts).length > 0
@@ -4361,7 +4627,7 @@ export default function ProjectDetailView() {
                                                   <span className={hasOverlap ? 'text-gray-400' : ''}>{opt.name}</span>
                                                   {hasOverlap ? (
                                                     <span className="px-1.5 py-0.5 text-xs bg-green-200 text-green-800 rounded font-medium">Added to Opening</span>
-                                                  ) : opt.id === pso.standardOptionId ? (
+                                                  ) : opt.id === currentOption.standardOptionId ? (
                                                     <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
                                                   ) : null}
                                                 </span>
@@ -4376,140 +4642,178 @@ export default function ProjectDetailView() {
                                 </div>
                               </Listbox>
 
-                              {/* Quantity input for RANGE mode */}
+                              {/* Quantity for RANGE mode */}
                               {isRangeMode && (
-                                <div className="w-24">
-                                  <input
-                                    type="number"
-                                    min={optionBom?.minQuantity || 0}
-                                    max={optionBom?.maxQuantity || 99}
-                                    value={presetPanelQuantities[configuringPanelIndex]?.[quantityKey] ?? optionBom?.defaultQuantity ?? 0}
-                                    onChange={(e) => {
-                                      const value = parseInt(e.target.value) || 0
-                                      setPresetPanelQuantities(prev => ({
-                                        ...prev,
-                                        [configuringPanelIndex]: {
-                                          ...(prev[configuringPanelIndex] || {}),
-                                          [quantityKey]: value
+                                <Listbox
+                                  value={presetPanelQuantities[panelOrigIdx]?.[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}
+                                  onChange={(value: number) => {
+                                    setPresetPanelQuantities(prev => ({
+                                      ...prev,
+                                      [panelOrigIdx]: {
+                                        ...(prev[panelOrigIdx] || {}),
+                                        [quantityKey]: value
+                                      }
+                                    }))
+                                  }}
+                                >
+                                  <div className="relative w-20">
+                                    <ListboxButton className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-left flex items-center justify-between">
+                                      <span>{presetPanelQuantities[panelOrigIdx]?.[quantityKey] ?? (optionBom.defaultQuantity || optionBom.minQuantity || 0)}</span>
+                                      <ChevronDown className="w-4 h-4 text-gray-400" />
+                                    </ListboxButton>
+                                    <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                                      {Array.from(
+                                        { length: (optionBom.maxQuantity || 4) - (optionBom.minQuantity || 0) + 1 },
+                                        (_, i) => (optionBom.minQuantity || 0) + i
+                                      ).map((qty: number) => (
+                                        <ListboxOption
+                                          key={qty}
+                                          value={qty}
+                                          className="cursor-pointer select-none px-3 py-2 hover:bg-blue-50 data-[selected]:bg-blue-100 flex items-center justify-between"
+                                        >
+                                          {({ selected }) => (
+                                            <>
+                                              <span>{qty}</span>
+                                              {selected && <Check className="w-4 h-4 text-blue-600" />}
+                                            </>
+                                          )}
+                                        </ListboxOption>
+                                      ))}
+                                    </ListboxOptions>
+                                  </div>
+                                </Listbox>
+                              )}
+
+                              {/* Variant selector */}
+                              {hasVariants && (
+                                <Listbox
+                                  value={presetPanelVariants[panelOrigIdx]?.[String(selectedOptionId)] || null}
+                                  onChange={(value: number | null) => {
+                                    setPresetPanelVariants(prev => ({
+                                      ...prev,
+                                      [panelOrigIdx]: {
+                                        ...(prev[panelOrigIdx] || {}),
+                                        [String(selectedOptionId)]: value as number
+                                      }
+                                    }))
+                                  }}
+                                >
+                                  <div className="relative w-56">
+                                    <ListboxButton className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-900 bg-purple-50 text-left flex items-center justify-between">
+                                      {(() => {
+                                        const selectedVariant = selectedOption?.variants?.find((v: any) => v.id === presetPanelVariants[panelOrigIdx]?.[String(selectedOptionId)])
+                                        if (selectedVariant) {
+                                          return (
+                                            <span className="flex items-center gap-2">
+                                              {selectedVariant.name}
+                                              {selectedVariant.isDefault && (
+                                                <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
+                                              )}
+                                            </span>
+                                          )
                                         }
-                                      }))
-                                    }}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                                    placeholder="Qty"
-                                  />
-                                </div>
+                                        return <span className="text-gray-500">Choose Variant...</span>
+                                      })()}
+                                      <ChevronDown className="w-4 h-4 text-purple-400" />
+                                    </ListboxButton>
+                                    <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-[var(--button-width)] bg-white border border-purple-300 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                                      {selectedOption.variants.map((variant: any) => (
+                                        <ListboxOption
+                                          key={variant.id}
+                                          value={variant.id}
+                                          className="cursor-pointer select-none px-3 py-2 hover:bg-purple-50 data-[selected]:bg-purple-100 flex items-center justify-between"
+                                        >
+                                          {({ selected }) => (
+                                            <>
+                                              <span className="flex items-center gap-2">
+                                                {variant.name}
+                                                {variant.isDefault && (
+                                                  <span className="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-700 rounded font-medium">Default</span>
+                                                )}
+                                              </span>
+                                              {selected && <Check className="w-4 h-4 text-purple-600" />}
+                                            </>
+                                          )}
+                                        </ListboxOption>
+                                      ))}
+                                    </ListboxOptions>
+                                  </div>
+                                </Listbox>
                               )}
                             </div>
 
-                            {/* Preset part overlap warning */}
+                            {/* Overlap warning */}
                             {selectedOverlaps.length > 0 && (
-                              <div className="mt-1 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                              <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg">
                                 <p className="text-xs text-amber-800 font-medium">
                                   This option includes parts already in the opening preset.
                                 </p>
                               </div>
                             )}
 
-                            {/* Variant Selection */}
-                            {hasVariants && (
-                              <div className="mt-2">
-                                <label className="block text-xs text-gray-500 mb-1">Variant</label>
-                                <select
-                                  value={presetPanelVariants[configuringPanelIndex]?.[String(selectedOptionId)] ?? ''}
-                                  onChange={(e) => {
-                                    const variantId = e.target.value ? parseInt(e.target.value) : null
-                                    setPresetPanelVariants(prev => ({
-                                      ...prev,
-                                      [configuringPanelIndex]: {
-                                        ...(prev[configuringPanelIndex] || {}),
-                                        [String(selectedOptionId)]: variantId as number
-                                      }
-                                    }))
-                                  }}
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                                >
-                                  {selectedOption.variants.map((variant: any) => (
-                                    <option key={variant.id} value={variant.id}>
-                                      {variant.name}
-                                      {variant.isDefault ? ' (Default)' : ''}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
+                            {isRangeMode && (
+                              <p className="text-xs text-gray-500">
+                                Select quantity ({optionBom.minQuantity}-{optionBom.maxQuantity})
+                              </p>
                             )}
                           </div>
                         )
-                      })}
-                    </div>
+                      })()}
+
+                      {/* Navigation buttons */}
+                      <div className="flex justify-between items-center pt-6 mt-6 border-t border-gray-200">
+                        <button
+                          type="button"
+                          onClick={handleSkipPresetConfig}
+                          disabled={savingPresetConfig}
+                          className="px-4 py-2 text-gray-600 hover:text-gray-800 text-sm"
+                        >
+                          Skip & Use Defaults
+                        </button>
+                        <div className="flex gap-3">
+                          {!isFirstStep && (
+                            <button
+                              type="button"
+                              onClick={goToPrevPresetStep}
+                              disabled={savingPresetConfig}
+                              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                              </svg>
+                              Back
+                            </button>
+                          )}
+                          {isLastStep ? (
+                            <button
+                              type="button"
+                              onClick={handleSavePresetPanelConfig}
+                              disabled={savingPresetConfig || !canGoNext()}
+                              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                            >
+                              {savingPresetConfig && (
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                              )}
+                              {savingPresetConfig ? 'Saving...' : 'Save & Finish'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={goToNextPresetStep}
+                              disabled={savingPresetConfig || !canGoNext()}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                              Next
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </>
                   )
                 })()}
-
-                {/* Navigation and action buttons */}
-                <div className="flex justify-between items-center pt-6 mt-6 border-t border-gray-200">
-                  <button
-                    type="button"
-                    onClick={handleSkipPresetConfig}
-                    disabled={savingPresetConfig}
-                    className="px-4 py-2 text-gray-600 hover:text-gray-800 text-sm"
-                  >
-                    Skip & Use Defaults
-                  </button>
-                  <div className="flex gap-3">
-                    {appliedPresetOpening.panels?.length > 1 && configuringPanelIndex > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setConfiguringPanelIndex(prev => prev - 1)}
-                        disabled={savingPresetConfig}
-                        className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                      >
-                        Previous
-                      </button>
-                    )}
-                    {appliedPresetOpening.panels?.length > 1 && configuringPanelIndex < appliedPresetOpening.panels.length - 1 ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const panel = appliedPresetOpening.panels?.[configuringPanelIndex]
-                          const pType = panel?.componentInstance?.product?.productType || ''
-                          const isFrame = pType === 'FRAME'
-                          // Validate direction if needed
-                          const dirTypes = ['SWING_DOOR', 'SLIDING_DOOR', 'CORNER_90']
-                          const pv = panel?.componentInstance?.product?.planViews || []
-                          if (dirTypes.includes(pType) && pv.length > 0) {
-                            if (!presetPanelDirections[configuringPanelIndex]) {
-                              showError('Please select an opening direction before continuing')
-                              return
-                            }
-                          }
-                          if (!isFrame) {
-                            const glassTypeValue = presetPanelGlassTypes[configuringPanelIndex] ?? panel?.glassType ?? ''
-                            if (!glassTypeValue) {
-                              showError('Please select a glass type before continuing')
-                              return
-                            }
-                          }
-                          setConfiguringPanelIndex(prev => prev + 1)
-                        }}
-                        disabled={savingPresetConfig}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                      >
-                        Next Panel
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleSavePresetPanelConfig}
-                        disabled={savingPresetConfig}
-                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"
-                      >
-                        {savingPresetConfig && (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                        )}
-                        {savingPresetConfig ? 'Saving...' : 'Save & Finish'}
-                      </button>
-                    )}
-                  </div>
-                </div>
               </>
             ) : postCreationStep === 'action-select' ? (
               <>
@@ -4694,6 +4998,29 @@ export default function ProjectDetailView() {
                   <h2 className="text-xl font-bold text-gray-900">Opening Dimensions</h2>
                 </div>
                 <div className="space-y-4">
+                  {/* Frame Type (only for FRAMED/Trimmed openings) */}
+                  {newlyCreatedOpeningType === 'FRAMED' && (
+                    <div className="border-b border-gray-200 pb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Frame Type <span className="text-red-500">*</span></label>
+                      <select
+                        value={newOpening.frameProductId || ''}
+                        onChange={(e) => {
+                          const val = e.target.value ? parseInt(e.target.value) : null
+                          setNewOpening(prev => ({ ...prev, frameProductId: val }))
+                        }}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!newOpening.frameProductId ? 'border-orange-300 text-gray-400' : 'border-gray-300 text-gray-900'}`}
+                      >
+                        <option value="">-- Select Frame --</option>
+                        {frameProducts.map((fp) => (
+                          <option key={fp.id} value={fp.id}>{fp.name}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Select the frame profile for this opening
+                      </p>
+                    </div>
+                  )}
+
                   {/* Specify Dimensions Toggle */}
                   <div className="border-b border-gray-200 pb-4">
                     <div className="flex items-center justify-between">
@@ -4764,7 +5091,25 @@ export default function ProjectDetailView() {
                 <div className="flex justify-between pt-6">
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
+                      // Validate frame selection for FRAMED openings
+                      if (newlyCreatedOpeningType === 'FRAMED' && !newOpening.frameProductId) {
+                        showError('Please select a frame type for this Trimmed opening')
+                        return
+                      }
+                      // Save frame product if FRAMED opening has one selected
+                      if (newlyCreatedOpeningId && newlyCreatedOpeningType === 'FRAMED' && newOpening.frameProductId) {
+                        try {
+                          await fetch(`/api/openings/${newlyCreatedOpeningId}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ frameProductId: newOpening.frameProductId })
+                          })
+                          await refreshProject()
+                        } catch (error) {
+                          console.error('Error saving frame product:', error)
+                        }
+                      }
                       // Skip dimensions, close modal, open Add Component directly at product selection
                       const openingId = newlyCreatedOpeningId
                       if (openingId) setPendingComponentOpeningId(openingId)
@@ -4782,25 +5127,39 @@ export default function ProjectDetailView() {
                   <button
                     type="button"
                     onClick={async () => {
-                      if (newlyCreatedOpeningId && newOpening.isFinishedOpening && newOpening.roughWidth && newOpening.roughHeight) {
-                        // Save dimensions to the opening
-                        try {
+                      // Validate frame selection for FRAMED openings
+                      if (newlyCreatedOpeningType === 'FRAMED' && !newOpening.frameProductId) {
+                        showError('Please select a frame type for this Trimmed opening')
+                        return
+                      }
+                      // Save frame product and/or dimensions to the opening
+                      if (newlyCreatedOpeningId) {
+                        const updateBody: any = {}
+                        // Include frame product for FRAMED openings
+                        if (newlyCreatedOpeningType === 'FRAMED' && newOpening.frameProductId) {
+                          updateBody.frameProductId = newOpening.frameProductId
+                        }
+                        // Include dimensions if specified
+                        if (newOpening.isFinishedOpening && newOpening.roughWidth && newOpening.roughHeight) {
                           const width = parseFloat(newOpening.roughWidth)
                           const height = parseFloat(newOpening.roughHeight)
-                          await fetch(`/api/openings/${newlyCreatedOpeningId}`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              roughWidth: width,
-                              roughHeight: height,
-                              finishedWidth: width,
-                              finishedHeight: height,
-                              isFinishedOpening: true
+                          updateBody.roughWidth = width
+                          updateBody.roughHeight = height
+                          updateBody.finishedWidth = width
+                          updateBody.finishedHeight = height
+                          updateBody.isFinishedOpening = true
+                        }
+                        if (Object.keys(updateBody).length > 0) {
+                          try {
+                            await fetch(`/api/openings/${newlyCreatedOpeningId}`, {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(updateBody)
                             })
-                          })
-                          await refreshProject()
-                        } catch (error) {
-                          console.error('Error saving dimensions:', error)
+                            await refreshProject()
+                          } catch (error) {
+                            console.error('Error saving opening details:', error)
+                          }
                         }
                       }
                       // Close modal and open Add Component after project state updates
@@ -4812,7 +5171,7 @@ export default function ProjectDetailView() {
                         setDeferredAddComponentOpeningId(openingId)
                       }
                     }}
-                    disabled={newOpening.isFinishedOpening && (!newOpening.roughWidth || !newOpening.roughHeight)}
+                    disabled={(newOpening.isFinishedOpening && (!newOpening.roughWidth || !newOpening.roughHeight)) || (newlyCreatedOpeningType === 'FRAMED' && !newOpening.frameProductId)}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {newOpening.isFinishedOpening ? 'Save & Continue' : 'Continue'}
@@ -4850,7 +5209,7 @@ export default function ProjectDetailView() {
                           openingType: type,
                           widthToleranceTotal: null,
                           heightToleranceTotal: null,
-                          frameProductId: type === 'THINWALL' ? null : prev.frameProductId
+                          frameProductId: null
                         }))
                       }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
@@ -4860,33 +5219,10 @@ export default function ProjectDetailView() {
                     </select>
                     <p className="text-xs text-gray-500 mt-1">
                       {newOpening.openingType === 'FRAMED'
-                        ? 'Select a frame type below'
+                        ? 'Trimmed opening - frame type will be selected when adding components'
                         : 'Components will be filtered to show Thinwall products'}
                     </p>
                   </div>
-
-                  {/* 2b. Frame Type (only for FRAMED/Trimmed openings) */}
-                  {newOpening.openingType === 'FRAMED' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Frame Type <span className="text-red-500">*</span></label>
-                      <select
-                        value={newOpening.frameProductId || ''}
-                        onChange={(e) => {
-                          const val = e.target.value ? parseInt(e.target.value) : null
-                          setNewOpening(prev => ({ ...prev, frameProductId: val }))
-                        }}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!newOpening.frameProductId ? 'border-orange-300 text-gray-400' : 'border-gray-300 text-gray-900'}`}
-                      >
-                        <option value="">-- Select Frame --</option>
-                        {frameProducts.map((fp) => (
-                          <option key={fp.id} value={fp.id}>{fp.name}</option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Select the frame profile for this opening
-                      </p>
-                    </div>
-                  )}
 
                   {/* 3. Extrusion Finish */}
                   <div>
