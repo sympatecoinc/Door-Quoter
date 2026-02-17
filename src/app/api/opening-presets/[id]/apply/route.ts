@@ -157,27 +157,49 @@ export async function POST(
     const effectiveFinishedWidth = finalFinishedWidth ?? finalRoughWidth!
     const effectiveFinishedHeight = finalFinishedHeight ?? finalRoughHeight!
 
-    // Look up jambThickness from FRAME products in the preset
-    // Check preset panels' products and their frameConfig products for jambThickness
+    // Determine opening-level frameProductId and jambThickness from preset products
     let jambThickness = 0
+    let openingFrameProductId: number | null = null
     const presetProductIds = preset.panels.map(p => p.productId).filter(Boolean) as number[]
     if (presetProductIds.length > 0) {
       const presetProducts = await prisma.product.findMany({
         where: { id: { in: presetProductIds } },
-        select: { id: true, productType: true, jambThickness: true, frameConfig: { select: { id: true, jambThickness: true } } }
+        select: {
+          id: true,
+          productType: true,
+          jambThickness: true,
+          frameConfig: { select: { id: true, jambThickness: true } },
+          frameAssignments: { select: { frameProductId: true } }
+        }
       })
       // Check if any preset panel product is itself a FRAME with jambThickness
       for (const pp of presetProducts) {
         if (pp.productType === 'FRAME' && pp.jambThickness) {
           jambThickness = pp.jambThickness
+          openingFrameProductId = pp.id
           break
         }
       }
-      // If no direct FRAME product, check frameConfig products
+      // If no direct FRAME product, determine frame from frameAssignments or frameConfig
       if (jambThickness === 0) {
         for (const pp of presetProducts) {
+          // Check many-to-many frame assignments first
+          if (pp.frameAssignments?.length > 0) {
+            const frameId = pp.frameAssignments[0].frameProductId
+            const frameProd = await prisma.product.findUnique({
+              where: { id: frameId },
+              select: { id: true, jambThickness: true }
+            })
+            if (frameProd) {
+              openingFrameProductId = frameProd.id
+              jambThickness = frameProd.jambThickness || 0
+              break
+            }
+          }
+          // Legacy fallback: check frameConfig
           if (pp.frameConfig?.jambThickness) {
             jambThickness = pp.frameConfig.jambThickness
+            openingFrameProductId = pp.frameConfig.id
             break
           }
         }
@@ -243,7 +265,8 @@ export async function POST(
             isFinishedOpening: preset.isFinishedOpening,
             openingType: preset.openingType,
             includeStarterChannels: preset.includeStarterChannels,
-            presetId: preset.id
+            presetId: preset.id,
+            frameProductId: openingFrameProductId
           }
         })
       } else {
@@ -261,7 +284,38 @@ export async function POST(
             openingType: preset.openingType,
             finishColor: finishColor || null,
             includeStarterChannels: preset.includeStarterChannels,
-            presetId: preset.id
+            presetId: preset.id,
+            frameProductId: openingFrameProductId
+          }
+        })
+      }
+
+      // Create ONE frame panel for the opening (if frame product is set)
+      if (openingFrameProductId) {
+        const frameWidth = effectiveRoughWidth ?? effectiveFinishedWidth
+        const frameHeight = effectiveRoughHeight ?? effectiveFinishedHeight
+
+        const framePanel = await tx.panel.create({
+          data: {
+            openingId: newOpening.id,
+            type: 'Component',
+            width: frameWidth,
+            height: frameHeight,
+            glassType: 'N/A',
+            locking: 'N/A',
+            swingDirection: 'None',
+            slidingDirection: 'Left',
+            displayOrder: 9000 // Place after all preset panels
+          }
+        })
+
+        await tx.componentInstance.create({
+          data: {
+            panelId: framePanel.id,
+            productId: openingFrameProductId,
+            subOptionSelections: '{}',
+            includedOptions: '[]',
+            variantSelections: '{}'
           }
         })
       }
@@ -363,8 +417,9 @@ export async function POST(
             }
           })
 
-          // Auto-add frame panel if product has a frame config
-          if (product?.frameConfig && product.frameConfig.id !== presetPanel.productId) {
+          // Legacy: Auto-add frame panel if product has a frame config
+          // Skip if opening-level frame is already set (ONE frame per opening created above)
+          if (!openingFrameProductId && product?.frameConfig && product.frameConfig.id !== presetPanel.productId) {
             const framePanel = await tx.panel.create({
               data: {
                 openingId: newOpening.id,

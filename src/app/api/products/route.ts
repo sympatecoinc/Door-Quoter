@@ -6,12 +6,19 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const includeArchived = searchParams.get('includeArchived') === 'true'
     const openingType = searchParams.get('openingType') // 'THINWALL' or 'FRAMED'
+    const frameProductId = searchParams.get('frameProductId') // Filter by frame assignment
 
     // Build where clause based on filters
     const where: any = includeArchived ? {} : { archived: false }
 
-    // Filter products by category based on opening type
-    if (openingType === 'THINWALL') {
+    // Filter products by frame assignment (many-to-many junction table)
+    if (frameProductId) {
+      // Return products assigned to this specific frame, plus CORNER_90 (universal)
+      where.OR = [
+        { frameAssignments: { some: { frameProductId: parseInt(frameProductId) } } },
+        { productType: 'CORNER_90' }
+      ]
+    } else if (openingType === 'THINWALL') {
       // Show products with category THINWALL or BOTH, plus CORNER_90 (universal)
       where.OR = [
         { productCategory: { in: ['THINWALL', 'BOTH'] } },
@@ -64,7 +71,17 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             name: true,
-            productType: true
+            productType: true,
+            jambThickness: true
+          }
+        },
+        frameAssignments: {
+          select: {
+            id: true,
+            frameProductId: true,
+            frameProduct: {
+              select: { id: true, name: true }
+            }
           }
         },
         _count: {

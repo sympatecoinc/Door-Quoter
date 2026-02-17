@@ -704,18 +704,20 @@ function FrameConfigurationTab({
   const frameProducts = products.filter(p => p.productType === 'FRAME')
   const assignableProducts = products.filter(p => p.productType !== 'FRAME' && !p.archived && p.productCategory === 'TRIMMED')
 
-  // Count products assigned to each frame
+  // Count products assigned to each frame (using many-to-many junction table)
   function getAssignedCount(frameId: number) {
-    return products.filter(p => p.frameConfigId === frameId).length
+    return products.filter(p =>
+      p.frameAssignments?.some((a: any) => a.frameProductId === frameId)
+    ).length
   }
 
-  // Check if a product is assigned to a specific frame
+  // Check if a product is assigned to a specific frame (many-to-many)
   function isAssignedToFrame(productId: number, frameId: number) {
     if (productId in pendingChanges) {
       return pendingChanges[productId]
     }
     const product = products.find(p => p.id === productId)
-    return product?.frameConfigId === frameId
+    return product?.frameAssignments?.some((a: any) => a.frameProductId === frameId) || false
   }
 
   function toggleAssignment(productId: number, frameId: number) {
@@ -731,15 +733,24 @@ function FrameConfigurationTab({
       for (const [productIdStr, shouldBeAssigned] of Object.entries(pendingChanges)) {
         const productId = parseInt(productIdStr)
         const product = products.find(p => p.id === productId)
-        const currentlyAssigned = product?.frameConfigId === frameId
+        const currentlyAssigned = product?.frameAssignments?.some((a: any) => a.frameProductId === frameId) || false
 
         if (shouldBeAssigned !== currentlyAssigned) {
+          // Compute new frameAssignments array for this product
+          const currentFrameIds = (product?.frameAssignments || []).map((a: any) => a.frameProductId)
+          let newFrameIds: number[]
+          if (shouldBeAssigned) {
+            newFrameIds = [...currentFrameIds, frameId]
+          } else {
+            newFrameIds = currentFrameIds.filter((id: number) => id !== frameId)
+          }
+
           updates.push(
             fetch(`/api/products/${productId}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                frameConfigId: shouldBeAssigned ? frameId : null
+                frameAssignments: newFrameIds
               })
             })
           )
@@ -901,8 +912,11 @@ function FrameConfigurationTab({
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
                         {assignableProducts.map((p) => {
                           const assigned = isAssignedToFrame(p.id, frameProduct.id)
-                          // Check if assigned to a different frame
-                          const assignedToOther = p.frameConfigId && p.frameConfigId !== frameProduct.id && !(p.id in pendingChanges)
+                          // Show which other frames this product is also assigned to
+                          const otherFrames = (p.frameAssignments || [])
+                            .filter((a: any) => a.frameProductId !== frameProduct.id)
+                            .map((a: any) => a.frameProduct?.name)
+                            .filter(Boolean)
 
                           return (
                             <label
@@ -910,21 +924,21 @@ function FrameConfigurationTab({
                               className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-sm transition-colors ${
                                 assigned
                                   ? 'bg-amber-100 border border-amber-300'
-                                  : assignedToOther
-                                    ? 'bg-gray-50 border border-gray-200 opacity-50'
-                                    : 'bg-white border border-gray-200 hover:bg-gray-50'
+                                  : 'bg-white border border-gray-200 hover:bg-gray-50'
                               }`}
-                              title={assignedToOther ? `Assigned to another frame` : ''}
+                              title={otherFrames.length > 0 ? `Also assigned to: ${otherFrames.join(', ')}` : ''}
                             >
                               <input
                                 type="checkbox"
                                 checked={assigned}
                                 onChange={() => toggleAssignment(p.id, frameProduct.id)}
-                                disabled={!!assignedToOther}
                                 className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
                               />
                               <span className={`truncate ${assigned ? 'font-medium text-gray-900' : 'text-gray-700'}`}>
                                 {p.name}
+                                {otherFrames.length > 0 && (
+                                  <span className="text-xs text-gray-400 ml-1">+{otherFrames.length}</span>
+                                )}
                               </span>
                             </label>
                           )

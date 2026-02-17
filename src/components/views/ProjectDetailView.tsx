@@ -270,6 +270,7 @@ export default function ProjectDetailView() {
   const [editingOpeningRoughHeight, setEditingOpeningRoughHeight] = useState('')
   const [editingOpeningIsFinished, setEditingOpeningIsFinished] = useState(false)
   const [editingOpeningType, setEditingOpeningType] = useState<'THINWALL' | 'FRAMED'>('THINWALL')
+  const [editingOpeningFrameProductId, setEditingOpeningFrameProductId] = useState<number | null>(null)
   const [showSizeRedistributionModal, setShowSizeRedistributionModal] = useState(false)
   const [sizeRedistributionData, setSizeRedistributionData] = useState<{
     openingId: number
@@ -297,7 +298,9 @@ export default function ProjectDetailView() {
     roughWidth: '',
     roughHeight: '',
     widthToleranceTotal: null as number | null,
-    heightToleranceTotal: null as number | null
+    heightToleranceTotal: null as number | null,
+    // Opening-level frame product (for FRAMED openings)
+    frameProductId: null as number | null
   })
   // Opening presets state
   const [openingPresets, setOpeningPresets] = useState<OpeningPreset[]>([])
@@ -332,6 +335,7 @@ export default function ProjectDetailView() {
   const [showAddComponent, setShowAddComponent] = useState(false)
   const [selectedOpeningId, setSelectedOpeningId] = useState<number | null>(null)
   const [products, setProducts] = useState<any[]>([])
+  const [frameProducts, setFrameProducts] = useState<any[]>([])
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
   const [componentWidth, setComponentWidth] = useState<string>('')
   const [componentHeight, setComponentHeight] = useState<string>('')
@@ -482,17 +486,32 @@ export default function ProjectDetailView() {
     return { width: null, height: null }
   }
 
-  // Helper to get jambThickness from FRAME panel in an opening and compute interior dims
-  function getInteriorDimensions(opening: Opening | undefined): { interiorWidth: number | null; interiorHeight: number | null; jambThickness: number } {
+  // Helper to get jambThickness from FRAME panel in an opening and compute interior dims.
+  // Checks: 1) existing FRAME panels, 2) opening.frameProductId, 3) selectedProduct.frameConfig (legacy)
+  function getInteriorDimensions(opening: Opening | undefined, selectedProduct?: any): { interiorWidth: number | null; interiorHeight: number | null; jambThickness: number } {
     if (!opening) return { interiorWidth: null, interiorHeight: null, jambThickness: 0 }
 
     let jt = 0
+    // First check existing FRAME panels in the opening
     for (const p of opening.panels || []) {
       if (p.componentInstance?.product?.productType === 'FRAME' &&
           p.componentInstance.product.jambThickness) {
         jt = p.componentInstance.product.jambThickness
         break
       }
+    }
+
+    // If no frame panel exists yet, check opening-level frameProductId
+    if (jt === 0 && (opening as any).frameProductId) {
+      const frameProduct = products.find(p => p.id === (opening as any).frameProductId)
+      if (frameProduct?.jambThickness) {
+        jt = frameProduct.jambThickness
+      }
+    }
+
+    // Legacy fallback: check selectedProduct's frameConfig
+    if (jt === 0 && selectedProduct?.frameConfig?.jambThickness) {
+      jt = selectedProduct.frameConfig.jambThickness
     }
 
     const w = opening.finishedWidth || opening.roughWidth
@@ -810,6 +829,22 @@ export default function ProjectDetailView() {
       setSyncDetails(details.length > 0 ? details : ['Pricing data has been updated'])
     }
   }, [project])
+
+  // Fetch FRAME products for the opening creation dropdown
+  useEffect(() => {
+    async function fetchFrameProducts() {
+      try {
+        const res = await fetch('/api/products?includeArchived=false')
+        if (res.ok) {
+          const data = await res.json()
+          setFrameProducts(data.filter((p: any) => p.productType === 'FRAME'))
+        }
+      } catch (err) {
+        console.error('Error fetching frame products:', err)
+      }
+    }
+    fetchFrameProducts()
+  }, [])
 
   useEffect(() => {
     if (selectedProjectId) {
@@ -1272,6 +1307,12 @@ export default function ProjectDetailView() {
       return
     }
 
+    // For FRAMED openings, require a frame type selection
+    if (newOpening.openingType === 'FRAMED' && !newOpening.frameProductId) {
+      showError('Please select a frame type for this Trimmed opening')
+      return
+    }
+
     // For finished openings, validate dimensions are provided
     if (newOpening.isFinishedOpening && (!newOpening.roughWidth || !newOpening.roughHeight)) {
       showError('Rough opening dimensions are required for finished openings')
@@ -1287,6 +1328,11 @@ export default function ProjectDetailView() {
         finishColor: newOpening.finishColor,
         isFinishedOpening: newOpening.isFinishedOpening,
         openingType: newOpening.openingType // Always send for Frame auto-add and product filtering
+      }
+
+      // Include frame product for FRAMED openings
+      if (newOpening.openingType === 'FRAMED' && newOpening.frameProductId) {
+        requestBody.frameProductId = newOpening.frameProductId
       }
 
       // Add dimension fields if specified
@@ -1848,6 +1894,7 @@ export default function ProjectDetailView() {
       setEditingOpeningRoughHeight(opening.roughHeight?.toString() || '')
       setEditingOpeningIsFinished(opening.isFinishedOpening || false)
       setEditingOpeningType(opening.openingType || 'THINWALL')
+      setEditingOpeningFrameProductId((opening as any).frameProductId || null)
       setShowEditOpeningModal(true)
     }
 
@@ -1940,7 +1987,8 @@ export default function ProjectDetailView() {
           name: editingOpeningName,
           finishColor: editingOpeningFinishColor || null,
           roughWidth: editingOpeningRoughWidth || null,
-          roughHeight: editingOpeningRoughHeight || null
+          roughHeight: editingOpeningRoughHeight || null,
+          frameProductId: editingOpeningType === 'FRAMED' ? editingOpeningFrameProductId : null
         }),
       })
 
@@ -1961,6 +2009,7 @@ export default function ProjectDetailView() {
         setEditingOpeningRoughHeight('')
         setEditingOpeningIsFinished(false)
         setEditingOpeningType('THINWALL')
+        setEditingOpeningFrameProductId(null)
       } else {
         showError('Error updating opening')
       }
@@ -2224,6 +2273,7 @@ export default function ProjectDetailView() {
         // If tolerances haven't been applied yet, leave blank - user should use "Auto" after selecting product
         if (opening?.isFinishedOpening && opening.finishedHeight) {
           // Use interior height if a frame with jambThickness exists
+          // Note: product not selected yet at this point, so can't check frameConfig proactively
           const { interiorHeight } = getInteriorDimensions(opening)
           setComponentHeight((interiorHeight ?? opening.finishedHeight).toString())
         } else {
@@ -2272,9 +2322,10 @@ export default function ProjectDetailView() {
     }
 
     // Use interior dimensions when a frame with jambThickness exists (matches backend validation)
+    // Also proactively accounts for frames that will be auto-added via the selected product's frameConfig
     let constraintWidth = effectiveDimensions.width
     let constraintHeight = effectiveDimensions.height
-    const { interiorWidth, interiorHeight } = getInteriorDimensions(opening)
+    const { interiorWidth, interiorHeight } = getInteriorDimensions(opening, selectedProduct)
     if (interiorWidth !== null) {
       constraintWidth = interiorWidth
     }
@@ -2338,10 +2389,11 @@ export default function ProjectDetailView() {
     }
 
     // Use interior dimensions when a frame with jambThickness exists (for non-FRAME products)
+    // Also proactively accounts for frames that will be auto-added via the selected product's frameConfig
     let constraintWidth = effectiveDimensions.width
     let constraintHeight = effectiveDimensions.height
     if (selectedProduct?.productType !== 'FRAME') {
-      const { interiorWidth, interiorHeight } = getInteriorDimensions(opening)
+      const { interiorWidth, interiorHeight } = getInteriorDimensions(opening, selectedProduct)
       if (interiorWidth !== null) {
         constraintWidth = interiorWidth
       }
@@ -2402,9 +2454,10 @@ export default function ProjectDetailView() {
     }
 
     // Use interior width when a frame with jambThickness exists (for non-FRAME products)
+    // Also proactively accounts for frames that will be auto-added via the selected product's frameConfig
     let constraintWidth = effectiveDimensions.width
     if (selectedProduct?.productType !== 'FRAME') {
-      const { interiorWidth } = getInteriorDimensions(opening)
+      const { interiorWidth } = getInteriorDimensions(opening, selectedProduct)
       if (interiorWidth !== null) {
         constraintWidth = interiorWidth
       }
@@ -2463,9 +2516,10 @@ export default function ProjectDetailView() {
     }
 
     // Use interior height when a frame with jambThickness exists (for non-FRAME products)
+    // Also proactively accounts for frames that will be auto-added via the selected product's frameConfig
     let finalHeight = effectiveDimensions.height
     if (selectedProduct?.productType !== 'FRAME') {
-      const { interiorHeight } = getInteriorDimensions(opening)
+      const { interiorHeight } = getInteriorDimensions(opening, selectedProduct)
       if (interiorHeight !== null) {
         finalHeight = interiorHeight
       }
@@ -2717,6 +2771,27 @@ export default function ProjectDetailView() {
     setEditingComponentHeight(finalHeight.toFixed(3))
     showSuccess(`Height auto-filled: ${finalHeight.toFixed(3)}"`)
   }
+
+  // When a product is selected, adjust pre-populated height/width for frame deductions
+  // This handles the case where height was pre-populated to finishedHeight before a product
+  // with a frameConfig was selected — the height needs to be reduced to interior height.
+  useEffect(() => {
+    if (!showAddComponent || !selectedOpeningId || !selectedProductId) return
+
+    const opening = project?.openings.find(o => o.id === selectedOpeningId)
+    const selectedProduct = products.find(p => p.id === selectedProductId)
+    if (!opening || !selectedProduct || selectedProduct.productType === 'FRAME' || selectedProduct.productType === 'CORNER_90') return
+
+    const { interiorHeight, interiorWidth, jambThickness: jt } = getInteriorDimensions(opening, selectedProduct)
+    if (jt === 0) return // No frame deduction needed
+
+    // Adjust height if it was pre-populated to the full finished/rough height
+    const rawHeight = opening.finishedHeight || opening.roughHeight
+    if (rawHeight && componentHeight && Math.abs(parseFloat(componentHeight) - rawHeight) < 0.001 && interiorHeight !== null) {
+      setComponentHeight(interiorHeight.toString())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProductId])
 
   // Real-time validation for add component form
   useEffect(() => {
@@ -4771,7 +4846,8 @@ export default function ProjectDetailView() {
                           ...prev,
                           openingType: type,
                           widthToleranceTotal: null,
-                          heightToleranceTotal: null
+                          heightToleranceTotal: null,
+                          frameProductId: type === 'THINWALL' ? null : prev.frameProductId
                         }))
                       }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
@@ -4781,10 +4857,33 @@ export default function ProjectDetailView() {
                     </select>
                     <p className="text-xs text-gray-500 mt-1">
                       {newOpening.openingType === 'FRAMED'
-                        ? 'A Frame will be automatically added to this opening'
+                        ? 'Select a frame type below'
                         : 'Components will be filtered to show Thinwall products'}
                     </p>
                   </div>
+
+                  {/* 2b. Frame Type (only for FRAMED/Trimmed openings) */}
+                  {newOpening.openingType === 'FRAMED' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Frame Type <span className="text-red-500">*</span></label>
+                      <select
+                        value={newOpening.frameProductId || ''}
+                        onChange={(e) => {
+                          const val = e.target.value ? parseInt(e.target.value) : null
+                          setNewOpening(prev => ({ ...prev, frameProductId: val }))
+                        }}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!newOpening.frameProductId ? 'border-orange-300 text-gray-400' : 'border-gray-300 text-gray-900'}`}
+                      >
+                        <option value="">-- Select Frame --</option>
+                        {frameProducts.map((fp) => (
+                          <option key={fp.id} value={fp.id}>{fp.name}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Select the frame profile for this opening
+                      </p>
+                    </div>
+                  )}
 
                   {/* 3. Extrusion Finish */}
                   <div>
@@ -4944,7 +5043,19 @@ export default function ProjectDetailView() {
                         'FIXED_PANEL': 'Fixed Panels',
                         'CORNER_90': 'Corners'
                       }
-                      const filteredProducts = products.filter(p => p.productType !== 'FRAME')
+                      // Filter by frame assignment for FRAMED openings
+                      const currentOpening = project?.openings.find(o => o.id === selectedOpeningId)
+                      const openingFrameProductId = (currentOpening as any)?.frameProductId
+                      const filteredProducts = products.filter(p => {
+                        if (p.productType === 'FRAME') return false
+                        // CORNER_90 always visible
+                        if (p.productType === 'CORNER_90') return true
+                        // For FRAMED openings with a frame product, filter by frame assignment
+                        if (openingFrameProductId && currentOpening?.openingType === 'FRAMED') {
+                          return p.frameAssignments?.some((a: any) => a.frameProductId === openingFrameProductId)
+                        }
+                        return true
+                      })
                       const groupedProducts = typeOrder.map(type => ({
                         type,
                         label: typeLabels[type],
@@ -5112,7 +5223,15 @@ export default function ProjectDetailView() {
                 const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
                 const remainingWidth = (currentOpening?.finishedWidth || 0) - usedWidth
                 const widthPerPanel = multiPanelCount > 0 ? remainingWidth / multiPanelCount : 0
-                const fixedPanelProducts = products.filter(p => p.productType === 'FIXED_PANEL')
+                const multiOpeningFrameProductId = (currentOpening as any)?.frameProductId
+                const fixedPanelProducts = products.filter(p => {
+                  if (p.productType !== 'FIXED_PANEL') return false
+                  // For FRAMED openings with a frame product, filter by frame assignment
+                  if (multiOpeningFrameProductId && currentOpening?.openingType === 'FRAMED') {
+                    return p.frameAssignments?.some((a: any) => a.frameProductId === multiOpeningFrameProductId)
+                  }
+                  return true
+                })
 
                 return (
                   <div>
@@ -7973,6 +8092,7 @@ export default function ProjectDetailView() {
                   setEditingOpeningRoughHeight('')
                   setEditingOpeningIsFinished(false)
                   setEditingOpeningType('THINWALL')
+                  setEditingOpeningFrameProductId(null)
                 }}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
               >
@@ -8011,6 +8131,24 @@ export default function ProjectDetailView() {
                   ))}
                 </select>
               </div>
+              {/* Frame Type (for FRAMED openings) */}
+              {editingOpeningType === 'FRAMED' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Frame Type
+                  </label>
+                  <select
+                    value={editingOpeningFrameProductId || ''}
+                    onChange={(e) => setEditingOpeningFrameProductId(e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">-- Select Frame --</option>
+                    {frameProducts.map((fp) => (
+                      <option key={fp.id} value={fp.id}>{fp.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {/* Width and Height fields for finished openings */}
               {editingOpeningIsFinished && (
                 <div className="grid grid-cols-2 gap-4">
@@ -8067,6 +8205,7 @@ export default function ProjectDetailView() {
                     setEditingOpeningRoughHeight('')
                     setEditingOpeningIsFinished(false)
                     setEditingOpeningType('THINWALL')
+                    setEditingOpeningFrameProductId(null)
                   }}
                   disabled={isUpdatingOpening}
                   className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"

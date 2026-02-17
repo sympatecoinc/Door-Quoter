@@ -160,6 +160,9 @@ model Opening {
   updatedAt             DateTime  @updatedAt
   project               Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   panels                Panel[]
+  // Opening-level frame product (for FRAMED openings)
+  frameProductId        Int?
+  frameProduct          Product?  @relation("OpeningFrameProduct", fields: [frameProductId], references: [id], onDelete: SetNull)
   // Preset tracking
   presetId              Int?
   preset                OpeningPreset?            @relation(fields: [presetId], references: [id], onDelete: SetNull)
@@ -265,6 +268,11 @@ model Product {
   frameConfigId        Int?                   // ID of FRAME product to auto-add (managed from Frame Config tab)
   frameConfig          Product?               @relation("FrameConfiguration", fields: [frameConfigId], references: [id])
   framedProducts       Product[]              @relation("FrameConfiguration")
+  // Opening-level frame: openings that use this product as their frame
+  openingsAsFrame            Opening[]                @relation("OpeningFrameProduct")
+  // Many-to-many frame assignments (junction table)
+  frameAssignments           ProductFrameAssignment[] @relation("ProductFrameAssignments")
+  assignedToFrames           ProductFrameAssignment[] @relation("FrameProductAssignments")
   // Opening Preset support
   presetPanels         OpeningPresetPanel[]
 
@@ -1845,6 +1853,19 @@ model OpeningPresetPartInstance {
 
   @@unique([openingId, presetPartId])
   @@map("OpeningPresetPartInstances")
+}
+
+// Many-to-many junction table for product-frame assignments
+// Allows a product (e.g., Fixed Panel) to be assigned to multiple frames (e.g., Swing Frame AND Slider Frame)
+model ProductFrameAssignment {
+  id              Int     @id @default(autoincrement())
+  productId       Int
+  frameProductId  Int
+  product         Product @relation("ProductFrameAssignments", fields: [productId], references: [id], onDelete: Cascade)
+  frameProduct    Product @relation("FrameProductAssignments", fields: [frameProductId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, frameProductId])
+  @@map("ProductFrameAssignments")
 }
 
 // ============ ClickUp CRM Sync Models ============
