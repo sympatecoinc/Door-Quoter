@@ -22,6 +22,7 @@ export interface OpeningConstraints {
   finishedWidth: number
   finishedHeight: number
   existingPanelWidths: number[] // Widths of other panels in the opening (exclude current panel when editing)
+  overlap?: number // Sliding door panel overlap allowance in inches (allows total width to exceed opening by this amount)
 }
 
 export interface AutoSizeResult {
@@ -59,12 +60,14 @@ export function validateComponentSize(
   // Calculate total width including this component
   const otherPanelsTotalWidth = opening.existingPanelWidths.reduce((sum, w) => sum + w, 0)
   const totalWidth = otherPanelsTotalWidth + width
+  const overlapAllowance = opening.overlap || 0
+  const effectiveWidth = opening.finishedWidth + overlapAllowance
 
-  // Validate total width against finished opening width
-  if (totalWidth > opening.finishedWidth) {
-    const available = opening.finishedWidth - otherPanelsTotalWidth
+  // Validate total width against finished opening width (plus overlap allowance)
+  if (totalWidth > effectiveWidth) {
+    const available = effectiveWidth - otherPanelsTotalWidth
     errors.push(
-      `Total component width (${totalWidth.toFixed(3)}") exceeds opening finished width (${opening.finishedWidth}"). ` +
+      `Total component width (${totalWidth.toFixed(3)}") exceeds opening allowed width (${effectiveWidth}"). ` +
       `Available space: ${available.toFixed(3)}"`
     )
   }
@@ -113,9 +116,10 @@ export function calculateAutoSize(
   opening: OpeningConstraints,
   product: ProductSizeConstraints
 ): AutoSizeResult {
-  // Calculate available width
+  // Calculate available width (including overlap allowance for sliding doors)
   const usedWidth = opening.existingPanelWidths.reduce((sum, w) => sum + w, 0)
-  let availableWidth = opening.finishedWidth - usedWidth
+  const overlapAllowance = opening.overlap || 0
+  let availableWidth = opening.finishedWidth + overlapAllowance - usedWidth
 
   // Height is always the full finished height (initially)
   let finalHeight = opening.finishedHeight
@@ -125,7 +129,7 @@ export function calculateAutoSize(
     return {
       width: null,
       height: null,
-      error: `No space available - existing components already use ${usedWidth.toFixed(3)}" of ${opening.finishedWidth}" opening width`
+      error: `No space available - existing components already use ${usedWidth.toFixed(3)}" of ${(opening.finishedWidth + overlapAllowance).toFixed(3)}" allowed width`
     }
   }
 

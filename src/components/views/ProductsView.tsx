@@ -20,6 +20,7 @@ interface Product {
   archived: boolean
   installationPrice?: number
   frameConfigId?: number | null
+  overlap?: number | null
   _count: {
     productBOMs: number
     productSubOptions: number
@@ -700,6 +701,8 @@ function FrameConfigurationTab({
   const [expandedFrameId, setExpandedFrameId] = useState<number | null>(null)
   const [savingAssignments, setSavingAssignments] = useState(false)
   const [pendingChanges, setPendingChanges] = useState<Record<number, boolean>>({})
+  const [overlapValues, setOverlapValues] = useState<Record<number, string>>({})
+  const [savingOverlap, setSavingOverlap] = useState<number | null>(null)
 
   const frameProducts = products.filter(p => p.productType === 'FRAME')
   const assignableProducts = products.filter(p => p.productType !== 'FRAME' && !p.archived && p.productCategory === 'TRIMMED')
@@ -795,6 +798,32 @@ function FrameConfigurationTab({
     }
   }
 
+  async function saveOverlap(frameProductId: number) {
+    const value = overlapValues[frameProductId]
+    if (value === undefined) return
+
+    setSavingOverlap(frameProductId)
+    try {
+      const response = await fetch(`/api/products/${frameProductId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ overlap: parseFloat(value) || 0 })
+      })
+      if (response.ok) {
+        setOverlapValues(prev => {
+          const next = { ...prev }
+          delete next[frameProductId]
+          return next
+        })
+        onRefresh()
+      }
+    } catch (error) {
+      console.error('Error saving overlap:', error)
+    } finally {
+      setSavingOverlap(null)
+    }
+  }
+
   const hasPendingChanges = Object.keys(pendingChanges).length > 0
 
   return (
@@ -854,6 +883,36 @@ function FrameConfigurationTab({
                         <span>{frameProduct._count.productBOMs} BOM items</span>
                       </div>
                     </div>
+                    {/* Panel Overlap Allowance */}
+                    <div className="mt-3 flex items-center gap-2">
+                      <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                        Panel Overlap:
+                      </label>
+                      <input
+                        type="number"
+                        step="0.125"
+                        min="0"
+                        value={overlapValues[frameProduct.id] ?? (frameProduct.overlap || 0)}
+                        onChange={(e) => setOverlapValues(prev => ({ ...prev, [frameProduct.id]: e.target.value }))}
+                        className="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                      />
+                      <span className="text-xs text-gray-500">inches</span>
+                      {overlapValues[frameProduct.id] !== undefined && (
+                        <button
+                          onClick={() => saveOverlap(frameProduct.id)}
+                          disabled={savingOverlap === frameProduct.id}
+                          className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {savingOverlap === frameProduct.id ? 'Saving...' : 'Save'}
+                        </button>
+                      )}
+                      {!overlapValues[frameProduct.id] && (frameProduct.overlap || 0) > 0 && (
+                        <span className="text-xs text-amber-600">Active</span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Allows sliding panels to exceed interior opening width by this amount
+                    </p>
                     <div className="mt-3 flex items-center gap-3">
                       <button
                         onClick={(e) => {

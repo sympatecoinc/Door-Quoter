@@ -257,6 +257,7 @@ model Product {
   minHeight            Float?                 // Minimum allowed height (inches)
   maxHeight            Float?                 // Maximum allowed height (inches)
   jambThickness        Float?                 // Profile thickness in inches (FRAME products). Interior = Opening - (2 × jambThickness)
+  overlap              Float?                 @default(0) // Sliding door panel overlap allowance in inches (FRAME products). Allows total panel width to exceed opening by this amount.
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
   componentInstances   ComponentInstance[]

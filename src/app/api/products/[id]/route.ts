@@ -126,6 +126,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       maxHeight,
       frameConfigId,
       jambThickness,
+      overlap,
       frameAssignments // Array of frame product IDs for many-to-many junction table
     } = await request.json()
 
@@ -171,6 +172,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Jamb thickness for FRAME products
     if (jambThickness !== undefined) {
       updateData.jambThickness = jambThickness !== null && jambThickness !== '' ? parseFloat(jambThickness) : null
+    }
+
+    // Overlap allowance for FRAME products (sliding door panel overlap)
+    if (overlap !== undefined) {
+      updateData.overlap = overlap !== null && overlap !== '' ? parseFloat(overlap) : 0
     }
 
     // Frame configuration - which frame product to auto-add when this product is added to an opening

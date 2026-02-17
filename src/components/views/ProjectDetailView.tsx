@@ -262,6 +262,7 @@ export default function ProjectDetailView() {
   const [deletingComponentId, setDeletingComponentId] = useState<number | null>(null)
   const [deletingComponentName, setDeletingComponentName] = useState('')
   const [isDeletingComponent, setIsDeletingComponent] = useState(false)
+  const [isAddingComponent, setIsAddingComponent] = useState(false)
   const [pendingDeletePanelId, setPendingDeletePanelId] = useState<number | null>(null)
   const [expandedCostOpeningId, setExpandedCostOpeningId] = useState<number | null>(null)
   const [showEditOpeningModal, setShowEditOpeningModal] = useState(false)
@@ -2862,6 +2863,7 @@ export default function ProjectDetailView() {
 
   async function handleAddComponent() {
     if (!selectedOpeningId || !selectedProductId) return
+    if (isAddingComponent) return
 
     // Client-side validation first
     if (!validateComponentDimensions()) {
@@ -2897,6 +2899,7 @@ export default function ProjectDetailView() {
     // For FRAME products, always use 'N/A' glass type
     const effectiveGlassType = isFrame ? 'N/A' : glassType
 
+    setIsAddingComponent(true)
     try {
       // First create a default panel for this component
       const panelResponse = await fetch('/api/panels', {
@@ -3004,13 +3007,17 @@ export default function ProjectDetailView() {
     } catch (error) {
       console.error('Error adding component:', error)
       alert('Error adding component')
+    } finally {
+      setIsAddingComponent(false)
     }
   }
 
   // Handler for adding multiple panels at once
   async function handleAddMultiplePanels() {
     if (!selectedOpeningId || !selectedProductId || multiPanelConfigs.length === 0) return
+    if (isAddingComponent) return
 
+    setIsAddingComponent(true)
     try {
       // Loop through all panel configs and create each panel
       for (const config of multiPanelConfigs) {
@@ -3115,6 +3122,8 @@ export default function ProjectDetailView() {
     } catch (error) {
       console.error('Error adding multiple panels:', error)
       showError('Error adding panels')
+    } finally {
+      setIsAddingComponent(false)
     }
   }
 
@@ -7190,6 +7199,8 @@ export default function ProjectDetailView() {
               <button
                 onClick={addComponentMode === 'multiple' ? handleAddMultiplePanels : handleAddComponent}
                 disabled={(() => {
+                  if (isAddingComponent) return true
+
                   // Multi-panel mode validation
                   if (addComponentMode === 'multiple') {
                     if (addComponentStep !== 'ready') return true
@@ -7232,7 +7243,7 @@ export default function ProjectDetailView() {
                     : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
-                {addComponentMode === 'multiple' ? `Add ${multiPanelCount} Panels` : 'Add Component'}
+                {isAddingComponent ? 'Adding...' : addComponentMode === 'multiple' ? `Add ${multiPanelCount} Panels` : 'Add Component'}
               </button>
             </div>
           </div>
