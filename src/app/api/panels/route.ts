@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
               componentInstance: {
                 select: {
                   product: {
-                    select: { productType: true, jambThickness: true }
+                    select: { productType: true, jambThickness: true, overlap: true }
                   }
                 }
               }
@@ -100,26 +100,31 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      // Detect FRAME panel and compute interior dimensions for validation
+      // Detect FRAME panel and compute interior dimensions + overlap for validation
       let jambThickness = 0
+      let frameOverlap = 0
       if (opening?.panels) {
         for (const p of opening.panels) {
           if (p.componentInstance?.product?.productType === 'FRAME' &&
               p.componentInstance.product.jambThickness) {
             jambThickness = p.componentInstance.product.jambThickness
+            frameOverlap = p.componentInstance.product.overlap || 0
             break
           }
         }
       }
 
-      // If no existing frame panel, check opening-level frameProductId for jambThickness
+      // If no existing frame panel, check opening-level frameProductId for jambThickness + overlap
       if (jambThickness === 0 && opening?.frameProductId) {
         const frameProduct = await prisma.product.findUnique({
           where: { id: opening.frameProductId },
-          select: { jambThickness: true }
+          select: { jambThickness: true, overlap: true }
         })
         if (frameProduct?.jambThickness) {
           jambThickness = frameProduct.jambThickness
+        }
+        if (frameProduct?.overlap) {
+          frameOverlap = frameProduct.overlap
         }
       }
 
@@ -187,7 +192,8 @@ export async function POST(request: NextRequest) {
             {
               finishedWidth: constraintWidth,
               finishedHeight: constraintHeight,
-              existingPanelWidths: existingWidths
+              existingPanelWidths: existingWidths,
+              overlap: frameOverlap
             },
             productConstraints
           )
