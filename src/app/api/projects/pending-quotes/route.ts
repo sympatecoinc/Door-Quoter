@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
 // GET - List projects with QUOTE_ACCEPTED status that don't have sales orders
+// Excludes projects where a sibling/parent version already has an active SO
 export async function GET() {
   try {
     const pendingQuotes = await prisma.project.findMany({
@@ -43,8 +44,33 @@ export async function GET() {
       orderBy: { updatedAt: 'desc' }
     })
 
+    // Filter out projects where a family member already has an active SO
+    // (these should go through the Change Order / New SO choice flow instead)
+    const filteredQuotes = []
+    for (const project of pendingQuotes) {
+      const rootProjectId = project.parentProjectId || project.id
+
+      const familySO = await prisma.salesOrder.findFirst({
+        where: {
+          project: {
+            OR: [
+              { id: rootProjectId },
+              { parentProjectId: rootProjectId }
+            ],
+            id: { not: project.id }
+          },
+          status: { notIn: ['VOIDED', 'CANCELLED'] }
+        },
+        select: { id: true }
+      })
+
+      if (!familySO) {
+        filteredQuotes.push(project)
+      }
+    }
+
     // Calculate total value for each project from the quote
-    const projectsWithTotals = pendingQuotes.map(project => {
+    const projectsWithTotals = filteredQuotes.map(project => {
       // Use the quote total - if QUOTE_ACCEPTED, a quote must exist
       const latestQuote = project.quoteVersions?.[0]
       const totalValue = latestQuote?.totalPrice ? Number(latestQuote.totalPrice) : 0

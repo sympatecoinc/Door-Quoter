@@ -255,6 +255,18 @@ export async function createProjectRevision(
       }
     })
 
+    // Re-point any DRAFT sales orders from the old project to the new revision
+    // This keeps the "Pending from Quotes" list showing the newest revision
+    await prisma.salesOrder.updateMany({
+      where: {
+        projectId: sourceProjectId,
+        status: 'DRAFT'
+      },
+      data: {
+        projectId: newProject.id
+      }
+    })
+
     return {
       success: true,
       revision: {

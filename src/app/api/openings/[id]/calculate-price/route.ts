@@ -781,6 +781,10 @@ export async function POST(
       framedWidthTolerance: tolMap.get('tolerance.framed.width') ?? 0.5,
       framedHeightTolerance: tolMap.get('tolerance.framed.height') ?? 0.75,
     }
+    const thinwallDefaults = {
+      thinwallWidthTolerance: tolMap.get('tolerance.thinwall.width') ?? 1.0,
+      thinwallHeightTolerance: tolMap.get('tolerance.thinwall.height') ?? 1.5,
+    }
 
     // Auto-update frame panel dimensions to match full opening dimensions
     // This ensures frames resize when opening dimensions change
@@ -876,11 +880,36 @@ export async function POST(
       const heightTol = opening.heightToleranceTotal ?? framedDefaults.framedHeightTolerance
       calcOpeningWidth = opening.roughWidth - widthTol
       calcOpeningHeight = (opening.roughHeight ?? 0) - heightTol
+    } else if (opening.openingType === 'THINWALL' && opening.finishedWidth) {
+      // THINWALL: finishedWidth is the actual opening; subtract tolerance for panel sizing
+      const widthTol = opening.widthToleranceTotal ?? thinwallDefaults.thinwallWidthTolerance
+      const heightTol = opening.heightToleranceTotal ?? thinwallDefaults.thinwallHeightTolerance
+      calcOpeningWidth = opening.finishedWidth - widthTol
+      calcOpeningHeight = (opening.finishedHeight ?? calcOpeningHeight) - heightTol
     } else if (opening.finishedWidth) {
-      // Finished openings: use pre-calculated finishedWidth (already has tolerance)
+      // Fallback: use finishedWidth directly
       calcOpeningWidth = opening.finishedWidth
       calcOpeningHeight = opening.finishedHeight ?? calcOpeningHeight
     }
+
+    // Fallback: derive opening dimensions from component panels if no explicit dims
+    if (calcOpeningWidth === 0 || calcOpeningHeight === 0) {
+      const nonFramePanels = opening.panels.filter(
+        (p: any) => p.componentInstance?.product?.productType !== 'FRAME'
+      )
+      if (nonFramePanels.length > 0) {
+        const totalPanelWidth = nonFramePanels.reduce((sum: number, p: any) => sum + p.width, 0)
+        const maxPanelHeight = Math.max(...nonFramePanels.map((p: any) => p.height))
+
+        if (totalPanelWidth > 0 && calcOpeningWidth === 0) {
+          calcOpeningWidth = totalPanelWidth
+        }
+        if (maxPanelHeight > 0 && calcOpeningHeight === 0) {
+          calcOpeningHeight = maxPanelHeight
+        }
+      }
+    }
+
     const interiorWidth = jambThickness > 0 ? calcOpeningWidth - (2 * jambThickness) : calcOpeningWidth
     const interiorHeight = jambThickness > 0 ? calcOpeningHeight - jambThickness : calcOpeningHeight
 

@@ -5,7 +5,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
 
 // Direction options are now loaded dynamically from product plan views
-import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive, X, ChevronDown, Receipt, Check, Lock, GitBranch, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Edit, Plus, Eye, Trash2, Settings, FileText, Download, Copy, Archive, X, ChevronDown, Receipt, Check, Lock, GitBranch, AlertTriangle, CheckCircle } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { ToastContainer } from '../ui/Toast'
 import { useToast } from '../../hooks/useToast'
@@ -14,6 +14,7 @@ import { useNewShortcut } from '../../hooks/useKeyboardShortcut'
 import DrawingViewer from '../ui/DrawingViewer'
 import ConfirmModal from '../ui/ConfirmModal'
 import { ProjectStatus, STATUS_CONFIG, isProjectLocked, ProjectVersion, ProjectVersionsResponse, getStatusLabel, OpeningPreset } from '@/types'
+import { getEffectiveOpeningSize } from '@/lib/opening-dimensions'
 
 // Natural sort comparison for opening names (handles "2" before "10", "Office 1" before "Office 10")
 function naturalSortCompare(a: string, b: string): number {
@@ -113,6 +114,7 @@ interface Panel {
       minHeight?: number | null
       maxHeight?: number | null
       jambThickness?: number | null
+      overlap?: number | null
       productBOMs?: {
         id: number
         updatedAt: string
@@ -384,6 +386,7 @@ export default function ProjectDetailView() {
   const [editComponentProductBOMs, setEditComponentProductBOMs] = useState<any[]>([])
   const [includedOptions, setIncludedOptions] = useState<number[]>([]) // Hardware options marked as included (no charge)
   const [variantSelections, setVariantSelections] = useState<Record<string, number>>({}) // { [optionId]: variantId }
+  const [optionConfirmations, setOptionConfirmations] = useState<Record<number, boolean>>({})
   const [editingComponentWidth, setEditingComponentWidth] = useState<string>('')
   const [editingComponentHeight, setEditingComponentHeight] = useState<string>('')
   const [editWidthDivisor, setEditWidthDivisor] = useState<string>('1')
@@ -493,15 +496,17 @@ export default function ProjectDetailView() {
 
   // Helper to get jambThickness from FRAME panel in an opening and compute interior dims.
   // Checks: 1) existing FRAME panels, 2) opening.frameProductId, 3) selectedProduct.frameConfig (legacy)
-  function getInteriorDimensions(opening: Opening | undefined, selectedProduct?: any): { interiorWidth: number | null; interiorHeight: number | null; jambThickness: number } {
-    if (!opening) return { interiorWidth: null, interiorHeight: null, jambThickness: 0 }
+  function getInteriorDimensions(opening: Opening | undefined, selectedProduct?: any): { interiorWidth: number | null; interiorHeight: number | null; jambThickness: number; frameOverlap: number } {
+    if (!opening) return { interiorWidth: null, interiorHeight: null, jambThickness: 0, frameOverlap: 0 }
 
     let jt = 0
+    let fo = 0
     // First check existing FRAME panels in the opening
     for (const p of opening.panels || []) {
       if (p.componentInstance?.product?.productType === 'FRAME' &&
           p.componentInstance.product.jambThickness) {
         jt = p.componentInstance.product.jambThickness
+        fo = p.componentInstance.product.overlap || 0
         break
       }
     }
@@ -511,6 +516,9 @@ export default function ProjectDetailView() {
       const frameProduct = products.find(p => p.id === (opening as any).frameProductId)
       if (frameProduct?.jambThickness) {
         jt = frameProduct.jambThickness
+      }
+      if (frameProduct?.overlap) {
+        fo = frameProduct.overlap
       }
     }
 
@@ -530,11 +538,19 @@ export default function ProjectDetailView() {
       h = (opening.roughHeight ?? 0) - heightTol
     }
 
-    if (jt > 0 && w && h) {
-      return { interiorWidth: w - (2 * jt), interiorHeight: h - jt, jambThickness: jt }
+    // For THINWALL openings, apply tolerance to get panel constraint dimensions
+    if (opening.openingType === 'THINWALL' && w && h) {
+      const widthTol = opening.widthToleranceTotal ?? toleranceDefaults.thinwallWidthTolerance
+      const heightTol = opening.heightToleranceTotal ?? toleranceDefaults.thinwallHeightTolerance
+      w = w - widthTol
+      h = h - heightTol
     }
 
-    return { interiorWidth: w || null, interiorHeight: h || null, jambThickness: 0 }
+    if (jt > 0 && w && h) {
+      return { interiorWidth: w - (2 * jt), interiorHeight: h - jt, jambThickness: jt, frameOverlap: fo }
+    }
+
+    return { interiorWidth: w || null, interiorHeight: h || null, jambThickness: 0, frameOverlap: fo }
   }
 
   // Handle back navigation
@@ -1986,22 +2002,62 @@ export default function ProjectDetailView() {
         }
         const newFinishedWidth = newRoughWidth - widthTolerance
         const newFinishedHeight = newRoughHeight - heightTolerance
+
+        // For FRAMED openings, account for jamb thickness to get interior dimensions
+        // Components live inside the frame, not at full finished dimensions
+        let jambThickness = 0
+        if (editingOpeningType === 'FRAMED') {
+          // Check existing FRAME panels for jambThickness
+          for (const p of opening.panels || []) {
+            if (p.componentInstance?.product?.productType === 'FRAME' &&
+                p.componentInstance.product.jambThickness) {
+              jambThickness = p.componentInstance.product.jambThickness
+              break
+            }
+          }
+          // Fallback: check opening-level frameProductId
+          if (jambThickness === 0) {
+            const fpId = editingOpeningFrameProductId || (opening as any).frameProductId
+            if (fpId) {
+              const frameProduct = products.find(p => p.id === fpId)
+              if (frameProduct?.jambThickness) {
+                jambThickness = frameProduct.jambThickness
+              }
+            }
+          }
+        }
+
+        // Component dimensions: interior (jamb-adjusted) for FRAMED, finished for others
+        const componentTargetWidth = jambThickness > 0
+          ? newFinishedWidth - (2 * jambThickness)
+          : newFinishedWidth
+        const componentTargetHeight = jambThickness > 0
+          ? newFinishedHeight - jambThickness
+          : newFinishedHeight
+
+        // Get current interior dimensions for diff calculation
         const currentFinishedWidth = opening.finishedWidth || 0
         const currentFinishedHeight = opening.finishedHeight || 0
+        const currentComponentWidth = jambThickness > 0
+          ? currentFinishedWidth - (2 * jambThickness)
+          : currentFinishedWidth
+        const currentComponentHeight = jambThickness > 0
+          ? currentFinishedHeight - jambThickness
+          : currentFinishedHeight
 
         // Calculate total component width
         const totalComponentWidth = resizablePanels.reduce((sum, p) => sum + p.width, 0)
 
-        // Determine if components exceed new opening width (requires adjustment)
-        const componentsExceedOpening = totalComponentWidth > newFinishedWidth + 0.001
+        // Determine if components exceed new interior width (requires adjustment)
+        const componentsExceedOpening = totalComponentWidth > componentTargetWidth + 0.001
 
         // Show redistribution modal
         setSizeRedistributionData({
           openingId: editingOpeningId,
-          widthDiff: newFinishedWidth - currentFinishedWidth,
-          heightDiff: newFinishedHeight - currentFinishedHeight,
-          newWidth: newFinishedWidth,
-          newHeight: newFinishedHeight,
+          widthDiff: componentTargetWidth - currentComponentWidth,
+          heightDiff: componentTargetHeight - currentComponentHeight,
+          newWidth: componentTargetWidth,
+          newHeight: componentTargetHeight,
           totalComponentWidth,
           panels: resizablePanels.map((p, idx) => ({
             id: p.id,
@@ -2302,6 +2358,7 @@ export default function ProjectDetailView() {
       setAddComponentOptions([])
       setAddComponentSelectedOptions({})
       setAddComponentOptionQuantities({})
+      setOptionConfirmations({})
       setAddComponentStep('product')
       setCurrentMandatoryOptionIndex(0)
 
@@ -2374,13 +2431,16 @@ export default function ProjectDetailView() {
     // Also proactively accounts for frames that will be auto-added via the selected product's frameConfig
     let constraintWidth = effectiveDimensions.width
     let constraintHeight = effectiveDimensions.height
-    const { interiorWidth, interiorHeight } = getInteriorDimensions(opening, selectedProduct)
+    const { interiorWidth, interiorHeight, frameOverlap } = getInteriorDimensions(opening, selectedProduct)
     if (interiorWidth !== null) {
       constraintWidth = interiorWidth
     }
     if (interiorHeight !== null) {
       constraintHeight = interiorHeight
     }
+
+    // Add frame overlap allowance (allows total panel width to exceed interior by this amount)
+    const effectiveConstraintWidth = constraintWidth + frameOverlap
 
     const width = parseFloat(componentWidth) || 0
     const height = parseFloat(componentHeight) || 0
@@ -2402,9 +2462,9 @@ export default function ProjectDetailView() {
     const existingWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
     const totalWidth = existingWidth + (width * quantity)
 
-    if (totalWidth > constraintWidth) {
-      const available = constraintWidth - existingWidth
-      errors.push(`Total width (${totalWidth.toFixed(3)}") exceeds opening interior width (${constraintWidth}"). Available: ${available.toFixed(3)}"`)
+    if (totalWidth > effectiveConstraintWidth) {
+      const available = effectiveConstraintWidth - existingWidth
+      errors.push(`Total width (${totalWidth.toFixed(3)}") exceeds opening allowed width (${effectiveConstraintWidth}"). Available: ${available.toFixed(3)}"`)
     }
 
     // Product min/max constraints
@@ -2442,14 +2502,16 @@ export default function ProjectDetailView() {
     // Also proactively accounts for frames that will be auto-added via the selected product's frameConfig
     let constraintWidth = effectiveDimensions.width
     let constraintHeight = effectiveDimensions.height
+    let autoSizeOverlap = 0
     if (selectedProduct?.productType !== 'FRAME') {
-      const { interiorWidth, interiorHeight } = getInteriorDimensions(opening, selectedProduct)
+      const { interiorWidth, interiorHeight, frameOverlap: asOverlap } = getInteriorDimensions(opening, selectedProduct)
       if (interiorWidth !== null) {
         constraintWidth = interiorWidth
       }
       if (interiorHeight !== null) {
         constraintHeight = interiorHeight
       }
+      autoSizeOverlap = asOverlap
     }
 
     // Calculate existing panel widths (exclude corners and frames)
@@ -2459,7 +2521,7 @@ export default function ProjectDetailView() {
       p.componentInstance.product?.productType !== 'FRAME'
     )
     const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
-    let availableWidth = constraintWidth - usedWidth
+    let availableWidth = constraintWidth + autoSizeOverlap - usedWidth
     let finalHeight = constraintHeight
 
     if (availableWidth <= 0) {
@@ -2507,11 +2569,13 @@ export default function ProjectDetailView() {
     // Use interior width when a frame with jambThickness exists (for non-FRAME products)
     // Also proactively accounts for frames that will be auto-added via the selected product's frameConfig
     let constraintWidth = effectiveDimensions.width
+    let calcAutoOverlap = 0
     if (selectedProduct?.productType !== 'FRAME') {
-      const { interiorWidth } = getInteriorDimensions(opening, selectedProduct)
+      const { interiorWidth, frameOverlap: caOverlap } = getInteriorDimensions(opening, selectedProduct)
       if (interiorWidth !== null) {
         constraintWidth = interiorWidth
       }
+      calcAutoOverlap = caOverlap
     }
 
     // Calculate existing panel widths (exclude corners and frames)
@@ -2521,7 +2585,7 @@ export default function ProjectDetailView() {
       p.componentInstance.product?.productType !== 'FRAME'
     )
     const usedWidth = existingPanels.reduce((sum, p) => sum + (p.width || 0), 0)
-    let availableWidth = constraintWidth - usedWidth
+    let availableWidth = constraintWidth + calcAutoOverlap - usedWidth
 
     if (availableWidth <= 0) {
       return { width: null, error: `No space available - existing components use ${usedWidth.toFixed(3)}" of ${constraintWidth}" opening width` }
@@ -2615,13 +2679,16 @@ export default function ProjectDetailView() {
     }
 
     // Use interior dimensions when a frame with jambThickness exists (matches backend validation)
-    const { interiorWidth, interiorHeight } = getInteriorDimensions(currentOpening)
+    const { interiorWidth, interiorHeight, frameOverlap: editFrameOverlap } = getInteriorDimensions(currentOpening)
     if (interiorWidth !== null) {
       constraintWidth = interiorWidth
     }
     if (interiorHeight !== null) {
       constraintHeight = interiorHeight
     }
+
+    // Add frame overlap allowance (allows total panel width to exceed interior by this amount)
+    const effectiveEditConstraintWidth = constraintWidth + editFrameOverlap
 
     const width = parseFloat(editingComponentWidth) || 0
     const height = parseFloat(editingComponentHeight) || 0
@@ -2642,9 +2709,9 @@ export default function ProjectDetailView() {
     const otherWidth = otherPanels.reduce((sum, p) => sum + (p.width || 0), 0)
     const totalWidth = otherWidth + width
 
-    if (totalWidth > constraintWidth) {
-      const available = constraintWidth - otherWidth
-      errors.push(`Total width (${totalWidth.toFixed(3)}") exceeds opening interior width (${constraintWidth}"). Available: ${available.toFixed(3)}"`)
+    if (totalWidth > effectiveEditConstraintWidth) {
+      const available = effectiveEditConstraintWidth - otherWidth
+      errors.push(`Total width (${totalWidth.toFixed(3)}") exceeds opening allowed width (${effectiveEditConstraintWidth}"). Available: ${available.toFixed(3)}"`)
     }
 
     // Product min/max constraints
@@ -2680,14 +2747,16 @@ export default function ProjectDetailView() {
     }
 
     // Use interior dimensions when a frame with jambThickness exists (for non-FRAME products)
+    let editAutoOverlap = 0
     if (selectedProduct?.productType !== 'FRAME') {
-      const { interiorWidth, interiorHeight } = getInteriorDimensions(currentOpening)
+      const { interiorWidth, interiorHeight, frameOverlap: eaOverlap } = getInteriorDimensions(currentOpening)
       if (interiorWidth !== null) {
         constraintWidth = interiorWidth
       }
       if (interiorHeight !== null) {
         constraintHeight = interiorHeight
       }
+      editAutoOverlap = eaOverlap
     }
 
     // Calculate available width (excluding current panel)
@@ -2697,7 +2766,7 @@ export default function ProjectDetailView() {
       p.componentInstance?.product?.productType !== 'FRAME'
     )
     const usedWidth = otherPanels.reduce((sum, p) => sum + (p.width || 0), 0)
-    let availableWidth = constraintWidth - usedWidth
+    let availableWidth = constraintWidth + editAutoOverlap - usedWidth
     let finalHeight = constraintHeight
 
     if (availableWidth <= 0) {
@@ -2745,11 +2814,13 @@ export default function ProjectDetailView() {
     }
 
     // Use interior width when a frame with jambThickness exists (for non-FRAME products)
+    let editAutoWidthOverlap = 0
     if (selectedProduct?.productType !== 'FRAME') {
-      const { interiorWidth } = getInteriorDimensions(currentOpening)
+      const { interiorWidth, frameOverlap: eawOverlap } = getInteriorDimensions(currentOpening)
       if (interiorWidth !== null) {
         constraintWidth = interiorWidth
       }
+      editAutoWidthOverlap = eawOverlap
     }
 
     // Calculate available width (excluding current panel)
@@ -2759,7 +2830,7 @@ export default function ProjectDetailView() {
       p.componentInstance?.product?.productType !== 'FRAME'
     )
     const usedWidth = otherPanels.reduce((sum, p) => sum + (p.width || 0), 0)
-    const totalAvailableWidth = constraintWidth - usedWidth
+    const totalAvailableWidth = constraintWidth + editAutoWidthOverlap - usedWidth
 
     if (totalAvailableWidth <= 0) {
       showError(`No space available - other components use ${usedWidth.toFixed(3)}" of ${constraintWidth}" opening width`)
@@ -2990,6 +3061,7 @@ export default function ProjectDetailView() {
       setAddComponentSelectedOptions({})
       setAddComponentOptionQuantities({})
       setVariantSelections({})
+      setOptionConfirmations({})
 
       // Recalculate opening price
       if (selectedOpeningId) {
@@ -3094,6 +3166,7 @@ export default function ProjectDetailView() {
       setAddComponentSelectedOptions({})
       setAddComponentOptionQuantities({})
       setVariantSelections({})
+      setOptionConfirmations({})
       // Reset multi-panel state
       setAddComponentMode(null)
       setMultiPanelCount(2)
@@ -3770,7 +3843,7 @@ export default function ProjectDetailView() {
             </span>
           )}
           {/* Create Revision button - only shown when project is locked and viewing current version (not for QUOTE_ACCEPTED) */}
-          {isViewingCurrentVersion && projectIsLocked && project.status !== 'QUOTE_ACCEPTED' && (
+          {isViewingCurrentVersion && projectIsLocked && project.status !== 'QUOTE_ACCEPTED' && project.status !== 'QUOTE_SENT' && (
             <button
               onClick={handleCreateRevision}
               disabled={creatingRevision}
@@ -3798,7 +3871,7 @@ export default function ProjectDetailView() {
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
             }`}
-            title={projectIsLocked ? 'Project is locked. Create a revision to add openings.' : 'Add a new opening'}
+            title={projectIsLocked ? (project.status === 'QUOTE_SENT' ? 'Project is locked. Change status to an editable status to add openings.' : 'Project is locked. Create a revision to add openings.') : 'Add a new opening'}
           >
             <Plus className="w-5 h-5 mr-2" />
             Add Opening
@@ -3881,11 +3954,18 @@ export default function ProjectDetailView() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
-                    {opening.roughWidth && opening.roughHeight && (
-                      <span>
-{`${opening.openingType === 'THINWALL' ? 'Finished' : 'Rough'} Opening Size: ${opening.roughWidth}" W × ${opening.roughHeight}" H`}
-                      </span>
-                    )}
+                    {(() => {
+                      const size = getEffectiveOpeningSize(opening, toleranceDefaults)
+                      if (size) {
+                        return (
+                          <span>
+                            {`${size.label} Opening Size: ${size.displayWidth}" W × ${size.displayHeight}" H`}
+                            {size.isCalculated && <span className="text-gray-400 ml-1">(calculated)</span>}
+                          </span>
+                        )
+                      }
+                      return null
+                    })()}
                     {(() => {
                       const { interiorWidth, interiorHeight, jambThickness: jt } = getInteriorDimensions(opening)
                       if (jt > 0 && interiorWidth && interiorHeight) {
@@ -5150,13 +5230,10 @@ export default function ProjectDetailView() {
                         }
                         // Include dimensions if specified
                         if (newOpening.isFinishedOpening && newOpening.roughWidth && newOpening.roughHeight) {
-                          const width = parseFloat(newOpening.roughWidth)
-                          const height = parseFloat(newOpening.roughHeight)
-                          updateBody.roughWidth = width
-                          updateBody.roughHeight = height
-                          updateBody.finishedWidth = width
-                          updateBody.finishedHeight = height
+                          updateBody.roughWidth = parseFloat(newOpening.roughWidth)
+                          updateBody.roughHeight = parseFloat(newOpening.roughHeight)
                           updateBody.isFinishedOpening = true
+                          // finishedWidth/Height calculated by PUT handler using tolerance logic
                         }
                         if (Object.keys(updateBody).length > 0) {
                           try {
@@ -5372,6 +5449,7 @@ export default function ProjectDetailView() {
                       setAddComponentOptions([])
                       setAddComponentSelectedOptions({})
                       setVariantSelections({})
+                      setOptionConfirmations({})
                     }}
                     className="mb-4 text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
                   >
@@ -5451,6 +5529,7 @@ export default function ProjectDetailView() {
                           setAddComponentOptions([])
                           setAddComponentSelectedOptions({})
                           setVariantSelections({})
+                          setOptionConfirmations({})
                         }
 
                         // Auto-calculate width and height based on opening dimensions and product tolerances
@@ -5597,6 +5676,7 @@ export default function ProjectDetailView() {
                         setAddComponentOptions([])
                         setAddComponentSelectedOptions({})
                         setVariantSelections({})
+                        setOptionConfirmations({})
                         setMultiPanelCount(2)
                         setMultiPanelCountInput('2')
                         setMultiPanelConfigs([])
@@ -6748,6 +6828,7 @@ export default function ProjectDetailView() {
                                     setAddComponentOptionQuantities(newQuantities)
                                   }
                                 }
+                                setOptionConfirmations(prev => ({ ...prev, [currentOption.category.id]: true }))
                               }}
                             >
                               <div className={`${isRangeMode || hasVariants ? 'flex-1' : 'w-full'} relative`}>
@@ -6880,6 +6961,7 @@ export default function ProjectDetailView() {
                                       [String(selectedOptionId)]: value
                                     })
                                   }
+                                  setOptionConfirmations(prev => ({ ...prev, [currentOption.category.id]: true }))
                                 }}
                               >
                                 <div className="relative w-56">
@@ -6929,6 +7011,34 @@ export default function ProjectDetailView() {
                             <p className="text-xs text-gray-500">
                               Select quantity ({optionBom.minQuantity}-{optionBom.maxQuantity})
                             </p>
+                          )}
+                          {currentOption.standardOptionId && selectedOptionId === currentOption.standardOptionId && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <button
+                                type="button"
+                                onClick={() => setOptionConfirmations(prev => ({
+                                  ...prev, [currentOption.category.id]: true
+                                }))}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                                  optionConfirmations[currentOption.category.id]
+                                    ? 'bg-green-100 text-green-700 border border-green-300 cursor-default'
+                                    : `border-2 border-dashed cursor-pointer hover:border-solid ${
+                                        isMultiPanelMode
+                                          ? 'border-green-400 text-green-600 hover:bg-green-50'
+                                          : 'border-blue-400 text-blue-600 hover:bg-blue-50'
+                                      }`
+                                }`}
+                                disabled={!!optionConfirmations[currentOption.category.id]}
+                              >
+                                {optionConfirmations[currentOption.category.id] ? (
+                                  <><CheckCircle className="w-3.5 h-3.5" /> Default confirmed</>
+                                ) : (
+                                  <><div className={`w-3.5 h-3.5 rounded-full border-2 ${
+                                    isMultiPanelMode ? 'border-green-400' : 'border-blue-400'
+                                  }`} /> Confirm default selection</>
+                                )}
+                              </button>
+                            </div>
                           )}
                           <div className="flex justify-between pt-2">
                             <button
@@ -6980,6 +7090,7 @@ export default function ProjectDetailView() {
                                       })
                                       setCurrentPanelIndex(currentPanelIndex + 1)
                                       setCurrentMandatoryOptionIndex(0)
+                                      setOptionConfirmations({})
                                     } else {
                                       // Last panel done - save and go to ready
                                       setMultiPanelConfigs(prev => {
@@ -7003,7 +7114,8 @@ export default function ProjectDetailView() {
                               }}
                               disabled={
                                 (currentOption.isMandatory && addComponentSelectedOptions[currentOption.category.id] === undefined) ||
-                                (hasVariants && !variantSelections[String(selectedOptionId)])
+                                (hasVariants && !variantSelections[String(selectedOptionId)]) ||
+                                (currentOption.standardOptionId && selectedOptionId === currentOption.standardOptionId && !optionConfirmations[currentOption.category.id])
                               }
                               className={`px-4 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${
                                 isMultiPanelMode ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
@@ -7179,6 +7291,7 @@ export default function ProjectDetailView() {
                   setAddComponentOptions([])
                   setAddComponentSelectedOptions({})
                   setAddComponentOptionQuantities({})
+                  setOptionConfirmations({})
                   // Reset wizard state
                   setAddComponentStep('product')
                   setCurrentMandatoryOptionIndex(0)
@@ -8780,7 +8893,7 @@ export default function ProjectDetailView() {
             {sizeRedistributionData.heightDiff !== 0 && (
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-6">
                 <p className="text-sm text-gray-600">
-                  <span className="font-medium">Note:</span> All component heights will be updated to {sizeRedistributionData.newHeight.toFixed(3)}" to match the new opening height.
+                  <span className="font-medium">Note:</span> All component heights will be updated to {sizeRedistributionData.newHeight.toFixed(3)}" to match the new interior height.
                 </p>
               </div>
             )}
@@ -8823,54 +8936,61 @@ export default function ProjectDetailView() {
             </h3>
 
             <p className="text-sm text-gray-600 mb-4">
-              This project is in <strong>{project?.status === 'QUOTE_ACCEPTED' ? 'Quote Accepted' : project?.status}</strong> status and is locked for editing.
+              This project is in <strong>{project?.status === 'QUOTE_ACCEPTED' ? 'Quote Accepted' : project?.status === 'QUOTE_SENT' ? 'Quote Sent' : project?.status}</strong> status and is locked for editing.
             </p>
 
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
               <p className="text-sm text-amber-700">
-                You attempted to {pendingActionDescription}. To make changes, you can either:
+                {project?.status === 'QUOTE_SENT'
+                  ? `You attempted to ${pendingActionDescription}. Change the status back to Preparing Quote or another editable status to make changes.`
+                  : `You attempted to ${pendingActionDescription}. To make changes, you can either:`
+                }
               </p>
             </div>
 
-            <div className="space-y-3 mb-6">
-              <div className="p-3 border border-gray-200 rounded-lg bg-gray-50">
-                <h4 className="font-medium text-gray-900 flex items-center">
-                  <GitBranch className="w-4 h-4 mr-2 text-amber-600" />
-                  Create a Revision (Recommended)
-                </h4>
-                <p className="text-sm text-gray-600 mt-1">
-                  Creates a new editable copy while preserving this version as read-only history.
-                </p>
+            {project?.status !== 'QUOTE_SENT' && (
+              <div className="space-y-3 mb-6">
+                <div className="p-3 border border-gray-200 rounded-lg bg-gray-50">
+                  <h4 className="font-medium text-gray-900 flex items-center">
+                    <GitBranch className="w-4 h-4 mr-2 text-amber-600" />
+                    Create a Revision (Recommended)
+                  </h4>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Creates a new editable copy while preserving this version as read-only history.
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="flex justify-end space-x-3">
               <button
                 onClick={handleCancelQuoteAcceptedEdit}
                 className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                {project?.status === 'QUOTE_SENT' ? 'OK' : 'Cancel'}
               </button>
-              <button
-                onClick={() => {
-                  handleCancelQuoteAcceptedEdit()
-                  handleCreateRevision()
-                }}
-                disabled={creatingRevision}
-                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 flex items-center"
-              >
-                {creatingRevision ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <GitBranch className="w-4 h-4 mr-2" />
-                    Create Revision
-                  </>
-                )}
-              </button>
+              {project?.status !== 'QUOTE_SENT' && (
+                <button
+                  onClick={() => {
+                    handleCancelQuoteAcceptedEdit()
+                    handleCreateRevision()
+                  }}
+                  disabled={creatingRevision}
+                  className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 flex items-center"
+                >
+                  {creatingRevision ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <GitBranch className="w-4 h-4 mr-2" />
+                      Create Revision
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

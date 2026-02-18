@@ -66,6 +66,7 @@ export async function GET(
                         minHeight: true,
                         maxHeight: true,
                         jambThickness: true,
+                        overlap: true,
                         productBOMs: {
                           select: {
                             id: true,
@@ -469,15 +470,15 @@ export async function PUT(
       if (status && status !== currentProject.status && isProjectStatus(currentProject.status as any)) {
         const hasActiveSO = currentProject._count.salesOrders > 0
 
-        // Block ALL status changes when project has active sales orders
-        if (hasActiveSO) {
+        // Block status changes when project has active sales orders (except ARCHIVE)
+        if (hasActiveSO && status !== ProjectStatus.ARCHIVE) {
           throw new Error('Cannot change status: this project has an active Sales Order.')
         }
 
-        // Only allow ACTIVE, COMPLETE, or REVISE from project phase
-        const allowedProjectTransitions = [ProjectStatus.ACTIVE, ProjectStatus.COMPLETE, ProjectStatus.REVISE]
+        // Only allow ACTIVE, COMPLETE, REVISE, or ARCHIVE from project phase
+        const allowedProjectTransitions = [ProjectStatus.ACTIVE, ProjectStatus.COMPLETE, ProjectStatus.REVISE, ProjectStatus.ARCHIVE]
         if (!allowedProjectTransitions.includes(status)) {
-          throw new Error(`Cannot change from project status "${currentProject.status}" to "${status}". Only Active, Complete, or Revise are allowed.`)
+          throw new Error(`Cannot change from project status "${currentProject.status}" to "${status}". Only Active, Complete, Revise, or Archive are allowed.`)
         }
 
         // Handle REVISE: create a new revision at STAGING
@@ -615,7 +616,46 @@ export async function PUT(
         })
       }
 
-      return { ...project, customerCreated: needsCustomerConversion }
+      // Check for family sales orders when entering QUOTE_ACCEPTED
+      // This lets the frontend show a choice modal (New SO vs Change Order)
+      let familySalesOrder = null
+      if (isConvertingToQuoteAccepted) {
+        // Find the root project (top of the revision chain)
+        const rootProjectId = project.parentProjectId || projectId
+
+        // Look for active SOs on sibling/parent versions in the same family
+        const familySO = await tx.salesOrder.findFirst({
+          where: {
+            project: {
+              OR: [
+                { id: rootProjectId },
+                { parentProjectId: rootProjectId }
+              ],
+              id: { not: projectId }
+            },
+            status: { notIn: ['VOIDED', 'CANCELLED'] }
+          },
+          include: {
+            project: {
+              select: { id: true, version: true, name: true }
+            }
+          }
+        })
+
+        if (familySO) {
+          familySalesOrder = {
+            id: familySO.id,
+            orderNumber: familySO.orderNumber,
+            projectId: familySO.projectId,
+            projectVersion: familySO.project?.version,
+            projectName: familySO.project?.name,
+            status: familySO.status,
+            totalAmount: familySO.totalAmount,
+          }
+        }
+      }
+
+      return { ...project, customerCreated: needsCustomerConversion, familySalesOrder }
     })
 
     // Trigger async ClickUp sync (fire-and-forget)

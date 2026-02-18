@@ -119,6 +119,14 @@ export async function POST(
       )
     }
 
+    // QUOTE_SENT cannot create revisions - user must change status first
+    if (sourceProject.status === 'QUOTE_SENT') {
+      return NextResponse.json(
+        { error: 'Cannot create revisions from Quote Sent status. Change the status to an editable status first.' },
+        { status: 400 }
+      )
+    }
+
     // Use shared utility to create the revision within a transaction
     const result = await prisma.$transaction(async (tx) => {
       return await createProjectRevision(tx, {

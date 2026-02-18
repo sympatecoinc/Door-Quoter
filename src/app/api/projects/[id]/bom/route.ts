@@ -203,6 +203,10 @@ export async function GET(
       framedWidthTolerance: tolMap.get('tolerance.framed.width') ?? 0.5,
       framedHeightTolerance: tolMap.get('tolerance.framed.height') ?? 0.75,
     }
+    const thinwallDefaults = {
+      thinwallWidthTolerance: tolMap.get('tolerance.thinwall.width') ?? 1.0,
+      thinwallHeightTolerance: tolMap.get('tolerance.thinwall.height') ?? 1.5,
+    }
 
     // Process each opening
     for (const opening of project.openings) {
@@ -226,8 +230,14 @@ export async function GET(
         const heightTol = opening.heightToleranceTotal ?? framedDefaults.framedHeightTolerance
         openingWidth = opening.roughWidth - widthTol
         openingHeight = (opening.roughHeight ?? 0) - heightTol
+      } else if (opening.openingType === 'THINWALL' && opening.finishedWidth) {
+        // THINWALL: finishedWidth is the actual opening; subtract tolerance for panel sizing
+        const widthTol = opening.widthToleranceTotal ?? thinwallDefaults.thinwallWidthTolerance
+        const heightTol = opening.heightToleranceTotal ?? thinwallDefaults.thinwallHeightTolerance
+        openingWidth = opening.finishedWidth - widthTol
+        openingHeight = (opening.finishedHeight ?? openingHeight) - heightTol
       } else if (opening.finishedWidth) {
-        // Finished openings: use pre-calculated finishedWidth (already has tolerance)
+        // Fallback: use finishedWidth directly
         openingWidth = opening.finishedWidth
         openingHeight = opening.finishedHeight ?? openingHeight
       }

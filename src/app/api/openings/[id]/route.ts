@@ -173,9 +173,20 @@ export async function PUT(
         }
       }
 
-      // Calculate finished dimensions (rough - tolerance)
-      updateData.finishedWidth = finalRoughWidth - widthTol
-      updateData.finishedHeight = finalRoughHeight - heightTol
+      // Persist resolved tolerances so getEffectiveOpeningSize() can access them
+      updateData.widthToleranceTotal = widthTol
+      updateData.heightToleranceTotal = heightTol
+
+      // Calculate finished dimensions
+      // FRAMED: finished = rough - tolerance (frame sits in the rough opening)
+      // THINWALL: finished = rough (the entered size IS the finished opening; tolerance is for panel sizing only)
+      if (finalOpeningType === 'THINWALL') {
+        updateData.finishedWidth = finalRoughWidth
+        updateData.finishedHeight = finalRoughHeight
+      } else {
+        updateData.finishedWidth = finalRoughWidth - widthTol
+        updateData.finishedHeight = finalRoughHeight - heightTol
+      }
     } else {
       // Non-finished opening: use provided values directly
       if (finishedWidth !== undefined) {

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ProjectStatus } from '@prisma/client'
-import { getDefaultPricingMode } from '@/lib/pricing-mode'
 
 // Lead phase statuses (pre-acceptance) - excludes ARCHIVE and BID_LOST by default
 const LEAD_STATUSES = [
@@ -20,86 +19,11 @@ const PROJECT_STATUSES = [
   ProjectStatus.COMPLETE
 ]
 
-// Helper function to calculate quote total using project's pricing fields and cost breakdowns
-interface OpeningCosts {
-  extrusionCost: number
-  hardwareCost: number
-  glassCost: number
-  packagingCost: number
-  otherCost: number
-  standardOptionCost: number
-  hybridRemainingCost: number
-}
-
-interface PricingMode {
-  markup: number
-  extrusionMarkup: number
-  hardwareMarkup: number
-  glassMarkup: number
-  packagingMarkup: number
-  discount: number
-}
-
-interface ProjectForQuoteCalc {
-  taxRate: number
-  manualInstallationCost: number
-  pricingMode: PricingMode | null
-  openings: OpeningCosts[]
-}
-
-function applyMarkup(baseCost: number, categoryMarkup: number, globalMarkup: number, discount: number): number {
-  // Use category-specific markup if set, otherwise fall back to global
-  const markupPercent = categoryMarkup > 0 ? categoryMarkup : globalMarkup
-  let price = baseCost * (1 + markupPercent / 100)
-
-  // Apply discount if set
-  if (discount > 0) {
-    price *= (1 - discount / 100)
-  }
-
-  return price
-}
-
-function calculateQuoteTotal(project: ProjectForQuoteCalc, defaultPricingMode?: PricingMode | null): number {
-  const pm = project.pricingMode || defaultPricingMode
-  const globalMarkup = pm?.markup || 0
-  const discount = pm?.discount || 0
-
-  let adjustedSubtotal = 0
-
-  for (const opening of project.openings) {
-    // Apply category-specific markups to each cost component
-    const markedUpExtrusion = applyMarkup(opening.extrusionCost, pm?.extrusionMarkup || 0, globalMarkup, discount)
-    const markedUpHardware = applyMarkup(opening.hardwareCost, pm?.hardwareMarkup || 0, globalMarkup, discount)
-    const markedUpGlass = applyMarkup(opening.glassCost, pm?.glassMarkup || 0, globalMarkup, discount)
-    const markedUpPackaging = applyMarkup(opening.packagingCost, pm?.packagingMarkup || 0, globalMarkup, discount)
-    const markedUpOther = applyMarkup(opening.otherCost, globalMarkup, globalMarkup, discount)
-
-    // Standard options and hybrid remaining are not marked up
-    const standardOptions = opening.standardOptionCost
-    const hybridRemaining = opening.hybridRemainingCost
-
-    adjustedSubtotal += markedUpExtrusion + markedUpHardware + markedUpGlass + markedUpPackaging + markedUpOther + standardOptions + hybridRemaining
-  }
-
-  // Add installation cost
-  const subtotalWithInstallation = adjustedSubtotal + project.manualInstallationCost
-
-  // Apply tax
-  const taxAmount = subtotalWithInstallation * project.taxRate
-  const total = subtotalWithInstallation + taxAmount
-
-  return Math.round(total * 100) / 100
-}
-
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const projectsLimit = parseInt(searchParams.get('projectsLimit') || '5')
   const projectsOffset = parseInt(searchParams.get('projectsOffset') || '0')
   try {
-    // Get the default pricing mode to use for projects without one
-    const defaultPricingMode = await getDefaultPricingMode(prisma)
-
     // Get total projects (only "Won" projects - QUOTE_ACCEPTED, ACTIVE, COMPLETE)
     // Only count current versions (not historical revisions)
     const totalProjects = await prisma.project.count({
@@ -136,28 +60,10 @@ export async function GET(request: Request) {
         isCurrentVersion: true
       },
       select: {
-        taxRate: true,
-        manualInstallationCost: true,
-        pricingMode: {
-          select: {
-            markup: true,
-            extrusionMarkup: true,
-            hardwareMarkup: true,
-            glassMarkup: true,
-            packagingMarkup: true,
-            discount: true
-          }
-        },
-        openings: {
-          select: {
-            extrusionCost: true,
-            hardwareCost: true,
-            glassCost: true,
-            packagingCost: true,
-            otherCost: true,
-            standardOptionCost: true,
-            hybridRemainingCost: true
-          }
+        quoteVersions: {
+          orderBy: { version: 'desc' },
+          take: 1,
+          select: { totalPrice: true }
         }
       }
     })
@@ -170,37 +76,19 @@ export async function GET(request: Request) {
         isCurrentVersion: true
       },
       select: {
-        taxRate: true,
-        manualInstallationCost: true,
-        pricingMode: {
-          select: {
-            markup: true,
-            extrusionMarkup: true,
-            hardwareMarkup: true,
-            glassMarkup: true,
-            packagingMarkup: true,
-            discount: true
-          }
-        },
-        openings: {
-          select: {
-            extrusionCost: true,
-            hardwareCost: true,
-            glassCost: true,
-            packagingCost: true,
-            otherCost: true,
-            standardOptionCost: true,
-            hybridRemainingCost: true
-          }
+        quoteVersions: {
+          orderBy: { version: 'desc' },
+          take: 1,
+          select: { totalPrice: true }
         }
       }
     })
 
-    // Calculate total portfolio value (won projects only)
-    const totalValue = allProjects.reduce((sum, project) => sum + calculateQuoteTotal(project, defaultPricingMode), 0)
+    // Calculate total portfolio value (won projects only) - uses stored quote prices
+    const totalValue = allProjects.reduce((sum, project) => sum + (project.quoteVersions[0]?.totalPrice ?? 0), 0)
 
-    // Calculate total lead pipeline value
-    const leadPipelineValue = allLeadProjects.reduce((sum, lead) => sum + calculateQuoteTotal(lead, defaultPricingMode), 0)
+    // Calculate total lead pipeline value - uses stored quote prices
+    const leadPipelineValue = allLeadProjects.reduce((sum, lead) => sum + (lead.quoteVersions[0]?.totalPrice ?? 0), 0)
 
     // Get recent projects (won projects only)
     // Only include current versions (not historical revisions)
@@ -220,27 +108,8 @@ export async function GET(request: Request) {
         status: true,
         updatedAt: true,
         version: true,
-        taxRate: true,
-        manualInstallationCost: true,
-        pricingMode: {
-          select: {
-            markup: true,
-            extrusionMarkup: true,
-            hardwareMarkup: true,
-            glassMarkup: true,
-            packagingMarkup: true,
-            discount: true
-          }
-        },
         openings: {
           select: {
-            extrusionCost: true,
-            hardwareCost: true,
-            glassCost: true,
-            packagingCost: true,
-            otherCost: true,
-            standardOptionCost: true,
-            hybridRemainingCost: true,
             openingType: true
           }
         },
@@ -276,30 +145,11 @@ export async function GET(request: Request) {
         status: true,
         updatedAt: true,
         version: true,
-        taxRate: true,
-        manualInstallationCost: true,
         // Prospect fields for leads without customer
         prospectCompanyName: true,
         prospectPhone: true,
-        pricingMode: {
-          select: {
-            markup: true,
-            extrusionMarkup: true,
-            hardwareMarkup: true,
-            glassMarkup: true,
-            packagingMarkup: true,
-            discount: true
-          }
-        },
         openings: {
           select: {
-            extrusionCost: true,
-            hardwareCost: true,
-            glassCost: true,
-            packagingCost: true,
-            otherCost: true,
-            standardOptionCost: true,
-            hybridRemainingCost: true,
             openingType: true
           }
         },
@@ -337,7 +187,7 @@ export async function GET(request: Request) {
         status: project.status,
         version: project.version,
         openingsCount: project._count.openings,
-        value: calculateQuoteTotal(project, defaultPricingMode),
+        value: latestQuote?.totalPrice ?? 0,
         updatedAt: project.updatedAt.toISOString(),
         hasThinWall,
         hasTrimmed,
@@ -359,7 +209,7 @@ export async function GET(request: Request) {
         status: lead.status,
         version: lead.version,
         openingsCount: lead._count.openings,
-        value: calculateQuoteTotal(lead, defaultPricingMode),
+        value: latestQuote?.totalPrice ?? 0,
         updatedAt: lead.updatedAt.toISOString(),
         // Include customer if linked, otherwise include lead info
         customer: lead.customer ? {

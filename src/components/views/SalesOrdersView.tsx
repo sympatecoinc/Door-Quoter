@@ -287,7 +287,6 @@ export default function SalesOrdersView() {
         <SOList
           key={refreshKey}
           onSOSelect={handleSOSelect}
-          onEdit={handleEdit}
           onRefresh={() => setRefreshKey(prev => prev + 1)}
           refreshKey={refreshKey}
         />

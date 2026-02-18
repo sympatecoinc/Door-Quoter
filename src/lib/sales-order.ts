@@ -1,5 +1,62 @@
 import { Prisma } from '@prisma/client'
+import { prisma as defaultPrisma } from '@/lib/prisma'
 import { generateSONumber } from '@/lib/quickbooks'
+
+export interface SalesOrderLineData {
+  lineNum: number
+  description: string
+  quantity: number
+  unitPrice: number
+  amount: number
+}
+
+export interface BuildLinesResult {
+  lines: SalesOrderLineData[]
+  subtotal: number
+  taxAmount: number
+  totalAmount: number
+  balance: number
+}
+
+/**
+ * Builds sales order line items from project openings.
+ * Distributes the quote total proportionally based on opening prices.
+ */
+export function buildSalesOrderLinesFromProject(
+  openings: any[],
+  quoteTotal: number,
+  taxRate: number
+): BuildLinesResult {
+  const lines: SalesOrderLineData[] = []
+  const totalOpeningCost = openings.reduce((sum: number, o: any) => sum + (o.price || 0), 0)
+
+  for (const opening of openings) {
+    const openingCost = opening.price || 0
+    const openingTotal = totalOpeningCost > 0
+      ? (openingCost / totalOpeningCost) * quoteTotal
+      : quoteTotal / openings.length
+
+    const panelDescriptions = opening.panels.map((panel: any) => {
+      const productName = panel.componentInstance?.product?.name || panel.type
+      return `${productName} (${panel.width}"W x ${panel.height}"H)`
+    }).join(', ')
+
+    lines.push({
+      lineNum: lines.length + 1,
+      description: `${opening.name}: ${panelDescriptions}`,
+      quantity: 1,
+      unitPrice: openingTotal,
+      amount: openingTotal
+    })
+  }
+
+  const subtotal = quoteTotal
+  const taxAmount = subtotal * (taxRate || 0)
+  const totalAmount = subtotal * (1 + (taxRate || 0))
+  const balance = totalAmount
+
+  return { lines, subtotal, taxAmount, totalAmount, balance }
+}
 
 export interface CreateSalesOrderOptions {
   projectId: number
@@ -80,9 +137,6 @@ export async function createSalesOrderFromProject(
     }
   }
 
-  // Build line items from openings
-  const lines: any[] = []
-
   // Require a quote to exist - cannot create SO without a generated quote
   const latestQuote = project.quoteVersions?.[0]
   if (!latestQuote?.totalPrice) {
@@ -92,33 +146,12 @@ export async function createSalesOrderFromProject(
     }
   }
 
-  const subtotal = Number(latestQuote.totalPrice)
-
-  // Build line items for each opening
-  // Distribute the subtotal proportionally based on opening prices
-  const totalOpeningCost = project.openings.reduce((sum, o) => sum + (o.price || 0), 0)
-
-  for (const opening of project.openings) {
-    const openingCost = opening.price || 0
-    // Calculate this opening's proportional share of the subtotal
-    const openingTotal = totalOpeningCost > 0
-      ? (openingCost / totalOpeningCost) * subtotal
-      : subtotal / project.openings.length
-
-    // Get panel descriptions
-    const panelDescriptions = opening.panels.map((panel: any) => {
-      const productName = panel.componentInstance?.product?.name || panel.type
-      return `${productName} (${panel.width}"W x ${panel.height}"H)`
-    }).join(', ')
-
-    lines.push({
-      lineNum: lines.length + 1,
-      description: `${opening.name}: ${panelDescriptions}`,
-      quantity: 1,
-      unitPrice: openingTotal,
-      amount: openingTotal
-    })
-  }
+  const quoteTotal = Number(latestQuote.totalPrice)
+  const { lines, subtotal, taxAmount, totalAmount, balance } = buildSalesOrderLinesFromProject(
+    project.openings,
+    quoteTotal,
+    project.taxRate || 0
+  )
 
   if (lines.length === 0) {
     return { success: false, error: 'Project has no openings to create sales order from' }
@@ -152,9 +185,9 @@ export async function createSalesOrderFromProject(
       shipAddrState: project.shippingState,
       shipAddrPostalCode: project.shippingZipCode,
       subtotal,
-      taxAmount: subtotal * (project.taxRate || 0),
-      totalAmount: subtotal * (1 + (project.taxRate || 0)),
-      balance: subtotal * (1 + (project.taxRate || 0)),
+      taxAmount,
+      totalAmount,
+      balance,
       createdById: userId,
       lines: {
         create: lines
@@ -190,4 +223,74 @@ export async function createSalesOrderFromProject(
   })
 
   return { success: true, salesOrder }
+}
+
+/**
+ * Refreshes line items and totals on all DRAFT sales orders linked to a project.
+ * Called after a new QuoteVersion is created so draft SOs stay in sync with pricing.
+ * CONFIRMED/VOIDED SOs are never touched.
+ */
+export async function refreshDraftSalesOrderLines(projectId: number): Promise<void> {
+  const draftSOs = await defaultPrisma.salesOrder.findMany({
+    where: { projectId, status: 'DRAFT' },
+    select: { id: true }
+  })
+
+  if (draftSOs.length === 0) return
+
+  const project = await defaultPrisma.project.findUnique({
+    where: { id: projectId },
+    include: {
+      openings: {
+        include: {
+          panels: {
+            include: {
+              componentInstance: {
+                include: { product: true }
+              }
+            }
+          }
+        }
+      },
+      quoteVersions: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { totalPrice: true }
+      }
+    }
+  })
+
+  if (!project) return
+
+  const latestQuote = project.quoteVersions?.[0]
+  if (!latestQuote?.totalPrice) return
+
+  const quoteTotal = Number(latestQuote.totalPrice)
+  const { lines, subtotal, taxAmount, totalAmount, balance } = buildSalesOrderLinesFromProject(
+    project.openings,
+    quoteTotal,
+    project.taxRate || 0
+  )
+
+  if (lines.length === 0) return
+
+  for (const so of draftSOs) {
+    await defaultPrisma.$transaction(async (tx) => {
+      await tx.salesOrderLine.deleteMany({
+        where: { salesOrderId: so.id }
+      })
+
+      await tx.salesOrderLine.createMany({
+        data: lines.map(line => ({
+          salesOrderId: so.id,
+          ...line
+        }))
+      })
+
+      await tx.salesOrder.update({
+        where: { id: so.id },
+        data: { subtotal, taxAmount, totalAmount, balance }
+      })
+    })
+  }
 }

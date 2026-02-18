@@ -5,6 +5,7 @@
  * and managing fulfillment status
  */
 
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { checkAvailability, AvailabilityResult, extractBasePartNumber, findExtrusionVariant } from './inventory-availability'
 
@@ -138,14 +139,9 @@ export async function generatePartsFromProject(projectId: number, cookies?: stri
     }
 
     const existing = aggregated.get(key)!
-    // For linear units (LF/IN) with a cutLength, sum the total linear demand
-    // instead of counting individual parts
-    const unit = (item.unit || 'EA').toUpperCase()
-    if ((unit === 'LF' || unit === 'IN') && item.cutLength) {
-      existing.quantity += item.cutLength * (item.quantity || 1)
-    } else {
-      existing.quantity += item.quantity || 1
-    }
+    // Use piece count for quantity — cutLength is preserved separately on BOMPart
+    // for manufacturing. Extrusion inventory tracks pieces, not linear inches.
+    existing.quantity += item.quantity || 1
   }
 
   const parts: BOMPart[] = Array.from(aggregated.values())
@@ -222,8 +218,10 @@ export async function createSalesOrderParts(
  * Reserve inventory for confirmed sales order parts
  * Increments qtyReserved on ExtrusionVariant (for extrusions) or MasterPart (for others)
  */
-export async function reserveInventory(salesOrderId: number): Promise<void> {
-  const parts = await prisma.salesOrderPart.findMany({
+export async function reserveInventory(salesOrderId: number, tx?: Prisma.TransactionClient): Promise<void> {
+  const db = tx || prisma
+
+  const parts = await db.salesOrderPart.findMany({
     where: { salesOrderId }
   })
 
@@ -243,7 +241,7 @@ export async function reserveInventory(salesOrderId: number): Promise<void> {
 
   // Update qtyReserved on extrusion variants
   for (const [variantId, quantity] of reservationsByVariant) {
-    await prisma.extrusionVariant.update({
+    await db.extrusionVariant.update({
       where: { id: variantId },
       data: { qtyReserved: { increment: quantity } }
     })
@@ -251,14 +249,14 @@ export async function reserveInventory(salesOrderId: number): Promise<void> {
 
   // Update qtyReserved on master parts (non-extrusions)
   for (const [masterPartId, quantity] of reservationsByMasterPart) {
-    await prisma.masterPart.update({
+    await db.masterPart.update({
       where: { id: masterPartId },
       data: { qtyReserved: { increment: quantity } }
     })
   }
 
   // Update part status to RESERVED
-  await prisma.salesOrderPart.updateMany({
+  await db.salesOrderPart.updateMany({
     where: {
       salesOrderId,
       OR: [
@@ -274,8 +272,10 @@ export async function reserveInventory(salesOrderId: number): Promise<void> {
  * Release inventory reservations for a cancelled sales order
  * Decrements qtyReserved on ExtrusionVariant (for extrusions) or MasterPart (for others)
  */
-export async function releaseInventory(salesOrderId: number): Promise<void> {
-  const parts = await prisma.salesOrderPart.findMany({
+export async function releaseInventory(salesOrderId: number, tx?: Prisma.TransactionClient): Promise<void> {
+  const db = tx || prisma
+
+  const parts = await db.salesOrderPart.findMany({
     where: {
       salesOrderId,
       status: { in: ['RESERVED', 'PENDING'] }
@@ -297,7 +297,7 @@ export async function releaseInventory(salesOrderId: number): Promise<void> {
 
   // Decrement qtyReserved on extrusion variants
   for (const [variantId, quantity] of releasesByVariant) {
-    await prisma.extrusionVariant.update({
+    await db.extrusionVariant.update({
       where: { id: variantId },
       data: { qtyReserved: { decrement: quantity } }
     })
@@ -305,14 +305,14 @@ export async function releaseInventory(salesOrderId: number): Promise<void> {
 
   // Decrement qtyReserved on master parts (non-extrusions)
   for (const [masterPartId, quantity] of releasesByMasterPart) {
-    await prisma.masterPart.update({
+    await db.masterPart.update({
       where: { id: masterPartId },
       data: { qtyReserved: { decrement: quantity } }
     })
   }
 
   // Update part status to CANCELLED
-  await prisma.salesOrderPart.updateMany({
+  await db.salesOrderPart.updateMany({
     where: { salesOrderId },
     data: { status: 'CANCELLED' }
   })

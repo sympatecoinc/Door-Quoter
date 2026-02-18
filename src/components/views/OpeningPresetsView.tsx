@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Plus, Edit2, Trash2, Copy, Archive, RotateCcw, ChevronDown, ChevronRight, X, Search, Check } from 'lucide-react'
 import { useEscapeKey } from '@/hooks/useEscapeKey'
 import { OpeningPreset, OpeningPresetPanel, OpeningPresetPart, MasterPart } from '@/types'
+import { evaluatePresetFormula, PresetFormulaVariables } from '@/lib/preset-formulas'
 import ConfirmModal from '@/components/ui/ConfirmModal'
 
 interface Product {
@@ -22,6 +23,7 @@ interface FrameProduct {
   id: number
   name: string
   jambThickness?: number | null
+  overlap?: number | null
 }
 
 type PartType = 'Hardware' | 'Extrusion' | 'Glass' | 'Sealant' | 'Other'
@@ -169,7 +171,8 @@ export default function OpeningPresetsView() {
         setFrameProducts(data.filter((p: any) => p.productType === 'FRAME').map((p: any) => ({
           id: p.id,
           name: p.name,
-          jambThickness: p.jambThickness
+          jambThickness: p.jambThickness,
+          overlap: p.overlap
         })))
       }
     } catch (err) {
@@ -252,6 +255,66 @@ export default function OpeningPresetsView() {
     if (!formData.name.trim()) {
       alert('Preset name is required')
       return
+    }
+
+    // Validate panel dimensions against opening size (if both are set)
+    if (panels.length > 0 && hasPresetDimensions) {
+      let effectiveFinishedWidth: number
+      let effectiveFinishedHeight: number
+
+      if (formData.openingType === 'THINWALL') {
+        effectiveFinishedWidth = (parseFloat(formData.defaultFinishedWidth) || 0) - tolerances.thinwallWidthTolerance
+        effectiveFinishedHeight = (parseFloat(formData.defaultFinishedHeight) || 0) - tolerances.thinwallHeightTolerance
+      } else {
+        effectiveFinishedWidth = (parseFloat(formData.defaultRoughWidth) || 0) - tolerances.framedWidthTolerance
+        effectiveFinishedHeight = (parseFloat(formData.defaultRoughHeight) || 0) - tolerances.framedHeightTolerance
+      }
+
+      const jambThickness = selectedFrameJambThickness
+      const interiorWidth = jambThickness > 0 ? effectiveFinishedWidth - (2 * jambThickness) : effectiveFinishedWidth
+      const interiorHeight = jambThickness > 0 ? effectiveFinishedHeight - jambThickness : effectiveFinishedHeight
+
+      const defaultPanelWidth = (formData.openingType === 'FRAMED' && jambThickness > 0) ? interiorWidth : effectiveFinishedWidth
+      const defaultPanelHeight = (formData.openingType === 'FRAMED' && jambThickness > 0) ? interiorHeight : effectiveFinishedHeight
+
+      const frameOverlap = formData.frameProductId
+        ? frameProducts.find(fp => fp.id === formData.frameProductId)?.overlap || 0
+        : 0
+
+      const openingConstraintWidth = defaultPanelWidth + frameOverlap
+      const openingConstraintHeight = defaultPanelHeight
+
+      const roughW = parseFloat(formData.defaultRoughWidth) || effectiveFinishedWidth
+      const roughH = parseFloat(formData.defaultRoughHeight) || effectiveFinishedHeight
+      const formulaVariables: PresetFormulaVariables = {
+        roughWidth: roughW,
+        roughHeight: roughH,
+        finishedWidth: effectiveFinishedWidth,
+        finishedHeight: effectiveFinishedHeight,
+        interiorWidth,
+        interiorHeight,
+        jambThickness
+      }
+
+      let cumulativePanelWidth = 0
+      for (const panel of panels) {
+        const formulaWidth = evaluatePresetFormula(panel.widthFormula, formulaVariables)
+        const formulaHeight = evaluatePresetFormula(panel.heightFormula, formulaVariables)
+        const panelWidth = formulaWidth ?? defaultPanelWidth
+        const panelHeight = formulaHeight ?? defaultPanelHeight
+
+        if (panelHeight > openingConstraintHeight) {
+          alert(`Component height (${panelHeight}") exceeds opening height (${openingConstraintHeight}")`)
+          return
+        }
+
+        cumulativePanelWidth += panelWidth
+      }
+
+      if (cumulativePanelWidth > openingConstraintWidth) {
+        alert(`Total component width (${cumulativePanelWidth.toFixed(3)}") exceeds opening width (${openingConstraintWidth}")`)
+        return
+      }
     }
 
     setSaving(true)

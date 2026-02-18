@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { X, Building2, Phone, MapPin, Check } from 'lucide-react'
+import { X, Building2, Check } from 'lucide-react'
 import { useEscapeKey } from '@/hooks/useEscapeKey'
 
 interface SearchResult {
@@ -29,11 +29,6 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
     prospectCompanyName: '',
     projectName: '',
     dueDate: '',
-    phone: '',
-    address: '',
-    city: '',
-    state: '',
-    zipCode: ''
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -92,21 +87,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
   const handleSelectResult = (result: SearchResult) => {
     setSelectedResult(result)
 
-    if (result.type === 'customer') {
-      // Just set the company name for customers
-      setFormData({ ...formData, prospectCompanyName: result.companyName })
-    } else {
-      // For prospects, also auto-fill the optional fields
-      setFormData({
-        ...formData,
-        prospectCompanyName: result.companyName,
-        phone: result.phone || '',
-        address: result.address || '',
-        city: result.city || '',
-        state: result.state || '',
-        zipCode: result.zipCode || ''
-      })
-    }
+    setFormData({ ...formData, prospectCompanyName: result.companyName })
 
     setShowDropdown(false)
     setSearchResults([])
@@ -162,11 +143,6 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             companyName: formData.prospectCompanyName.trim(),
-            phone: formData.phone.trim() || undefined,
-            address: formData.address.trim() || undefined,
-            city: formData.city.trim() || undefined,
-            state: formData.state.trim() || undefined,
-            zipCode: formData.zipCode.trim() || undefined,
             status: 'Lead'
           })
         })
@@ -202,11 +178,6 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
         prospectCompanyName: '',
         projectName: '',
         dueDate: '',
-        phone: '',
-        address: '',
-        city: '',
-        state: '',
-        zipCode: ''
       })
       setSelectedResult(null)
       onLeadCreated()
@@ -225,11 +196,6 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
         prospectCompanyName: '',
         projectName: '',
         dueDate: '',
-        phone: '',
-        address: '',
-        city: '',
-        state: '',
-        zipCode: ''
       })
       setSelectedResult(null)
       setSearchResults([])
@@ -365,7 +331,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
               )}
               {selectedResult?.type === 'prospect' && (
                 <p className="mt-1 text-xs text-amber-600">
-                  Info filled from existing lead (new customer will be created)
+                  Linked from existing lead (new customer will be created)
                 </p>
               )}
               {!selectedResult && formData.prospectCompanyName.length >= 2 && !showDropdown && (
@@ -394,97 +360,17 @@ export default function AddLeadModal({ isOpen, onClose, onLeadCreated }: AddLead
           <div className="border-t border-gray-200 pt-4 space-y-4">
             <p className="text-sm text-gray-500">Optional Information</p>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Due Date
-                </label>
-                <input
-                  type="date"
-                  value={formData.dueDate}
-                  onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  disabled={saving}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone
-                </label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="(555) 555-5555"
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    disabled={saving}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Address */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Address
+                Due Date
               </label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Street address"
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  disabled={saving}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-6 gap-3">
-              <div className="col-span-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  City
-                </label>
-                <input
-                  type="text"
-                  value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  placeholder="City"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  disabled={saving}
-                />
-              </div>
-              <div className="col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  State
-                </label>
-                <input
-                  type="text"
-                  value={formData.state}
-                  onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                  placeholder="CA"
-                  maxLength={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  disabled={saving}
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Zip Code
-                </label>
-                <input
-                  type="text"
-                  value={formData.zipCode}
-                  onChange={(e) => setFormData({ ...formData, zipCode: e.target.value })}
-                  placeholder="90210"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  disabled={saving}
-                />
-              </div>
+              <input
+                type="date"
+                value={formData.dueDate}
+                onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                disabled={saving}
+              />
             </div>
           </div>
 
