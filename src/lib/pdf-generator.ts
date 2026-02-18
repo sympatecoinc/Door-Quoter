@@ -54,6 +54,8 @@ export interface OpeningDrawingData {
   // Framed opening fields
   roughWidth?: number
   roughHeight?: number
+  finishedWidth?: number
+  finishedHeight?: number
   openingType?: string // "THINWALL" or "FRAMED"
   isFinishedOpening?: boolean
 }
@@ -348,16 +350,21 @@ async function addCombinedViewPage(
     align: 'center'
   })
 
-  // Framed Opening Size (if applicable)
+  // Opening Size (if applicable)
   let dividerY = 32
-  if (openingData.isFinishedOpening && openingData.roughWidth && openingData.roughHeight) {
-    const sizeLabel = openingData.openingType === 'THINWALL' ? 'Finished' : 'Rough'
-    const framedSizeText = `Framed Opening Size: ${openingData.roughWidth}" W × ${openingData.roughHeight}" H (${sizeLabel})`
-    pdf.setFontSize(10)
-    pdf.setTextColor(100, 100, 100)
-    pdf.text(framedSizeText, pageWidth / 2, 26, { align: 'center' })
-    pdf.setTextColor(0, 0, 0)
-    dividerY = 34
+  {
+    const isThinwall = openingData.openingType === 'THINWALL'
+    const sizeLabel = isThinwall ? 'Finished' : 'Rough'
+    const displayWidth = isThinwall ? (openingData.finishedWidth ?? openingData.roughWidth) : openingData.roughWidth
+    const displayHeight = isThinwall ? (openingData.finishedHeight ?? openingData.roughHeight) : openingData.roughHeight
+    if (openingData.isFinishedOpening && displayWidth && displayHeight) {
+      const sizeText = `${sizeLabel} Opening Size: ${displayWidth}" W × ${displayHeight}" H`
+      pdf.setFontSize(10)
+      pdf.setTextColor(100, 100, 100)
+      pdf.text(sizeText, pageWidth / 2, 26, { align: 'center' })
+      pdf.setTextColor(0, 0, 0)
+      dividerY = 34
+    }
   }
 
   // Divider line
@@ -1156,16 +1163,21 @@ function addElevationPage(
     align: 'center'
   })
 
-  // Framed Opening Size (if applicable)
+  // Opening Size (if applicable)
   let dimensionsY = 30
-  if (openingData.isFinishedOpening && openingData.roughWidth && openingData.roughHeight) {
-    const sizeLabel = openingData.openingType === 'THINWALL' ? 'Finished' : 'Rough'
-    const framedSizeText = `Framed Opening Size: ${openingData.roughWidth}" W × ${openingData.roughHeight}" H (${sizeLabel})`
-    pdf.setFontSize(9)
-    pdf.setTextColor(100, 100, 100)
-    pdf.text(framedSizeText, pageWidth / 2, 29, { align: 'center' })
-    pdf.setTextColor(0, 0, 0)
-    dimensionsY = 35
+  {
+    const isThinwall = openingData.openingType === 'THINWALL'
+    const sizeLabel = isThinwall ? 'Finished' : 'Rough'
+    const displayWidth = isThinwall ? (openingData.finishedWidth ?? openingData.roughWidth) : openingData.roughWidth
+    const displayHeight = isThinwall ? (openingData.finishedHeight ?? openingData.roughHeight) : openingData.roughHeight
+    if (openingData.isFinishedOpening && displayWidth && displayHeight) {
+      const sizeText = `${sizeLabel} Opening Size: ${displayWidth}" W × ${displayHeight}" H`
+      pdf.setFontSize(9)
+      pdf.setTextColor(100, 100, 100)
+      pdf.text(sizeText, pageWidth / 2, 29, { align: 'center' })
+      pdf.setTextColor(0, 0, 0)
+      dimensionsY = 35
+    }
   }
 
   // Dimensions
@@ -1273,16 +1285,21 @@ function addPlanViewPage(
     align: 'center'
   })
 
-  // Framed Opening Size (if applicable)
+  // Opening Size (if applicable)
   let dimensionsY = 30
-  if (openingData.isFinishedOpening && openingData.roughWidth && openingData.roughHeight) {
-    const sizeLabel = openingData.openingType === 'THINWALL' ? 'Finished' : 'Rough'
-    const framedSizeText = `Framed Opening Size: ${openingData.roughWidth}" W × ${openingData.roughHeight}" H (${sizeLabel})`
-    pdf.setFontSize(9)
-    pdf.setTextColor(100, 100, 100)
-    pdf.text(framedSizeText, pageWidth / 2, 29, { align: 'center' })
-    pdf.setTextColor(0, 0, 0)
-    dimensionsY = 35
+  {
+    const isThinwall = openingData.openingType === 'THINWALL'
+    const sizeLabel = isThinwall ? 'Finished' : 'Rough'
+    const displayWidth = isThinwall ? (openingData.finishedWidth ?? openingData.roughWidth) : openingData.roughWidth
+    const displayHeight = isThinwall ? (openingData.finishedHeight ?? openingData.roughHeight) : openingData.roughHeight
+    if (openingData.isFinishedOpening && displayWidth && displayHeight) {
+      const sizeText = `${sizeLabel} Opening Size: ${displayWidth}" W × ${displayHeight}" H`
+      pdf.setFontSize(9)
+      pdf.setTextColor(100, 100, 100)
+      pdf.text(sizeText, pageWidth / 2, 29, { align: 'center' })
+      pdf.setTextColor(0, 0, 0)
+      dimensionsY = 35
+    }
   }
 
   // Dimensions (plan view only shows width)

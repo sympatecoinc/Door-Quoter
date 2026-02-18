@@ -103,10 +103,13 @@ export async function POST(
       await reserveInventory(soId)
     }
 
-    // Update sales order status to CONFIRMED
+    // Update sales order status to CONFIRMED and set balance to totalAmount
     const updatedSO = await prisma.salesOrder.update({
       where: { id: soId },
-      data: { status: 'CONFIRMED' },
+      data: {
+        status: 'CONFIRMED',
+        balance: salesOrder.totalAmount,
+      },
       include: {
         customer: true,
         project: true,

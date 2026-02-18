@@ -139,8 +139,8 @@ export default function SODetailView({ soId, onBack, onEdit, onRefresh, onGenera
               Confirm Order
             </button>
           )}
-          {/* Generate Invoice button */}
-          {salesOrder.status !== 'DRAFT' && salesOrder.status !== 'FULLY_INVOICED' && salesOrder.status !== 'CANCELLED' && onGenerateInvoice && (
+          {/* Generate Invoice button - hidden for DRAFT, FULLY_INVOICED, VOIDED, CANCELLED */}
+          {salesOrder.status !== 'DRAFT' && salesOrder.status !== 'FULLY_INVOICED' && salesOrder.status !== 'VOIDED' && salesOrder.status !== 'CANCELLED' && onGenerateInvoice && (
             <button
               onClick={async () => {
                 setCreatingInvoice(true)
@@ -157,13 +157,16 @@ export default function SODetailView({ soId, onBack, onEdit, onRefresh, onGenera
               {creatingInvoice ? 'Creating...' : 'Generate Invoice'}
             </button>
           )}
-          <button
-            onClick={() => onEdit(salesOrder)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Edit2 className="w-4 h-4" />
-            Edit
-          </button>
+          {/* Edit button - hidden for VOIDED orders */}
+          {salesOrder.status !== 'VOIDED' && (
+            <button
+              onClick={() => onEdit(salesOrder)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Edit2 className="w-4 h-4" />
+              Edit
+            </button>
+          )}
         </div>
       </div>
 

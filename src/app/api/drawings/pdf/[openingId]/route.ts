@@ -495,6 +495,8 @@ export async function GET(
       // Framed opening fields
       roughWidth: opening.roughWidth ?? undefined,
       roughHeight: opening.roughHeight ?? undefined,
+      finishedWidth: opening.finishedWidth ?? undefined,
+      finishedHeight: opening.finishedHeight ?? undefined,
       openingType: opening.openingType ?? undefined,
       isFinishedOpening: opening.isFinishedOpening ?? false
     }

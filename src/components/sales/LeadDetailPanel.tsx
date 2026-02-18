@@ -8,6 +8,7 @@ import StatusBadge from '@/components/projects/StatusBadge'
 import LeadOverviewTab from './LeadOverviewTab'
 import LeadOpeningsTab from './LeadOpeningsTab'
 import LeadQuotesTab from './LeadQuotesTab'
+import SOChoiceModal from './SOChoiceModal'
 
 // Locked statuses that allow creating revisions
 const LOCKED_STATUSES = [
@@ -155,6 +156,18 @@ export default function LeadDetailPanel({
   // Sales order tracking for project-phase locking
   const [hasActiveSalesOrder, setHasActiveSalesOrder] = useState(false)
 
+  // SO Choice Modal state (for revisions entering QUOTE_ACCEPTED with family SO)
+  const [showSOChoiceModal, setShowSOChoiceModal] = useState(false)
+  const [familySalesOrderInfo, setFamilySalesOrderInfo] = useState<{
+    id: number
+    orderNumber: string
+    projectId: number | null
+    projectVersion: number | null
+    projectName: string | null
+    status: string
+    totalAmount: number
+  } | null>(null)
+
   const fetchQuoteStatus = useCallback(async () => {
     try {
       const response = await fetch(`/api/projects/${leadId}/quote-versions`)
@@ -301,6 +314,12 @@ export default function LeadDetailPanel({
           return
         }
 
+        // Check if API returned family sales order info (revision entering QUOTE_ACCEPTED)
+        if (responseData.familySalesOrder) {
+          setFamilySalesOrderInfo(responseData.familySalesOrder)
+          setShowSOChoiceModal(true)
+        }
+
         // Notify that status change completed successfully (for dashboard refresh)
         onStatusChangeComplete?.()
 
@@ -350,7 +369,60 @@ export default function LeadDetailPanel({
   const isRevisionFromProjectPhase = pendingStatus === ProjectStatus.REVISE && isInProjectPhase
 
   // Check if project can create revision (locked status + current version)
-  const canCreateRevision = lead && LOCKED_STATUSES.includes(lead.status) && lead.isCurrentVersion
+  const canCreateRevision = lead && LOCKED_STATUSES.includes(lead.status) && lead.status !== ProjectStatus.QUOTE_SENT && lead.isCurrentVersion
+
+  // SO choice modal handlers
+  const handleNewSalesOrder = async () => {
+    if (!familySalesOrderInfo) return
+    try {
+      const response = await fetch(`/api/projects/${leadId}/create-revised-sales-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          previousSalesOrderId: familySalesOrderInfo.id,
+        }),
+      })
+      if (response.ok) {
+        setShowSOChoiceModal(false)
+        setFamilySalesOrderInfo(null)
+        onLeadUpdated()
+        fetchLead()
+      } else {
+        const err = await response.json()
+        alert(err.error || 'Failed to create new sales order')
+      }
+    } catch (error) {
+      console.error('Error creating new sales order:', error)
+      alert('Failed to create new sales order')
+    }
+  }
+
+  const handleChangeOrder = async () => {
+    if (!familySalesOrderInfo) return
+    try {
+      const response = await fetch('/api/change-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          salesOrderId: familySalesOrderInfo.id,
+          newProjectId: leadId,
+          previousProjectId: familySalesOrderInfo.projectId,
+        }),
+      })
+      if (response.ok) {
+        setShowSOChoiceModal(false)
+        setFamilySalesOrderInfo(null)
+        onLeadUpdated()
+        fetchLead()
+      } else {
+        const err = await response.json()
+        alert(err.error || 'Failed to create change order')
+      }
+    } catch (error) {
+      console.error('Error creating change order:', error)
+      alert('Failed to create change order')
+    }
+  }
 
   // Check if this is a historical (non-current) version
   const isHistoricalVersion = lead && !lead.isCurrentVersion
@@ -504,13 +576,26 @@ export default function LeadDetailPanel({
                           className="w-full px-3 py-2 text-left text-sm hover:bg-amber-50 flex items-center gap-2 text-amber-700"
                         >
                           <GitBranch className="w-3.5 h-3.5" />
-                          Revise (Create New Version)
+                          Revise
+                        </button>
+                        <div className="border-t border-gray-100 my-1" />
+                        <button
+                          onClick={() => initiateStatusChange(ProjectStatus.ARCHIVE)}
+                          className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                            lead.status === ProjectStatus.ARCHIVE ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <span
+                            className={`w-2 h-2 rounded-full ${STATUS_CONFIG[ProjectStatus.ARCHIVE].bgColor}`}
+                          />
+                          Archive
                         </button>
                       </>
                     ) : (
                       <>
                         <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase">Leads</div>
                         {LEAD_STATUSES
+                          .filter(status => status !== ProjectStatus.REVISE)
                           .filter(status => status !== ProjectStatus.QUOTE_SENT || hasQuotes)
                           .map((status) => (
                           <button
@@ -526,7 +611,7 @@ export default function LeadDetailPanel({
                             {STATUS_CONFIG[status].label}
                           </button>
                         ))}
-                        {hasQuotes && (
+                        {(lead.status === ProjectStatus.QUOTE_SENT || hasQuotes) && (
                           <>
                             <div className="border-t border-gray-100 my-1" />
                             <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase">Projects</div>
@@ -766,6 +851,22 @@ export default function LeadDetailPanel({
             )}
           </div>
         </div>
+      )}
+
+      {/* SO Choice Modal (New SO vs Change Order) */}
+      {showSOChoiceModal && familySalesOrderInfo && lead && (
+        <SOChoiceModal
+          isOpen={showSOChoiceModal}
+          onClose={() => {
+            setShowSOChoiceModal(false)
+            setFamilySalesOrderInfo(null)
+          }}
+          projectId={leadId}
+          projectVersion={lead.version}
+          familySalesOrder={familySalesOrderInfo}
+          onNewSalesOrder={handleNewSalesOrder}
+          onChangeOrder={handleChangeOrder}
+        />
       )}
 
       {/* Create Revision Confirmation Modal */}

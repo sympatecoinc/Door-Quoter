@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { releaseInventory } from '@/lib/sales-order-parts'
 
 // GET - Get single sales order
 export async function GET(
@@ -247,14 +248,38 @@ export async function DELETE(
       )
     }
 
-    // If sales order is synced to QuickBooks, void the Estimate in QB first
+    // Check for in-flight parts — block if any have entered fulfillment
+    const inFlightCount = await prisma.salesOrderPart.count({
+      where: {
+        salesOrderId,
+        status: { in: ['PICKED', 'PACKED', 'SHIPPED'] }
+      }
+    })
+
+    if (inFlightCount > 0) {
+      return NextResponse.json(
+        { error: `Cannot cancel — ${inFlightCount} part(s) have entered fulfillment (picked/packed/shipped). Handle these parts before cancelling.` },
+        { status: 400 }
+      )
+    }
+
+    // Release inventory reservations and cancel in a transaction
+    await prisma.$transaction(async (tx) => {
+      await releaseInventory(salesOrderId, tx)
+
+      await tx.salesOrder.update({
+        where: { id: salesOrderId },
+        data: { status: 'CANCELLED' }
+      })
+    })
+
+    // If sales order is synced to QuickBooks, void the Estimate in QB (non-blocking)
     let qbWarning: string | null = null
     if (salesOrder.quickbooksId) {
       try {
         const { getStoredRealmId, getQBEstimate, voidQBEstimate } = await import('@/lib/quickbooks')
         const realmId = await getStoredRealmId()
         if (realmId) {
-          // Get current sync token from QB
           const qbEstimate = await getQBEstimate(realmId, salesOrder.quickbooksId)
           await voidQBEstimate(realmId, salesOrder.quickbooksId, qbEstimate.SyncToken!)
           console.log(`[QB Sync] Voided estimate ${salesOrder.orderNumber} in QuickBooks`)
@@ -264,12 +289,6 @@ export async function DELETE(
         qbWarning = `Sales order cancelled locally but QuickBooks void failed: ${qbError instanceof Error ? qbError.message : 'Unknown error'}`
       }
     }
-
-    // Update status to cancelled (soft delete)
-    await prisma.salesOrder.update({
-      where: { id: salesOrderId },
-      data: { status: 'CANCELLED' }
-    })
 
     return NextResponse.json({
       success: true,

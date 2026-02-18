@@ -137,6 +137,18 @@ export async function POST(
     const hasFinishedW = finalFinishedWidth !== null && finalFinishedWidth !== undefined
     const hasFinishedH = finalFinishedHeight !== null && finalFinishedHeight !== undefined
 
+    // Fetch tolerance settings from GlobalSetting (needed for dimension calc and panel sizing)
+    const toleranceSettings = await prisma.globalSetting.findMany({
+      where: { category: 'tolerances' }
+    })
+    const tolMap = new Map(toleranceSettings.map(s => [s.key, parseFloat(s.value)]))
+    const toleranceDefaults = {
+      thinwallWidthTolerance: tolMap.get('tolerance.thinwall.width') ?? 1.0,
+      thinwallHeightTolerance: tolMap.get('tolerance.thinwall.height') ?? 1.5,
+      framedWidthTolerance: tolMap.get('tolerance.framed.width') ?? 0.5,
+      framedHeightTolerance: tolMap.get('tolerance.framed.height') ?? 0.75,
+    }
+
     // Need tolerance if we don't have BOTH rough and finished explicitly
     const needsTolerance = (hasRoughW && !hasFinishedW) || (hasRoughH && !hasFinishedH) ||
                            (!hasRoughW && hasFinishedW) || (!hasRoughH && hasFinishedH)
@@ -152,44 +164,22 @@ export async function POST(
         effectiveOpeningType = existingOpening?.openingType || null
       }
 
-      // Fetch tolerance settings from GlobalSetting
-      const toleranceSettings = await prisma.globalSetting.findMany({
-        where: { category: 'tolerances' }
-      })
-      const tolMap = new Map(toleranceSettings.map(s => [s.key, parseFloat(s.value)]))
-      const defaults = {
-        thinwallWidthTolerance: tolMap.get('tolerance.thinwall.width') ?? 1.0,
-        thinwallHeightTolerance: tolMap.get('tolerance.thinwall.height') ?? 1.5,
-        framedWidthTolerance: tolMap.get('tolerance.framed.width') ?? 0.5,
-        framedHeightTolerance: tolMap.get('tolerance.framed.height') ?? 0.75,
-      }
-
-      const widthTol = effectiveOpeningType === 'FRAMED' ? defaults.framedWidthTolerance : defaults.thinwallWidthTolerance
-      const heightTol = effectiveOpeningType === 'FRAMED' ? defaults.framedHeightTolerance : defaults.thinwallHeightTolerance
+      const widthTol = effectiveOpeningType === 'FRAMED' ? toleranceDefaults.framedWidthTolerance : toleranceDefaults.thinwallWidthTolerance
+      const heightTol = effectiveOpeningType === 'FRAMED' ? toleranceDefaults.framedHeightTolerance : toleranceDefaults.thinwallHeightTolerance
 
       // Width: apply tolerance from whichever base dimension we have
       if (hasRoughW && !hasFinishedW) {
         // FRAMED case: rough provided, calculate finished
         finalFinishedWidth = finalRoughWidth - widthTol
-      } else if (hasFinishedW && !hasRoughW) {
-        // THINWALL case: "finished" is the base/entered dimension, apply tolerance
-        const baseWidth = finalFinishedWidth!
-        finalFinishedWidth = baseWidth - widthTol
-        // Set rough to the original entered value
-        // (finalRoughWidth stays null, will be set via effectiveRoughWidth fallback below)
       }
+      // THINWALL case: finished is the actual finished opening size, no subtraction needed.
 
       // Height: apply tolerance from whichever base dimension we have
       if (hasRoughH && !hasFinishedH) {
         // FRAMED case: rough provided, calculate finished
         finalFinishedHeight = finalRoughHeight - heightTol
-      } else if (hasFinishedH && !hasRoughH) {
-        // THINWALL case: "finished" is the base/entered dimension, apply tolerance
-        const baseHeight = finalFinishedHeight!
-        finalFinishedHeight = baseHeight - heightTol
-        // Set rough to the original entered value
-        // (finalRoughHeight stays null, will be set via effectiveRoughHeight fallback below)
       }
+      // THINWALL case: finished is the actual finished opening size, no subtraction needed.
     }
 
     // Final fallback: if still no finished dimensions, default to rough
@@ -220,19 +210,21 @@ export async function POST(
     const effectiveFinishedWidth = finalFinishedWidth ?? finalRoughWidth!
     const effectiveFinishedHeight = finalFinishedHeight ?? finalRoughHeight!
 
-    // Determine opening-level frameProductId and jambThickness
+    // Determine opening-level frameProductId, jambThickness, and overlap
     let jambThickness = 0
+    let frameOverlap = 0
     let openingFrameProductId: number | null = null
 
     // Use preset's stored frameProductId if available (new presets)
     if (preset.frameProductId) {
       const frameProd = await prisma.product.findUnique({
         where: { id: preset.frameProductId },
-        select: { id: true, jambThickness: true }
+        select: { id: true, jambThickness: true, overlap: true }
       })
       if (frameProd) {
         openingFrameProductId = frameProd.id
         jambThickness = frameProd.jambThickness || 0
+        frameOverlap = frameProd.overlap || 0
       }
     }
 
@@ -246,7 +238,8 @@ export async function POST(
             id: true,
             productType: true,
             jambThickness: true,
-            frameConfig: { select: { id: true, jambThickness: true } },
+            overlap: true,
+            frameConfig: { select: { id: true, jambThickness: true, overlap: true } },
             frameAssignments: { select: { frameProductId: true } }
           }
         })
@@ -254,6 +247,7 @@ export async function POST(
         for (const pp of presetProducts) {
           if (pp.productType === 'FRAME' && pp.jambThickness) {
             jambThickness = pp.jambThickness
+            frameOverlap = pp.overlap || 0
             openingFrameProductId = pp.id
             break
           }
@@ -265,16 +259,18 @@ export async function POST(
               const frameId = pp.frameAssignments[0].frameProductId
               const frameProd = await prisma.product.findUnique({
                 where: { id: frameId },
-                select: { id: true, jambThickness: true }
+                select: { id: true, jambThickness: true, overlap: true }
               })
               if (frameProd) {
                 openingFrameProductId = frameProd.id
                 jambThickness = frameProd.jambThickness || 0
+                frameOverlap = frameProd.overlap || 0
                 break
               }
             }
             if (pp.frameConfig?.jambThickness) {
               jambThickness = pp.frameConfig.jambThickness
+              frameOverlap = pp.frameConfig.overlap || 0
               openingFrameProductId = pp.frameConfig.id
               break
             }
@@ -283,30 +279,49 @@ export async function POST(
       }
     }
 
-    // Compute interior dimensions
-    const interiorWidth = jambThickness > 0 ? effectiveFinishedWidth - (2 * jambThickness) : effectiveFinishedWidth
-    const interiorHeight = jambThickness > 0 ? effectiveFinishedHeight - jambThickness : effectiveFinishedHeight
+    // For panel sizing, THINWALL uses finished dimensions minus tolerance
+    const panelAreaWidth = preset.openingType === 'THINWALL'
+      ? effectiveFinishedWidth - toleranceDefaults.thinwallWidthTolerance
+      : effectiveFinishedWidth
+    const panelAreaHeight = preset.openingType === 'THINWALL'
+      ? effectiveFinishedHeight - toleranceDefaults.thinwallHeightTolerance
+      : effectiveFinishedHeight
+
+    // Compute interior dimensions (after jamb deduction for FRAMED, or tolerance-adjusted for THINWALL)
+    const interiorWidth = jambThickness > 0 ? panelAreaWidth - (2 * jambThickness) : panelAreaWidth
+    const interiorHeight = jambThickness > 0 ? panelAreaHeight - jambThickness : panelAreaHeight
 
     // Build formula variables for evaluation
+    // Note: finishedWidth/height use the tolerance-adjusted values for backward compatibility
+    // with existing formulas that assume panel-sizing dimensions
     const formulaVariables: PresetFormulaVariables = {
       roughWidth: effectiveRoughWidth,
       roughHeight: effectiveRoughHeight,
-      finishedWidth: effectiveFinishedWidth,
-      finishedHeight: effectiveFinishedHeight,
+      finishedWidth: panelAreaWidth,
+      finishedHeight: panelAreaHeight,
       interiorWidth,
       interiorHeight,
       jambThickness
     }
 
     // For FRAMED openings, panels fit inside the frame (interior dimensions)
-    // For THINWALL, panels use the full finished dimensions
-    const defaultPanelWidth = (preset.openingType === 'FRAMED' && jambThickness > 0)
-      ? interiorWidth : effectiveFinishedWidth
-    const defaultPanelHeight = (preset.openingType === 'FRAMED' && jambThickness > 0)
-      ? interiorHeight : effectiveFinishedHeight
+    // For THINWALL, panels use the finished dimensions minus tolerance (usable space)
+    let defaultPanelWidth: number
+    let defaultPanelHeight: number
+    if (preset.openingType === 'FRAMED' && jambThickness > 0) {
+      defaultPanelWidth = interiorWidth
+      defaultPanelHeight = interiorHeight
+    } else if (preset.openingType === 'THINWALL') {
+      defaultPanelWidth = effectiveFinishedWidth - toleranceDefaults.thinwallWidthTolerance
+      defaultPanelHeight = effectiveFinishedHeight - toleranceDefaults.thinwallHeightTolerance
+    } else {
+      defaultPanelWidth = effectiveFinishedWidth
+      defaultPanelHeight = effectiveFinishedHeight
+    }
 
     // Validate that preset panel dimensions fit within the opening
-    const openingConstraintWidth = defaultPanelWidth
+    // Account for frame overlap (sliding doors intentionally exceed opening width by the overlap amount)
+    const openingConstraintWidth = defaultPanelWidth + frameOverlap
     const openingConstraintHeight = defaultPanelHeight
     let cumulativePanelWidth = 0
 

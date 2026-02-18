@@ -191,9 +191,20 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Calculate finished dimensions (rough - tolerance)
-      openingData.finishedWidth = finalRoughWidth - widthTol
-      openingData.finishedHeight = finalRoughHeight - heightTol
+      // Persist resolved tolerances so getEffectiveOpeningSize() can access them
+      openingData.widthToleranceTotal = widthTol
+      openingData.heightToleranceTotal = heightTol
+
+      // Calculate finished dimensions
+      // FRAMED: finished = rough - tolerance (frame sits in the rough opening)
+      // THINWALL: finished = rough (the entered size IS the finished opening; tolerance is for panel sizing only)
+      if (openingType === 'THINWALL') {
+        openingData.finishedWidth = finalRoughWidth
+        openingData.finishedHeight = finalRoughHeight
+      } else {
+        openingData.finishedWidth = finalRoughWidth - widthTol
+        openingData.finishedHeight = finalRoughHeight - heightTol
+      }
     } else {
       // Non-finished opening: use provided values or copy from rough
       if (finishedWidth && finishedWidth !== '') {

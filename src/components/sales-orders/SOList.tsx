@@ -3,16 +3,15 @@
 import { useState, useEffect } from 'react'
 import { SalesOrder, SOStatus, SO_STATUS_CONFIG } from '@/types/sales-order'
 import SOStatusBadge from './SOStatusBadge'
-import { Search, ChevronLeft, ChevronRight, Edit2, ExternalLink, Cloud } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, ExternalLink, Cloud } from 'lucide-react'
 
 interface SOListProps {
   onSOSelect: (so: SalesOrder) => void
-  onEdit: (so: SalesOrder) => void
   onRefresh: () => void
   refreshKey?: number
 }
 
-export default function SOList({ onSOSelect, onEdit, onRefresh, refreshKey }: SOListProps) {
+export default function SOList({ onSOSelect, onRefresh, refreshKey }: SOListProps) {
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -148,8 +147,7 @@ export default function SOList({ onSOSelect, onEdit, onRefresh, refreshKey }: SO
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                 QB
               </th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
+              <th className="px-4 py-3">
               </th>
             </tr>
           </thead>
@@ -200,7 +198,11 @@ export default function SOList({ onSOSelect, onEdit, onRefresh, refreshKey }: SO
                     {formatCurrency(so.totalAmount)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm">
-                    {(so.balance ?? 0) > 0 ? (
+                    {so.status === 'VOIDED' ? (
+                      <span className="text-gray-400">-</span>
+                    ) : so.status === 'DRAFT' ? (
+                      <span className="text-gray-500">{formatCurrency(so.balance ?? so.totalAmount)}</span>
+                    ) : (so.balance ?? 0) > 0 ? (
                       <span className="text-yellow-600">{formatCurrency(so.balance ?? 0)}</span>
                     ) : (
                       <span className="text-green-600">Paid</span>
@@ -213,14 +215,7 @@ export default function SOList({ onSOSelect, onEdit, onRefresh, refreshKey }: SO
                       <span className="text-gray-300">-</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onEdit(so) }}
-                      className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
-                      title="Edit"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
+                  <td className="px-4 py-3">
                   </td>
                 </tr>
               ))

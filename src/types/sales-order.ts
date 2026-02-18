@@ -1,6 +1,6 @@
 // Sales Order Types (LOCAL only - not synced to QuickBooks)
 
-export type SOStatus = 'DRAFT' | 'CONFIRMED' | 'PARTIALLY_INVOICED' | 'FULLY_INVOICED' | 'CANCELLED'
+export type SOStatus = 'DRAFT' | 'CONFIRMED' | 'PARTIALLY_INVOICED' | 'FULLY_INVOICED' | 'VOIDED' | 'CANCELLED'
 
 // Sales Order Part Status
 export type SOPartStatus = 'PENDING' | 'RESERVED' | 'PICKED' | 'PACKED' | 'SHIPPED' | 'CANCELLED'
@@ -19,6 +19,7 @@ export const SO_STATUS_CONFIG: Record<SOStatus, { label: string; color: string; 
   CONFIRMED: { label: 'Confirmed', color: 'text-blue-700', bgColor: 'bg-blue-100' },
   PARTIALLY_INVOICED: { label: 'Partially Invoiced', color: 'text-yellow-700', bgColor: 'bg-yellow-100' },
   FULLY_INVOICED: { label: 'Fully Invoiced', color: 'text-green-700', bgColor: 'bg-green-100' },
+  VOIDED: { label: 'Voided', color: 'text-red-700', bgColor: 'bg-red-100' },
   CANCELLED: { label: 'Cancelled', color: 'text-red-700', bgColor: 'bg-red-100' }
 }
 

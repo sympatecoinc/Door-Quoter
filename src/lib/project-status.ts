@@ -38,8 +38,11 @@ export async function getProjectStatusByPanelId(panelId: number): Promise<{ stat
 }
 
 export function createLockedError(status: ProjectStatus) {
+  const message = status === ProjectStatus.QUOTE_SENT
+    ? 'Project is locked in Quote Sent status. Change the status to an editable status to make changes.'
+    : `Project is locked for editing in ${status} status. Create a revision to make changes.`
   return {
-    error: `Project is locked for editing in ${status} status. Create a revision to make changes.`,
+    error: message,
     code: 'PROJECT_LOCKED',
     status: status
   }

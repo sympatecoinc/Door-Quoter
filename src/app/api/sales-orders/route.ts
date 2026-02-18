@@ -198,6 +198,7 @@ export async function POST(request: NextRequest) {
         subtotal,
         taxAmount: 0,
         totalAmount: subtotal,
+        balance: subtotal,
         createdById: userId,
         lines: {
           create: processedLines

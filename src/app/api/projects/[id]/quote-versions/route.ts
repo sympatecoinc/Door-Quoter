@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { refreshDraftSalesOrderLines } from '@/lib/sales-order'
 
 // GET - Fetch all quote versions for a project
 export async function GET(
@@ -190,6 +191,14 @@ export async function POST(
         changeNotes,
       },
     })
+
+    // Refresh any draft sales orders so their lines/totals match the new quote
+    try {
+      await refreshDraftSalesOrderLines(projectId)
+    } catch (refreshError) {
+      console.error('Error refreshing draft sales orders:', refreshError)
+      // Don't fail quote creation if SO refresh fails
+    }
 
     return NextResponse.json({ version: quoteVersion })
   } catch (error) {
