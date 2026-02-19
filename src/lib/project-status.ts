@@ -5,6 +5,7 @@ export const LOCKED_STATUSES: ProjectStatus[] = [
   ProjectStatus.QUOTE_SENT,
   ProjectStatus.QUOTE_ACCEPTED,
   ProjectStatus.ACTIVE,
+  ProjectStatus.IN_PROGRESS,
   ProjectStatus.COMPLETE,
 ]
 

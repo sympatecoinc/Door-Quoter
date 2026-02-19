@@ -5,6 +5,7 @@ interface AddLineRequest {
   masterPartId: number
   quantity: number
   notes?: string
+  variantId?: number
 }
 
 // POST - Add a line to an existing draft PO
@@ -24,7 +25,7 @@ export async function POST(
     }
 
     const body: AddLineRequest = await request.json()
-    const { masterPartId, quantity, notes } = body
+    const { masterPartId, quantity, notes, variantId } = body
 
     if (!masterPartId || !quantity || quantity <= 0) {
       return NextResponse.json(
@@ -71,8 +72,8 @@ export async function POST(
         customPricePerLb: true,
         quickbooksItem: true,
         extrusionVariants: {
-          where: { isActive: true },
-          orderBy: { stockLength: 'desc' },
+          where: variantId ? { id: variantId } : { isActive: true },
+          orderBy: variantId ? undefined : { stockLength: 'desc' as const },
           take: 1,
           select: {
             pricePerPiece: true,

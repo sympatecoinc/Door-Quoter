@@ -5248,13 +5248,13 @@ export default function ProjectDetailView() {
                           }
                         }
                       }
-                      // Close modal and open Add Component after project state updates
                       const openingId = newlyCreatedOpeningId
                       if (openingId) setPendingComponentOpeningId(openingId)
                       resetAddOpeningModal(true)
                       showSuccess('Opening added successfully!')
                       if (openingId) {
-                        setDeferredAddComponentOpeningId(openingId)
+                        handleShowAddComponent(openingId)
+                        setAddComponentMode('single')
                       }
                     }}
                     disabled={(newOpening.isFinishedOpening && (!newOpening.roughWidth || !newOpening.roughHeight)) || (newlyCreatedOpeningType === 'FRAMED' && !newOpening.frameProductId)}

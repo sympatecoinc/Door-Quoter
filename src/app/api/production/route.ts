@@ -140,9 +140,9 @@ export async function GET(request: NextRequest) {
   try {
     // Production-ready statuses
     const productionStatuses: ProjectStatus[] = [
-      ProjectStatus.APPROVED,
       ProjectStatus.QUOTE_ACCEPTED,
-      ProjectStatus.ACTIVE
+      ProjectStatus.ACTIVE,
+      ProjectStatus.IN_PROGRESS
     ]
 
     // Fetch projects with production-ready statuses

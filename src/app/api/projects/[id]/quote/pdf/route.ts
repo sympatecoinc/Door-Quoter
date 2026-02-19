@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ProjectStatus } from '@prisma/client'
 import { createQuotePDF, QuoteData } from '@/lib/quote-pdf-generator'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -214,6 +215,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Generate PDF with all attachments (now returns Buffer directly)
     const pdfBuffer = await createQuotePDF(quoteData, allAttachments as any)
+
+    // Auto-advance status to "Preparing Quote" (STAGING) if still at NEW_LEAD
+    if (project.status === ProjectStatus.NEW_LEAD) {
+      await prisma.$transaction([
+        prisma.project.update({
+          where: { id: projectId },
+          data: { status: ProjectStatus.STAGING }
+        }),
+        prisma.projectStatusHistory.create({
+          data: {
+            projectId: projectId,
+            status: ProjectStatus.STAGING
+          }
+        })
+      ])
+    }
 
     const filename = `Quote_${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
 

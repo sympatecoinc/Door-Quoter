@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import type { ReceivingQueueResponse, ReceivingPO } from '@/components/purchasing-dashboard/types'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     const today = new Date()

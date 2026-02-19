@@ -173,13 +173,12 @@ export async function POST(request: Request) {
     }
 
     // Check if variant already exists
-    const existing = await prisma.extrusionVariant.findUnique({
+    // Note: findUnique doesn't support null in compound keys, so use findFirst for nullable finishPricingId
+    const existing = await prisma.extrusionVariant.findFirst({
       where: {
-        masterPartId_stockLength_finishPricingId: {
-          masterPartId,
-          stockLength,
-          finishPricingId: finishPricingId || null
-        }
+        masterPartId,
+        stockLength,
+        finishPricingId: finishPricingId || null
       }
     })
 

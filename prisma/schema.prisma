@@ -11,7 +11,7 @@ datasource db {
 model Project {
   id                     Int                @id @default(autoincrement())
   name                   String
-  status                 ProjectStatus      @default(STAGING)
+  status                 ProjectStatus      @default(NEW_LEAD)
   customerId             Int?               // Optional - null for prospect leads until converted
   pricingModeId          Int?
   extrusionCostingMethod String             @default("FULL_STOCK") // "FULL_STOCK" | "PERCENTAGE_BASED"
@@ -208,6 +208,7 @@ enum ProjectStatus {
   QUOTE_SENT     @map("Quote Sent")
   QUOTE_ACCEPTED @map("Quote Accepted")
   ACTIVE         @map("Active")
+  IN_PROGRESS    @map("In Progress")
   COMPLETE       @map("Complete")
   ARCHIVE        @map("Archive")
   BID_LOST       @map("Bid Lost")

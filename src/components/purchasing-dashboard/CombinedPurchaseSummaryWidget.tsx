@@ -6,11 +6,10 @@ import { useDownloadStore } from '@/stores/downloadStore'
 
 const FILTER_STATUSES = [
   { value: 'STAGING', label: 'Preparing Quote' },
-  { value: 'APPROVED', label: 'Approved' },
-  { value: 'REVISE', label: 'Revise' },
   { value: 'QUOTE_SENT', label: 'Quote Sent' },
   { value: 'QUOTE_ACCEPTED', label: 'Quote Accepted' },
   { value: 'ACTIVE', label: 'Active' },
+  { value: 'IN_PROGRESS', label: 'In Progress' },
   { value: 'COMPLETE', label: 'Complete' }
 ] as const
 
@@ -30,7 +29,7 @@ export default function CombinedPurchaseSummaryWidget({ refreshKey = 0 }: Combin
   const [projects, setProjects] = useState<ProjectOption[]>([])
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<number>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilters, setStatusFilters] = useState<string[]>(['QUOTE_ACCEPTED', 'APPROVED', 'ACTIVE'])
+  const [statusFilters, setStatusFilters] = useState<string[]>(['QUOTE_ACCEPTED', 'ACTIVE', 'IN_PROGRESS'])
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)

@@ -17,7 +17,7 @@ import type { QuickPORequest, QuickPOResponse } from '@/components/purchasing-da
 export async function POST(request: NextRequest) {
   try {
     const body: QuickPORequest = await request.json()
-    const { masterPartId, quantity, vendorId, notes } = body
+    const { masterPartId, quantity, vendorId, notes, variantId } = body
 
     if (!masterPartId || !quantity || quantity <= 0) {
       return NextResponse.json(
@@ -42,8 +42,8 @@ export async function POST(request: NextRequest) {
         vendor: true,
         quickbooksItem: true,
         extrusionVariants: {
-          where: { isActive: true },
-          orderBy: { stockLength: 'desc' },
+          where: variantId ? { id: variantId } : { isActive: true },
+          orderBy: variantId ? undefined : { stockLength: 'desc' as const },
           take: 1,
           select: {
             pricePerPiece: true,

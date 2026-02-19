@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import type { StockMetricsResponse, ProfileSummary, FastBurningProfile } from '@/components/purchasing-dashboard/types'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     // Get extrusion variants grouped by profile

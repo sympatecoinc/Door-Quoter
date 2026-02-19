@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ProjectStatus } from '@prisma/client'
 import { getSessionToken } from '@/lib/auth'
 import { getSessionWithUser } from '@/lib/db-session'
 import { generateWorkOrdersFromProject } from '@/lib/work-order-generator'
@@ -97,6 +98,23 @@ export async function POST(
         inventoryDeducted = true
       } catch (deductionError) {
         console.error('Inventory deduction failed (work orders still created):', deductionError)
+      }
+
+      // Auto-advance: ACTIVE → IN_PROGRESS when work orders are generated
+      if (project.status === ProjectStatus.ACTIVE) {
+        await prisma.$transaction([
+          prisma.project.update({
+            where: { id: projectId },
+            data: { status: ProjectStatus.IN_PROGRESS }
+          }),
+          prisma.projectStatusHistory.create({
+            data: {
+              projectId: projectId,
+              status: ProjectStatus.IN_PROGRESS,
+              changedBy: 'System (Work Orders Generated)'
+            }
+          })
+        ])
       }
     }
 

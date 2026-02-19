@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ProjectStatus } from '@prisma/client'
 import { refreshDraftSalesOrderLines } from '@/lib/sales-order'
 
 // GET - Fetch all quote versions for a project
@@ -191,6 +192,22 @@ export async function POST(
         changeNotes,
       },
     })
+
+    // Auto-advance status to "Preparing Quote" (STAGING) if still at NEW_LEAD
+    if (project.status === ProjectStatus.NEW_LEAD) {
+      await prisma.$transaction([
+        prisma.project.update({
+          where: { id: projectId },
+          data: { status: ProjectStatus.STAGING }
+        }),
+        prisma.projectStatusHistory.create({
+          data: {
+            projectId: projectId,
+            status: ProjectStatus.STAGING
+          }
+        })
+      ])
+    }
 
     // Refresh any draft sales orders so their lines/totals match the new quote
     try {

@@ -8,6 +8,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { checkAvailability, AvailabilityResult, extractBasePartNumber, findExtrusionVariant } from './inventory-availability'
+import { aggregateBomItems, applyYieldOptimizationToBomItems, type BomItem } from '@/lib/bom-utils'
 
 export interface BOMPart {
   partNumber: string
@@ -116,11 +117,46 @@ export async function generatePartsFromProject(projectId: number, cookies?: stri
 
   const bomData = await bomResponse.json()
 
+  // Pre-fetch CutStock master parts so we can detect CutStock even when BOM has partType 'Hardware'
+  const cutStockMasterParts = await prisma.masterPart.findMany({
+    where: { partType: 'CutStock' },
+    include: { stockLengthRules: { where: { isActive: true } } }
+  })
+  const cutStockLookup = new Map<string, number[]>()
+  for (const mp of cutStockMasterParts) {
+    const lengths = mp.stockLengthRules
+      .map(r => r.stockLength)
+      .filter((l): l is number => l !== null && l > 0)
+    cutStockLookup.set(mp.partNumber, lengths)
+  }
+
   // Aggregate BOM items by partNumber + openingName to preserve opening info
-  // This differs from the summary endpoint which loses opening context
+  // CutStock items are separated and run through bin-packing for correct stock piece counts
   const aggregated = new Map<string, BOMPart>()
+  const cutStockRawItems: BomItem[] = []
 
   for (const item of bomData.bomItems || []) {
+    // CutStock items need bin-packing optimization — collect them separately
+    // Detect CutStock via MasterPart lookup (BOM may report partType 'Hardware')
+    const isCutStock = item.partType === 'CutStock' || cutStockLookup.has(item.partNumber)
+    if (isCutStock) {
+      const stockLengths = cutStockLookup.get(item.partNumber) || []
+      cutStockRawItems.push({
+        partNumber: item.partNumber,
+        partName: item.partName,
+        partType: 'CutStock',
+        quantity: item.quantity || 1,
+        unit: item.unit || 'EA',
+        cutLength: item.cutLength || null,
+        stockLength: stockLengths[0] || null,
+        basePartNumber: item.partNumber,
+        stockLengthOptions: stockLengths.length > 1 ? stockLengths : undefined,
+        openingName: item.openingName || null,
+        productName: item.productName || null,
+      })
+      continue
+    }
+
     // Key by partNumber + openingName to keep parts separate per opening
     const key = `${item.partNumber}|${item.openingName || ''}`
 
@@ -142,6 +178,56 @@ export async function generatePartsFromProject(projectId: number, cookies?: stri
     // Use piece count for quantity — cutLength is preserved separately on BOMPart
     // for manufacturing. Extrusion inventory tracks pieces, not linear inches.
     existing.quantity += item.quantity || 1
+    // Override unit for extrusions: BOM uses 'IN' for cut lists,
+    // but SO parts count raw pieces so unit should be 'EA'
+    if (existing.partType === 'Extrusion') {
+      existing.unit = 'EA'
+    }
+  }
+
+  // Run bin-packing on CutStock items to get optimized stock piece counts
+  if (cutStockRawItems.length > 0) {
+    // Build stockLengthOptionsMap from collected items (same pattern as combined-summary)
+    const stockLengthOptionsMap: Record<string, number[]> = {}
+    for (const item of cutStockRawItems) {
+      if (item.basePartNumber && item.stockLengthOptions && item.stockLengthOptions.length > 1) {
+        if (!stockLengthOptionsMap[item.basePartNumber]) {
+          stockLengthOptionsMap[item.basePartNumber] = []
+        }
+        for (const sl of item.stockLengthOptions) {
+          if (!stockLengthOptionsMap[item.basePartNumber].includes(sl)) {
+            stockLengthOptionsMap[item.basePartNumber].push(sl)
+          }
+        }
+      }
+    }
+
+    // Apply yield optimization then aggregate with bin-packing
+    const optimizedItems = applyYieldOptimizationToBomItems(cutStockRawItems, stockLengthOptionsMap)
+    const aggregatedCutStock = aggregateBomItems(optimizedItems, stockLengthOptionsMap)
+
+    // Convert each AggregatedBomItem to a BOMPart using stockPiecesNeeded as quantity
+    for (const agg of aggregatedCutStock) {
+      const quantity = agg.stockPiecesNeeded ?? agg.totalQuantity
+      // Strip stock length suffix from CutStock part numbers — aggregateBomItems
+      // appends -stockLength for cut list display, but SO parts should use the
+      // MasterPart base part number (CutStock isn't an extrusion variant)
+      let partNumber = agg.partNumber
+      if (agg.stockLength && partNumber.endsWith(`-${agg.stockLength}`)) {
+        partNumber = partNumber.slice(0, -(`-${agg.stockLength}`).length)
+      }
+      aggregated.set(`cutstock|${partNumber}`, {
+        partNumber,
+        partName: agg.partName,
+        partType: agg.partType,
+        quantity,
+        unit: 'EA',
+        cutLength: null, // Aggregated across openings — cut details in BOM cut list
+        openingName: null, // Aggregated across openings
+        productName: null,
+        masterPartId: null
+      })
+    }
   }
 
   const parts: BOMPart[] = Array.from(aggregated.values())

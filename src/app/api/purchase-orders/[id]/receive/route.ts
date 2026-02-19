@@ -69,11 +69,20 @@ export async function POST(
         )
       }
 
-      const totalReceiving = (line.quantityReceived || 0) + (line.quantityDamaged || 0) + (line.quantityRejected || 0)
+      const qtyReceived = line.quantityReceived || 0
+      const qtyDamaged = line.quantityDamaged || 0
+      const qtyRejected = line.quantityRejected || 0
       const remaining = poLine.quantity - poLine.quantityReceived
-      if (totalReceiving > remaining) {
+
+      if (qtyReceived > remaining) {
         return NextResponse.json(
-          { error: `Cannot receive more than remaining quantity (${remaining}) for line ${poLine.description || poLine.id}` },
+          { error: `Received quantity (${qtyReceived}) exceeds remaining quantity (${remaining}) for line ${poLine.description || poLine.id}` },
+          { status: 400 }
+        )
+      }
+      if (qtyDamaged + qtyRejected > qtyReceived) {
+        return NextResponse.json(
+          { error: `Damaged (${qtyDamaged}) + Rejected (${qtyRejected}) cannot exceed Received (${qtyReceived}) for line ${poLine.description || poLine.id}` },
           { status: 400 }
         )
       }
@@ -114,7 +123,8 @@ export async function POST(
 
     for (const line of lines) {
       const poLine = lineMap.get(line.purchaseOrderLineId)!
-      const newReceived = poLine.quantityReceived + (line.quantityReceived || 0)
+      const totalPhysicalReceipt = line.quantityReceived || 0
+      const newReceived = poLine.quantityReceived + totalPhysicalReceipt
       const newRemaining = poLine.quantity - newReceived
 
       await prisma.purchaseOrderLine.update({
@@ -125,9 +135,9 @@ export async function POST(
         }
       })
 
-      // Update MasterPart inventory
-      const qtyReceived = line.quantityReceived || 0
-      if (qtyReceived > 0) {
+      // Update inventory - only good items (received minus damaged/rejected)
+      const goodQty = totalPhysicalReceipt - (line.quantityDamaged || 0) - (line.quantityRejected || 0)
+      if (goodQty > 0) {
         // Get the PO line with QuickBooksItem and MasterPart
         const poLineWithItem = await prisma.purchaseOrderLine.findUnique({
           where: { id: line.purchaseOrderLineId },
@@ -146,14 +156,20 @@ export async function POST(
         if (!masterPart && poLineWithItem) {
           const searchTerm = poLineWithItem.description || poLineWithItem.itemRefName
           if (searchTerm) {
-            // Try exact match on baseName first
+            const beforeDash = searchTerm.split(' - ')[0]?.trim()
+            const afterDash = searchTerm.split(' - ')[1]?.trim()
+            // Extract part number from after ' - ' (e.g., "48445-BLA-99" → "48445")
+            const extractedPartNum = afterDash?.split('-')[0]?.trim()
+
             masterPart = await prisma.masterPart.findFirst({
               where: {
                 OR: [
                   { baseName: searchTerm },
                   { partNumber: searchTerm },
-                  // Also try if the search term contains "partNumber - description" format
-                  { partNumber: searchTerm.split(' - ')[0]?.trim() }
+                  { partNumber: beforeDash },
+                  { baseName: beforeDash },
+                  // Extract part number from extrusion format: "BaseName - partNum-finish-length"
+                  ...(extractedPartNum ? [{ partNumber: extractedPartNum }] : [])
                 ]
               }
             })
@@ -161,36 +177,93 @@ export async function POST(
         }
 
         if (masterPart) {
-          // Increment qtyOnHand
-          await prisma.masterPart.update({
-            where: { id: masterPart.id },
-            data: {
-              qtyOnHand: {
-                increment: qtyReceived
+          const isExtrusion = masterPart.partType?.toLowerCase() === 'extrusion'
+
+          if (isExtrusion) {
+            // For extrusions, update ExtrusionVariant.qtyOnHand
+            let variant = null
+
+            // Parse variant info from description (format: "BaseName - partNum-finishCode-stockLength")
+            const desc = poLineWithItem?.description || poLineWithItem?.itemRefName || ''
+            const afterDash = desc.split(' - ')[1]?.trim()
+            if (afterDash) {
+              // e.g., "48445-BLA-99" → segments = ["48445", "BLA", "99"]
+              const segments = afterDash.split('-')
+              const lastSegment = segments[segments.length - 1]
+              const parsedStockLength = parseFloat(lastSegment)
+
+              if (!isNaN(parsedStockLength) && parsedStockLength > 0) {
+                variant = await prisma.extrusionVariant.findFirst({
+                  where: {
+                    masterPartId: masterPart.id,
+                    stockLength: parsedStockLength,
+                    isActive: true
+                  }
+                })
               }
             }
-          })
 
-          inventoryUpdates.push({
-            masterPartId: masterPart.id,
-            partNumber: masterPart.partNumber,
-            quantityReceived: qtyReceived
-          })
+            // Fallback: find any active variant for this master part
+            if (!variant) {
+              variant = await prisma.extrusionVariant.findFirst({
+                where: {
+                  masterPartId: masterPart.id,
+                  isActive: true
+                },
+                orderBy: { stockLength: 'desc' }
+              })
+            }
+
+            if (variant) {
+              await prisma.extrusionVariant.update({
+                where: { id: variant.id },
+                data: {
+                  qtyOnHand: {
+                    increment: goodQty
+                  }
+                }
+              })
+
+              inventoryUpdates.push({
+                masterPartId: masterPart.id,
+                partNumber: masterPart.partNumber,
+                quantityReceived: goodQty
+              })
+            }
+          } else {
+            // Non-extrusion: update MasterPart.qtyOnHand
+            await prisma.masterPart.update({
+              where: { id: masterPart.id },
+              data: {
+                qtyOnHand: {
+                  increment: goodQty
+                }
+              }
+            })
+
+            inventoryUpdates.push({
+              masterPartId: masterPart.id,
+              partNumber: masterPart.partNumber,
+              quantityReceived: goodQty
+            })
+          }
         }
       }
     }
 
     // Create inventory notification if any inventory was updated
     if (inventoryUpdates.length > 0) {
-      const totalQty = inventoryUpdates.reduce((sum, u) => sum + u.quantityReceived, 0)
+      const totalGoodQty = inventoryUpdates.reduce((sum, u) => sum + u.quantityReceived, 0)
+      const totalDamagedRejected = lines.reduce((sum: number, l: any) => sum + (l.quantityDamaged || 0) + (l.quantityRejected || 0), 0)
       const partsText = inventoryUpdates.length === 1
         ? `${inventoryUpdates[0].partNumber} (${inventoryUpdates[0].quantityReceived})`
         : `${inventoryUpdates.length} parts`
+      const qualityNote = totalDamagedRejected > 0 ? ` (${totalDamagedRejected} damaged/rejected)` : ''
 
       await prisma.inventoryNotification.create({
         data: {
           type: 'items_received',
-          message: `Received ${totalQty} items from PO #${purchaseOrder.poNumber || poId}: ${partsText}`,
+          message: `Received ${totalGoodQty} good items from PO #${purchaseOrder.poNumber || poId}: ${partsText}${qualityNote}`,
           masterPartId: inventoryUpdates.length === 1 ? inventoryUpdates[0].masterPartId : null,
           actionType: null
         }

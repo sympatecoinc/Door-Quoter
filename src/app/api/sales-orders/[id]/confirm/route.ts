@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ProjectStatus } from '@prisma/client'
 import { generatePartsFromProject, createSalesOrderParts, reserveInventory } from '@/lib/sales-order-parts'
 import { createQBEstimate } from '@/lib/quickbooks'
 
@@ -147,6 +148,23 @@ export async function POST(
         console.error('Failed to create QuickBooks Estimate:', qbError)
         // Don't fail the confirmation, just log the error
       }
+    }
+
+    // Auto-advance: QUOTE_ACCEPTED → ACTIVE when SO is confirmed
+    if (salesOrder.projectId && salesOrder.project?.status === ProjectStatus.QUOTE_ACCEPTED) {
+      await prisma.$transaction([
+        prisma.project.update({
+          where: { id: salesOrder.projectId },
+          data: { status: ProjectStatus.ACTIVE }
+        }),
+        prisma.projectStatusHistory.create({
+          data: {
+            projectId: salesOrder.projectId,
+            status: ProjectStatus.ACTIVE,
+            changedBy: 'System (SO Confirmed)'
+          }
+        })
+      ])
     }
 
     return NextResponse.json({

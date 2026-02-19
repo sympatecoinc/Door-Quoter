@@ -122,15 +122,6 @@ export default function ExtrusionVariantEditModal({
               </div>
             )}
 
-            {/* Part Info (read-only) */}
-            <div className="p-3 bg-gray-50 rounded-lg">
-              <p className="text-sm font-medium text-gray-900">
-                {variant.masterPart?.partNumber}
-              </p>
-              <p className="text-sm text-gray-500">
-                {variant.masterPart?.baseName}
-              </p>
-            </div>
 
             {/* Price Per Piece - Only for CutStock parts */}
             {variant.masterPart?.partType === 'CutStock' && (

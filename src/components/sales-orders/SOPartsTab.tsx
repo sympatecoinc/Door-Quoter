@@ -24,7 +24,6 @@ interface PartWithAvailability extends SalesOrderPart {
   availability: {
     onHand: number
     reserved: number
-    available: number
     binLocation: string | null
   }
 }
@@ -377,7 +376,7 @@ export default function SOPartsTab({ salesOrderId, onPartUpdate }: SOPartsTabPro
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit</th>
-              <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Available</th>
+              <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">In Stock</th>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Bin</th>
               <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
             </tr>
@@ -433,8 +432,8 @@ export default function SOPartsTab({ salesOrderId, onPartUpdate }: SOPartsTabPro
                       <td className="px-3 py-2 text-sm text-right text-gray-900">{part.quantity}</td>
                       <td className="px-3 py-2 text-sm text-gray-500">{part.unit}</td>
                       <td className="px-3 py-2 text-center">
-                        <span className={`px-2 py-0.5 text-xs font-medium rounded ${getAvailabilityColor(part.availability.available, part.quantity)}`}>
-                          {part.availability.available}
+                        <span className={`px-2 py-0.5 text-xs font-medium rounded ${getAvailabilityColor(part.availability.onHand, part.quantity)}`}>
+                          {part.availability.onHand}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-sm text-gray-500">{part.availability.binLocation || '-'}</td>

@@ -47,10 +47,10 @@ export async function POST(
     }
 
     // Check if project status allows sales order creation
-    const allowedStatuses = ['QUOTE_ACCEPTED', 'ACTIVE']
-    if (!allowedStatuses.includes(project.status)) {
+    // Only QUOTE_ACCEPTED (ACTIVE already means SO was confirmed)
+    if (project.status !== 'QUOTE_ACCEPTED') {
       return NextResponse.json(
-        { error: `Cannot create sales order from project with status: ${project.status}. Project must be Quote Accepted or Active.` },
+        { error: `Cannot create sales order from project with status: ${project.status}. Project must be Quote Accepted.` },
         { status: 400 }
       )
     }

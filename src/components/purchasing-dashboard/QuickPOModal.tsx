@@ -104,7 +104,8 @@ export default function QuickPOModal({ alert, onClose, onSuccess }: QuickPOModal
           body: JSON.stringify({
             masterPartId: alert.partId,
             quantity,
-            notes: notes || undefined
+            notes: notes || undefined,
+            variantId: alert.variantId || undefined
           })
         })
 
@@ -125,7 +126,8 @@ export default function QuickPOModal({ alert, onClose, onSuccess }: QuickPOModal
             masterPartId: alert.partId,
             quantity,
             vendorId: vendorId || undefined,
-            notes: notes || undefined
+            notes: notes || undefined,
+            variantId: alert.variantId || undefined
           })
         })
 
