@@ -46,11 +46,30 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
   )
 
   function handleLineChange(lineId: number, field: keyof ReceivingLineData, value: number | string) {
-    setReceivingLines(prev => prev.map(line =>
-      line.purchaseOrderLineId === lineId
-        ? { ...line, [field]: value }
-        : line
-    ))
+    setReceivingLines(prev => prev.map(line => {
+      if (line.purchaseOrderLineId !== lineId) return line
+      const updated = { ...line, [field]: value }
+
+      // When received decreases, auto-clamp damaged and rejected
+      if (field === 'quantityReceived') {
+        const received = value as number
+        if (updated.quantityDamaged > received) {
+          updated.quantityDamaged = received
+        }
+        if (updated.quantityRejected > received - updated.quantityDamaged) {
+          updated.quantityRejected = Math.max(0, received - updated.quantityDamaged)
+        }
+      }
+      // When damaged changes, auto-clamp rejected if needed
+      if (field === 'quantityDamaged') {
+        const maxRejected = updated.quantityReceived - (value as number)
+        if (updated.quantityRejected > maxRejected) {
+          updated.quantityRejected = Math.max(0, maxRejected)
+        }
+      }
+
+      return updated
+    }))
   }
 
   function getLineById(lineId: number): PurchaseOrderLine | undefined {
@@ -66,9 +85,7 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    const linesToSubmit = receivingLines.filter(line =>
-      line.quantityReceived > 0 || line.quantityDamaged > 0 || line.quantityRejected > 0
-    )
+    const linesToSubmit = receivingLines.filter(line => line.quantityReceived > 0)
 
     if (linesToSubmit.length === 0) {
       setError('Please enter receiving quantities for at least one item')
@@ -78,10 +95,13 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
     // Validate quantities
     for (const line of linesToSubmit) {
       const maxQty = getMaxReceivable(line.purchaseOrderLineId)
-      const totalQty = line.quantityReceived + line.quantityDamaged + line.quantityRejected
-      if (totalQty > maxQty) {
-        const poLine = getLineById(line.purchaseOrderLineId)
-        setError(`Total quantity for "${poLine?.description || 'item'}" exceeds remaining quantity`)
+      const poLine = getLineById(line.purchaseOrderLineId)
+      if (line.quantityReceived > maxQty) {
+        setError(`Received quantity for "${poLine?.description || 'item'}" exceeds remaining quantity (${maxQty})`)
+        return
+      }
+      if (line.quantityDamaged + line.quantityRejected > line.quantityReceived) {
+        setError(`Damaged + Rejected cannot exceed Received for "${poLine?.description || 'item'}"`)
         return
       }
     }
@@ -116,6 +136,7 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
   const totalReceiving = receivingLines.reduce((sum, line) => sum + line.quantityReceived, 0)
   const totalDamaged = receivingLines.reduce((sum, line) => sum + line.quantityDamaged, 0)
   const totalRejected = receivingLines.reduce((sum, line) => sum + line.quantityRejected, 0)
+  const totalGood = totalReceiving - totalDamaged - totalRejected
 
   function handlePrintTags() {
     const url = `/api/purchase-orders/${purchaseOrder.id}/receiving-tags?boxes=${totalBoxes}`
@@ -184,6 +205,12 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
                           Rejected
                         </span>
                       </th>
+                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase w-20">
+                        <span className="flex items-center justify-center gap-1">
+                          <Package className="w-3 h-3 text-blue-500" />
+                          Good
+                        </span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -226,12 +253,12 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
                             <input
                               type="number"
                               min="0"
-                              max={maxQty}
+                              max={receivingLine.quantityReceived}
                               value={receivingLine.quantityDamaged}
                               onChange={(e) => handleLineChange(
                                 receivingLine.purchaseOrderLineId,
                                 'quantityDamaged',
-                                Math.min(Number(e.target.value), maxQty)
+                                Math.min(Number(e.target.value), receivingLine.quantityReceived)
                               )}
                               className="w-full px-2 py-1.5 border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-yellow-500"
                             />
@@ -240,15 +267,20 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
                             <input
                               type="number"
                               min="0"
-                              max={maxQty}
+                              max={receivingLine.quantityReceived - receivingLine.quantityDamaged}
                               value={receivingLine.quantityRejected}
                               onChange={(e) => handleLineChange(
                                 receivingLine.purchaseOrderLineId,
                                 'quantityRejected',
-                                Math.min(Number(e.target.value), maxQty)
+                                Math.min(Number(e.target.value), receivingLine.quantityReceived - receivingLine.quantityDamaged)
                               )}
                               className="w-full px-2 py-1.5 border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-red-500"
                             />
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            <span className="text-sm font-medium text-blue-700">
+                              {receivingLine.quantityReceived - receivingLine.quantityDamaged - receivingLine.quantityRejected}
+                            </span>
                           </td>
                         </tr>
                       )
@@ -268,6 +300,9 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
                       </td>
                       <td className="px-3 py-2 text-center text-sm text-red-700">
                         {totalRejected}
+                      </td>
+                      <td className="px-3 py-2 text-center text-sm text-blue-700">
+                        {totalGood}
                       </td>
                     </tr>
                   </tfoot>
@@ -344,13 +379,16 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
         <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between flex-shrink-0">
           <div className="text-sm text-gray-500">
             {totalReceiving > 0 && (
-              <span className="text-green-600 font-medium">{totalReceiving} items to receive</span>
+              <span className="text-green-600 font-medium">{totalGood} good to inventory</span>
             )}
             {totalDamaged > 0 && (
               <span className="text-yellow-600 font-medium ml-3">{totalDamaged} damaged</span>
             )}
             {totalRejected > 0 && (
               <span className="text-red-600 font-medium ml-3">{totalRejected} rejected</span>
+            )}
+            {totalReceiving > 0 && (totalDamaged > 0 || totalRejected > 0) && (
+              <span className="text-gray-400 font-medium ml-3">({totalReceiving} total received)</span>
             )}
           </div>
           <div className="flex items-center gap-3">
@@ -363,7 +401,7 @@ export default function POReceivingModal({ purchaseOrder, onClose, onComplete }:
             </button>
             <button
               onClick={handleSubmit}
-              disabled={saving || totalReceiving + totalDamaged + totalRejected === 0}
+              disabled={saving || totalReceiving === 0}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
             >
               {saving ? (

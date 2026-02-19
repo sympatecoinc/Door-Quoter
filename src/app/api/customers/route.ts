@@ -29,9 +29,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Lead phase statuses (pre-acceptance) - projects in quoting phase
-    const LEAD_STATUSES = ['STAGING', 'APPROVED', 'REVISE', 'QUOTE_SENT']
+    const LEAD_STATUSES = ['NEW_LEAD', 'STAGING', 'QUOTE_SENT']
     // Project phase statuses (post-acceptance) - won projects
-    const PROJECT_STATUSES = ['QUOTE_ACCEPTED', 'ACTIVE', 'COMPLETE']
+    const PROJECT_STATUSES = ['QUOTE_ACCEPTED', 'ACTIVE', 'IN_PROGRESS', 'COMPLETE']
 
     const [customers, total] = await Promise.all([
       prisma.customer.findMany({

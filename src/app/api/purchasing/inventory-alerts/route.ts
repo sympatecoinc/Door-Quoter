@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { POStatus } from '@prisma/client'
 import { evaluateFormula } from '@/lib/bom/calculations'
+import { calculateOptimizedStockPieces, calculateMultiStockOptimization } from '@/lib/bom-utils'
 import type { InventoryAlertsResponse, InventoryAlert, AlertUrgency, DemandSource } from '@/components/purchasing-dashboard/types'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
@@ -101,6 +104,121 @@ export async function GET() {
         color: variant.finishPricing?.finishType || 'Mill Finish'
       }))
     ]
+
+    // Find confirmed SO Parts for extrusions that have no matching variant link
+    // (variant may have been created after the SO was confirmed)
+    const unresolvedExtrusionParts = await prisma.salesOrderPart.findMany({
+      where: {
+        salesOrder: {
+          status: { in: ['CONFIRMED', 'SENT', 'PARTIAL', 'PARTIALLY_INVOICED'] }
+        },
+        partType: 'Extrusion',
+        extrusionVariantId: null,
+        masterPartId: { not: null }
+      },
+      select: {
+        partNumber: true,
+        partName: true,
+        quantity: true,
+        qtyShipped: true,
+        masterPartId: true,
+        masterPart: {
+          select: {
+            id: true, partNumber: true, baseName: true, description: true,
+            partType: true, reorderPoint: true, reorderQty: true,
+            vendorId: true, vendor: { select: { id: true, displayName: true, category: true } }
+          }
+        },
+        salesOrder: {
+          select: { id: true, orderNumber: true, status: true, shipDate: true,
+            project: { select: { id: true, name: true } }
+          }
+        }
+      }
+    })
+
+    // Try to resolve each unresolved part to an existing variant by matching partNumber suffix
+    // Build a variant lookup for the relevant masterParts
+    const unresolvedMpIds = [...new Set(unresolvedExtrusionParts.map(p => p.masterPartId).filter((id): id is number => id !== null))]
+    const resolverVariants = unresolvedMpIds.length > 0
+      ? await prisma.extrusionVariant.findMany({
+          where: { masterPartId: { in: unresolvedMpIds } },
+          select: { id: true, masterPartId: true, stockLength: true, finishPricing: { select: { finishCode: true } } }
+        })
+      : []
+    const resolverByMpId = new Map<number, typeof resolverVariants>()
+    for (const v of resolverVariants) {
+      const list = resolverByMpId.get(v.masterPartId) || []
+      list.push(v)
+      resolverByMpId.set(v.masterPartId, list)
+    }
+
+    // Only create synthetic entries for parts that truly have no matching variant
+    const trulyUnresolvedByMasterPart = new Map<number, {
+      masterPartId: number, masterPartNumber: string, baseName: string,
+      description: string | null, reorderPoint: number | null, reorderQty: number | null,
+      vendorId: number | null, vendor: { id: number; displayName: string; category: string | null } | null,
+      totalRemaining: number
+    }>()
+
+    for (const soPart of unresolvedExtrusionParts) {
+      if (!soPart.masterPartId || !soPart.masterPart) continue
+      const remaining = soPart.quantity - soPart.qtyShipped
+      if (remaining <= 0) continue
+
+      // Try to match this part's partNumber to an existing variant
+      const candidates = resolverByMpId.get(soPart.masterPartId) || []
+      let resolved = false
+      for (const v of candidates) {
+        const lengthStr = String(Math.round(v.stockLength))
+        const suffix = v.finishPricing?.finishCode
+          ? `-${v.finishPricing.finishCode}-${lengthStr}`
+          : `-${lengthStr}`
+        if (soPart.partNumber.endsWith(suffix)) {
+          resolved = true
+          break
+        }
+      }
+      if (resolved) continue  // Variant exists — already in the parts array with real inventory
+
+      const existing = trulyUnresolvedByMasterPart.get(soPart.masterPartId)
+      if (existing) {
+        existing.totalRemaining += remaining
+      } else {
+        trulyUnresolvedByMasterPart.set(soPart.masterPartId, {
+          masterPartId: soPart.masterPart.id,
+          masterPartNumber: soPart.masterPart.partNumber,
+          baseName: soPart.masterPart.baseName,
+          description: soPart.masterPart.description,
+          reorderPoint: soPart.masterPart.reorderPoint,
+          reorderQty: soPart.masterPart.reorderQty,
+          vendorId: soPart.masterPart.vendorId,
+          vendor: soPart.masterPart.vendor,
+          totalRemaining: remaining
+        })
+      }
+    }
+
+    // Add synthetic entries with qtyOnHand: 0 only for truly missing variants
+    for (const [, data] of trulyUnresolvedByMasterPart) {
+      parts.push({
+        id: data.masterPartId,
+        partNumber: data.masterPartNumber,
+        baseName: data.baseName,
+        description: data.description,
+        partType: 'Extrusion',
+        unit: null,
+        qtyOnHand: 0,
+        qtyReserved: data.totalRemaining,
+        reorderPoint: data.reorderPoint,
+        reorderQty: data.reorderQty,
+        vendorId: data.vendorId,
+        vendor: data.vendor,
+        variantId: null,
+        stockLength: null,
+        color: null
+      })
+    }
 
     // Get confirmed sales order parts to build demand sources for reserved qty
     const confirmedSOParts = await prisma.salesOrderPart.findMany({
@@ -228,13 +346,40 @@ export async function GET() {
     }
     console.log(`[Inventory Alerts] Found ${partNumbersWithOpenPOs.size} parts with open POs:`, Array.from(partNumbersWithOpenPOs))
 
-    // Build projected demand lookup by part number
-    const projectedDemandByPartNumber: Map<string, { qty: number; sources: DemandSource[] }> = new Map()
+    // Build a lookup for extrusion parts' isMillFinish flag
+    const extrusionMasterParts = await prisma.masterPart.findMany({
+      where: { partType: 'Extrusion' },
+      select: { partNumber: true, isMillFinish: true }
+    })
+    const isMillFinishMap = new Map(extrusionMasterParts.map(p => [p.partNumber, p.isMillFinish || false]))
+
+    // Pre-fetch CutStock part numbers and stock length rules for bin-packing optimization
+    const cutStockMasterParts = await prisma.masterPart.findMany({
+      where: { partType: 'CutStock' },
+      include: { stockLengthRules: { where: { isActive: true } } }
+    })
+    const cutStockPartNumbers = new Set(cutStockMasterParts.map(mp => mp.partNumber))
+    const cutStockStockLengthMap = new Map<string, number[]>()
+    for (const mp of cutStockMasterParts) {
+      const lengths = mp.stockLengthRules
+        .map(r => r.stockLength)
+        .filter((l): l is number => l !== null && l > 0)
+      if (lengths.length > 0) {
+        cutStockStockLengthMap.set(mp.partNumber, lengths)
+      }
+    }
+
+    // Build projected demand lookup by part key (partNumber for non-extrusions, partNumber|finishColor for extrusions)
+    const projectedDemandByKey: Map<string, { qty: number; sources: DemandSource[] }> = new Map()
 
     for (const project of pipelineProjects) {
       const projectPartQuantities: Map<string, number> = new Map()
+      // Accumulate CutStock cut lengths per part for bin-packing after all openings
+      const projectCutStockCuts: Map<string, { cutLengths: number[], stockLengths: number[] }> = new Map()
 
       for (const opening of project.openings) {
+        const openingFinishColor = opening.finishColor || null
+
         for (const panel of opening.panels) {
           if (!panel.componentInstance) continue
           const product = panel.componentInstance.product
@@ -244,28 +389,75 @@ export async function GET() {
           for (const bom of product.productBOMs) {
             if (!bom.partNumber || bom.optionId) continue
 
+            // Detect CutStock via MasterPart partType (ProductBOM may have 'Hardware')
+            const isCutStock = bom.partType === 'CutStock' ||
+              (bom.partType === 'Hardware' && cutStockPartNumbers.has(bom.partNumber))
+
+            // CutStock: evaluate formula to get cut length, accumulate for bin-packing
+            if (isCutStock && bom.formula) {
+              const cutLength = evaluateFormula(bom.formula, { width: panelWidth, height: panelHeight })
+              if (cutLength > 0) {
+                const entry = projectCutStockCuts.get(bom.partNumber) || {
+                  cutLengths: [],
+                  stockLengths: cutStockStockLengthMap.get(bom.partNumber) || []
+                }
+                const qty = bom.quantity || 1
+                for (let i = 0; i < qty; i++) {
+                  entry.cutLengths.push(cutLength)
+                }
+                projectCutStockCuts.set(bom.partNumber, entry)
+              }
+              continue
+            }
+
             const bomUnit = (bom.unit || 'EA').toUpperCase()
+            const isExtrusion = bom.partType === 'Extrusion'
             let demand: number
 
-            // For linear units (LF/IN) with a formula, evaluate the formula to get actual linear demand
-            if ((bomUnit === 'LF' || bomUnit === 'IN') && bom.formula) {
+            if (!isExtrusion && (bomUnit === 'LF' || bomUnit === 'IN') && bom.formula) {
+              // For non-extrusion linear parts (Hardware, Fastener), calculate linear demand
               const calculatedLength = evaluateFormula(bom.formula, { width: panelWidth, height: panelHeight })
-              // Convert inches to feet for LF units
               const linearDemand = bomUnit === 'LF' ? calculatedLength / 12 : calculatedLength
               demand = linearDemand * (bom.quantity || 1)
             } else {
+              // For extrusions and EA parts: demand is counted in pieces
               demand = bom.quantity || 1
             }
 
-            const currentQty = projectPartQuantities.get(bom.partNumber) || 0
-            projectPartQuantities.set(bom.partNumber, currentQty + demand)
+            // Build demand key: include finish color for extrusions so demand maps to correct variant
+            let demandKey = bom.partNumber
+            if (bom.partType === 'Extrusion') {
+              const isMillFinish = isMillFinishMap.get(bom.partNumber) || false
+              const finishColor = isMillFinish ? 'Mill Finish' : (openingFinishColor || 'Mill Finish')
+              demandKey = `${bom.partNumber}|${finishColor}`
+            }
+
+            const currentQty = projectPartQuantities.get(demandKey) || 0
+            projectPartQuantities.set(demandKey, currentQty + demand)
           }
         }
       }
 
+      // Bin-pack accumulated CutStock cuts to get stock pieces needed
+      for (const [partNumber, { cutLengths, stockLengths }] of projectCutStockCuts) {
+        let stockPiecesNeeded: number
+        if (stockLengths.length > 1) {
+          const result = calculateMultiStockOptimization(stockLengths, cutLengths)
+          stockPiecesNeeded = result ? result.stockPieces.length : cutLengths.length
+        } else if (stockLengths.length === 1) {
+          const result = calculateOptimizedStockPieces(cutLengths, stockLengths[0])
+          stockPiecesNeeded = result.stockPiecesNeeded
+        } else {
+          // No stock length rules — fall back to cut piece count
+          stockPiecesNeeded = cutLengths.length
+        }
+        const currentQty = projectPartQuantities.get(partNumber) || 0
+        projectPartQuantities.set(partNumber, currentQty + stockPiecesNeeded)
+      }
+
       // Add to projected demand lookup
-      for (const [partNumber, quantity] of projectPartQuantities) {
-        const existing = projectedDemandByPartNumber.get(partNumber) || { qty: 0, sources: [] }
+      for (const [key, quantity] of projectPartQuantities) {
+        const existing = projectedDemandByKey.get(key) || { qty: 0, sources: [] }
         existing.qty += quantity
         existing.sources.push({
           type: 'projected',
@@ -275,7 +467,7 @@ export async function GET() {
           quantity: quantity,
           shipDate: project.shipDate?.toISOString() || null
         })
-        projectedDemandByPartNumber.set(partNumber, existing)
+        projectedDemandByKey.set(key, existing)
       }
     }
 
@@ -286,7 +478,12 @@ export async function GET() {
       const reorderPoint = part.reorderPoint
 
       // Get projected demand for this part
-      const projectedData = projectedDemandByPartNumber.get(part.partNumber)
+      // For extrusion variants, use finish-aware key to match demand to correct variant
+      let demandKey = part.partNumber
+      if (part.variantId) {
+        demandKey = `${part.partNumber}|${part.color || 'Mill Finish'}`
+      }
+      const projectedData = projectedDemandByKey.get(demandKey)
       const projectedDemand = projectedData?.qty || 0
 
       // Calculate available qty = onHand - reserved - projected

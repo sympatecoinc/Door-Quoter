@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ProjectStatus } from '@prisma/client'
 import { ensureProjectPricingMode, getDefaultPricingMode } from '@/lib/pricing-mode'
-import { createProjectRevision } from '@/lib/project-revisions'
-import { LEAD_STATUSES, PROJECT_STATUSES, isProjectStatus } from '@/types'
+import { ALLOWED_MANUAL_TRANSITIONS, ARCHIVABLE_STATUSES, BID_LOSS_ELIGIBLE_STATUSES } from '@/types'
 import { triggerProjectSync, triggerProjectDeletion } from '@/lib/clickup-sync/trigger'
 
 export async function GET(
@@ -466,89 +465,37 @@ export async function PUT(
         throw new Error('Project not found')
       }
 
-      // Project-phase status transition restrictions
-      if (status && status !== currentProject.status && isProjectStatus(currentProject.status as any)) {
-        const hasActiveSO = currentProject._count.salesOrders > 0
+      // Strict status transition validation
+      if (status && status !== currentProject.status) {
+        const currentStatus = currentProject.status as string
 
-        // Block status changes when project has active sales orders (except ARCHIVE)
-        if (hasActiveSO && status !== ProjectStatus.ARCHIVE) {
-          throw new Error('Cannot change status: this project has an active Sales Order.')
+        // Check if this is a valid manual transition
+        const allowedManual = ALLOWED_MANUAL_TRANSITIONS[currentStatus] || []
+        const isAllowedManual = allowedManual.includes(status)
+
+        // Check side exits
+        const isArchive = status === ProjectStatus.ARCHIVE && ARCHIVABLE_STATUSES.includes(currentStatus as any)
+        const isBidLost = status === ProjectStatus.BID_LOST && BID_LOSS_ELIGIBLE_STATUSES.includes(currentStatus as any)
+
+        if (!isAllowedManual && !isArchive && !isBidLost) {
+          throw new Error(`Cannot change status from "${currentStatus}" to "${status}". This transition is not allowed.`)
         }
 
-        // Only allow ACTIVE, COMPLETE, REVISE, or ARCHIVE from project phase
-        const allowedProjectTransitions = [ProjectStatus.ACTIVE, ProjectStatus.COMPLETE, ProjectStatus.REVISE, ProjectStatus.ARCHIVE]
-        if (!allowedProjectTransitions.includes(status)) {
-          throw new Error(`Cannot change from project status "${currentProject.status}" to "${status}". Only Active, Complete, Revise, or Archive are allowed.`)
-        }
+        // Check if status change requires a quote to exist (for QUOTE_SENT and QUOTE_ACCEPTED)
+        const statusesRequiringQuote = [
+          ProjectStatus.QUOTE_SENT,
+          ProjectStatus.QUOTE_ACCEPTED,
+        ]
 
-        // Handle REVISE: create a new revision at STAGING
-        if (status === ProjectStatus.REVISE) {
-          const revisionResult = await createProjectRevision(tx, {
-            sourceProjectId: projectId,
-            targetStatus: ProjectStatus.STAGING,
-            changedBy: 'System (Revision from Project Phase)'
+        if (statusesRequiringQuote.includes(status)) {
+          const quoteCount = await tx.quoteVersion.count({
+            where: { projectId: projectId }
           })
 
-          if (!revisionResult.success) {
-            throw new Error(revisionResult.error)
+          if (quoteCount === 0) {
+            const statusLabel = status === ProjectStatus.QUOTE_SENT ? 'Quote Sent' : 'Quote Accepted'
+            throw new Error(`Cannot change status to "${statusLabel}" - a quote must be generated first`)
           }
-
-          return {
-            ...revisionResult.revision,
-            revisionCreated: true,
-            originalProjectId: projectId,
-            message: `New revision (v${revisionResult.revision.version}) created at "Preparing Quote" status. The current project remains at "${currentProject.status}".`
-          }
-        }
-      }
-
-      // Check if status change requires a quote to exist
-      const statusesRequiringQuote = [
-        ProjectStatus.QUOTE_SENT,
-        ProjectStatus.QUOTE_ACCEPTED,
-        ProjectStatus.ACTIVE,
-        ProjectStatus.COMPLETE
-      ]
-
-      if (status && statusesRequiringQuote.includes(status) && currentProject.status !== status) {
-        // Check if a quote has been generated for this project
-        const quoteCount = await tx.quoteVersion.count({
-          where: { projectId: projectId }
-        })
-
-        if (quoteCount === 0) {
-          const statusLabel = status === ProjectStatus.QUOTE_SENT ? 'Quote Sent' :
-                              status === ProjectStatus.QUOTE_ACCEPTED ? 'Quote Accepted' :
-                              status === ProjectStatus.ACTIVE ? 'Active' : 'Complete'
-          throw new Error(`Cannot change status to "${statusLabel}" - a quote must be generated first`)
-        }
-      }
-
-      // Check if we're reverting from QUOTE_ACCEPTED to a lead status
-      // This requires creating a new revision to preserve the accepted quote history
-      const isRevertingToLead = status &&
-        currentProject.status === ProjectStatus.QUOTE_ACCEPTED &&
-        LEAD_STATUSES.includes(status as any)
-
-      if (isRevertingToLead) {
-        // Create a new revision with the target lead status
-        // The original project stays at QUOTE_ACCEPTED to preserve history
-        const revisionResult = await createProjectRevision(tx, {
-          sourceProjectId: projectId,
-          targetStatus: status as ProjectStatus,
-          changedBy: 'System (Reverted from Quote Accepted)'
-        })
-
-        if (!revisionResult.success) {
-          throw new Error(revisionResult.error)
-        }
-
-        // Return the new revision info - the original project is NOT modified
-        return {
-          ...revisionResult.revision,
-          revisionCreated: true,
-          originalProjectId: projectId,
-          message: `Project reverted to ${status}. A new revision (v${revisionResult.revision.version}) was created to preserve the accepted quote history.`
         }
       }
 
@@ -659,11 +606,7 @@ export async function PUT(
     })
 
     // Trigger async ClickUp sync (fire-and-forget)
-    // Use the original projectId for standard updates, or new revision ID if revision was created
-    const syncProjectId = 'revisionCreated' in updatedProject && updatedProject.revisionCreated
-      ? updatedProject.id
-      : projectId
-    triggerProjectSync(syncProjectId)
+    triggerProjectSync(projectId)
 
     return NextResponse.json(updatedProject)
   } catch (error) {
@@ -673,7 +616,7 @@ export async function PUT(
     if (error instanceof Error && (
       error.message.includes('quote must be generated') ||
       error.message.includes('Cannot change status') ||
-      error.message.includes('Cannot change from project status')
+      error.message.includes('This transition is not allowed')
     )) {
       return NextResponse.json(
         { error: error.message },

@@ -9,6 +9,7 @@ export enum ProjectStatus {
   QUOTE_SENT = 'QUOTE_SENT',
   QUOTE_ACCEPTED = 'QUOTE_ACCEPTED',
   ACTIVE = 'ACTIVE',
+  IN_PROGRESS = 'IN_PROGRESS',
   COMPLETE = 'COMPLETE',
   ARCHIVE = 'ARCHIVE',
   BID_LOST = 'BID_LOST'
@@ -87,6 +88,12 @@ export const STATUS_CONFIG: Record<ProjectStatus, {
     bgColor: 'bg-purple-100',
     textColor: 'text-purple-800'
   },
+  [ProjectStatus.IN_PROGRESS]: {
+    label: 'In Progress',
+    color: 'amber',
+    bgColor: 'bg-amber-100',
+    textColor: 'text-amber-800'
+  },
   [ProjectStatus.COMPLETE]: {
     label: 'Complete',
     color: 'teal',
@@ -115,20 +122,14 @@ export function getStatusLabel(status: ProjectStatus): string {
 // Lead phase statuses (pre-acceptance)
 export const LEAD_STATUSES: ProjectStatus[] = [
   ProjectStatus.NEW_LEAD,
-  ProjectStatus.CONTACTED,
   ProjectStatus.STAGING,
-  ProjectStatus.APPROVED,
-  ProjectStatus.REVISE,
   ProjectStatus.QUOTE_SENT
 ]
 
 // Lead filter statuses (includes Archive and Bid Lost for filtering)
 export const LEAD_FILTER_STATUSES: ProjectStatus[] = [
   ProjectStatus.NEW_LEAD,
-  ProjectStatus.CONTACTED,
   ProjectStatus.STAGING,
-  ProjectStatus.APPROVED,
-  ProjectStatus.REVISE,
   ProjectStatus.QUOTE_SENT,
   ProjectStatus.ARCHIVE,
   ProjectStatus.BID_LOST
@@ -138,6 +139,7 @@ export const LEAD_FILTER_STATUSES: ProjectStatus[] = [
 export const PROJECT_STATUSES: ProjectStatus[] = [
   ProjectStatus.QUOTE_ACCEPTED,
   ProjectStatus.ACTIVE,
+  ProjectStatus.IN_PROGRESS,
   ProjectStatus.COMPLETE
 ]
 
@@ -145,6 +147,7 @@ export const PROJECT_STATUSES: ProjectStatus[] = [
 export const PROJECT_FILTER_STATUSES: ProjectStatus[] = [
   ProjectStatus.QUOTE_ACCEPTED,
   ProjectStatus.ACTIVE,
+  ProjectStatus.IN_PROGRESS,
   ProjectStatus.COMPLETE,
   ProjectStatus.ARCHIVE
 ]
@@ -164,6 +167,7 @@ export const LOCKED_STATUSES: ProjectStatus[] = [
   ProjectStatus.QUOTE_SENT,
   ProjectStatus.QUOTE_ACCEPTED,
   ProjectStatus.ACTIVE,
+  ProjectStatus.IN_PROGRESS,
   ProjectStatus.COMPLETE,
   ProjectStatus.BID_LOST
 ]
@@ -171,6 +175,50 @@ export const LOCKED_STATUSES: ProjectStatus[] = [
 // Helper to check if a project status is locked for editing
 export function isProjectLocked(status: ProjectStatus): boolean {
   return LOCKED_STATUSES.includes(status)
+}
+
+// Allowed manual status transitions (strict linear pipeline)
+export const ALLOWED_MANUAL_TRANSITIONS: Record<string, ProjectStatus[]> = {
+  [ProjectStatus.STAGING]: [ProjectStatus.QUOTE_SENT],
+  [ProjectStatus.QUOTE_SENT]: [ProjectStatus.QUOTE_ACCEPTED, ProjectStatus.STAGING], // forward + one back
+  [ProjectStatus.QUOTE_ACCEPTED]: [], // no manual transitions; forward is auto via SO confirm
+  [ProjectStatus.IN_PROGRESS]: [ProjectStatus.COMPLETE],
+  [ProjectStatus.COMPLETE]: [ProjectStatus.IN_PROGRESS], // one back
+}
+
+// All statuses can be archived (including BID_LOST via the post-bid-lost prompt)
+export const ARCHIVABLE_STATUSES: ProjectStatus[] = [
+  ProjectStatus.NEW_LEAD,
+  ProjectStatus.STAGING,
+  ProjectStatus.QUOTE_SENT,
+  ProjectStatus.QUOTE_ACCEPTED,
+  ProjectStatus.ACTIVE,
+  ProjectStatus.IN_PROGRESS,
+  ProjectStatus.COMPLETE,
+  ProjectStatus.BID_LOST,
+]
+
+// Only pre-acceptance statuses can be marked as bid lost
+export const BID_LOSS_ELIGIBLE_STATUSES: ProjectStatus[] = [
+  ProjectStatus.NEW_LEAD,
+  ProjectStatus.STAGING,
+  ProjectStatus.QUOTE_SENT,
+]
+
+// Helper to get all valid next statuses for a given status (manual transitions + side exits)
+export function getValidNextStatuses(status: ProjectStatus): {
+  main: ProjectStatus[]
+  sideExits: ProjectStatus[]
+} {
+  const main = ALLOWED_MANUAL_TRANSITIONS[status] || []
+  const sideExits: ProjectStatus[] = []
+
+  // Archive is offered as a follow-up after Bid Lost, not as a standalone side exit
+  if (BID_LOSS_ELIGIBLE_STATUSES.includes(status)) {
+    sideExits.push(ProjectStatus.BID_LOST)
+  }
+
+  return { main, sideExits }
 }
 
 // Project Version type for version switcher

@@ -40,10 +40,10 @@ import { ProjectStatus } from '@/types'
 
 export const CLICKUP_LEAD_STATUS_TO_PROJECT: Record<string, ProjectStatus> = {
   'new lead': ProjectStatus.NEW_LEAD,
-  'contacted': ProjectStatus.CONTACTED,
+  'contacted': ProjectStatus.NEW_LEAD, // ClickUp contacted maps to NEW_LEAD (no separate contacted status)
   'quote in progress': ProjectStatus.STAGING,
   'quote sent': ProjectStatus.QUOTE_SENT,
-  'bid - won': ProjectStatus.QUOTE_ACCEPTED,
+  'bid - won': ProjectStatus.QUOTE_ACCEPTED, // Final ClickUp status - covers QUOTE_ACCEPTED/ACTIVE/IN_PROGRESS
   'bid-won': ProjectStatus.QUOTE_ACCEPTED,
   'bid - lost': ProjectStatus.BID_LOST,
   'bid-lost': ProjectStatus.BID_LOST,
@@ -52,10 +52,12 @@ export const CLICKUP_LEAD_STATUS_TO_PROJECT: Record<string, ProjectStatus> = {
 
 export const PROJECT_STATUS_TO_CLICKUP_LEAD: Record<string, string> = {
   [ProjectStatus.NEW_LEAD]: 'new lead',
-  [ProjectStatus.CONTACTED]: 'contacted',
   [ProjectStatus.STAGING]: 'quote in progress',
   [ProjectStatus.QUOTE_SENT]: 'quote sent',
   [ProjectStatus.QUOTE_ACCEPTED]: 'bid - won',
+  [ProjectStatus.ACTIVE]: 'bid - won', // ClickUp doesn't have further statuses
+  [ProjectStatus.IN_PROGRESS]: 'bid - won',
+  [ProjectStatus.COMPLETE]: 'bid - won',
   [ProjectStatus.BID_LOST]: 'bid - lost',
   [ProjectStatus.ARCHIVE]: 'project cancelled',
 }

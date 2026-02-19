@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ProjectStatus } from '@prisma/client'
 import { isProjectLocked, createLockedError } from '@/lib/project-status'
 
 export async function GET(request: NextRequest) {
@@ -236,6 +237,23 @@ export async function POST(request: NextRequest) {
         }
       }
     })
+
+    // Auto-advance: NEW_LEAD → STAGING when first opening is added
+    if (project && project.status === ProjectStatus.NEW_LEAD) {
+      await prisma.$transaction([
+        prisma.project.update({
+          where: { id: parseInt(projectId) },
+          data: { status: ProjectStatus.STAGING }
+        }),
+        prisma.projectStatusHistory.create({
+          data: {
+            projectId: parseInt(projectId),
+            status: ProjectStatus.STAGING,
+            changedBy: 'System (Opening Added)'
+          }
+        })
+      ])
+    }
 
     return NextResponse.json(opening, { status: 201 })
   } catch (error) {

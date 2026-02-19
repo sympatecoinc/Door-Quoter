@@ -162,7 +162,7 @@ export default function DashboardView() {
               )}
             </div>
           </div>
-          <p className="text-gray-600 mt-2">Projects in quoting phase (Staging through Quote Sent)</p>
+          <p className="text-gray-600 mt-2">Projects in quoting phase (New Lead through Quote Sent)</p>
         </div>
         <button
           onClick={() => setShowAddLeadModal(true)}

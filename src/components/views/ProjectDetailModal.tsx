@@ -712,25 +712,27 @@ export default function ProjectDetailModal({ projectId, onBack, onEdit, onStatus
   }
 
   const statusColors: Record<string, string> = {
+    'NEW_LEAD': 'bg-indigo-100 text-indigo-700',
     'STAGING': 'bg-gray-100 text-gray-700',
-    'APPROVED': 'bg-blue-100 text-blue-700',
-    'REVISE': 'bg-yellow-100 text-yellow-700',
     'QUOTE_SENT': 'bg-purple-100 text-purple-700',
     'QUOTE_ACCEPTED': 'bg-green-100 text-green-700',
     'ACTIVE': 'bg-indigo-100 text-indigo-700',
+    'IN_PROGRESS': 'bg-amber-100 text-amber-700',
     'COMPLETE': 'bg-emerald-100 text-emerald-700',
     'ARCHIVE': 'bg-red-100 text-red-700',
+    'BID_LOST': 'bg-rose-100 text-rose-700',
   }
 
   const statusLabels: Record<string, string> = {
+    'NEW_LEAD': 'New Lead',
     'STAGING': 'Preparing Quote',
-    'APPROVED': 'Approved',
-    'REVISE': 'Revise',
     'QUOTE_SENT': 'Quote Sent',
     'QUOTE_ACCEPTED': 'Quote Accepted',
     'ACTIVE': 'Active',
+    'IN_PROGRESS': 'In Progress',
     'COMPLETE': 'Complete',
     'ARCHIVE': 'Archived',
+    'BID_LOST': 'Bid Lost',
   }
 
   if (loading) {

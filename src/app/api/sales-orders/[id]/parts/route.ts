@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getPartsSummary } from '@/lib/sales-order-parts'
+import { findExtrusionVariant } from '@/lib/inventory-availability'
 
 /**
  * GET /api/sales-orders/[id]/parts
@@ -65,32 +66,46 @@ export async function GET(
     })
 
     // Calculate availability for each part
-    const partsWithAvailability = parts.map(part => {
+    const partsWithAvailability = await Promise.all(parts.map(async (part) => {
       let onHand: number
       let reserved: number
 
       if (part.extrusionVariant) {
-        // Extrusion: use variant-level inventory
+        // Extrusion with linked variant: use variant-level inventory (finish-specific)
         onHand = part.extrusionVariant.qtyOnHand ?? 0
         reserved = part.extrusionVariant.qtyReserved ?? 0
+      } else if (part.partType === 'Extrusion' && part.masterPartId) {
+        // Extrusion WITHOUT a linked variant: try dynamic lookup
+        // (variant may have been created after the order was confirmed)
+        const variant = await findExtrusionVariant(part.partNumber, part.masterPartId)
+        if (variant) {
+          onHand = variant.qtyOnHand ?? 0
+          reserved = variant.qtyReserved ?? 0
+        } else {
+          onHand = 0
+          reserved = 0
+        }
+      } else if (part.partType === 'Extrusion') {
+        // Extrusion with no master part link at all
+        onHand = 0
+        reserved = 0
       } else {
         // Non-extrusion: use master part inventory
         onHand = part.masterPart?.qtyOnHand ?? 0
         reserved = part.masterPart?.qtyReserved ?? 0
       }
 
-      const available = Math.max(0, onHand - reserved)
-
       return {
         ...part,
+        // Override unit for extrusions and CutStock: SO parts count raw pieces, not inches
+        unit: (part.partType === 'Extrusion' || part.partType === 'CutStock') ? 'EA' : part.unit,
         availability: {
           onHand,
           reserved,
-          available,
           binLocation: part.masterPart?.binLocationRef?.code ?? null
         }
       }
-    })
+    }))
 
     // Get summary
     const summary = await getPartsSummary(soId)

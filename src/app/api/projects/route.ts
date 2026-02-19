@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
   try {
     const {
       name,
-      status = ProjectStatus.STAGING,
+      status = ProjectStatus.NEW_LEAD,
       dueDate,
       pricingModeId,
       customerId,

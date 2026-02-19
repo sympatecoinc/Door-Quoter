@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, ShoppingBag } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import type { DashboardTab, DateRange } from '@/components/purchasing-dashboard/types'
@@ -36,9 +36,20 @@ export default function PurchasingDashboardView() {
   const [dateRange, setDateRange] = useState<DateRange>(30)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     setRefreshKey(prev => prev + 1)
-  }
+  }, [])
+
+  // Auto-refresh when page becomes visible again (returning from inventory edits, PO receiving, etc.)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        handleRefresh()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [handleRefresh])
 
   const handleViewPO = (poId: number) => {
     // Navigate to Purchase Orders view

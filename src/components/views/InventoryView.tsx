@@ -338,6 +338,13 @@ export default function InventoryView() {
         </nav>
       </div>
 
+      {/* Inventory Notifications Banner */}
+      <InventoryNotificationBanner
+        notifications={inventoryNotifications}
+        onDismiss={handleDismissNotification}
+        onSetupPart={handleSetupPart}
+      />
+
       {/* Extrusions Tab Content */}
       {activeTab === 'extrusions' && <ExtrusionInventoryTab />}
 
@@ -359,13 +366,6 @@ export default function InventoryView() {
       {/* All Parts Tab Content */}
       {activeTab === 'all' && (
         <>
-      {/* Inventory Notifications Banner */}
-      <InventoryNotificationBanner
-        notifications={inventoryNotifications}
-        onDismiss={handleDismissNotification}
-        onSetupPart={handleSetupPart}
-      />
-
       {/* Summary Cards */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 animate-pulse">

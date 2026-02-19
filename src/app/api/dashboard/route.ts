@@ -5,10 +5,7 @@ import { ProjectStatus } from '@prisma/client'
 // Lead phase statuses (pre-acceptance) - excludes ARCHIVE and BID_LOST by default
 const LEAD_STATUSES = [
   ProjectStatus.NEW_LEAD,
-  ProjectStatus.CONTACTED,
   ProjectStatus.STAGING,
-  ProjectStatus.APPROVED,
-  ProjectStatus.REVISE,
   ProjectStatus.QUOTE_SENT
 ]
 
@@ -16,6 +13,7 @@ const LEAD_STATUSES = [
 const PROJECT_STATUSES = [
   ProjectStatus.QUOTE_ACCEPTED,
   ProjectStatus.ACTIVE,
+  ProjectStatus.IN_PROGRESS,
   ProjectStatus.COMPLETE
 ]
 
@@ -33,7 +31,7 @@ export async function GET(request: Request) {
       }
     })
 
-    // Get total leads (STAGING, APPROVED, REVISE, QUOTE_SENT)
+    // Get total leads (NEW_LEAD, STAGING, QUOTE_SENT)
     // Only count current versions (not historical revisions)
     const totalLeads = await prisma.project.count({
       where: {

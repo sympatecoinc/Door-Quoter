@@ -78,6 +78,7 @@ export interface QuickPORequest {
   quantity: number
   vendorId?: number
   notes?: string
+  variantId?: number
 }
 
 export interface QuickPOResponse {
@@ -97,6 +98,7 @@ export interface AddToExistingPORequest {
   masterPartId: number
   quantity: number
   notes?: string
+  variantId?: number
 }
 
 export interface AddToExistingPOResponse {

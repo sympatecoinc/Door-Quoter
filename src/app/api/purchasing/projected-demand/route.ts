@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import type { ProjectedDemandResponse, ProjectedDemandItem } from '@/components/purchasing-dashboard/types'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     // Get projects in pipeline (QUOTE_ACCEPTED or ACTIVE) that DON'T have confirmed SOs

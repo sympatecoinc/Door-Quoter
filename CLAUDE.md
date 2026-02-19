@@ -120,9 +120,32 @@ After implementation:
 
 **Navigate to:** `http://localhost:[PORT]` (use the actual port from STEP 5)
 
-**Login Credentials:**
-- Email: `devtest@sympatecoinc.com`
+**Login Credentials (Playwright/Browser):**
+- Email: `testing@dev.com`
 - Password: `password`
+
+### API Testing with curl
+
+The app uses session-cookie auth via middleware (`src/middleware.ts`). All non-public routes require a `session_token` cookie. To authenticate for API testing:
+
+```bash
+# Step 1: Login to get session cookie (save to cookie jar)
+curl -s -c /tmp/cookies.txt http://localhost:[PORT]/api/auth/login \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"email":"testing@dev.com","password":"password"}'
+
+# Step 2: Use cookie jar for authenticated API calls
+curl -s -b /tmp/cookies.txt http://localhost:[PORT]/api/your-endpoint \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"key":"value"}'
+```
+
+**Notes:**
+- The login endpoint is `POST /api/auth/login` (listed in `PUBLIC_ROUTES` in middleware)
+- The `devtest@sympatecoinc.com` account does NOT exist in the local database. Use `testing@dev.com` instead.
+- Port may vary — `npm run dev` will use an available port if 3000 is taken. Check the dev server output for the actual port.
 
 
 ### STEP 6: COMPLETION

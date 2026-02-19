@@ -185,22 +185,28 @@ export default function SODetailView({ soId, onBack, onEdit, onRefresh, onGenera
             Overview
           </button>
           <button
-            onClick={() => setActiveTab('parts')}
+            onClick={() => { if (salesOrder.status !== 'DRAFT') setActiveTab('parts') }}
+            disabled={salesOrder.status === 'DRAFT'}
             className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'parts'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              salesOrder.status === 'DRAFT'
+                ? 'border-transparent text-gray-300 cursor-not-allowed'
+                : activeTab === 'parts'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
             <Package className="w-4 h-4" />
             Parts
           </button>
           <button
-            onClick={() => setActiveTab('invoices')}
+            onClick={() => { if (salesOrder.status !== 'DRAFT') setActiveTab('invoices') }}
+            disabled={salesOrder.status === 'DRAFT'}
             className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'invoices'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              salesOrder.status === 'DRAFT'
+                ? 'border-transparent text-gray-300 cursor-not-allowed'
+                : activeTab === 'invoices'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
             <Receipt className="w-4 h-4" />
