@@ -1994,11 +1994,11 @@ export default function ProjectDetailView() {
         let widthTolerance = 0
         let heightTolerance = 0
         if (editingOpeningType === 'FRAMED') {
-          widthTolerance = toleranceDefaults.framedWidthTolerance
-          heightTolerance = toleranceDefaults.framedHeightTolerance
+          widthTolerance = opening.widthToleranceTotal ?? toleranceDefaults.framedWidthTolerance
+          heightTolerance = opening.heightToleranceTotal ?? toleranceDefaults.framedHeightTolerance
         } else {
-          widthTolerance = toleranceDefaults.thinwallWidthTolerance
-          heightTolerance = toleranceDefaults.thinwallHeightTolerance
+          widthTolerance = opening.widthToleranceTotal ?? toleranceDefaults.thinwallWidthTolerance
+          heightTolerance = opening.heightToleranceTotal ?? toleranceDefaults.thinwallHeightTolerance
         }
         const newFinishedWidth = newRoughWidth - widthTolerance
         const newFinishedHeight = newRoughHeight - heightTolerance
@@ -2036,8 +2036,8 @@ export default function ProjectDetailView() {
           : newFinishedHeight
 
         // Get current interior dimensions for diff calculation
-        const currentFinishedWidth = opening.finishedWidth || 0
-        const currentFinishedHeight = opening.finishedHeight || 0
+        const currentFinishedWidth = currentRoughWidth - widthTolerance
+        const currentFinishedHeight = currentRoughHeight - heightTolerance
         const currentComponentWidth = jambThickness > 0
           ? currentFinishedWidth - (2 * jambThickness)
           : currentFinishedWidth
@@ -8720,15 +8720,23 @@ export default function ProjectDetailView() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-blue-700">Width Change:</span>
-                  <span className={`ml-2 font-semibold ${sizeRedistributionData.widthDiff >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                    {sizeRedistributionData.widthDiff >= 0 ? '+' : ''}{sizeRedistributionData.widthDiff.toFixed(3)}"
-                  </span>
+                  {Math.abs(sizeRedistributionData.widthDiff) <= 0.001 ? (
+                    <span className="ml-2 font-semibold text-gray-500">No change</span>
+                  ) : (
+                    <span className={`ml-2 font-semibold ${sizeRedistributionData.widthDiff >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                      {sizeRedistributionData.widthDiff >= 0 ? '+' : ''}{sizeRedistributionData.widthDiff.toFixed(3)}"
+                    </span>
+                  )}
                 </div>
                 <div>
                   <span className="text-blue-700">Height Change:</span>
-                  <span className={`ml-2 font-semibold ${sizeRedistributionData.heightDiff >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                    {sizeRedistributionData.heightDiff >= 0 ? '+' : ''}{sizeRedistributionData.heightDiff.toFixed(3)}"
-                  </span>
+                  {Math.abs(sizeRedistributionData.heightDiff) <= 0.001 ? (
+                    <span className="ml-2 font-semibold text-gray-500">No change</span>
+                  ) : (
+                    <span className={`ml-2 font-semibold ${sizeRedistributionData.heightDiff >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                      {sizeRedistributionData.heightDiff >= 0 ? '+' : ''}{sizeRedistributionData.heightDiff.toFixed(3)}"
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -8805,7 +8813,10 @@ export default function ProjectDetailView() {
                 <div className="flex-1">
                   <div className="font-medium text-gray-900">Adjust Selected Components</div>
                   <p className="text-sm text-gray-600 mt-1">
-                    The {sizeRedistributionData.widthDiff >= 0 ? 'added' : 'reduced'} {Math.abs(sizeRedistributionData.widthDiff).toFixed(3)}" will be distributed evenly between the selected components.
+                    {Math.abs(sizeRedistributionData.widthDiff) <= 0.001
+                      ? 'Select components to adjust for the new opening size.'
+                      : `The ${sizeRedistributionData.widthDiff >= 0 ? 'added' : 'reduced'} ${Math.abs(sizeRedistributionData.widthDiff).toFixed(3)}" will be distributed evenly between the selected components.`
+                    }
                   </p>
                   {redistributionMethod === 'selected' && (
                     <div className="mt-3 space-y-3">
